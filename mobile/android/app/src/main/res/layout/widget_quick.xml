@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quick add: + Task / + For Claude -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@drawable/widget_bg"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/q_task"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:layout_marginEnd="6dp"
+        android:gravity="center"
+        android:minHeight="40dp"
+        android:background="@drawable/widget_btn_accent"
+        android:text="+ Task"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/q_agent"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:minHeight="40dp"
+        android:background="@drawable/widget_btn_outline"
+        android:text="+ For Claude"
+        android:textColor="#2742C8"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/q_voice"
+        android:layout_width="48dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="6dp"
+        android:minHeight="40dp"
+        android:scaleType="center"
+        android:background="@drawable/widget_btn_outline"
+        android:src="@drawable/widget_mic"
+        android:contentDescription="Speak a task" />
+</LinearLayout>

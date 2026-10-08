@@ -1,0 +1,40 @@
+// Copies the desktop renderer into www/ and bakes in the device-sync config
+// so the phone app syncs out of the box. Re-run before every APK build.
+const fs = require('fs');
+const path = require('path');
+
+const src = path.join(__dirname, '..', 'renderer', 'index.html');
+const outDir = path.join(__dirname, 'www');
+const syncCfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'sync-config.json'), 'utf8'));
+
+// optional third channel for Claude's Agent tab; added to an existing phone
+// config too (the personal seed below only applies to a fresh install)
+const agentFile = path.join(__dirname, 'agent-sync-config.json');
+const agentCfg = fs.existsSync(agentFile) ? JSON.parse(fs.readFileSync(agentFile, 'utf8')) : null;
+// fourth channel for the School tab, merged in the same way
+const schoolFile = path.join(__dirname, 'school-sync-config.json');
+const schoolCfg = fs.existsSync(schoolFile) ? JSON.parse(fs.readFileSync(schoolFile, 'utf8')) : null;
+const addChannel = (name, cfg) => cfg ? `try{ var c=JSON.parse(localStorage.getItem('tasks.sync.v1')); if(c&&c.url)c={personal:c}; if(c&&!c.${name}){ c.${name}=${JSON.stringify(cfg)}; localStorage.setItem('tasks.sync.v1',JSON.stringify(c)); } }catch(e){}` : '';
+
+let html = fs.readFileSync(src, 'utf8');
+const seed = `<script>
+try{ if(!localStorage.getItem('tasks.sync.v1')) localStorage.setItem('tasks.sync.v1', ${JSON.stringify(JSON.stringify(syncCfg))}); }catch(e){}
+${addChannel('agent', agentCfg)}
+${addChannel('school', schoolCfg)}
+</script>`;
+html = html.replace('<head>', '<head>\n' + seed);
+
+fs.mkdirSync(outDir, { recursive: true });
+fs.writeFileSync(path.join(outDir, 'index.html'), html);
+console.log('www/index.html written with baked sync config');
+
+// the home-screen widget reads the same config natively from res/raw
+const rawDir = path.join(__dirname, 'android', 'app', 'src', 'main', 'res', 'raw');
+if (fs.existsSync(path.join(__dirname, 'android'))) {
+  fs.mkdirSync(rawDir, { recursive: true });
+  fs.writeFileSync(path.join(rawDir, 'sync_config.json'), JSON.stringify(syncCfg));
+  // the Today / Claude-needs-you / School widgets read these channels too
+  fs.writeFileSync(path.join(rawDir, 'agent_sync_config.json'), JSON.stringify(agentCfg || {}));
+  fs.writeFileSync(path.join(rawDir, 'school_sync_config.json'), JSON.stringify(schoolCfg || {}));
+  console.log('res/raw/sync_config.json written for the widget');
+}
