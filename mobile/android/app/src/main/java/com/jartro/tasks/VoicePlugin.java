@@ -29,6 +29,9 @@ import java.util.Locale;
 public class VoicePlugin extends Plugin {
     private SpeechRecognizer recognizer;
     private PluginCall active;
+    // the last words shown while listening: some recognizers end with "no match" instead of a final
+    // result even though they heard you, so this is handed back instead of nothing
+    private String lastPartial = "";
 
     @PluginMethod
     public void listen(PluginCall call) {
@@ -62,6 +65,7 @@ public class VoicePlugin extends Plugin {
             }
             release();
             active = call;
+            lastPartial = "";
             recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
             recognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) { notifyListeners("ready", new JSObject()); }
@@ -73,20 +77,20 @@ public class VoicePlugin extends Plugin {
 
                 @Override public void onPartialResults(Bundle b) {
                     String t = first(b);
-                    if (t != null && !t.isEmpty()) { JSObject o = new JSObject(); o.put("text", t); notifyListeners("partial", o); }
+                    if (t != null && !t.isEmpty()) { lastPartial = t; JSObject o = new JSObject(); o.put("text", t); notifyListeners("partial", o); }
                 }
 
                 @Override public void onResults(Bundle b) {
                     String t = first(b);
                     JSObject o = new JSObject();
-                    o.put("text", t == null ? "" : t);
+                    o.put("text", t == null || t.isEmpty() ? lastPartial : t);
                     finish(o, null);
                 }
 
                 @Override public void onError(int error) {
                     // silence / nothing recognized isn't a failure: you just get no task
                     if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                        JSObject o = new JSObject(); o.put("text", ""); finish(o, null);
+                        JSObject o = new JSObject(); o.put("text", lastPartial); finish(o, null);
                     } else finish(null, describe(error));
                 }
             });
