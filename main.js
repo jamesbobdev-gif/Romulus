@@ -909,7 +909,7 @@ async function processBuyEmails(raw) {
       const res = await fetch(fnUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, kind: b.kind === 'print' ? 'print' : 'buy', label: b.label, url: b.url, price: b.price, rating: b.rating, image: b.image }),
+        body: JSON.stringify({ to, kind: b.kind === 'print' || b.kind === 'link' ? b.kind : 'buy', label: b.label, url: b.url, price: b.price, rating: b.rating, image: b.image }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
