@@ -937,6 +937,14 @@ async function voiceAdd(){
 }
 // the site a link goes to, for its button: "Amazon", "Fresha", "Yelp"… (not always Amazon)
 // 3D-model sites: an option there is something to print, not to buy
+// what the card's button does for an option's link: buy (a shop), print (a 3D-model site), or just send
+// him the link (jobs, bookings, articles, forms… anything that isn't a purchase)
+function optionKind(url){
+  if(!url)return 'pick';
+  if(isModelSite(url))return 'print';
+  let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return 'link'; }
+  return /(^|\.)(amazon\.[a-z.]+|amzn\.(to|com)|bestbuy\.com|walmart\.com|target\.com|newegg\.com|ebay\.com|etsy\.com|homedepot\.com|lowes\.com|costco\.com|bhphotovideo\.com|microcenter\.com|bambulab\.com|aliexpress\.com|temu\.com|adorama\.com|rei\.com|ikea\.com)$/.test(h)?'buy':'link';
+}
 function isModelSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(makerworld|printables|thingiverse|thangs|cults3d|myminifactory|prusaprinters)\.com$/.test(h);
@@ -1342,12 +1350,12 @@ function buildPanel(t){
       const btns=el('div','opt-btns');
       if(o.url){ const ob=el('button','opt-open',siteName(o.url)+' ↗'); ob.addEventListener('click',function(){ openExternal(String(o.url)); }); btns.appendChild(ob); }
       if(canPick){
-        const toPrint=!!o.url&&isModelSite(o.url);
-        const pb=el('button','opt-pick',toPrint?'Print this':'Choose this');
-        pb.title=o.url?(toPrint?'Picks this model and emails it to you to print':'Picks this and emails you the link to buy it'):'Picks this option';
-        pb.addEventListener('click',function(){ const pick=(toPrint?'I’ll print option ':'I choose option ')+(i+1)+': '+label; t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
-          // if the option has a link, stage a "buy this" email — the desktop sends it (never orders)
-          if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(toPrint)t.buyEmail.kind='print'; agentSay(t,'sys',toPrint?'📧 Emailing you the model to print.':'📧 Emailing you the link to buy this.'); }
+        const kind=optionKind(o.url);
+        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':'Choose this');
+        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':'Picks this option';
+        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label; t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
+          // if the option has a link, stage an email with it — the desktop sends it (never orders anything)
+          if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'📧 Emailing you the model to print.':kind==='link'?'📧 Emailing you the link.':'📧 Emailing you the link to buy this.'); }
           touch(); });
         btns.appendChild(pb);
       }
