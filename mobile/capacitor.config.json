@@ -1,0 +1,8 @@
+{
+  "appId": "com.jartro.tasks",
+  "appName": "Tasks",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

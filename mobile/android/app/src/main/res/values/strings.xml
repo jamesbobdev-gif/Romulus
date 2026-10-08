@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tasks</string>
+    <string name="title_activity_main">Tasks</string>
+    <string name="package_name">com.jartro.tasks</string>
+    <string name="custom_url_scheme">com.jartro.tasks</string>
+    <string name="widget_today_desc">Today: due today and overdue. Tap the circle to check it off.</string>
+    <string name="widget_agent_desc">Claude needs you: Agent tasks waiting on your answer.</string>
+    <string name="widget_school_desc">School: next test countdown and upcoming assignments.</string>
+    <string name="widget_quick_desc">Quick add: a new task, or one for Claude.</string>
+</resources>

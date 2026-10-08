@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- line-drawn microphone for the Quick add widget's "Speak" button -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="12"
+    android:viewportHeight="12">
+    <path
+        android:pathData="M6,1 L6,1 A1.9,1.9 0 0,1 7.9,2.9 L7.9,5.5 A1.9,1.9 0 0,1 4.1,5.5 L4.1,2.9 A1.9,1.9 0 0,1 6,1 Z"
+        android:strokeColor="#2742C8"
+        android:strokeWidth="1.1"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M2.4,5.8 A3.6,3.6 0 0,0 9.6,5.8 M6,9.4 L6,11 M4.2,11 L7.8,11"
+        android:strokeColor="#2742C8"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

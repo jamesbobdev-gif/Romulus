@@ -1,0 +1,25 @@
+# downloaded packages and build output (recreated by npm install / npm run dist / gradle)
+node_modules/
+dist/
+mobile/node_modules/
+mobile/www/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/capacitor-cordova-android-plugins/build/
+mobile/android/local.properties
+mobile/android/*.txt
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+
+# private sync keys (baked into the phone build; keep them out of history)
+mobile/sync-config.json
+mobile/agent-sync-config.json
+mobile/school-sync-config.json
+mobile/android/app/src/main/res/raw/sync_config.json
+mobile/android/app/src/main/res/raw/agent_sync_config.json
+mobile/android/app/src/main/res/raw/school_sync_config.json
+
+# local safety copies made before installs
+.backup-*/
