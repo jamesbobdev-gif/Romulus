@@ -915,7 +915,9 @@ async function voiceAdd(){
       ti.value=heard||before; voiceToast(heard?'Stopped listening — check the text and press Add':'Didn’t catch that — tap Speak and try again',!heard);
       if(heard)ti.focus(); return;
     }
-    const said=((r&&r.text)||(r&&r.stopped?heard:'')).trim(); // stopped early: use what it had heard
+    // the final answer can come back empty even though it heard you (some Android recognizers end with
+    // "no match"): then use the last words it showed while you were talking
+    const said=((r&&r.text)||heard||'').trim();
     if(!said){ ti.value=before; voiceToast('Didn\u2019t catch that \u2014 tap Speak and try again',true); return; }
     const p=parseSpokenTask(said);
     if(!p.title){ ti.value=before; voiceToast('Heard \u201C'+said+'\u201D but no task in it',true); return; }
@@ -929,7 +931,8 @@ async function voiceAdd(){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
   }finally{
     voiceOn=false; btn.classList.remove('listening'); btn.innerHTML=MIC_LABEL; ti.placeholder=prevPh;
-    if(partial&&partial.remove)partial.remove();
+    if(partial&&typeof partial.remove==='function')partial.remove();
+    else if(partial&&typeof partial.then==='function')partial.then(function(h){ if(h&&h.remove)h.remove(); }).catch(function(){});
   }
 }
 // the site a link goes to, for its button: "Amazon", "Fresha", "Yelp"… (not always Amazon)
