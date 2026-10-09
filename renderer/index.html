@@ -213,6 +213,42 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
+@media(max-width:520px){.tab{padding:8px 10px}}
+
+/* ── ideas board: free-form cards you drag around and connect ── */
+:root{
+  --idea-plain:var(--surface);--idea-yellow:#FFF4C2;--idea-green:#DDF3DF;
+  --idea-blue:#DCE6FF;--idea-pink:#FBDDE6;--idea-purple:#EADFFB;
+}
+body.ideas-mode main{max-width:1180px}
+.ideas-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;min-height:32px}
+.ideas-bar .btn-accent{margin-left:0}
+.ideas-hint{color:var(--faint)}
+.ideas-sel{display:flex;align-items:center;gap:5px}
+.idea-swatch{width:20px;height:20px;border-radius:50%;border:1px solid var(--hairline);cursor:pointer;padding:0}
+.idea-swatch.on{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.idea-board{position:relative;height:calc(100vh - 250px);min-height:380px;overflow:hidden;border:1px solid var(--hairline);border-radius:12px;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;
+  background-color:var(--bg);background-image:radial-gradient(var(--hairline) 1.2px,transparent 1.2px);background-size:22px 22px}
+.idea-board.panning{cursor:grabbing}
+.idea-world{position:absolute;left:0;top:0;transform-origin:0 0}
+.idea-links{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible}
+.idea-links .ln{stroke:var(--faint);stroke-width:1.6;fill:none}
+.idea-links .ln.sel{stroke:var(--accent);stroke-width:2.2}
+.idea-links .hit{stroke:transparent;stroke-width:14;fill:none;cursor:pointer}
+.idea-links .ln.temp{stroke:var(--accent);stroke-dasharray:5 4}
+.idea-card{position:absolute;width:190px;min-height:44px;padding:10px 12px;border-radius:10px;border:1px solid var(--hairline);background:var(--idea-plain);color:#161616;
+  box-shadow:0 1px 3px rgba(20,20,20,.06);cursor:move;font-size:14px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere}
+.idea-card[data-color="plain"]{color:var(--ink)}
+.idea-card.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.14)}
+.idea-card.drop{border-color:var(--accent);border-style:dashed}
+.idea-card .ph{color:var(--faint)}
+.idea-card textarea{display:block;width:100%;border:0;outline:0;resize:none;background:transparent;font:inherit;color:inherit;padding:0;margin:0;min-height:22px;overflow:hidden}
+.idea-handle{position:absolute;right:-8px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);cursor:crosshair;opacity:0;transition:opacity .12s}
+.idea-card:hover .idea-handle,.idea-card.sel .idea-handle{opacity:1}
+@media (hover:none){.idea-handle{opacity:.6;width:20px;height:20px;margin-top:-10px;right:-11px}}
+.ideas-sel[hidden],.ideas-empty[hidden]{display:none}
+@media(max-width:520px){.ideas-hint{display:none}.idea-board{height:calc(100vh - 230px)}}
+.ideas-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--faint);font-size:14px;pointer-events:none;text-align:center;padding:20px}
 
 /* ── calendar view ── */
 .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
@@ -461,6 +497,7 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false" hidden>Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false" hidden>School</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
+    <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Ideas</button>
   </div>
 
   <section class="composer" aria-label="Add a task">
@@ -508,6 +545,28 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
     </div>
     <div id="calGrid" class="cal-grid"></div>
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
+  </div>
+
+  <!-- Ideas board (hidden by default) -->
+  <div id="ideasView" hidden>
+    <div class="ideas-bar">
+      <button id="ideaAdd" class="btn-accent">+ Idea</button>
+      <span id="ideaSel" class="ideas-sel" hidden></span>
+      <span id="ideaHint" class="mono ideas-hint">Double-click to add · drag the dot to connect</span>
+      <span style="flex:1"></span>
+      <button id="ideaZoomOut" class="ghost mono" aria-label="Zoom out">−</button>
+      <button id="ideaZoomReset" class="ghost mono" title="Reset view">100%</button>
+      <button id="ideaZoomIn" class="ghost mono" aria-label="Zoom in">+</button>
+    </div>
+    <div id="ideaBoard" class="idea-board">
+      <div id="ideaWorld" class="idea-world">
+        <svg id="ideaLinks" class="idea-links" aria-hidden="true">
+          <defs><marker id="ideaArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--faint)"/></marker></defs>
+          <g id="ideaLinkG"></g>
+        </svg>
+      </div>
+      <div id="ideasEmpty" class="ideas-empty" hidden>Double-click anywhere (or tap + Idea) to drop your first idea.</div>
+    </div>
   </div>
 </main>
 
@@ -712,6 +771,21 @@ async function syncNow(){
       if(!firstErr)firstErr=e;
     }
   }
+  const ip=ideasProfile();
+  if(ip){
+    try{
+      for(let attempt=0;attempt<4;attempt++){ // same download-merge-upload as the lists above
+        const row=await syncPullRow(ip);
+        const r=mergeIdeas(row.doc);
+        if(r.changedLocal)anyLocal=true;
+        if(!(r.changedRemote||(!row.doc&&state.ideas.cards.length)))break;
+        if(await syncPushCas(ip,ideasDoc(),row.updatedAt))break;
+        if(attempt===3)throw new Error('the ideas board kept changing; will retry');
+      }
+    }catch(e){
+      if(!firstErr)firstErr=e;
+    }
+  }
   if(anyLocal){
     rebuildSnap();
     store.save(currentDoc());
@@ -735,7 +809,7 @@ function startSyncLoop(){
 window.__syncNow=syncNow; // debugging hook
 
 /* ── state ── */
-const state={ tasks:[], tombstones:[], filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
+const state={ tasks:[], tombstones:[], ideas:{cards:[],links:[],tombstones:[]}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
 let navOrder=[]; // ids of open tasks in rendered order, for arrow-key navigation
 // unsent answers to Claude, by task id — kept on disk so a restart or a lost task never eats them
 const DRAFTS_KEY='tasks.replyDrafts';
@@ -759,13 +833,13 @@ function stampChanges(){
   });
   Object.keys(lastSnap).forEach(function(id){ if(!seen[id])delete lastSnap[id]; });
 }
-function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones}; }
+function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas}; }
 function persist(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(function(){ stampChanges(); store.save(currentDoc()); schedulePush(); },200);
 }
 function touch(){ persist(); renderActive(); }
-function renderActive(){ if(state.activeTab==='calendar') renderCal(); else render(); }
+function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else render(); }
 function uid(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
 /* ── dates ── */
@@ -1837,14 +1911,318 @@ function switchTab(tab){
   closeDayPop();
   if(tab!==state.activeTab)state.selectedId=null;
   state.activeTab=tab;
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabCal','calendar']].forEach(function(p){
+  if(tab!=='ideas')ideaDeselect();
+  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabCal','calendar'],['tabIdeas','ideas']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
-  $('listView').hidden=tab==='calendar';
+  $('listView').hidden=tab==='calendar'||tab==='ideas';
   $('calView').hidden=tab!=='calendar';
-  if(tab==='calendar') renderCal(); else render();
+  $('ideasView').hidden=tab!=='ideas';
+  document.querySelector('.composer').hidden=tab==='ideas';
+  document.body.classList.toggle('ideas-mode',tab==='ideas');
+  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else render();
 }
+
+/* ── ideas board ──
+   Free-form cards you drag around and join with arrows. They live in state.ideas and sync through
+   their own row next to the personal list (syncKey+':ideas'), so the task lists, Claude's tools and
+   older builds never see them. Per card/arrow id the newer updatedAt wins; a tombstone beats older copies. */
+const IDEA_COLORS=['plain','yellow','green','blue','pink','purple'];
+const IDEA_VIEW_KEY='tasks.ideasView'; // pan + zoom, per device
+const ideaUI={x:40,y:40,z:1,sel:null,editing:null,fresh:null,drag:null,pinch:null,pending:false,pts:new Map(),nodes:{}};
+try{ const v=JSON.parse(localStorage.getItem(IDEA_VIEW_KEY)); if(v&&isFinite(v.x)&&isFinite(v.y)&&v.z>0){ ideaUI.x=v.x; ideaUI.y=v.y; ideaUI.z=v.z; } }catch(e){}
+function normIdeas(raw){
+  const r=raw||{}; const num=function(v){ return isFinite(v)?Math.round(+v):0; };
+  const cards=(Array.isArray(r.cards)?r.cards:[]).filter(function(c){ return c&&c.id; }).map(function(c){
+    return {id:String(c.id),text:String(c.text||''),x:num(c.x),y:num(c.y),color:IDEA_COLORS.indexOf(c.color)>=0?c.color:'plain',updatedAt:c.updatedAt||0};
+  });
+  const ids={}; cards.forEach(function(c){ ids[c.id]=1; });
+  const links=(Array.isArray(r.links)?r.links:[]).filter(function(l){ return l&&l.id&&ids[l.from]&&ids[l.to]; }).map(function(l){
+    return {id:String(l.id),from:String(l.from),to:String(l.to),updatedAt:l.updatedAt||0};
+  });
+  const tombs=(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; });
+  return {cards:cards,links:links,tombstones:tombs};
+}
+function ideasProfile(){
+  const p=syncState.cfg&&syncState.cfg.personal;
+  return validProfile(p)?{url:p.url,key:p.key,syncKey:p.syncKey+':ideas'}:null;
+}
+function ideasDoc(){ return {v:1,cards:state.ideas.cards,links:state.ideas.links,tombstones:state.ideas.tombstones}; }
+function canonIdeas(d){
+  const by=function(a,b){ return a.id<b.id?-1:1; };
+  return JSON.stringify([d.cards.slice().sort(by),d.links.slice().sort(by)]);
+}
+function mergeIdeas(remoteDoc){
+  const remote=normIdeas(remoteDoc), local=state.ideas;
+  const tombs={};
+  local.tombstones.concat(remote.tombstones).forEach(function(x){ if(!tombs[x.id]||x.deletedAt>tombs[x.id])tombs[x.id]=x.deletedAt; });
+  function mergeList(a,b){
+    const byId={};
+    a.concat(b).forEach(function(it){ const prev=byId[it.id]; if(!prev||(it.updatedAt||0)>(prev.updatedAt||0))byId[it.id]=it; });
+    return Object.keys(byId).map(function(id){ return byId[id]; })
+      .filter(function(it){ return !(tombs[it.id]&&tombs[it.id]>=(it.updatedAt||0)); });
+  }
+  const cards=mergeList(local.cards,remote.cards);
+  const ids={}; cards.forEach(function(c){ ids[c.id]=1; });
+  const links=mergeList(local.links,remote.links).filter(function(l){ return ids[l.from]&&ids[l.to]; });
+  const cutoff=Date.now()-60*86400000; // drop tombstones older than 60 days
+  const mergedTombs=Object.keys(tombs).filter(function(id){ return tombs[id]>cutoff; })
+    .map(function(id){ return {id:id,deletedAt:tombs[id]}; });
+  const merged={cards:cards,links:links,tombstones:mergedTombs};
+  const changedLocal=canonIdeas(merged)!==canonIdeas(local);
+  const changedRemote=canonIdeas(merged)!==canonIdeas(remote)||mergedTombs.length!==remote.tombstones.length;
+  state.ideas=merged;
+  return {changedLocal:changedLocal,changedRemote:changedRemote};
+}
+
+function ideaCard(id){ return state.ideas.cards.find(function(c){ return c.id===id; }); }
+function ideaIsSel(type,id){ return !!(ideaUI.sel&&ideaUI.sel.type===type&&ideaUI.sel.id===id); }
+function ideaAdd(x,y){
+  const c={id:uid(),text:'',x:Math.round(x),y:Math.round(y),color:'plain',updatedAt:Date.now()};
+  state.ideas.cards.push(c);
+  ideaUI.sel={type:'card',id:c.id}; ideaUI.editing=c.id; ideaUI.fresh=c.id;
+  renderIdeas(); persist();
+}
+function ideaRemove(sel){
+  const now=Date.now(), I=state.ideas;
+  if(sel.type==='card'){
+    I.links.forEach(function(l){ if(l.from===sel.id||l.to===sel.id)I.tombstones.push({id:l.id,deletedAt:now}); });
+    I.links=I.links.filter(function(l){ return l.from!==sel.id&&l.to!==sel.id; });
+    I.cards=I.cards.filter(function(c){ return c.id!==sel.id; });
+  } else I.links=I.links.filter(function(l){ return l.id!==sel.id; });
+  I.tombstones.push({id:sel.id,deletedAt:now});
+  ideaUI.sel=null; ideaUI.editing=null; ideaUI.fresh=null;
+  renderIdeas(); persist();
+}
+function ideaCommitEdit(){
+  const id=ideaUI.editing; if(!id)return;
+  const ta=$('ideaWorld').querySelector('textarea'), c=ideaCard(id);
+  ideaUI.editing=null;
+  if(c){
+    const v=ta?ta.value.replace(/\s+$/,''):c.text;
+    if(!v.trim()&&ideaUI.fresh===id){ ideaRemove({type:'card',id:id}); return; } // a new card left empty
+    if(v!==c.text){ c.text=v; c.updatedAt=Date.now(); persist(); }
+  }
+  ideaUI.fresh=null;
+  renderIdeas();
+}
+function ideaDeselect(){ if(ideaUI.editing)ideaCommitEdit(); ideaUI.sel=null; }
+
+function applyIdeaView(){
+  $('ideaWorld').style.transform='translate('+ideaUI.x+'px,'+ideaUI.y+'px) scale('+ideaUI.z+')';
+  const b=$('ideaBoard'), g=22*ideaUI.z; // the dot grid pans and zooms with the cards
+  b.style.backgroundSize=g+'px '+g+'px'; b.style.backgroundPosition=ideaUI.x+'px '+ideaUI.y+'px';
+  $('ideaZoomReset').textContent=Math.round(ideaUI.z*100)+'%';
+}
+function saveIdeaView(){ try{ localStorage.setItem(IDEA_VIEW_KEY,JSON.stringify({x:ideaUI.x,y:ideaUI.y,z:ideaUI.z})); }catch(e){} }
+function renderIdeas(){
+  // never yank a card out from under a drag or an open text box (a sync can land mid-gesture)
+  if((ideaUI.drag&&ideaUI.drag.kind!=='pan')||(ideaUI.editing&&$('ideaWorld').querySelector('textarea'))){ ideaUI.pending=true; return; }
+  ideaUI.pending=false;
+  const world=$('ideaWorld');
+  applyIdeaView();
+  world.querySelectorAll('.idea-card').forEach(function(n){ n.remove(); });
+  ideaUI.nodes={};
+  let editTa=null, editFit=null;
+  const s=ideaUI.sel;
+  if(s&&!(s.type==='card'?ideaCard(s.id):state.ideas.links.some(function(l){ return l.id===s.id; })))ideaUI.sel=null; // removed on another device
+  state.ideas.cards.forEach(function(c){
+    const n=el('div','idea-card'); n.dataset.id=c.id; n.dataset.color=c.color;
+    n.style.left=c.x+'px'; n.style.top=c.y+'px';
+    if(c.color!=='plain')n.style.background='var(--idea-'+c.color+')';
+    if(ideaIsSel('card',c.id))n.classList.add('sel');
+    if(ideaUI.editing===c.id){
+      const ta=el('textarea'); ta.value=c.text; ta.placeholder='Type an idea…'; ta.rows=1;
+      const fit=function(){ ta.style.height='auto'; ta.style.height=ta.scrollHeight+'px'; drawIdeaLinks(); };
+      ta.addEventListener('input',fit);
+      ta.addEventListener('keydown',function(e){
+        e.stopPropagation();
+        if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); ideaCommitEdit(); }
+      });
+      ta.addEventListener('blur',ideaCommitEdit);
+      ta.addEventListener('pointerdown',function(e){ e.stopPropagation(); });
+      n.appendChild(ta); editTa=ta; editFit=fit;
+    } else if(c.text) n.appendChild(document.createTextNode(c.text));
+    else n.appendChild(el('span','ph','Empty idea'));
+    n.appendChild(el('div','idea-handle'));
+    ideaUI.nodes[c.id]=n;
+    world.appendChild(n);
+  });
+  $('ideasEmpty').hidden=state.ideas.cards.length>0;
+  drawIdeaLinks();
+  drawIdeaSel();
+  if(editTa&&!$('ideasView').hidden){ editTa.focus(); editTa.setSelectionRange(editTa.value.length,editTa.value.length); editFit(); }
+}
+// a card's centre and half-size in board coordinates
+function ideaBox(id){
+  const n=ideaUI.nodes[id], c=ideaCard(id); if(!n||!c)return null;
+  return {cx:c.x+n.offsetWidth/2,cy:c.y+n.offsetHeight/2,hw:n.offsetWidth/2,hh:n.offsetHeight/2};
+}
+// where a line from b's centre toward (tx,ty) leaves the card, pad px outside its edge
+function ideaEdge(b,tx,ty,pad){
+  const dx=tx-b.cx, dy=ty-b.cy;
+  const t=Math.min(dx?(b.hw+pad)/Math.abs(dx):Infinity,dy?(b.hh+pad)/Math.abs(dy):Infinity);
+  return t>=1?[b.cx,b.cy]:[b.cx+dx*t,b.cy+dy*t];
+}
+function svgEl(tag,attrs){
+  const n=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  Object.keys(attrs).forEach(function(k){ n.setAttribute(k,attrs[k]); });
+  return n;
+}
+function drawIdeaLinks(){
+  const g=$('ideaLinkG'); g.textContent='';
+  state.ideas.links.forEach(function(l){
+    const a=ideaBox(l.from), b=ideaBox(l.to); if(!a||!b)return;
+    const p=ideaEdge(a,b.cx,b.cy,2), q=ideaEdge(b,a.cx,a.cy,4);
+    const d='M'+p[0]+' '+p[1]+'L'+q[0]+' '+q[1];
+    g.appendChild(svgEl('path',{d:d,'class':'ln'+(ideaIsSel('link',l.id)?' sel':''),'marker-end':'url(#ideaArrow)'}));
+    g.appendChild(svgEl('path',{d:d,'class':'hit','data-link':l.id}));
+  });
+  const t=ideaUI.drag&&ideaUI.drag.kind==='link'&&ideaUI.drag.moved?ideaUI.drag:null;
+  const a=t&&ideaBox(t.from);
+  if(a){ const p=ideaEdge(a,t.wx,t.wy,2); g.appendChild(svgEl('path',{d:'M'+p[0]+' '+p[1]+'L'+t.wx+' '+t.wy,'class':'ln temp'})); }
+}
+// the selection's actions take the hint's place in the bar
+function drawIdeaSel(){
+  const box=$('ideaSel'), s=ideaUI.sel; box.textContent='';
+  box.hidden=!s; $('ideaHint').hidden=!!s;
+  if(!s)return;
+  if(s.type==='card'){
+    const c=ideaCard(s.id); if(!c)return;
+    IDEA_COLORS.forEach(function(col){
+      const b=el('button','idea-swatch'+(c.color===col?' on':''));
+      b.style.background='var(--idea-'+col+')'; b.title=col; b.setAttribute('aria-label','Colour: '+col);
+      b.addEventListener('click',function(){
+        ideaCommitEdit();
+        const cc=ideaCard(s.id); if(!cc||cc.color===col)return;
+        cc.color=col; cc.updatedAt=Date.now(); persist(); renderIdeas();
+      });
+      box.appendChild(b);
+    });
+    const ed=el('button','ghost mono','Edit');
+    ed.addEventListener('click',function(){ if(ideaCard(s.id)){ ideaUI.editing=s.id; renderIdeas(); } });
+    box.appendChild(ed);
+  }
+  const del=el('button','ghost mono danger',s.type==='card'?'Delete':'Delete arrow');
+  del.addEventListener('click',function(){ ideaRemove(s); });
+  box.appendChild(del);
+}
+
+(function(){
+  const board=$('ideaBoard');
+  function pt(e){ const r=board.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; }
+  function toWorld(p){ return [(p[0]-ideaUI.x)/ideaUI.z,(p[1]-ideaUI.y)/ideaUI.z]; }
+  function zoomAt(nz,p){
+    nz=Math.min(2.5,Math.max(0.3,nz)); const w=toWorld(p);
+    ideaUI.z=nz; ideaUI.x=p[0]-w[0]*nz; ideaUI.y=p[1]-w[1]*nz;
+    applyIdeaView(); saveIdeaView();
+  }
+  function centre(){ return [board.clientWidth/2,board.clientHeight/2]; }
+  function cardAt(e){ const n=document.elementFromPoint(e.clientX,e.clientY); return n&&n.closest?n.closest('.idea-card'):null; }
+  function pinchInfo(){ const ps=Array.from(ideaUI.pts.values()); return {d:Math.hypot(ps[0][0]-ps[1][0],ps[0][1]-ps[1][1])||1,m:[(ps[0][0]+ps[1][0])/2,(ps[0][1]+ps[1][1])/2]}; }
+  function clearDrop(){ board.querySelectorAll('.idea-card.drop').forEach(function(n){ n.classList.remove('drop'); }); }
+
+  board.addEventListener('pointerdown',function(e){
+    if(e.button>0)return;
+    ideaUI.pts.set(e.pointerId,pt(e));
+    board.setPointerCapture(e.pointerId);
+    if(ideaUI.pts.size===2){ ideaUI.drag=null; ideaUI.pinch={d:pinchInfo().d,z:ideaUI.z}; return; } // second finger: pinch zoom
+    if(ideaUI.pts.size>2)return;
+    e.preventDefault();
+    const t=e.target, handle=t.closest('.idea-handle'), card=t.closest('.idea-card');
+    const linkId=t.getAttribute&&t.getAttribute('data-link');
+    const cardId=card&&card.dataset.id;
+    if(ideaUI.editing&&ideaUI.editing!==cardId)ideaCommitEdit();
+    const p=pt(e);
+    if(handle&&cardId&&ideaCard(cardId)){
+      const w=toWorld(p); ideaUI.drag={kind:'link',from:cardId,wx:w[0],wy:w[1],sx:p[0],sy:p[1],moved:false};
+    } else if(cardId&&ideaCard(cardId)){
+      const c=ideaCard(cardId), was=ideaIsSel('card',cardId);
+      if(!was){ ideaUI.sel={type:'card',id:cardId}; renderIdeas(); }
+      ideaUI.drag={kind:'card',id:cardId,ox:c.x,oy:c.y,sx:p[0],sy:p[1],moved:false,wasSel:was};
+    } else if(linkId){
+      ideaUI.sel={type:'link',id:linkId}; ideaUI.drag=null; renderIdeas();
+    } else {
+      ideaUI.drag={kind:'pan',ox:ideaUI.x,oy:ideaUI.y,sx:p[0],sy:p[1],moved:false};
+    }
+  });
+  board.addEventListener('pointermove',function(e){
+    if(!ideaUI.pts.has(e.pointerId))return;
+    const p=pt(e); ideaUI.pts.set(e.pointerId,p);
+    if(ideaUI.pinch){ if(ideaUI.pts.size>=2){ const pi=pinchInfo(); zoomAt(ideaUI.pinch.z*pi.d/ideaUI.pinch.d,pi.m); } return; }
+    const d=ideaUI.drag; if(!d)return;
+    const dx=p[0]-d.sx, dy=p[1]-d.sy;
+    if(!d.moved&&Math.abs(dx)+Math.abs(dy)<4)return; // a tap, not a drag (yet)
+    d.moved=true;
+    if(d.kind==='pan'){ ideaUI.x=d.ox+dx; ideaUI.y=d.oy+dy; applyIdeaView(); board.classList.add('panning'); }
+    else if(d.kind==='card'){
+      const c=ideaCard(d.id), n=ideaUI.nodes[d.id]; if(!c||!n)return;
+      c.x=Math.round(d.ox+dx/ideaUI.z); c.y=Math.round(d.oy+dy/ideaUI.z);
+      n.style.left=c.x+'px'; n.style.top=c.y+'px';
+      drawIdeaLinks();
+    } else if(d.kind==='link'){
+      const w=toWorld(p); d.wx=w[0]; d.wy=w[1];
+      clearDrop(); const over=cardAt(e); if(over&&over.dataset.id!==d.from)over.classList.add('drop');
+      drawIdeaLinks();
+    }
+  });
+  function up(e){
+    if(!ideaUI.pts.has(e.pointerId))return;
+    ideaUI.pts.delete(e.pointerId);
+    if(ideaUI.pinch){ if(ideaUI.pts.size<2)ideaUI.pinch=null; ideaUI.drag=null; return; }
+    const d=ideaUI.drag; ideaUI.drag=null;
+    board.classList.remove('panning'); clearDrop();
+    if(!d){ if(ideaUI.pending)renderIdeas(); return; }
+    if(d.kind==='pan'){
+      if(d.moved)saveIdeaView();
+      else if(ideaUI.sel){ ideaUI.sel=null; renderIdeas(); return; }
+    } else if(d.kind==='card'){
+      const c=ideaCard(d.id);
+      if(d.moved){ if(c){ c.updatedAt=Date.now(); persist(); } }
+      else if(d.wasSel&&e.type==='pointerup'&&c)ideaUI.editing=d.id; // tap a selected card to edit it
+      renderIdeas(); return;
+    } else if(d.kind==='link'){
+      const over=e.type==='pointerup'?cardAt(e):null, to=over&&over.dataset.id;
+      const dup=state.ideas.links.some(function(l){ return (l.from===d.from&&l.to===to)||(l.from===to&&l.to===d.from); });
+      if(to&&to!==d.from&&ideaCard(to)&&!dup){ state.ideas.links.push({id:uid(),from:d.from,to:to,updatedAt:Date.now()}); persist(); }
+      renderIdeas(); return;
+    }
+    if(ideaUI.pending)renderIdeas();
+  }
+  board.addEventListener('pointerup',up);
+  board.addEventListener('pointercancel',up);
+  board.addEventListener('dblclick',function(e){
+    if(e.target.closest('.idea-card')||(e.target.getAttribute&&e.target.getAttribute('data-link')))return;
+    const w=toWorld(pt(e)); ideaAdd(w[0]-95,w[1]-22);
+  });
+  // wheel / two-finger scroll pans; Ctrl+wheel (and trackpad pinch) zooms
+  board.addEventListener('wheel',function(e){
+    e.preventDefault();
+    if(e.ctrlKey||e.metaKey){ zoomAt(ideaUI.z*Math.exp(-e.deltaY*0.01),pt(e)); return; }
+    ideaUI.x-=e.deltaX; ideaUI.y-=e.deltaY; applyIdeaView();
+    clearTimeout(ideaUI.viewTimer); ideaUI.viewTimer=setTimeout(saveIdeaView,300);
+  },{passive:false});
+  // bar buttons shouldn't steal focus from a card being typed in (its text is saved first)
+  document.querySelector('.ideas-bar').addEventListener('mousedown',function(e){ if(e.target.closest('button'))e.preventDefault(); });
+  $('ideaAdd').addEventListener('click',function(){
+    ideaCommitEdit();
+    const w=toWorld(centre()), k=state.ideas.cards.length%6*16; // stagger so repeated taps don't stack exactly
+    ideaAdd(w[0]-95+k,w[1]-22+k);
+  });
+  $('ideaZoomIn').addEventListener('click',function(){ zoomAt(ideaUI.z*1.2,centre()); });
+  $('ideaZoomOut').addEventListener('click',function(){ zoomAt(ideaUI.z/1.2,centre()); });
+  $('ideaZoomReset').addEventListener('click',function(){ zoomAt(1,centre()); });
+  document.addEventListener('keydown',function(e){
+    if(state.activeTab!=='ideas'||!ideaUI.sel)return;
+    const a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))return;
+    // only the Delete key, like the task list — Backspace is too easy to hit
+    if(e.key==='Delete'){ e.preventDefault(); ideaRemove(ideaUI.sel); }
+    else if(e.key==='Enter'&&ideaUI.sel.type==='card'){ e.preventDefault(); ideaUI.editing=ideaUI.sel.id; renderIdeas(); }
+    else if(e.key==='Escape'){ ideaUI.sel=null; renderIdeas(); }
+  });
+})();
 
 /* ── day detail popup ── */
 function dayPopKey(e){ if(e.key==='Escape'){ e.stopPropagation(); closeDayPop(); } }
@@ -2084,6 +2462,7 @@ $('tabList').addEventListener('click',function(){ switchTab('list'); });
 $('tabAgent').addEventListener('click',function(){ switchTab('agent'); });
 $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
+$('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
@@ -2102,7 +2481,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||state.activeTab==='ideas')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -2114,7 +2493,7 @@ $('searchBox').addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar')switchTab('list');
+    if(state.activeTab==='calendar'||state.activeTab==='ideas')switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -2125,7 +2504,7 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar')return;
+  if(state.activeTab==='calendar'||state.activeTab==='ideas')return;
   const a=document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
@@ -2730,6 +3109,7 @@ store.load().then(async function(data){
     });
     state.tombstones=Array.isArray(data.tombstones)?data.tombstones:[];
   }
+  state.ideas=normIdeas(data&&data.ideas);
   rebuildSnap();
   render(); // list is the default active tab
   startSyncLoop();
