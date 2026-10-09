@@ -79,19 +79,11 @@ including driving Claude's browser, so you get more done with fewer Claude credi
   and the agent can open any other one itself. The mini PC's worker will use **the same files**.
   Skills hold general know-how only; personal facts stay in your preferences or the locked profile.
   New skills are easy to add, which is also how open-source contributors can help.
-- **Ask Claude (to build on the mini PC).** When the local model lacks context (how a site works,
-  what a term means, how to approach a task), it gets an `ask_claude` tool:
-  - The mini PC runs Claude Code itself (signed in to your subscription) with web search only. No
-    files, no connectors, and never your locked profile.
-  - **Privacy wall in code:** the question is checked before it leaves. If it contains anything from
-    the locked profile (lines, email, phone, address, ID-like numbers), it is refused and the model
-    has to rephrase without it.
-  - **It builds its own context:** each answer is saved as a note in `~/agent-share/learned/`
-    (topic, date, the question). Notes are loaded like skills next time, so it doesn't ask twice. The
-    weekly tidy merges them and drops outdated ones.
-  - **Shown to you:** the task's conversation gets a line like "Mini PC asked Claude: how does
-    Handshake's apply flow work?"
-  - **Budget:** a few questions per task and a daily cap, so it stays cheap.
+- **No asking Claude (changed 2026-10-09).** You want to move off Claude, so the local model never
+  asks it anything. Instead it has `search_my_data`: a keyword search over what the Tasks app already
+  knows (all your tasks and their conversations, including what Claude found on earlier tasks, plus
+  notes, preferences, the locked profile, your calendar and the skills). It runs on this computer and
+  sends nothing anywhere.
 
 ### 5. Hook it up to the Tasks app (Claude builds this)
 - ⚙ Settings → **Model for Agent tasks**: Claude / My model / Auto.
