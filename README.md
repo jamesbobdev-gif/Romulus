@@ -73,15 +73,14 @@ Do **not** share your built APK from `mobile/` — your private sync credentials
 
 Tasks are saved to a `tasks.json` file in the app's user-data folder (e.g. `%APPDATA%/tasks` on Windows, `~/Library/Application Support/tasks` on Mac). They survive restarts and updates, and you can back up that one file.
 
-## Ideas board
+## Ideas
 
-The **Ideas** tab is a free-form board, like Whimsical: drop idea cards anywhere and drag them around.
+The **Ideas** tab holds ideas as bubbles that you sort into groups.
 
-- Double-click empty space (or tap **+ Idea**) to add a card; type, then click away or press Esc.
-- Drag a card to move it. Click a selected card (or press Enter) to edit its text.
-- Drag the blue dot on a card's edge onto another card to connect them with an arrow; click an arrow to select it.
-- Pick a colour or Delete from the bar above the board (or press Delete).
-- Drag empty space (or scroll) to pan; Ctrl+scroll, pinch, or the − / + buttons to zoom.
+- Tap **+ idea** in a group to add one; press Enter to keep adding, Esc to stop. New ideas can start in **Unsorted**.
+- **+ Group** makes a new area; click its name to rename it, the dot to change its colour, and × to remove it (its ideas go back to Unsorted).
+- Drag a bubble into another group, or between bubbles to reorder; the others slide aside. On a phone, press and hold a bubble to pick it up.
+- Click (tap) a bubble to edit it; clear the text or press × to delete it.
 
 Ideas sync across devices with the personal channel, in their own row (`<personal sync key>:ideas`), so they never show up as tasks or in Claude's task tools.
 
