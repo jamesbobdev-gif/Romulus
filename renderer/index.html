@@ -215,7 +215,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 @media(max-width:520px){.tab{padding:8px 10px}}
 
-/* ── ideas: bubbles you sort into groups ── */
+/* ── ideas: note cards you sort into groups ── */
 :root{
   --idea-plain:var(--surface);--idea-yellow:#FFF1B8;--idea-green:#D6F0D9;
   --idea-blue:#D9E3FF;--idea-pink:#FAD9E3;--idea-purple:#E7DAFA;
@@ -224,7 +224,7 @@ body.ideas-mode main{max-width:1180px}
 .ideas-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .ideas-bar .btn-accent{margin-left:0}
 .ideas-hint{color:var(--faint)}
-.idea-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;align-items:start}
+.idea-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-items:start}
 .idea-group{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:10px 12px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
 .idea-ghead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -235,19 +235,22 @@ body.ideas-mode main{max-width:1180px}
 .idea-gcolor{width:16px;height:16px;border-radius:50%;border:1px solid var(--hairline);cursor:pointer;padding:0;flex:none}
 .idea-gdel{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:5px}
 .idea-gdel:hover{color:var(--late);background:var(--late-bg)}
-.idea-bubbles{display:flex;flex-wrap:wrap;gap:7px;align-content:flex-start;min-height:40px}
-.idea-bubble{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:7px 13px;border-radius:999px;background:var(--g,var(--idea-plain));color:#161616;
-  border:1px solid rgba(20,20,20,.07);font-size:13.5px;line-height:1.3;cursor:grab;user-select:none;-webkit-user-select:none;overflow-wrap:anywhere;
+.idea-cards{display:flex;flex-direction:column;gap:8px;min-height:40px}
+.idea-card{position:relative;padding:10px 12px;border-radius:11px;background:var(--g,var(--idea-plain));color:#161616;border:1px solid rgba(20,20,20,.07);
+  font-size:13.5px;line-height:1.45;cursor:grab;user-select:none;-webkit-user-select:none;white-space:pre-wrap;overflow-wrap:anywhere;
   box-shadow:0 1px 2px rgba(20,20,20,.05);transition:box-shadow .15s}
-.idea-group[data-color="plain"] .idea-bubble{color:var(--ink);background:var(--chip)}
-.idea-bubble:hover{box-shadow:0 2px 6px rgba(20,20,20,.1)}
-.idea-bubble.ph{background:transparent;border:1.5px dashed var(--faint);box-shadow:none;color:transparent}
-.idea-bubble.lifted{position:fixed;z-index:50;pointer-events:none;cursor:grabbing;box-shadow:0 8px 22px rgba(20,20,20,.18);transform:rotate(-2deg) scale(1.04);margin:0}
-.idea-bubble.editing{cursor:text;padding:4px 6px 4px 12px}
-.idea-bubble input{border:0;outline:0;background:transparent;font:inherit;color:inherit;padding:3px 0;min-width:60px;max-width:220px}
-.idea-bubble .x{border:0;background:transparent;color:inherit;opacity:.5;cursor:pointer;font-size:14px;line-height:1;padding:2px 5px;border-radius:50%}
-.idea-bubble .x:hover{opacity:1;background:rgba(20,20,20,.08)}
-.idea-addb{border:1px dashed var(--hairline);background:transparent;color:var(--faint);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer}
+.idea-group[data-color="plain"] .idea-card{color:var(--ink);background:var(--chip)}
+.idea-card:hover{box-shadow:0 2px 6px rgba(20,20,20,.1)}
+.idea-card .clip{display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
+.idea-card.ph{background:transparent;border:1.5px dashed var(--faint);box-shadow:none}
+.idea-card.lifted{position:fixed;z-index:50;pointer-events:none;cursor:grabbing;box-shadow:0 10px 26px rgba(20,20,20,.2);transform:rotate(-1.5deg);margin:0}
+.idea-card.editing{cursor:text;padding:8px 10px 6px 12px}
+.idea-card textarea{display:block;width:100%;border:0;outline:0;resize:none;background:transparent;font:inherit;color:inherit;padding:2px 0;margin:0;min-height:60px;overflow:hidden}
+.idea-edit-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
+.idea-edit-foot .mono{opacity:.55;font-size:9.5px}
+.idea-card .x{border:0;background:transparent;color:inherit;opacity:.55;cursor:pointer;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:6px}
+.idea-card .x:hover{opacity:1;background:rgba(20,20,20,.08)}
+.idea-addb{border:1px dashed var(--hairline);background:transparent;color:var(--faint);border-radius:11px;padding:8px 12px;font-size:13px;cursor:pointer;text-align:left}
 .idea-addb:hover{color:var(--ink);border-color:var(--faint)}
 .idea-empty{color:var(--faint);font-size:13px;padding:6px 2px}
 @media(max-width:520px){.ideas-hint{display:none}.idea-groups{grid-template-columns:1fr}}
@@ -553,7 +556,7 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
   <div id="ideasView" hidden>
     <div class="ideas-bar">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
-      <span class="mono ideas-hint">Drag bubbles between groups · click one to edit</span>
+      <span class="mono ideas-hint">Drag ideas between groups · click one to read or edit it</span>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
   </div>
@@ -1913,11 +1916,11 @@ function switchTab(tab){
   if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else render();
 }
 
-/* ── ideas: bubbles you sort into groups ──
-   Each idea is a bubble in a group (group '' = Unsorted); within a group bubbles flow in `order`.
+/* ── ideas: note cards you sort into groups ──
+   Each idea is a card in a group (group '' = Unsorted); within a group cards stack in `order`.
    They live in state.ideas and sync through their own row next to the personal list
    (syncKey+':ideas'), so the task lists, Claude's tools and older builds never see them.
-   Per bubble/group id the newer updatedAt wins; a tombstone beats older copies. */
+   Per card/group id the newer updatedAt wins; a tombstone beats older copies. */
 const IDEA_COLORS=['yellow','green','blue','pink','purple','plain'];
 const ideaUI={drag:null,editing:null,adding:null,pending:false};
 function normIdeas(raw){
@@ -1962,7 +1965,7 @@ function mergeIdeas(remoteDoc){
 
 function ideaCard(id){ return state.ideas.cards.find(function(c){ return c.id===id; }); }
 function ideaGroup(id){ return state.ideas.groups.find(function(g){ return g.id===id; }); }
-// a bubble whose group was deleted on another device falls back to Unsorted
+// a card whose group was deleted on another device falls back to Unsorted
 function ideaGroupOf(c){ return c.group&&ideaGroup(c.group)?c.group:''; }
 function ideaCardsIn(gid){
   return state.ideas.cards.filter(function(c){ return ideaGroupOf(c)===gid; })
@@ -1986,7 +1989,7 @@ function ideaAddGroup(){
 }
 function ideaRemoveGroup(gid){
   const now=Date.now();
-  // its bubbles aren't lost: they go back to Unsorted, after what's already there
+  // its cards aren't lost: they go back to Unsorted, after what's already there
   const base=ideaCardsIn('').reduce(function(m,c){ return Math.max(m,c.order); },-1)+1;
   ideaCardsIn(gid).forEach(function(c,i){ c.group=''; c.order=base+i; c.updatedAt=now; });
   state.ideas.groups=state.ideas.groups.filter(function(g){ return g.id!==gid; });
@@ -1998,7 +2001,7 @@ function ideaLeave(){ const a=document.activeElement; if(a&&$('ideasView').conta
 // external re-renders (sync) wait while you're dragging or typing, so nothing is yanked away
 function renderIdeas(){
   const a=document.activeElement;
-  if((ideaUI.drag&&ideaUI.drag.active)||(a&&a.tagName==='INPUT'&&$('ideasView').contains(a))){ ideaUI.pending=true; return; }
+  if((ideaUI.drag&&ideaUI.drag.active)||(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&$('ideasView').contains(a))){ ideaUI.pending=true; return; }
   drawIdeas();
 }
 function drawIdeas(){
@@ -2031,61 +2034,70 @@ function drawIdeas(){
       head.appendChild(col); head.appendChild(del);
     }
     sec.appendChild(head);
-    const flow=el('div','idea-bubbles'); flow.dataset.group=g.id;
+    const flow=el('div','idea-cards'); flow.dataset.group=g.id;
     cards.forEach(function(c){
-      const b=el('div','idea-bubble'); b.dataset.id=c.id;
+      const b=el('div','idea-card'); b.dataset.id=c.id;
       if(ideaUI.editing===c.id){
         b.classList.add('editing');
-        const inp=el('input'); inp.value=c.text; inp.setAttribute('aria-label','Edit idea');
+        const ta=ideaTextBox(c.text,'Edit idea');
         let done=false;
-        const commit=function(save){
+        const commit=function(){
           if(done)return; done=true; ideaUI.editing=null;
-          const cc=ideaCard(c.id), v=inp.value.trim();
-          if(cc&&save){ if(!v)ideaRemoveCard(c.id); else if(v!==cc.text){ cc.text=v; cc.updatedAt=Date.now(); persist(); } }
+          const cc=ideaCard(c.id), v=ta.value.replace(/\s+$/,'');
+          if(cc){ if(!v.trim())ideaRemoveCard(c.id); else if(v!==cc.text){ cc.text=v; cc.updatedAt=Date.now(); persist(); } }
           drawIdeas();
         };
-        inp.addEventListener('keydown',function(e){ if(e.key==='Enter')commit(true); else if(e.key==='Escape')commit(false); });
-        inp.addEventListener('blur',function(){ commit(true); });
-        const x=el('button','x','×'); x.setAttribute('aria-label','Delete idea'); x.title='Delete idea';
+        ta.addEventListener('keydown',function(e){ if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); commit(); } });
+        ta.addEventListener('blur',commit);
+        const foot=el('div','idea-edit-foot');
+        foot.appendChild(el('span','mono','click away to save'));
+        const x=el('button','x','Delete'); x.setAttribute('aria-label','Delete idea');
         x.addEventListener('mousedown',function(e){ e.preventDefault(); });
         x.addEventListener('click',function(){ done=true; ideaUI.editing=null; ideaRemoveCard(c.id); drawIdeas(); });
-        b.appendChild(inp); b.appendChild(x); focusEl=inp;
-      } else b.textContent=c.text;
+        foot.appendChild(x);
+        b.appendChild(ta); b.appendChild(foot); focusEl=ta;
+      } else b.appendChild(el('div','clip',c.text));
       flow.appendChild(b);
     });
     if(ideaUI.adding===g.id){
-      const b=el('div','idea-bubble editing'); const inp=el('input'); inp.placeholder='New idea…'; inp.setAttribute('aria-label','New idea');
+      const b=el('div','idea-card editing'); const ta=ideaTextBox('','Write an idea…');
       let done=false;
-      inp.addEventListener('keydown',function(e){
-        if(e.key==='Enter'){ const v=inp.value.trim(); if(v){ done=true; ideaAddCard(g.id,v); drawIdeas(); } } // stays open for the next one
-        else if(e.key==='Escape'){ done=true; ideaUI.adding=null; drawIdeas(); }
+      const save=function(){ const v=ta.value.replace(/\s+$/,''); if(v.trim())ideaAddCard(g.id,v); };
+      ta.addEventListener('keydown',function(e){
+        if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); done=true; save(); drawIdeas(); } // saved; a fresh box opens for the next one
+        else if(e.key==='Escape'){ e.preventDefault(); done=true; save(); ideaUI.adding=null; drawIdeas(); }
       });
-      inp.addEventListener('blur',function(){
-        if(done)return; done=true; const v=inp.value.trim(); ideaUI.adding=null;
-        if(v)ideaAddCard(g.id,v); drawIdeas();
-      });
-      b.appendChild(inp); flow.appendChild(b); focusEl=inp;
+      ta.addEventListener('blur',function(){ if(done)return; done=true; ideaUI.adding=null; save(); drawIdeas(); });
+      const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','click away to save · ctrl+enter for another'));
+      b.appendChild(ta); b.appendChild(foot); flow.appendChild(b); focusEl=ta;
     } else {
-      const add=el('button','idea-addb','+ idea'); add.setAttribute('aria-label','Add an idea to this group');
+      const add=el('button','idea-addb','+ Add an idea'); add.setAttribute('aria-label','Add an idea to this group');
       add.addEventListener('click',function(){ ideaUI.editing=null; ideaUI.adding=g.id; drawIdeas(); });
       flow.appendChild(add);
     }
     if(!g.id&&!cards.length&&!state.ideas.groups.length&&ideaUI.adding!=='')
-      flow.insertBefore(el('div','idea-empty','Jot ideas here, then make groups and drag them in.'),flow.firstChild);
+      flow.insertBefore(el('div','idea-empty','Write ideas here, then make groups and drag them in.'),flow.firstChild);
     sec.appendChild(flow);
     wrap.appendChild(sec);
   });
-  if(focusEl&&!$('ideasView').hidden)focusEl.focus();
+  if(focusEl&&!$('ideasView').hidden){ focusEl.focus(); focusEl.setSelectionRange(focusEl.value.length,focusEl.value.length); focusEl.fit(); }
+}
+// a text box that grows with what you type
+function ideaTextBox(text,ph){
+  const ta=el('textarea'); ta.value=text; ta.placeholder=ph; ta.setAttribute('aria-label',ph);
+  ta.fit=function(){ ta.style.height='auto'; ta.style.height=ta.scrollHeight+'px'; };
+  ta.addEventListener('input',ta.fit);
+  return ta;
 }
 
-/* dragging: the bubble lifts off, a dashed gap follows the pointer and the other bubbles slide
+/* dragging: the card lifts off, a dashed gap follows the pointer and the other cards slide
    aside. Mouse drags start after a few px; on a phone, press and hold (so swiping still scrolls). */
 (function(){
   const wrap=$('ideaGroups');
-  function bubblesIn(flow){ return Array.from(flow.querySelectorAll('.idea-bubble')).filter(function(b){ return !b.classList.contains('ph')&&!b.classList.contains('dragging')&&!b.classList.contains('editing'); }); }
-  // slide every bubble from where it was to where it lands
+  function cardsIn(flow){ return Array.from(flow.querySelectorAll('.idea-card')).filter(function(b){ return !b.classList.contains('ph')&&!b.classList.contains('dragging')&&!b.classList.contains('editing'); }); }
+  // slide every card from where it was to where it lands
   function flip(mutate){
-    const all=Array.from(wrap.querySelectorAll('.idea-bubble:not(.dragging),.idea-addb'));
+    const all=Array.from(wrap.querySelectorAll('.idea-card:not(.dragging),.idea-addb'));
     const before=all.map(function(n){ return n.getBoundingClientRect(); });
     mutate();
     if(prefersReduced)return;
@@ -2103,12 +2115,12 @@ function drawIdeas(){
     wrap.querySelectorAll('.idea-group.over').forEach(function(n){ if(n!==sec)n.classList.remove('over'); });
     if(!sec)return;
     sec.classList.add('over');
-    const flow=sec.querySelector('.idea-bubbles');
+    const flow=sec.querySelector('.idea-cards');
     let ref=flow.querySelector('.idea-addb')||null;
-    const list=bubblesIn(flow);
+    const list=cardsIn(flow);
     for(let i=0;i<list.length;i++){
       const r=list[i].getBoundingClientRect();
-      if(y<r.top||(y<=r.bottom&&x<r.left+r.width/2)){ ref=list[i]; break; }
+      if(y<r.top+r.height/2){ ref=list[i]; break; }
     }
     if(d.ph.parentNode===flow&&(d.ph.nextSibling===ref||(ref===null&&!d.ph.nextSibling)))return;
     flip(function(){ flow.insertBefore(d.ph,ref); });
@@ -2117,7 +2129,7 @@ function drawIdeas(){
     d.active=true; buzz('tick');
     const r=d.el.getBoundingClientRect();
     d.dx=d.sx-r.left; d.dy=d.sy-r.top;
-    d.ph=el('div','idea-bubble ph'); d.ph.textContent=d.el.textContent; d.ph.style.width=r.width+'px';
+    d.ph=el('div','idea-card ph'); d.ph.style.height=r.height+'px';
     d.ghost=d.el.cloneNode(true); d.ghost.classList.add('lifted');
     d.ghost.style.width=r.width+'px'; d.ghost.style.left=r.left+'px'; d.ghost.style.top=r.top+'px';
     const g=getComputedStyle(d.el).backgroundColor; d.ghost.style.background=g;
@@ -2148,11 +2160,11 @@ function drawIdeas(){
   }
   wrap.addEventListener('pointerdown',function(e){
     if(e.button>0||ideaUI.drag)return;
-    let b=e.target.closest('.idea-bubble'); if(!b||!b.dataset.id||b.classList.contains('editing'))return;
+    let b=e.target.closest('.idea-card'); if(!b||!b.dataset.id||b.classList.contains('editing'))return;
     const a=document.activeElement;
-    if(a&&a.tagName==='INPUT'&&wrap.contains(a)){ // save what's being typed first (that redraws the bubbles)
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&wrap.contains(a)){ // save what's being typed first (that redraws the cards)
       const id=b.dataset.id; a.blur();
-      b=Array.from(wrap.querySelectorAll('.idea-bubble')).find(function(n){ return n.dataset.id===id; });
+      b=Array.from(wrap.querySelectorAll('.idea-card')).find(function(n){ return n.dataset.id===id; });
       if(!b)return;
     }
     const d={id:b.dataset.id,el:b,sx:e.clientX,sy:e.clientY,pid:e.pointerId,touch:e.pointerType!=='mouse',active:false};
@@ -2182,7 +2194,7 @@ function drawIdeas(){
     const d=ideaUI.drag; if(!d||e.pointerId!==d.pid)return;
     if(d.active)finish(d,false); else { clearTimeout(d.timer); ideaUI.drag=null; }
   });
-  wrap.addEventListener('contextmenu',function(e){ if(e.target.closest('.idea-bubble'))e.preventDefault(); }); // long-press menu on phones
+  wrap.addEventListener('contextmenu',function(e){ if(e.target.closest('.idea-card'))e.preventDefault(); }); // long-press menu on phones
   $('ideaAddGroup').addEventListener('click',ideaAddGroup);
 })();
 
