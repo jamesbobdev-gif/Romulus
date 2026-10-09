@@ -323,7 +323,7 @@ async function agentPrefs() {
   if (!a || !a.url || !a.key) return '';
   try {
     const r = await fetch(a.url.replace(/\/+$/, '') + '/rest/v1/tasks_sync?sync_key=eq.' + encodeURIComponent(a.syncKey + ':prefs') + '&select=doc',
-      { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key } });
+      { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key }, signal: AbortSignal.timeout(10000) });
     const rows = await r.json();
     return (rows[0] && rows[0].doc && rows[0].doc.text) || '';
   } catch (e) { return ''; }
@@ -384,7 +384,7 @@ async function enrichOption(o, lane) {
   try {
     const r = await fetch(clean, { headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' } });
+      'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(15000) });
     const h = await r.text();
     if (/validateCaptcha/.test(h)) return Object.assign(base, { url: clean }); // can't check right now; keep the link
     if (!r.ok || !/id="productTitle"/.test(h)) return null;                    // not a real product page
@@ -579,15 +579,16 @@ async function startAgentRun() {
   if (agentProc || memoryTidying) { agentLog('skip: a run is already going'); return; } // it re-checks the queue when it exits
   const queued = queuedAgentTasks();
   if (!queued.length) { agentLog('skip: nothing queued any more'); return; }
+  // same queue as the last run and nothing moved: that run failed — don't hammer it. Checked before
+  // claiming: a claimed task we then skip would sit as "working" on the server with nobody on it
+  const queuedKey = queued.map((t) => t.id).sort().join(',');
+  if (queuedKey === agentLastKey && Date.now() - agentLastAt < AGENT_RETRY_MS) { agentLog('skip: same queue failed recently'); return; }
   agentProc = 'claiming'; // hold the lock while we talk to the server
   let tasks;
   try { tasks = await claimAgentTasks(queued); } finally { agentProc = null; }
   if (!tasks.length) { agentLog('skip: every queued task was taken by another worker'); return; }
   const ids = tasks.map((t) => t.id).sort();
-  // same queue as the last run and nothing moved: that run failed — don't hammer it
-  const key = ids.join(',');
-  if (key === agentLastKey && Date.now() - agentLastAt < AGENT_RETRY_MS) { agentLog('skip: same queue failed recently'); return; }
-  agentLastKey = key; agentLastAt = Date.now();
+  agentLastKey = ids.join(','); agentLastAt = Date.now();
 
   const cfg = readConfig().agentRunner || {};
   const exe = cfg.command || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe');
@@ -736,7 +737,7 @@ async function agentPrefsRow() {
   const a = ((readConfig().sync) || {}).agent;
   if (!a || !a.url || !a.key) return null;
   const r = await fetch(a.url.replace(/\/+$/, '') + '/rest/v1/tasks_sync?sync_key=eq.' + encodeURIComponent(a.syncKey + ':prefs') + '&select=doc,updated_at',
-    { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key } });
+    { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key }, signal: AbortSignal.timeout(10000) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const rows = await r.json();
   return { a, text: (rows[0] && rows[0].doc && rows[0].doc.text) || '', updated_at: rows[0] ? rows[0].updated_at : null };
@@ -882,7 +883,7 @@ async function agentRow(suffix) { // a doc next to the agent list ({v, text}): '
   if (!a || !a.url || !a.key) return '';
   try {
     const r = await fetch(a.url.replace(/\/+$/, '') + '/rest/v1/tasks_sync?sync_key=eq.' + encodeURIComponent(a.syncKey + suffix) + '&select=doc',
-      { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key } });
+      { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key }, signal: AbortSignal.timeout(10000) });
     const rows = await r.json();
     return (rows[0] && rows[0].doc && rows[0].doc.text) || '';
   } catch (e) { return ''; }
@@ -984,6 +985,7 @@ async function ensureQwenBrowser() {
   qwenTunnel = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30',
     '-N', '-L', '127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + ':127.0.0.1:' + (b.port || 9334), b.ssh], { windowsHide: true });
   qwenTunnel.on('exit', () => { qwenTunnel = null; });
+  qwenTunnel.on('error', (e) => { agentLog('local: ssh tunnel failed to start: ' + e.message); qwenTunnel = null; }); // e.g. no ssh installed: unhandled, this would crash the app
   for (let i = 0; i < 20; i++) { if (await qwenBrowserUp()) return true; await new Promise((r) => setTimeout(r, 500)); }
   agentLog('local: Qwen\'s browser on the mini PC isn\'t reachable (is someone logged in there?)');
   return false;
@@ -1316,6 +1318,7 @@ async function gcalApi(cfg, method, subpath, body) {
 // where to send it and the function's address (with its secret token) live in config.json
 // (buyEmailTo, buyEmailUrl), not in the code
 const buyFailed = new Set(); // keys that failed this session (don't retry every save until restart)
+const buySending = new Set(); // keys being sent right now (a second save meanwhile must not send it again)
 
 async function processBuyEmails(raw) {
   let saved; try { saved = JSON.parse(raw); } catch (e) { return; }
@@ -1330,12 +1333,14 @@ async function processBuyEmails(raw) {
   for (const t of pending) {
     const b = t.buyEmail;
     const key = t.id + '|' + (b.url || '') + '|' + (b.at || '');
-    if (sent.has(key) || buyFailed.has(key)) continue;
+    if (sent.has(key) || buyFailed.has(key) || buySending.has(key)) continue;
+    buySending.add(key);
     try {
       const res = await fetch(fnUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to, kind: b.kind === 'print' || b.kind === 'link' ? b.kind : 'buy', label: b.label, url: b.url, price: b.price, rating: b.rating, image: b.image }),
+        signal: AbortSignal.timeout(20000),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
@@ -1344,12 +1349,26 @@ async function processBuyEmails(raw) {
     } catch (e) {
       buyFailed.add(key);
       agentLog('buy email failed: ' + e.message);
-    }
+    } finally { buySending.delete(key); }
   }
-  if (changed) { cfg.buyEmailsSent = Array.from(sent).slice(-500); writeConfig(cfg); }
+  if (changed) { // re-read: other settings may have been saved while the emails went out
+    const fresh = readConfig();
+    fresh.buyEmailsSent = Array.from(new Set([...(Array.isArray(fresh.buyEmailsSent) ? fresh.buyEmailsSent : []), ...sent])).slice(-500);
+    writeConfig(fresh);
+  }
 }
 
-async function performSync() {
+// one sync at a time: two overlapping runs would both create an event for the same new task
+let gcalSyncing = null, gcalSyncAgain = false;
+function performSync() {
+  if (gcalSyncing) { gcalSyncAgain = true; return gcalSyncing; }
+  gcalSyncing = performSyncOnce().finally(() => {
+    gcalSyncing = null;
+    if (gcalSyncAgain) { gcalSyncAgain = false; performSync().catch((e) => console.error('gcal sync failed:', e.message)); }
+  });
+  return gcalSyncing;
+}
+async function performSyncOnce() {
   const cfg = readConfig();
   if (!cfg.gcal || !cfg.gcal.tokens || !cfg.gcal.tokens.refresh_token) return [];
   let saved;
@@ -1407,7 +1426,18 @@ async function performSync() {
     }
   }
 
-  if (changed.length) fs.writeFileSync(dataFile(), JSON.stringify(saved));
+  if (changed.length) {
+    // the calendar calls take a while and the app may have saved meanwhile: write the event ids into
+    // the file as it is now, instead of putting back the copy read at the start
+    try {
+      const file = dataFile();
+      const latest = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const ids = new Map(changed.map((t) => [t.id, t.googleEventId]));
+      for (const t of Array.isArray(latest.tasks) ? latest.tasks : []) if (ids.has(t.id)) t.googleEventId = ids.get(t.id);
+      fs.writeFileSync(file + '.tmp', JSON.stringify(latest));
+      fs.renameSync(file + '.tmp', file);
+    } catch (e) { console.error('gcal sync: could not save event ids:', e.message); }
+  }
   if (mainWindow) mainWindow.webContents.send('gcal:sync-done', changed.map((t) => ({ id: t.id, googleEventId: t.googleEventId })));
   return changed;
 }
@@ -1442,7 +1472,8 @@ ipcMain.handle('gcal:status', async () => {
   return { connected: !!(cfg.gcal && cfg.gcal.tokens && cfg.gcal.tokens.refresh_token) };
 });
 
-ipcMain.handle('gcal:open-url', async (_e, url) => { shell.openExternal(url); });
+// web pages only: the renderer shows text from Claude and web pages, so never hand the OS a file: or other scheme
+ipcMain.handle('gcal:open-url', async (_e, url) => { if (/^https?:\/\//i.test(String(url))) await shell.openExternal(String(url)); });
 
 ipcMain.handle('gcal:connect', async () => {
   const cfg = readConfig();
@@ -1587,7 +1618,7 @@ if (!gotLock) {
     setTimeout(() => scheduleLocalRun(), 20 * 1000);
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);
-    setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000); // re-count at midnight rollover
+    setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000);
 
     // Bring the window back whenever the screen turns on.
     powerMonitor.on('resume', () => { refreshTrayStatus(); showWindow(); });
