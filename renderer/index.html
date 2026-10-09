@@ -547,7 +547,7 @@ try{ applyTheme(localStorage.getItem(THEME_KEY)||''); }catch(e){}
    Each syncs with its own Supabase project; the remote docs never contain
    the ws field, so other devices/apps on a channel need no changes. */
 const SYNC_CFG_KEY='tasks.sync.v1';
-const syncState={ cfg:null, busy:false, pushTimer:null, pollTimer:null };
+const syncState={ cfg:null, busy:false, again:false, pushTimer:null, pollTimer:null };
 function normalizeSyncCfg(raw){
   if(!raw)return null;
   if(raw.url)return {personal:raw}; // legacy single-profile shape
@@ -690,8 +690,16 @@ function mergeRemoteWs(remoteDoc,ws){
 }
 
 async function syncNow(){
-  if(!syncEnabled()||syncState.busy)return;
-  syncState.busy=true;
+  if(!syncEnabled())return;
+  if(syncState.busy){ syncState.again=true; return; } // an edit during a sync: run once more right after it
+  syncState.busy=true; syncState.again=false;
+  try{ await syncOnce(); }
+  finally{
+    syncState.busy=false;
+    if(syncState.again){ syncState.again=false; schedulePush(); }
+  }
+}
+async function syncOnce(){
   setSyncStatus('syncing…');
   let firstErr=null, anyLocal=false;
   const list=profileList();
@@ -719,7 +727,6 @@ async function syncNow(){
   }
   if(firstErr)setSyncStatus('sync error: '+firstErr.message,true);
   else setSyncStatus('synced '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
-  syncState.busy=false;
 }
 function schedulePush(){
   if(!syncEnabled())return;
