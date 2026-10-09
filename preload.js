@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('desktop', {
   onAgentWorking: (cb) => ipcRenderer.on('agent:working', (_event, ids) => cb(ids)),
   onAgentResults: (cb) => ipcRenderer.on('agent:results', (_event, updates) => cb(updates)),
   onAgentWaiting: (cb) => ipcRenderer.on('agent:waiting', (_event, info) => cb(info)),
+  // the mini PC lane: what his own model is doing right now on a task, and whether it's reachable
+  onAgentLive: (cb) => ipcRenderer.on('agent:live', (_event, info) => cb(info)),
+  localStatus: () => ipcRenderer.invoke('local:status'),
+  // routing: James's rules changed (reload them), and tasks no rule matched (he picks the lane)
+  routingChanged: () => ipcRenderer.invoke('routing:changed'),
+  onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
