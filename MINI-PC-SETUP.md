@@ -42,6 +42,19 @@ including driving Claude's browser, so you get more done with fewer Claude credi
 - Make Ollama reachable **only from your home network**.
 - In your router, give the mini PC a **fixed address** so the Tasks app always finds it.
 
+### Status (2026-10-08): ✅ mini PC is up
+- Ubuntu **26.04.1 LTS** Desktop, user `lupa`, address **192.168.1.192** (reserve it in the router!),
+  16 threads, 937 GB drive, **16 GB memory: second stick not in yet**.
+- This PC logs in with an SSH key (`~/.ssh/id_ed25519`, "tasks-desktop").
+- `minipc/setup.sh` ran: updates, sleep/suspend disabled, firewall on (only 192.168.1.0/24 may use SSH
+  and port 11434), Ollama listening on the home network (keep-alive 24h, 16k context).
+- Model now: **qwen3.5:9b** (6.6 GB; tools + vision). Measured from this PC: reads prompts at about
+  40–110 words/s and writes about **4 words/s**, so a short answer takes 30–40 s. Use it with thinking
+  off; with thinking on, a 300-word budget went entirely to thinking.
+- After the second stick: switch to **qwen3.6:35b-a3b** (23 GB). It's smarter, and with both memory
+  slots it should also write faster.
+- Claude Code is installed on the mini PC (for "ask Claude"); sign-in still to check.
+
 ### Decisions (2026-10-07, from your plan doc "Personal AI Agent How It Works")
 - **Two lanes.** *Claude* = the Tasks app on the home PC, on your Claude subscription (no paid API).
   *Local* = your own model on the mini PC.
