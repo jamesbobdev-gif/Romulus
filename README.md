@@ -82,6 +82,7 @@ The **Ideas** tab holds ideas as note cards, as long as you like, that you sort 
 - **+ Group** makes a new group; click its name to rename it, the dot to change its colour, and × to remove it (its ideas go back to Unsorted).
 - **Unsorted** is the default group: new ideas can start there and removed groups' ideas land there. You can rename it and change its colour too; it just can't be removed.
 - Drag a card into another group, or above/below another card to reorder; the others slide aside. On a phone, press and hold a card to pick it up.
+- Drag a group by its ⠿ handle to move the whole group around the board (Unsorted too). With the handle focused, the arrow keys move it one place.
 
 Ideas sync across devices with the personal channel, in their own row (`<personal sync key>:ideas`), so they never show up as tasks or in Claude's task tools.
 

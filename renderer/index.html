@@ -228,6 +228,11 @@ body.ideas-mode main{max-width:1180px}
 .idea-group{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:10px 12px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
 .idea-ghead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.idea-ggrip{border:0;background:transparent;color:var(--faint);cursor:grab;font-size:15px;line-height:1;padding:3px 2px;border-radius:5px;touch-action:none;flex:none}
+.idea-ggrip:hover,.idea-ggrip:focus-visible{color:var(--ink);background:var(--chip)}
+.idea-group.gph{background:transparent;border:1.5px dashed var(--faint);box-shadow:none}
+.idea-group.glifted{position:fixed;z-index:50;pointer-events:none;box-shadow:0 12px 30px rgba(20,20,20,.2);transform:rotate(-1deg);margin:0}
+body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .idea-gname{flex:1;min-width:0;border:0;outline:0;background:transparent;font-family:var(--display);font-size:14.5px;font-weight:600;color:var(--ink);padding:3px 2px;border-radius:5px}
 .idea-gname:focus{background:var(--chip)}
 .idea-gcount{color:var(--faint)}
@@ -555,7 +560,7 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
   <div id="ideasView" hidden>
     <div class="ideas-bar">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
-      <span class="mono ideas-hint">Drag ideas between groups · click one to read or edit it</span>
+      <span class="mono ideas-hint">Drag ideas between groups · drag ⠿ to move a group · click an idea to read or edit it</span>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
   </div>
@@ -807,7 +812,7 @@ function startSyncLoop(){
 window.__syncNow=syncNow; // debugging hook
 
 /* ── state ── */
-const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',updatedAt:0},groups:[],cards:[],tombstones:[]}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
+const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',order:-1,updatedAt:0},groups:[],cards:[],tombstones:[]}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
 let navOrder=[]; // ids of open tasks in rendered order, for arrow-key navigation
 // unsent answers to Claude, by task id — kept on disk so a restart or a lost task never eats them
 const DRAFTS_KEY='tasks.replyDrafts';
@@ -1930,7 +1935,7 @@ function switchTab(tab){
    (syncKey+':ideas'), so the task lists, Claude's tools and older builds never see them.
    Per card/group id the newer updatedAt wins; a tombstone beats older copies. */
 const IDEA_COLORS=['yellow','green','blue','pink','purple','plain'];
-const ideaUI={drag:null,editing:null,adding:null,pending:false};
+const ideaUI={drag:null,gdrag:null,editing:null,adding:null,pending:false};
 function normIdeas(raw){
   const r=raw||{}; const num=function(v,d){ return isFinite(v)&&v!==null&&v!==''?+v:d; };
   const groups=(Array.isArray(r.groups)?r.groups:[]).filter(function(g){ return g&&g.id; }).map(function(g,i){
@@ -1942,7 +1947,7 @@ function normIdeas(raw){
   const tombs=(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; });
   // the default group (Unsorted unless renamed): new ideas start here, removed groups' ideas land here
   const ib=r.inbox&&typeof r.inbox==='object'?r.inbox:{};
-  const inbox={name:typeof ib.name==='string'?ib.name:'Unsorted',color:IDEA_COLORS.indexOf(ib.color)>=0?ib.color:'plain',updatedAt:ib.updatedAt||0};
+  const inbox={name:typeof ib.name==='string'?ib.name:'Unsorted',color:IDEA_COLORS.indexOf(ib.color)>=0?ib.color:'plain',order:num(ib.order,-1),updatedAt:ib.updatedAt||0};
   return {inbox:inbox,groups:groups,cards:cards,tombstones:tombs};
 }
 function ideasProfile(){
@@ -1995,7 +2000,7 @@ function ideaAddCard(gid,text){
 }
 function ideaAddGroup(){
   const gs=state.ideas.groups, now=Date.now();
-  const g={id:uid(),name:'',color:IDEA_COLORS[gs.length%5],order:gs.length?Math.max.apply(null,gs.map(function(x){ return x.order; }))+1:0,updatedAt:now};
+  const g={id:uid(),name:'',color:IDEA_COLORS[gs.length%5],order:Math.max.apply(null,[state.ideas.inbox.order,-1].concat(gs.map(function(x){ return x.order; })))+1,updatedAt:now};
   gs.push(g); persist(); drawIdeas();
   const inp=document.querySelector('.idea-group[data-group="'+g.id+'"] .idea-gname'); if(inp)inp.focus();
 }
@@ -2007,25 +2012,47 @@ function ideaRemoveGroup(gid){
   state.ideas.groups=state.ideas.groups.filter(function(g){ return g.id!==gid; });
   ideaTomb(gid); persist(); drawIdeas();
 }
+// every group in board order, the default one (id '') included
+function ideaGroupsSorted(){
+  const ib=state.ideas.inbox;
+  return [{id:'',name:ib.name,color:ib.color,order:ib.order}].concat(state.ideas.groups)
+    .sort(function(a,b){ return a.order-b.order||(a.id<b.id?-1:1); });
+}
+// put the groups in this order (a list of ids); only the ones whose spot changed get touched
+function ideaSetGroupOrder(ids){
+  const now=Date.now(); let changed=false;
+  ids.forEach(function(id,i){ const g=ideaGroup(id); if(g&&g.order!==i){ g.order=i; g.updatedAt=now; changed=true; } });
+  if(changed)persist();
+}
 // leaving the tab: let any open text box save itself
 function ideaLeave(){ const a=document.activeElement; if(a&&$('ideasView').contains(a))a.blur(); }
 
 // external re-renders (sync) wait while you're dragging or typing, so nothing is yanked away
 function renderIdeas(){
   const a=document.activeElement;
-  if((ideaUI.drag&&ideaUI.drag.active)||(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&$('ideasView').contains(a))){ ideaUI.pending=true; return; }
+  if((ideaUI.drag&&ideaUI.drag.active)||(ideaUI.gdrag&&ideaUI.gdrag.active)||(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&$('ideasView').contains(a))){ ideaUI.pending=true; return; }
   drawIdeas();
 }
 function drawIdeas(){
   ideaUI.pending=false;
   const wrap=$('ideaGroups'); wrap.textContent='';
   const ib=state.ideas.inbox;
-  const groups=[{id:'',name:ib.name,color:ib.color}].concat(state.ideas.groups.slice().sort(function(a,b){ return a.order-b.order||(a.id<b.id?-1:1); }));
+  const groups=ideaGroupsSorted();
   let focusEl=null;
   groups.forEach(function(g){
     const sec=el('section','idea-group'); sec.dataset.group=g.id; sec.dataset.color=g.color;
     if(g.color!=='plain')sec.style.setProperty('--g','var(--idea-'+g.color+')');
     const head=el('div','idea-ghead');
+    const grip=el('button','idea-ggrip','⠿'); grip.title='Drag to move this group (or use the arrow keys)'; grip.setAttribute('aria-label','Move group');
+    grip.addEventListener('keydown',function(e){
+      const step=e.key==='ArrowLeft'||e.key==='ArrowUp'?-1:e.key==='ArrowRight'||e.key==='ArrowDown'?1:0;
+      if(!step)return; e.preventDefault();
+      const ids=ideaGroupsSorted().map(function(x){ return x.id; }), i=ids.indexOf(g.id), j=i+step;
+      if(j<0||j>=ids.length)return;
+      ids.splice(i,1); ids.splice(j,0,g.id); ideaSetGroupOrder(ids); drawIdeas();
+      const ng=document.querySelector('.idea-group[data-group="'+g.id+'"] .idea-ggrip'); if(ng)ng.focus();
+    });
+    head.appendChild(grip);
     const name=el('input','idea-gname'); name.value=g.name; name.placeholder='Name this group'; name.setAttribute('aria-label','Group name');
     const cards=ideaCardsIn(g.id);
     if(!g.id)name.placeholder='Unsorted';
@@ -2175,7 +2202,7 @@ function ideaTextBox(text,ph){
     drawIdeas();
   }
   wrap.addEventListener('pointerdown',function(e){
-    if(e.button>0||ideaUI.drag)return;
+    if(e.button>0||ideaUI.drag||ideaUI.gdrag)return;
     let b=e.target.closest('.idea-card'); if(!b||!b.dataset.id||b.classList.contains('editing'))return;
     const a=document.activeElement;
     if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&wrap.contains(a)){ // save what's being typed first (that redraws the cards)
@@ -2212,6 +2239,91 @@ function ideaTextBox(text,ph){
   });
   wrap.addEventListener('contextmenu',function(e){ if(e.target.closest('.idea-card'))e.preventDefault(); }); // long-press menu on phones
   $('ideaAddGroup').addEventListener('click',ideaAddGroup);
+})();
+
+/* moving whole groups: grab the ⠿ handle; the group lifts off, a dashed gap follows the pointer
+   through the grid and the other groups slide aside. The handle doesn't scroll, so no hold needed. */
+(function(){
+  const wrap=$('ideaGroups');
+  function secs(){ return Array.from(wrap.querySelectorAll('.idea-group')).filter(function(n){ return !n.classList.contains('gdrag'); }); }
+  function flip(mutate){
+    const all=secs().filter(function(n){ return !n.classList.contains('gph'); });
+    const before=all.map(function(n){ return n.getBoundingClientRect(); });
+    mutate();
+    if(prefersReduced)return;
+    all.forEach(function(n,i){
+      const r=n.getBoundingClientRect(), dx=before[i].left-r.left, dy=before[i].top-r.top;
+      if(!dx&&!dy)return;
+      n.style.transition='none'; n.style.transform='translate('+dx+'px,'+dy+'px)';
+      n.getBoundingClientRect();
+      n.style.transition='transform .18s ease'; n.style.transform='';
+    });
+  }
+  // the gap goes before the first group that comes after the pointer in reading order
+  function placeAt(d,x,y){
+    const list=secs().filter(function(n){ return n!==d.ph; });
+    const rects=list.map(function(n){ return n.getBoundingClientRect(); });
+    let ref=null;
+    for(let i=0;i<list.length;i++){
+      const r=rects[i];
+      const row=rects.filter(function(o){ return Math.abs(o.top-r.top)<2; });
+      const rowBottom=row.reduce(function(m,o){ return Math.max(m,o.bottom); },r.bottom);
+      // alone on its row (the phone's single column): its top half means before it
+      const before=row.length>1?x<r.left+r.width/2:y<r.top+r.height/2;
+      if(y<r.top||(y<rowBottom&&before)){ ref=list[i]; break; }
+    }
+    if(d.ph.nextElementSibling===ref||(ref===null&&!d.ph.nextElementSibling))return;
+    flip(function(){ wrap.insertBefore(d.ph,ref); });
+  }
+  function start(d){
+    d.active=true; buzz('tick'); document.body.classList.add('gdragging');
+    const r=d.el.getBoundingClientRect();
+    d.dx=d.sx-r.left; d.dy=d.sy-r.top;
+    d.ph=el('section','idea-group gph'); d.ph.style.height=r.height+'px';
+    d.ghost=d.el.cloneNode(true); d.ghost.classList.add('glifted');
+    d.ghost.style.width=r.width+'px'; d.ghost.style.left=r.left+'px'; d.ghost.style.top=r.top+'px';
+    document.body.appendChild(d.ghost);
+    wrap.insertBefore(d.ph,d.el);
+    d.el.classList.add('gdrag'); d.el.style.display='none';
+  }
+  function finish(d,drop){
+    if(d.ghost)d.ghost.remove();
+    document.body.classList.remove('gdragging');
+    if(drop&&d.ph&&d.ph.parentNode){
+      const ids=[];
+      Array.from(wrap.children).forEach(function(n){ if(n===d.ph)ids.push(d.id); else if(n!==d.el)ids.push(n.dataset.group); });
+      ideaSetGroupOrder(ids);
+    }
+    ideaUI.gdrag=null;
+    drawIdeas();
+  }
+  wrap.addEventListener('pointerdown',function(e){
+    if(e.button>0||ideaUI.drag||ideaUI.gdrag)return;
+    const grip=e.target.closest('.idea-ggrip'); if(!grip)return;
+    const gid=grip.closest('.idea-group').dataset.group;
+    const a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&wrap.contains(a))a.blur(); // save what's being typed first (that may redraw)
+    const live=Array.from(wrap.querySelectorAll('.idea-group')).find(function(n){ return n.dataset.group===gid; });
+    if(!live)return;
+    e.preventDefault();
+    ideaUI.gdrag={id:gid,el:live,sx:e.clientX,sy:e.clientY,pid:e.pointerId,active:false};
+  });
+  document.addEventListener('pointermove',function(e){
+    const d=ideaUI.gdrag; if(!d||e.pointerId!==d.pid)return;
+    if(!d.active){ if(Math.abs(e.clientX-d.sx)+Math.abs(e.clientY-d.sy)<5)return; start(d); }
+    d.ghost.style.left=(e.clientX-d.dx)+'px'; d.ghost.style.top=(e.clientY-d.dy)+'px';
+    placeAt(d,e.clientX,e.clientY);
+    if(e.clientY<50)window.scrollBy(0,-12); else if(e.clientY>window.innerHeight-50)window.scrollBy(0,12);
+  });
+  document.addEventListener('touchmove',function(e){ if(ideaUI.gdrag&&ideaUI.gdrag.active)e.preventDefault(); },{passive:false});
+  document.addEventListener('pointerup',function(e){
+    const d=ideaUI.gdrag; if(!d||e.pointerId!==d.pid)return;
+    if(d.active)finish(d,true); else ideaUI.gdrag=null;
+  });
+  document.addEventListener('pointercancel',function(e){
+    const d=ideaUI.gdrag; if(!d||e.pointerId!==d.pid)return;
+    if(d.active)finish(d,false); else ideaUI.gdrag=null;
+  });
 })();
 
 /* ── day detail popup ── */
