@@ -392,6 +392,8 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
           <option value="local">Mini PC</option>
         </select>
       </div>
+      <p class="settings-hint" style="margin-top:14px">Sites your mini PC's browser may open (one per line), besides the links in a task. Log in to them once in the browser on the mini PC's screen.</p>
+      <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
       <div class="settings-row" style="margin-top:10px">
         <button id="routingSaveBtn" class="btn-accent">Save</button>
         <span id="routingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
@@ -2222,6 +2224,7 @@ async function routingLoad(){
   if(!d||!Array.isArray(d.rules))d=ROUTING_START;
   $('routingRules').innerHTML=''; d.rules.forEach(function(r){ $('routingRules').appendChild(routingRow(r)); });
   $('routingDefault').value=d.default==='claude'||d.default==='local'?d.default:'ask';
+  $('routingSites').value=(Array.isArray(d.sites)?d.sites:[]).join('\n');
   $('routingStatus').textContent='';
 }
 $('routingAddBtn').addEventListener('click',function(){ const r=routingRow({words:'',lane:'local'}); $('routingRules').appendChild(r); r.querySelector('input').focus(); });
@@ -2232,7 +2235,8 @@ $('routingSaveBtn').addEventListener('click',async function(){
   }).filter(function(r){ return r.words; });
   $('routingStatus').textContent='saving…';
   try{
-    await syncPushDoc(p,{v:1,default:$('routingDefault').value,rules:rules});
+    const sites=$('routingSites').value.split(/[\n,]+/).map(function(x){ return x.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,''); }).filter(Boolean);
+    await syncPushDoc(p,{v:1,default:$('routingDefault').value,rules:rules,sites:sites});
     if(window.desktop&&window.desktop.routingChanged)window.desktop.routingChanged();
     $('routingStatus').textContent='saved';
   }catch(e){ $('routingStatus').textContent='save failed ('+e.message+')'; }

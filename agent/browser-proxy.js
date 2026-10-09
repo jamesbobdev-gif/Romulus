@@ -20,6 +20,7 @@ function browserUp() {
 }
 async function ensureBrowser() {
   if (await browserUp()) return;
+  if (chrome === 'remote') return; // the browser lives on another machine (the mini PC): never start one here
   const p = spawn(chrome, ['--user-data-dir=' + profile, '--remote-debugging-port=' + port, '--remote-debugging-address=127.0.0.1',
     '--no-first-run', '--no-default-browser-check',
     // keep drawing while covered by other windows, or clicks wait forever for the page to "settle"
@@ -28,7 +29,11 @@ async function ensureBrowser() {
   for (let i = 0; i < 40 && !(await browserUp()); i++) await new Promise((r) => setTimeout(r, 250));
 }
 
-const child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, '--image-responses', 'allow'],
+// TASKS_BROWSER_ARGS (JSON list) replaces the defaults, e.g. a small model gets no automatic page
+// outlines or images: it asks for an outline when it needs one
+let extraArgs = ['--image-responses', 'allow'];
+try { if (process.env.TASKS_BROWSER_ARGS) extraArgs = JSON.parse(process.env.TASKS_BROWSER_ARGS); } catch (e) {}
+const child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs],
   { stdio: ['pipe', 'pipe', 'inherit'] });
 child.on('exit', (code) => process.exit(code || 0));
 process.on('exit', () => { try { child.kill(); } catch (e) {} });

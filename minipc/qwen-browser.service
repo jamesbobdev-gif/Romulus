@@ -1,0 +1,18 @@
+# Qwen's browser on the mini PC: a visible Chromium with its own profile (log in to sites in it once),
+# controlled by the Tasks app over SSH. Remote control listens on 127.0.0.1 only, so nothing on the
+# network can reach it directly. Starts when you log in, and reopens itself if it closes or crashes.
+# Install: copy to ~/.config/systemd/user/ and run
+#   systemctl --user daemon-reload && systemctl --user enable --now qwen-browser
+[Unit]
+Description=Qwen's browser (Chromium, controlled by the Tasks app)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStartPre=/usr/bin/mkdir -p %h/qwen-browser/profile
+ExecStart=/snap/bin/chromium --user-data-dir=%h/qwen-browser/profile --remote-debugging-port=9334 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling --window-size=1280,900 about:blank
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target
