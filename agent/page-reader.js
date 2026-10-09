@@ -9,7 +9,7 @@
      "filled" with the option's label, addresses without https://
    - step(browser, name, args, state): one browser tool call; after anything that can change the page
      it looks again by itself (so a step is never spent on browser_snapshot, and refs are never stale),
-     and it says when the model repeats itself
+     and it says when the model repeats itself (a third identical call in a row isn't run)
    Used by main.js; no Electron here, so it can be tested on its own. */
 
 const REF = /^(?:f\d+)?e\d+$/;
@@ -326,6 +326,8 @@ async function step(browser, name, args0, state, opts = {}) {
   const repeats = state.recent.filter((x) => x === sig).length;
 
   if (name === 'browser_snapshot') return { args, text: await look(browser, state, max) + (repeats >= 2 ? '\n\n(You already looked at this page and nothing changed. Act on it, or answer.)' : '') };
+  // a third identical call in a row isn't run at all: a small model that loops there never gets out by itself
+  if (repeats >= 3) return { args, text: 'Not done: this is the 3rd time in a row you asked for exactly this, and it isn\'t working. Do something different, or answer now with what is done and what is stuck.', failed: true, blocked: true };
   let res;
   if (name === 'browser_fill_form' && args.fields.length > 1) {
     // one field at a time: a wrong ref in one field doesn't lose all the others
@@ -350,7 +352,9 @@ async function step(browser, name, args0, state, opts = {}) {
   let text = failed || /^Partly done/.test(res) ? firstLines(res, name === 'browser_fill_form' ? 30 : 4).replace(/### Error\n?|(browserBackend\.callTool: )?Error: /g, '').replace(/\x1b\[\d+m/g, '').slice(0, 1200) : ('Done: ' + (firstLines(res.replace(/^### Result\n/, ''), name === 'browser_fill_form' ? 30 : 3) || name.replace('browser_', '')).slice(0, 400));
   if (stale) text += '\nThat ref isn\'t on the page as it is now. Here is the page now; use only refs shown below.';
   else if (failed && !locked) text += '\nLook at the page below and try another way.';
-  if (repeats >= 3) text += '\n(You have done exactly this 3 times. It isn\'t working: try another way, or answer "needs-you" saying what\'s stuck.)';
+  // clicks wait for the page to draw, and a locked or sleeping screen on the mini PC never draws
+  if (/Timeout \d+ms exceeded[\s\S]*attempting (click|check|uncheck)/.test(res)) text += '\n(Clicks are timing out: the mini PC\'s screen is probably locked or asleep. Typing still works. If clicks keep failing, answer "needs-you" and say his mini PC\'s screen needs unlocking.)';
+  if (repeats >= 2) text += '\n(You have now done exactly this twice. If it still isn\'t right, try another way: a third time won\'t be run.)';
   if (CHANGES_PAGE.has(name) && !locked) text += '\n\nThe page now:\n' + await look(browser, state, max);
   return { args, text, failed, locked };
 }

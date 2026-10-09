@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, powerSaveBlocker, nativeImage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const pageReader = require('./agent/page-reader');
+const formMode = require('./agent/form-mode');
 
 let mainWindow = null;
 let tray = null;
@@ -1060,8 +1061,10 @@ current value. Every button, link and field has a ref in brackets, like [f1e15]:
 - Work one small step at a time: open the page, read what it shows, act, read the result.
 - A popup (cookies, sign-up offers) blocks the page: close it first ("Reject", "Close", "No thanks",
   or press Escape). Never accept marketing or sign-up offers.
-- Fill a form with one browser_fill_form call for all the fields you know, then fix what the page
-  complains about ("The page says: …").
+- **On a form, call fill_form first.** It fills every field it has his details for in one go and tells
+  you what it entered and what's missing. Then fix only what's wrong or still empty and that you have
+  details for, and what the page complains about ("The page says: …"). Call it again on each new page
+  of a multi-page form. Pass anything you found that the form needs (e.g. a time or an address) as details.
 - Dropdowns: use the exact choice text shown after "choices:". Radio buttons: target the choice's own
   ref with value "true". If a field suggests matches as you type (city, school), type, then click the
   right suggestion.
@@ -1085,6 +1088,23 @@ const LOCAL_NO_BROWSER = `
 
 You have **no browser** right now: you can't click, log in or fill in anything, so never offer to. If a
 page is blocked, say so and work from the search results.`;
+const FILL_FORM_TOOL = { type: 'function', function: { name: 'fill_form', description: 'Fill in every field of the form on the current page in one go, from his details. Use it first on any form page. details = anything you found that the form needs (optional).', parameters: { type: 'object', properties: { details: { type: 'string' } } } } };
+/* one short question with a forced JSON answer (form mode), streamed so a slow first word never trips
+   fetch's 5-minute header timeout */
+async function localAsk(c, messages, schema) {
+  const ac = new AbortController(), killer = setTimeout(() => ac.abort(), 10 * 60 * 1000);
+  try {
+    const r = await fetch(c.url + '/api/chat', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: c.model, stream: true, think: false, messages, format: schema, options: { temperature: 0, num_predict: 2000 } }) });
+    if (!r.ok) throw new Error('the model answered HTTP ' + r.status);
+    let out = '', buf = ''; const dec = new TextDecoder();
+    for await (const chunk of r.body) {
+      buf += dec.decode(chunk, { stream: true }); let i;
+      while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); try { const m = JSON.parse(line); if (m.message && m.message.content) out += m.message.content; } catch (e) {} }
+    }
+    return out;
+  } finally { clearTimeout(killer); }
+}
 const LOCAL_TOOLS = [
   { type: 'function', function: { name: 'web_search', description: 'Search the web. Returns titles, links and snippets.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
   { type: 'function', function: { name: 'read_page', description: 'Read the text of a web page.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
@@ -1096,17 +1116,24 @@ async function startLocalRun() {
   const queued = queuedLocalTasks();
   if (!queued.length) return;
   localBusy = true;
+  // a long run on the mini PC (10–30 min) must not be cut off by this computer idling to sleep. Closing
+  // the lid still sleeps it (Windows' lid setting), so a sleep during the run is noticed and reported as such
+  const awake = powerSaveBlocker.start('prevent-app-suspension');
+  let slept = false; const onSuspend = () => { slept = true; agentLog('local: this computer went to sleep mid-task'); };
+  powerMonitor.on('suspend', onSuspend);
   try {
     const tasks = await claimAgentTasks(queued, 'local');
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
     for (const t of tasks) await runLocalTask(c, t).catch((e) => {
-      agentLog('local task failed: ' + (e && e.message || e));
+      agentLog('local task failed: ' + (e && e.message || e) + (slept ? ' (after this computer slept)' : ''));
       sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
-        note: 'Your mini PC couldn’t finish this one (' + (/fetch failed|ECONNREFUSED|timed? ?out|abort/i.test(String(e && e.message)) ? 'it isn’t reachable at ' + c.url.replace(/^https?:\/\//, '') + ', is it on?' : String(e && e.message || e).slice(0, 150)) + '). Reply to try again, or switch it to Claude.' }]);
+        note: 'Your mini PC couldn’t finish this one (' + (slept ? 'this computer went to sleep while it worked, which cut the connection; keep the lid open, or set closing the lid to do nothing when plugged in' : /fetch failed|ECONNREFUSED|timed? ?out|abort/i.test(String(e && e.message)) ? 'it isn’t reachable at ' + c.url.replace(/^https?:\/\//, '') + ', is it on?' : String(e && e.message || e).slice(0, 150)) + '). Reply to try again, or switch it to Claude.' }]);
     });
   } finally {
     localBusy = false;
+    powerSaveBlocker.stop(awake);
+    powerMonitor.removeListener('suspend', onSuspend);
     scheduleLocalRun(); // anything queued meanwhile
   }
 }
@@ -1129,7 +1156,7 @@ async function runLocalTask(c, t) {
     browser = await startBrowserTools(lockFile).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
-  const tools = browser ? LOCAL_TOOLS.concat(browser.tools) : LOCAL_TOOLS;
+  const tools = browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, browser.tools) : LOCAL_TOOLS;
   const maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
   const system = rules + (browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)') : LOCAL_NO_BROWSER) + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
@@ -1143,13 +1170,14 @@ async function runLocalTask(c, t) {
   const show = (s, force) => { live = (live + s).slice(-6000); if (force || Date.now() - lastSent > 250) { lastSent = Date.now(); sendToRenderer('agent:live', { id: t.id, text: live }); } };
   let myCal = null, calTried = false; // his calendar, for search_my_data
   const page = {}; // what the browser last showed (refs, address), so slips in browser calls can be fixed
-  let final = null;
+  let final = null, blocked = 0, forceAnswer = false;
+  const formsFilled = {}; // fill_form runs per page address
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
   show('Reading the task…\n', true);
   try {
   for (let step = 0; step < maxSteps && !final; step++) {
-    const last = step === maxSteps - 1;
+    const last = step === maxSteps - 1 || forceAnswer;
     // keep the model's memory small: only the latest two tool results stay in full
     const toolIdx = messages.map((m, i) => m.role === 'tool' ? i : -1).filter((i) => i >= 0);
     toolIdx.slice(0, -2).forEach((i) => { if (messages[i].content.length > 300) messages[i].content = messages[i].content.slice(0, 300) + ' …(older result shortened)'; });
@@ -1193,6 +1221,15 @@ async function runLocalTask(c, t) {
           show('\n🗂 Searching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
+        } else if (browser && name === 'fill_form') {
+          const at = page.url || '';
+          if ((formsFilled[at] = (formsFilled[at] || 0) + 1) > 2) result = 'Form mode already ran twice on this page. Fix the rest field by field, or answer.';
+          else {
+            show('\n📝 Form mode: filling the whole form at once…\n', true);
+            const f = await formMode.fill({ browser, state: page, task, prefs, locked, details: args.details, ask: (msgs, schema) => localAsk(c, msgs, schema) });
+            show(f.filled ? '✓ Entered ' + f.filled + ' field(s)' + (f.missing && f.missing.length ? '; missing: ' + f.missing.join(', ').slice(0, 200) : '') + '\n' : '· ' + f.text.split('\n')[0].slice(0, 160) + '\n', true);
+            result = f.text;
+          }
         } else if (browser && /^browser_/.test(name)) {
           const a = pageReader.fixArgs(name, args, page), what = a.element || a.target || args.element || args.ref || '';
           const label = { browser_navigate: '🌐 Opening: ' + a.url, browser_snapshot: '📋 Looking at the page', browser_click: '👆 Clicking: ' + what,
@@ -1205,6 +1242,9 @@ async function runLocalTask(c, t) {
           const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
           result = r.text;
+          if (r.blocked && ++blocked >= 2) { forceAnswer = true; show('⛔ Stuck repeating itself: wrapping up\n', true); }
+          // a page with a form it hasn't run form mode on yet: point it there
+          else if (!r.failed && !formsFilled[page.url || ''] && formMode.formFields(page).filter((f) => !f.now).length >= 2) result += '\n\n(This page has a form: call fill_form to fill it in one go.)';
         } else result = 'Unknown tool.';
       } catch (e) { result = 'That didn’t work: ' + (e && e.message || e); }
       messages.push({ role: 'tool', tool_name: name, content: String(result).slice(0, 6000) });
