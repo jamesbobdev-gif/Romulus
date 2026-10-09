@@ -75,12 +75,12 @@ Tasks are saved to a `tasks.json` file in the app's user-data folder (e.g. `%APP
 
 ## Ideas
 
-The **Ideas** tab holds ideas as bubbles that you sort into groups.
+The **Ideas** tab holds ideas as note cards, as long as you like, that you sort into groups.
 
-- Tap **+ idea** in a group to add one; press Enter to keep adding, Esc to stop. New ideas can start in **Unsorted**.
-- **+ Group** makes a new area; click its name to rename it, the dot to change its colour, and × to remove it (its ideas go back to Unsorted).
-- Drag a bubble into another group, or between bubbles to reorder; the others slide aside. On a phone, press and hold a bubble to pick it up.
-- Click (tap) a bubble to edit it; clear the text or press × to delete it.
+- Tap **+ Add an idea** in a group and write. Enter starts a new line; click away (or Esc) to save, or Ctrl+Enter to save and start another. New ideas can start in **Unsorted**.
+- Long ideas show their first few lines; click (tap) a card to read all of it and edit it. Clear the text or press **Delete** to remove it.
+- **+ Group** makes a new group; click its name to rename it, the dot to change its colour, and × to remove it (its ideas go back to Unsorted).
+- Drag a card into another group, or above/below another card to reorder; the others slide aside. On a phone, press and hold a card to pick it up.
 
 Ideas sync across devices with the personal channel, in their own row (`<personal sync key>:ideas`), so they never show up as tasks or in Claude's task tools.
 
