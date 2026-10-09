@@ -237,7 +237,12 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .cal-cell.has-tasks{cursor:pointer}
 .agent-live{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;background:#16181d;color:#d8dbe2;border-radius:10px;font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere} /* the mini PC's model, live */
 .lane-switch{display:block;margin:8px 0 0;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--hairline);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-.lane-pick{display:flex;gap:8px;flex-wrap:wrap}
+.lane-toggle{display:inline-flex;align-items:center;gap:0;margin:8px 0 0;border:1px solid var(--hairline);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+.lane-toggle .lane-ask{font-size:12px;color:var(--muted);padding:6px 10px;border-right:1px solid var(--hairline)}
+.lane-seg{border:0;background:transparent;color:var(--muted);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;padding:7px 12px;cursor:pointer}
+.lane-seg+.lane-seg{border-left:1px solid var(--hairline)}
+.lane-seg:hover{color:var(--ink)}
+.lane-seg.on{background:var(--ink);color:var(--bg);cursor:default}
 .lane-switch:hover{color:var(--ink);border-color:#CFCFC9}
 .cal-cell.has-tasks:hover{border-color:#CFCFC9}
 
@@ -1171,12 +1176,22 @@ function repeatText(r){
 // live on the task, so the new model starts from everything said so far. A late answer from the old
 // model is ignored (the app only applies a result to a task still "working" for it; the connector's
 // finish_task checks who holds the claim).
-function switchLane(t){
-  const to=t.lane==='local'?'claude':'local';
-  if(to==='claude'&&!window.confirm('Claude will see this whole conversation, including anything your mini PC wrote. Switch to Claude?'))return;
-  t.lane=to; delete t.claimedBy; delete t.claimedAt;
-  t.status='queued'; t.waitUntil=null;
-  agentSay(t,'sys','You switched this to '+(to==='local'?'your mini PC':'Claude'));
+// who has the task now: its lane, or for older tasks whoever answered last; null = nobody yet
+function laneNow(t){
+  if(t.lane==='claude'||t.lane==='local')return t.lane;
+  const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
+  return last?(last.lane==='local'?'local':'claude'):null;
+}
+function setLane(t,to){
+  const from=laneNow(t);
+  if(from===to)return;
+  // switching (not a first pick) asks first
+  if(from&&!window.confirm(to==='local'
+    ?'Send this task to your mini PC? It takes over with the whole conversation.'
+    :'Send this task to Claude? Claude will see the whole conversation, including anything your mini PC wrote.'))return;
+  t.lane=to; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt;
+  t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
+  agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+(to==='local'?'your mini PC':'Claude'));
   buzz('tap'); touch();
 }
 function moveTask(t,toWs){
@@ -1388,25 +1403,19 @@ function buildPanel(t){
       setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
     }
   }
-  // no rule matched: he picks who does it
-  if(taskWs(t)==='agent'&&!t.done&&!t.lane&&t.routeAsk&&agentConfigured()){
-    const row=el('div','lane-pick');
-    [['claude','Send to Claude'],['local','Send to mini PC']].forEach(function(o){
-      const b=el('button','ghost mono lane-switch',o[1]);
-      b.addEventListener('click',function(e){ e.stopPropagation();
-        t.lane=o[0]; delete t.routeAsk; delete t.claimedBy; t.status='queued'; t.note=null; t.waitUntil=null;
-        agentSay(t,'sys','You sent this to '+(o[0]==='local'?'your mini PC':'Claude')); buzz('tap'); touch(); });
-      row.appendChild(b);
+  // who does it: one toggle, Claude | Mini PC. Switching asks first; a first pick (no rule matched) doesn't.
+  if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
+    const now=laneNow(t);
+    const tg=el('div','lane-toggle'); tg.setAttribute('role','group'); tg.setAttribute('aria-label','Who does this task');
+    if(!now)tg.appendChild(el('span','lane-ask','Who should do this?'));
+    [['claude','Claude'],['local','Mini PC']].forEach(function(o){
+      const b=el('button','lane-seg'+(now===o[0]?' on':''),o[1]);
+      b.setAttribute('aria-pressed',String(now===o[0]));
+      b.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':'Claude has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
+      b.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,o[0]); });
+      tg.appendChild(b);
     });
-    panel.appendChild(row);
-  }
-  // wrong model? hand the task (and its whole conversation) to the other one
-  else if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
-    const toLocal=t.lane!=='local';
-    const sw=el('button','ghost mono lane-switch',toLocal?'Switch to mini PC':'Switch to Claude');
-    sw.title=toLocal?'Your own model on the mini PC takes over, with this whole conversation':'Claude takes over, with this whole conversation';
-    sw.addEventListener('click',function(e){ e.stopPropagation(); switchLane(t); });
-    panel.appendChild(sw);
+    panel.appendChild(tg);
   }
   // a stale failure message isn't worth showing once the task is being retried
   const staleFail=agentBusy&&/^Claude couldn’t finish/.test(t.note||'');
