@@ -1234,7 +1234,7 @@ function toggleDone(t,liEl,checkEl){
   if(!t.done)buzz('check'); // only finishing something buzzes
   if(t.done){ setDone(t,false); touch(); }
   else if(prefersReduced){ setDone(t,true); touch(); }
-  else { checkEl.classList.add('on'); liEl.classList.add('leaving'); setTimeout(function(){ setDone(t,true); touch(); },200); }
+  else { checkEl.classList.add('on'); liEl.classList.add('leaving'); setTimeout(function(){ setDone(liveTask(t),true); touch(); },200); }
 }
 function deleteTask(t){
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId);
@@ -1247,7 +1247,7 @@ function startEdit(t,span){
   const input=el('input','title-edit'); input.value=t.title;
   input.addEventListener('click',function(e){ e.stopPropagation(); });
   let finished=false;
-  function commit(){ if(finished)return; finished=true; const v=input.value.trim(); if(v)t.title=v; touch(); }
+  function commit(){ if(finished)return; finished=true; const v=input.value.trim(); if(v)liveTask(t).title=v; touch(); }
   input.addEventListener('keydown',function(e){ if(e.key==='Enter')commit(); if(e.key==='Escape'){finished=true;render();} });
   input.addEventListener('blur',commit);
   span.replaceWith(input); input.focus(); input.select();
@@ -1558,11 +1558,13 @@ function buildPanel(t){
       catch(err){ sending=false; send.disabled=false; send.textContent='Send to Claude'; status.className='att-status err'; status.textContent='Couldn\u2019t send the photos: '+err.message; return; }
       atts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); atts.length=0;
       delete replyDrafts[t.id]; saveDrafts();
+      const lt=liveTask(t); // a sync during the upload may have swapped the task object
+      const busy=!lt.done&&(lt.status==='working'||lt.status==='queued');
       const text=v||(urls.length===1?'(photo)':'('+urls.length+' photos)');
-      t.reply=(agentBusy&&t.reply)?t.reply+'\n'+text:text; // mid-run additions stack onto what you already sent
-      if(urls.length)t.replyImages=((agentBusy&&Array.isArray(t.replyImages))?t.replyImages:[]).concat(urls);
-      agentSay(t,'you',text,urls.length?{images:urls}:null);
-      buzz('send'); t.status='queued'; touch();
+      lt.reply=(busy&&lt.reply)?lt.reply+'\n'+text:text; // mid-run additions stack onto what you already sent
+      if(urls.length)lt.replyImages=((busy&&Array.isArray(lt.replyImages))?lt.replyImages:[]).concat(urls);
+      agentSay(lt,'you',text,urls.length?{images:urls}:null);
+      buzz('send'); lt.status='queued'; touch();
     }
     send.addEventListener('click',doSend);
     ta.addEventListener('keydown',function(e){ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); doSend(); } });
@@ -1647,7 +1649,7 @@ function buildPanel(t){
       });
     }
     async function doUpload(u){
-      try{ const url=await uploadAttachment(u.blob); const k=uploading.indexOf(u); if(k!==-1)uploading.splice(k,1); try{URL.revokeObjectURL(u.preview);}catch(_e){} t.images=(t.images||[]).concat([url]); drawPics(); touch(); }
+      try{ const url=await uploadAttachment(u.blob); const k=uploading.indexOf(u); if(k!==-1)uploading.splice(k,1); try{URL.revokeObjectURL(u.preview);}catch(_e){} const lt=liveTask(t); lt.images=(lt.images||[]).concat([url]); t.images=lt.images; drawPics(); touch(); }
       catch(e){ u.failed=true; drawPics(); }
     }
     drawPics(); panel.appendChild(strip);
@@ -2249,19 +2251,25 @@ $('routingSaveBtn').addEventListener('click',async function(){
   }catch(e){ $('routingStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('routingStatus').textContent=''; },2500);
 });
+let prefsLoadedAt; // updated_at of the version in the box: Save only replaces that version (undefined = never loaded)
 async function prefsLoad(){
   lockedLoad();
   routingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
-  try{ const d=await syncPull(p); $('prefsText').value=(d&&d.text)||''; $('prefsStatus').textContent=''; }
+  try{ const r=await syncPullRow(p); $('prefsText').value=(r.doc&&r.doc.text)||''; prefsLoadedAt=r.updatedAt; $('prefsStatus').textContent=''; }
   catch(e){ $('prefsStatus').textContent='could not load ('+e.message+')'; }
 }
 $('prefsSaveBtn').addEventListener('click',async function(){
   const p=prefsProfile(); if(!p)return;
+  if(prefsLoadedAt===undefined){ $('prefsStatus').textContent='not loaded yet: reopen ⚙ and try again'; return; }
   $('prefsStatus').textContent='saving…';
-  try{ await syncPushDoc(p,{v:1,text:$('prefsText').value}); $('prefsStatus').textContent='saved'; }
-  catch(e){ $('prefsStatus').textContent='save failed ('+e.message+')'; }
+  try{
+    // Claude (or the weekly tidy) may have added a line since this box was filled: don't erase it
+    if(await syncPushCas(p,{v:1,text:$('prefsText').value},prefsLoadedAt)){
+      const r=await syncPullRow(p); prefsLoadedAt=r.updatedAt; $('prefsStatus').textContent='saved';
+    } else { $('prefsStatus').textContent='changed elsewhere since you opened this: copy your edit, reopen ⚙, and save again'; return; }
+  }catch(e){ $('prefsStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('prefsStatus').textContent=''; },2500);
 });
 $('themeApplyBtn').addEventListener('click',function(){
@@ -2425,7 +2433,8 @@ if(window.desktop&&window.desktop.onAgentResults){
 async function appendPrefs(lines){
   const p=prefsProfile(); if(!p)return;
   try{
-    const d=await syncPull(p); let text=((d&&d.text)||'').replace(/\s+$/,'');
+   for(let attempt=0;attempt<4;attempt++){ // compare-and-swap: never overwrite a change made meanwhile
+    const row=await syncPullRow(p), d=row.doc; let text=((d&&d.text)||'').replace(/\s+$/,'');
     const norm=function(x){ return String(x).toLowerCase().replace(/[^a-z0-9$]+/g,' ').trim(); };
     let changed=false;
     lines.forEach(function(l){
@@ -2440,7 +2449,9 @@ async function appendPrefs(lines){
       else { let end=h+1; while(end<rows.length&&!/^##\s+/.test(rows[end]))end++; while(end>h+1&&!rows[end-1].trim())end--; rows.splice(end,0,'- '+item); }
       text=rows.join('\n').replace(/^\n+/,''); changed=true;
     });
-    if(changed)await syncPushDoc(p,{v:1,text:text});
+    if(!changed||await syncPushCas(p,{v:1,text:text},row.updatedAt))return;
+   }
+   console.error('prefs append: the list kept changing');
   }catch(e){ console.error('prefs append failed',e); }
 }
 
