@@ -452,6 +452,20 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
         <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </div>
+    <div class="settings-panel" id="rsiSection" hidden>
+      <span class="settings-label">RSI — Romulus Self Improvement</span>
+      <p class="settings-hint">Ask for a change to this app and Claude edits its code. Every change is saved as its own commit, so <b>Undo</b> takes it back (the tray menu has Undo too, in case a change breaks this window). Your tasks are never touched. Experimental.</p>
+      <div id="rsiLog" class="conv" hidden></div>
+      <textarea id="rsiText" class="settings-inp" rows="3" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="e.g. make overdue tasks red instead of orange"></textarea>
+      <div class="settings-row">
+        <button id="rsiSend" class="btn-accent" style="margin-left:0">Ask</button>
+        <button id="rsiStop" class="ghost mono" hidden>Stop</button>
+        <button id="rsiApply" class="ghost mono" hidden></button>
+        <button id="rsiUndo" class="ghost mono danger" hidden>Undo last change</button>
+        <button id="rsiNew" class="ghost mono" title="Start a fresh conversation (Claude forgets this one)">New chat</button>
+        <span id="rsiStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
     <div class="settings-panel">
       <span class="settings-label">Theme</span>
       <p class="settings-hint">Paste CSS to restyle the app — the variables below control most of the look. Apply to see it instantly; Reset returns to the default style.</p>
@@ -2548,6 +2562,52 @@ if(window.desktop&&window.desktop.openAgentBrowser){
     catch(e){ $('agentBrowserStatus').textContent='couldn’t open it'; }
   });
 }
+/* RSI: change the app itself from a chat (desktop, run from its source folder) */
+if(window.desktop&&window.desktop.rsiStatus)(function(){
+  let busy=false, pending=null; // pending: the last change, waiting to be seen (reload or restart)
+  function line(m){
+    const log=$('rsiLog'); log.hidden=false;
+    const who=m.who==='change'?'sys':m.who;
+    const b=el('div','conv-msg '+who);
+    if(m.who==='claude'){ b.appendChild(el('div','conv-who','RSI')); b.appendChild(document.createTextNode(m.text)); }
+    else b.textContent=m.text;
+    log.appendChild(b); log.scrollTop=log.scrollHeight;
+  }
+  function show(){
+    $('rsiSend').disabled=busy; $('rsiStop').hidden=!busy;
+    $('rsiStatus').textContent=busy?'working…':'';
+    $('rsiApply').hidden=busy||!pending;
+    if(pending)$('rsiApply').textContent=pending.restart?'Restart to apply':'Reload to see it';
+  }
+  async function refresh(){
+    const s=await window.desktop.rsiStatus();
+    if(!s.available){ $('rsiSection').hidden=true; return; }
+    $('rsiSection').hidden=false; busy=s.busy;
+    $('rsiLog').textContent=''; s.chat.forEach(line);
+    $('rsiUndo').hidden=!s.canUndo;
+    show();
+  }
+  window.desktop.onRsiEvent(function(m){
+    if(m.who==='busy'){ busy=m.busy; if(!busy)refresh(); show(); return; }
+    line(m);
+    if(m.who==='change')pending=m;
+  });
+  $('rsiSend').addEventListener('click',async function(){
+    const text=$('rsiText').value.trim(); if(!text||busy)return;
+    const r=await window.desktop.rsiAsk(text);
+    if(r.ok){ $('rsiText').value=''; pending=null; } else $('rsiStatus').textContent=r.error;
+  });
+  $('rsiText').addEventListener('keydown',function(e){ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); $('rsiSend').click(); } });
+  $('rsiStop').addEventListener('click',function(){ window.desktop.rsiStop(); });
+  $('rsiApply').addEventListener('click',function(){ if(pending)window.desktop.rsiApply(pending.restart); });
+  $('rsiUndo').addEventListener('click',async function(){
+    if(!confirm('Undo the last RSI change?'))return;
+    const r=await window.desktop.rsiUndo();
+    if(!r.ok)$('rsiStatus').textContent=r.error; else refresh();
+  });
+  $('rsiNew').addEventListener('click',async function(){ await window.desktop.rsiNewChat(); pending=null; refresh(); });
+  refresh();
+})();
 $('newAttBtn').addEventListener('click',function(){ $('newAttFile').click(); });
 $('micBtn').innerHTML=MIC_LABEL;
 $('micBtn').addEventListener('click',voiceAdd);
