@@ -9,6 +9,7 @@
      never this file (so RSI can't break its own Undo)
    - before committing, every changed .js file and index.html's scripts are compiled (not run); a change
      that doesn't even parse is thrown away instead of committed
+   - off until James switches it on in Settings (Undo still works when it's off)
    The tasks data lives in the user-data folder, outside the repo, so Claude never sees or touches it.
    No Electron here: main.js passes in what it needs. */
 
@@ -49,7 +50,7 @@ function syntaxError(repo, file) {
   } catch (e) { return file + ': ' + e.message; }
 }
 
-function create({ repoDir, exe, log, onEvent, getSession, setSession }) {
+function create({ repoDir, isEnabled, exe, log, onEvent, getSession, setSession }) {
   let proc = null;
   const chat = []; // this run of the app's conversation, so the panel can redraw after a reload
   const say = (m) => { chat.push(m); if (chat.length > 200) chat.shift(); onEvent(m); };
@@ -64,7 +65,7 @@ function create({ repoDir, exe, log, onEvent, getSession, setSession }) {
     if (!r) return { available: false, reason: 'RSI needs the app\'s source folder (run it with npm start, or set rsi.repo in config.json).' };
     let dirty = '';
     try { dirty = git(r, ['status', '--porcelain']); } catch (e) { return { available: false, reason: 'git isn\'t working here: ' + e.message.split('\n')[0] }; }
-    return { available: true, repo: r, busy: !!proc, dirty: !!dirty, chat, canUndo: !!lastRsiCommit(r) };
+    return { available: true, enabled: !!isEnabled(), repo: r, busy: !!proc, dirty: !!dirty, chat, canUndo: !!lastRsiCommit(r) };
   }
 
   // the newest commit, if it's an RSI change (only that one can be undone: anything after it is left alone)
@@ -80,6 +81,7 @@ function create({ repoDir, exe, log, onEvent, getSession, setSession }) {
   function ask(text) {
     const r = repo();
     if (!r) return { ok: false, error: status().reason };
+    if (!isEnabled()) return { ok: false, error: 'RSI is switched off (Settings → RSI).' };
     if (proc) return { ok: false, error: 'RSI is already working on something.' };
     if (git(r, ['status', '--porcelain'])) return { ok: false, error: 'There are uncommitted changes in ' + r + '. Commit them first, so Undo can only ever take back RSI\'s own edits.' };
     const base = git(r, ['rev-parse', 'HEAD']);

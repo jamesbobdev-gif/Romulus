@@ -413,6 +413,7 @@ function sendToRenderer(ch, payload) {
 const rsi = rsiModule.create({
   // the folder the app runs from when started with npm start; the installed app only with rsi.repo set
   repoDir: () => app.isPackaged ? (readConfig().rsi || {}).repo || null : __dirname,
+  isEnabled: () => (readConfig().rsi || {}).enabled === true, // off until he switches it on in Settings
   exe: () => (readConfig().agentRunner || {}).command || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe'),
   log: agentLog,
   onEvent: (m) => sendToRenderer('rsi:event', m),
@@ -429,6 +430,7 @@ ipcMain.handle('rsi:ask', (_e, text) => rsi.ask(String(text || '').slice(0, 4000
 ipcMain.handle('rsi:undo', () => rsi.undo());
 ipcMain.handle('rsi:stop', () => rsi.stop());
 ipcMain.handle('rsi:new-chat', () => rsi.newChat());
+ipcMain.handle('rsi:set-enabled', (_e, on) => { const c = readConfig(); c.rsi = Object.assign({}, c.rsi, { enabled: !!on }); writeConfig(c); if (!on) rsi.stop(); return rsi.status(); });
 ipcMain.handle('rsi:apply', (_e, restart) => { applyRsiChange(!!restart); return true; });
 
 function failAgentTasks(ids, why) {
