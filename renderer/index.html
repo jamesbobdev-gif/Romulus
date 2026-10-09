@@ -235,7 +235,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .cal-more{font-family:var(--mono);font-size:9.5px;color:var(--faint);padding:2px 4px;display:block}
 .cal-empty{color:var(--muted);text-align:center;margin:56px 0;font-size:14px}
 .cal-cell.has-tasks{cursor:pointer}
+.agent-live{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;background:#16181d;color:#d8dbe2;border-radius:10px;font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere} /* the mini PC's model, live */
 .lane-switch{display:block;margin:8px 0 0;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--hairline);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
+.lane-pick{display:flex;gap:8px;flex-wrap:wrap}
 .lane-switch:hover{color:var(--ink);border-color:#CFCFC9}
 .cal-cell.has-tasks:hover{border-color:#CFCFC9}
 
@@ -368,6 +370,26 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
       <div class="settings-row">
         <button id="lockedSaveBtn" class="btn-accent">Save</button>
         <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
+    <div class="settings-panel" id="routingSection" hidden>
+      <span class="settings-label">Who does Agent tasks</span>
+      <p class="settings-hint">Your rules decide, no AI involved. They're checked top to bottom against the task's words, and the first match wins. Separate words with commas. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title always wins. Each task shows which rule sent it, and you can switch it any time.</p>
+      <div id="routingRules"></div>
+      <div class="settings-row" style="margin-top:8px">
+        <button id="routingAddBtn" class="ghost mono">+ Add rule</button>
+      </div>
+      <div class="settings-row" style="margin-top:10px;align-items:center">
+        <span style="font-size:13.5px">When no rule matches:</span>
+        <select id="routingDefault" class="settings-inp" style="width:auto">
+          <option value="ask">Ask me</option>
+          <option value="claude">Claude</option>
+          <option value="local">Mini PC</option>
+        </select>
+      </div>
+      <div class="settings-row" style="margin-top:10px">
+        <button id="routingSaveBtn" class="btn-accent">Save</button>
+        <span id="routingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </div>
     <div class="settings-panel" id="agentBrowserSection" hidden>
@@ -580,6 +602,29 @@ async function syncPull(p){
   const rows=await res.json();
   return rows.length?rows[0].doc:null;
 }
+// The list plus when it was last written, so our upload can check nobody wrote in between.
+async function syncPullRow(p){
+  const res=await fetch(syncBase(p)+'?sync_key=eq.'+encodeURIComponent(p.syncKey)+'&select=doc,updated_at',{headers:syncHeaders(p)});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const rows=await res.json();
+  return rows.length?{doc:rows[0].doc,updatedAt:rows[0].updated_at}:{doc:null,updatedAt:null};
+}
+// Compare-and-swap upload: replaces the list only if it's still the version we downloaded (or creates
+// it if there was none). false = someone else (phone, Claude, the connector) wrote in between.
+async function syncPushCas(p,doc,prevUpdatedAt){
+  const body={doc:doc,updated_at:new Date().toISOString()};
+  if(prevUpdatedAt==null){
+    const res=await fetch(syncBase(p),{method:'POST',headers:Object.assign(syncHeaders(p),{'Prefer':'return=minimal'}),
+      body:JSON.stringify([Object.assign({sync_key:p.syncKey},body)])});
+    if(res.status===409)return false;
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    return true;
+  }
+  const res=await fetch(syncBase(p)+'?sync_key=eq.'+encodeURIComponent(p.syncKey)+'&updated_at=eq.'+encodeURIComponent(prevUpdatedAt),
+    {method:'PATCH',headers:Object.assign(syncHeaders(p),{'Prefer':'return=representation'}),body:JSON.stringify(body)});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return (await res.json()).length===1;
+}
 async function syncPushDoc(p,doc){
   const res=await fetch(syncBase(p),{
     method:'POST',
@@ -646,10 +691,16 @@ async function syncNow(){
   for(let i=0;i<list.length;i++){
     const ws=list[i], p=syncState.cfg[ws];
     try{
-      const remoteDoc=await syncPull(p);
-      const r=mergeRemoteWs(remoteDoc,ws);
-      if(r.changedLocal)anyLocal=true;
-      if(r.changedRemote||!remoteDoc)await syncPushDoc(p,wsDoc(ws));
+      // download, merge, upload; if the list changed online in between (a task added from the phone
+      // or by Claude), the upload is refused, so download again and merge that in too, never overwrite it
+      for(let attempt=0;attempt<4;attempt++){
+        const row=await syncPullRow(p);
+        const r=mergeRemoteWs(row.doc,ws);
+        if(r.changedLocal)anyLocal=true;
+        if(!(r.changedRemote||!row.doc))break;
+        if(await syncPushCas(p,wsDoc(ws),row.updatedAt))break;
+        if(attempt===3)throw new Error('the list kept changing; will retry');
+      }
     }catch(e){
       if(!firstErr)firstErr=e;
     }
@@ -966,6 +1017,15 @@ function openExternal(url){
 }
 /* ── agent conversation + repeat schedule (agent tasks only) ── */
 const convOpen=new Set(); // tasks whose conversation drop-down is open
+const liveText={};        // task id → what the mini PC's model is doing right now (streamed from the desktop app)
+let localStat=null;       // last mini PC status: {configured, online, model, loaded, address}
+function refreshLocalStatus(){
+  if(!window.desktop||!window.desktop.localStatus)return;
+  window.desktop.localStatus().then(function(s){
+    const changed=JSON.stringify(s)!==JSON.stringify(localStat); localStat=s;
+    if(changed&&state.activeTab==='agent')render();
+  }).catch(function(){});
+}
 function agentSay(t,who,text,extra){
   if(!text)return;
   if(!Array.isArray(t.history))t.history=[];
@@ -1309,17 +1369,39 @@ function buildPanel(t){
     const sb=el('div','agent-note agent-busy');
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
     const local=t.lane==='local';
-    sb.appendChild(el('b',null,local?(t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?'Claude is on it':outOfUsage?'Claude is out of usage':'Waiting for Claude'));
+    const offline=local&&localStat&&localStat.configured&&!localStat.online;
+    sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?'Claude is on it':outOfUsage?'Claude is out of usage':'Waiting for Claude'));
     sb.appendChild(document.createTextNode(local
-      ?(t.status==='working'?'Your own model is slower than Claude: a few minutes, or 10–20 for long forms.':'It starts as soon as the mini PC checks the list.')
+      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
+        :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
+        :'It starts within a few seconds while your computer has Tasks running.')
       :t.status==='working'
       ?'Usually under a minute. You can still add to your answer below.'
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
       :'It starts within a few seconds while your computer has Tasks running.'));
     panel.appendChild(sb);
+    // the mini PC working: what it's searching, reading and writing, live
+    if(local&&t.status==='working'){
+      const lv=el('pre','agent-live',liveText[t.id]||'Starting…');
+      lv.setAttribute('data-id',t.id); lv.setAttribute('aria-live','polite');
+      panel.appendChild(lv);
+      setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
+    }
+  }
+  // no rule matched: he picks who does it
+  if(taskWs(t)==='agent'&&!t.done&&!t.lane&&t.routeAsk&&agentConfigured()){
+    const row=el('div','lane-pick');
+    [['claude','Send to Claude'],['local','Send to mini PC']].forEach(function(o){
+      const b=el('button','ghost mono lane-switch',o[1]);
+      b.addEventListener('click',function(e){ e.stopPropagation();
+        t.lane=o[0]; delete t.routeAsk; delete t.claimedBy; t.status='queued'; t.note=null; t.waitUntil=null;
+        agentSay(t,'sys','You sent this to '+(o[0]==='local'?'your mini PC':'Claude')); buzz('tap'); touch(); });
+      row.appendChild(b);
+    });
+    panel.appendChild(row);
   }
   // wrong model? hand the task (and its whole conversation) to the other one
-  if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
+  else if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
     const toLocal=t.lane!=='local';
     const sw=el('button','ghost mono lane-switch',toLocal?'Switch to mini PC':'Switch to Claude');
     sw.title=toLocal?'Your own model on the mini PC takes over, with this whole conversation':'Claude takes over, with this whole conversation';
@@ -2102,8 +2184,54 @@ $('lockedSaveBtn').addEventListener('click',async function(){
   catch(e){ $('lockedStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('lockedStatus').textContent=''; },2500);
 });
+// routing rules: their own row next to the agent list, {v, rules:[{words, lane}], default}; the desktop
+// app applies them (main.js routeTask), and the same defaults live there
+const ROUTING_START={v:1,default:'ask',rules:[
+  {words:'email, send, outlook, gmail',lane:'claude'},{words:'buy, find, look up, search',lane:'claude'},
+  {words:'fill, form, apply',lane:'local'},{words:'write, draft, essay',lane:'local'}]};
+function routingProfile(){
+  const a=syncState.cfg&&syncState.cfg.agent;
+  return validProfile(a)?{url:a.url,key:a.key,syncKey:a.syncKey+':routing'}:null;
+}
+function routingRow(rule){
+  const r=el('div','settings-row routing-rule');
+  const w=el('input','settings-inp'); w.value=rule.words||''; w.placeholder='words, like: apply, form'; w.style.flex='1';
+  const sel=document.createElement('select'); sel.className='settings-inp'; sel.style.width='auto';
+  [['claude','→ Claude'],['local','→ Mini PC']].forEach(function(o){ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); });
+  sel.value=rule.lane==='local'?'local':'claude';
+  const up=el('button','ghost mono','↑'); up.title='Move up (checked earlier)';
+  up.addEventListener('click',function(){ const p=r.previousElementSibling; if(p)r.parentNode.insertBefore(r,p); });
+  const del=el('button','ghost mono danger','✕'); del.title='Remove this rule';
+  del.addEventListener('click',function(){ r.remove(); });
+  r.appendChild(w); r.appendChild(sel); r.appendChild(up); r.appendChild(del);
+  return r;
+}
+async function routingLoad(){
+  const p=routingProfile(); $('routingSection').hidden=!p; if(!p)return;
+  $('routingStatus').textContent='loading…';
+  let d=null; try{ d=await syncPull(p); }catch(e){ $('routingStatus').textContent='could not load ('+e.message+')'; return; }
+  if(!d||!Array.isArray(d.rules))d=ROUTING_START;
+  $('routingRules').innerHTML=''; d.rules.forEach(function(r){ $('routingRules').appendChild(routingRow(r)); });
+  $('routingDefault').value=d.default==='claude'||d.default==='local'?d.default:'ask';
+  $('routingStatus').textContent='';
+}
+$('routingAddBtn').addEventListener('click',function(){ const r=routingRow({words:'',lane:'local'}); $('routingRules').appendChild(r); r.querySelector('input').focus(); });
+$('routingSaveBtn').addEventListener('click',async function(){
+  const p=routingProfile(); if(!p)return;
+  const rules=[...$('routingRules').querySelectorAll('.routing-rule')].map(function(r){
+    return {words:r.querySelector('input').value.split(',').map(function(x){ return x.trim(); }).filter(Boolean).join(', '),lane:r.querySelector('select').value};
+  }).filter(function(r){ return r.words; });
+  $('routingStatus').textContent='saving…';
+  try{
+    await syncPushDoc(p,{v:1,default:$('routingDefault').value,rules:rules});
+    if(window.desktop&&window.desktop.routingChanged)window.desktop.routingChanged();
+    $('routingStatus').textContent='saved';
+  }catch(e){ $('routingStatus').textContent='save failed ('+e.message+')'; }
+  setTimeout(function(){ $('routingStatus').textContent=''; },2500);
+});
 async function prefsLoad(){
   lockedLoad();
+  routingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
   try{ const d=await syncPull(p); $('prefsText').value=(d&&d.text)||''; $('prefsStatus').textContent=''; }
@@ -2164,13 +2292,40 @@ $('syncOffBtn').addEventListener('click',function(){
 
 /* ── agent runner results (desktop only: main.js runs Claude, we apply + sync) ── */
 if(window.desktop&&window.desktop.onAgentResults){
-  window.desktop.onAgentWorking(function(ids){
+  window.desktop.onAgentWorking(function(p){
+    // a plain list = Claude's run; {ids, lane:'local'} = the mini PC's
+    const ids=Array.isArray(p)?p:(p&&p.ids)||[], lane=Array.isArray(p)?'claude':(p&&p.lane)||'claude';
+    const reasons=(p&&p.reasons)||{};
     let changed=false;
     ids.forEach(function(id){
       const t=state.tasks.find(function(x){ return x.id===id; });
-      if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){ t.status='working'; if(!t.lane)t.lane='claude'; changed=true; }
+      if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){
+        t.status='working';
+        if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'mini PC':'Claude')+' ('+reasons[id]+')'); }
+        changed=true;
+      }
     });
     if(changed)touch();
+  });
+  // no routing rule matched and his default is "ask me": the task waits for him to pick
+  if(window.desktop.onRouteAsk)window.desktop.onRouteAsk(function(ids){
+    let changed=false;
+    ids.forEach(function(id){
+      const t=state.tasks.find(function(x){ return x.id===id; });
+      if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'&&!t.lane){
+        t.status='needs-you'; t.routeAsk=true; t.note='Who should do this one? No routing rule matched.';
+        agentSay(t,'sys','No routing rule matched: waiting for you to pick Claude or your mini PC');
+        changed=true;
+      }
+    });
+    if(changed)touch();
+  });
+  // what the mini PC's model is doing right now: shown live in that task's box, without re-rendering
+  if(window.desktop.onAgentLive)window.desktop.onAgentLive(function(p){
+    if(!p||!p.id)return;
+    liveText[p.id]=String(p.text||'');
+    const box=document.querySelector('.agent-live[data-id="'+p.id+'"]');
+    if(box){ const stick=box.scrollTop+box.clientHeight>=box.scrollHeight-8; box.textContent=liveText[p.id]; if(stick)box.scrollTop=box.scrollHeight; }
   });
   // Claude is out of usage: these wait (no failure) until the reset, then run by themselves
   if(window.desktop.onAgentWaiting)window.desktop.onAgentWaiting(function(info){
@@ -2188,10 +2343,17 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===u.id; });
       // only answer tasks still waiting on this run (not ones James moved, finished or deleted meanwhile)
       if(!t||taskWs(t)!=='agent'||t.done||t.status!=='working')return;
-      if(t.lane==='local')return; // switched to the mini PC meanwhile: Claude's late answer doesn't count
-      t.status=u.status; t.done=false; t.note=u.note||null; // "done" = finished; James checks it off himself t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null;
+      // an answer only counts from the lane that holds the task (he may have switched it meanwhile)
+      if((t.lane==='local')!==(u.lane==='local'))return;
+      delete liveText[t.id];
+      // "done" = finished: the task stays in the Agent tab until James checks it off himself
+      t.status=u.status; t.done=false; t.note=u.note||null;
+      t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null;
       if('options' in u)t.options=u.options;
-      agentSay(t,'claude',u.note,Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:null);
+      (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Mini PC asked Claude: '+q); });
+      const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
+      if(u.lane==='local')extra.lane='local';
+      agentSay(t,'claude',u.note,Object.keys(extra).length?extra:null);
       if(u.pref)prefLines.push(u.pref);
     });
     touch();
@@ -2225,12 +2387,15 @@ function runDueRepeats(){
   if(changed)touch();
 }
 if(window.desktop&&window.desktop.onAgentResults)setInterval(runDueRepeats,30*1000);
+// is the mini PC reachable? (shown on its tasks; checked now and then while the app is open)
+if(window.desktop&&window.desktop.localStatus){ setTimeout(refreshLocalStatus,3000); setInterval(refreshLocalStatus,60*1000); }
 // watchdog: a run is killed after 15 min, so "working" for 17+ min means it was cut off — queue it again
 if(window.desktop&&window.desktop.onAgentResults){
   setInterval(function(){
     let changed=false; const cutoff=Date.now()-17*60*1000;
     state.tasks.forEach(function(t){
-      if(taskWs(t)==='agent'&&!t.done&&t.status==='working'&&t.lane!=='local'&&(t.updatedAt||0)<cutoff){ t.status='queued'; changed=true; }
+      const cut=t.lane==='local'?Date.now()-45*60*1000:cutoff; // the mini PC is slow: give it longer
+      if(taskWs(t)==='agent'&&!t.done&&t.status==='working'&&(t.lane!=='local'||window.desktop.localStatus)&&(t.updatedAt||0)<cut){ t.status='queued'; changed=true; }
     });
     if(changed)touch();
   },60*1000);
@@ -2539,14 +2704,15 @@ store.load().then(async function(data){
       if(t.plan){ out.plan=t.plan; out.planSet=t.planSet||null; } // morning swipe decision
       if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; }
       if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; }
-      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null;
+      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true;
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
         if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
-        if(window.desktop&&out.status==='working'&&out.lane!=='local')out.status='queued'; }
+        // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
+        if(window.desktop&&out.status==='working'&&(out.lane!=='local'||window.desktop.localStatus))out.status='queued'; }
       return out;
     });
     state.tombstones=Array.isArray(data.tombstones)?data.tombstones:[];

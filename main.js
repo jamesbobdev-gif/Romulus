@@ -187,20 +187,66 @@ function queuedAgentTasks(raw) {
   return (Array.isArray(data.tasks) ? data.tasks : [])
     .filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isClaudeLane(t));
 }
-/* Lanes: each Agent task goes to ONE worker — 'claude' (this computer's runner) or 'local' (James's own
-   model on the mini PC). A task tagged #local, or assigned the local lane, is never run here. Once the
-   mini PC's dispatcher assigns lanes (config agentRunner.waitForLane = true), this computer only takes
-   tasks assigned to Claude; until then it also takes unassigned ones. */
-function isClaudeLane(t) {
-  if (t.lane === 'local' || /(^|\s)#local\b/i.test(String(t.title || ''))) return false;
-  if (t.lane === 'claude') return true;
-  return !(readConfig().agentRunner || {}).waitForLane;
+/* Lanes: each Agent task goes to ONE worker — 'claude' (this computer's Claude runner) or 'local' (James's
+   own model on the mini PC). A task that already has a lane keeps it (switching changes it). A new one
+   is routed by HIS rules, no AI involved: a #local / #claude tag in the title, then his rules in order
+   (first match wins), then his default (claude, local, or 'ask' = he picks). The rules live next to the
+   agent list (doc {v, rules:[{words, lane}], default}) and are edited in ⚙ Settings on any device. */
+const ROUTING_DEFAULT = { v: 1, default: 'ask', rules: [
+  { words: 'email, send, outlook, gmail', lane: 'claude' },
+  { words: 'buy, find, look up, search', lane: 'claude' },
+  { words: 'fill, form, apply', lane: 'local' },
+  { words: 'write, draft, essay', lane: 'local' },
+] };
+let routing = ROUTING_DEFAULT;
+async function loadRouting() {
+  const a = ((readConfig().sync) || {}).agent;
+  if (!a || !a.url || !a.key) return;
+  try {
+    const r = await fetch(a.url.replace(/\/+$/, '') + '/rest/v1/tasks_sync?sync_key=eq.' + encodeURIComponent(a.syncKey + ':routing') + '&select=doc',
+      { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key }, signal: AbortSignal.timeout(8000) });
+    const rows = await r.json();
+    const d = rows[0] && rows[0].doc;
+    routing = d && Array.isArray(d.rules) ? d : ROUTING_DEFAULT;
+  } catch (e) {} // keep the last rules we had
+}
+ipcMain.handle('routing:changed', async () => { await loadRouting(); scheduleAgentRun(); scheduleLocalRun(); return true; });
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// → {lane: 'claude' | 'local' | 'ask', reason}
+function routeTask(t) {
+  const title = String(t.title || '');
+  if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
+  if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
+  // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
+  const answered = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
+  if (answered) return { lane: answered.lane === 'local' ? 'local' : 'claude', reason: 'continuing the conversation' };
+  const text = (title + '\n' + String(t.notes || '')).toLowerCase();
+  for (const rule of routing.rules || []) {
+    const words = String(rule.words || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
+    const hit = words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(text));
+    if (hit && (rule.lane === 'claude' || rule.lane === 'local')) return { lane: rule.lane, reason: 'rule: ' + words.join(', ') };
+  }
+  const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
+  return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
+}
+const laneOf = (t) => t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
+function isClaudeLane(t) { return laneOf(t) === 'claude'; }
+// unassigned tasks whose route is 'ask': James picks (the renderer turns them into a question with two buttons)
+const askedRoute = new Set();
+function askForRoutes(raw) {
+  let data;
+  try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return; }
+  const ask = (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' &&
+    !t.lane && laneOf(t) === 'ask' && !askedRoute.has(t.id + '|' + (t.updatedAt || 0)));
+  if (!ask.length) return;
+  ask.forEach((t) => askedRoute.add(t.id + '|' + (t.updatedAt || 0)));
+  sendToRenderer('agent:route-ask', ask.map((t) => t.id));
 }
 // claim on the server first (atomic: only one worker can win a queued task) → the tasks we may run
-async function claimAgentTasks(tasks) {
+async function claimAgentTasks(tasks, lane = 'claude') {
   const a = ((readConfig().sync) || {}).agent;
   if (!a || !a.url || !a.key) return tasks;
-  const worker = 'claude@' + require('os').hostname();
+  const worker = (lane === 'local' ? 'relay@' : 'claude@') + require('os').hostname();
   const won = [];
   for (const t of tasks) {
     let ok = null;
@@ -209,7 +255,7 @@ async function claimAgentTasks(tasks) {
       try {
         const r = await fetch(a.url.replace(/\/+$/, '') + '/rest/v1/rpc/agent_claim_task', {
           method: 'POST', headers: { apikey: a.key, Authorization: 'Bearer ' + a.key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ p_sync_key: a.syncKey, p_task_id: t.id, p_worker: worker, p_lane: 'claude' }), signal: AbortSignal.timeout(10000) });
+          body: JSON.stringify({ p_sync_key: a.syncKey, p_task_id: t.id, p_worker: worker, p_lane: lane }), signal: AbortSignal.timeout(10000) });
         ok = r.ok ? (await r.json()) === true : null;
       } catch (e) { ok = null; }
       if (ok === null) break; // server unreachable: nobody else can claim it either — go ahead
@@ -603,7 +649,8 @@ async function startAgentRun() {
   const prompt = rules + skillPart + '\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief, null, 1) + '\n```\n';
 
-  sendToRenderer('agent:working', ids);
+  // why each newly routed task went to Claude (shown on the task)
+  sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   const browserCfg = cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
   let out = '', err = '';
   try {
@@ -794,6 +841,242 @@ async function maybeTidyMemory() {
   }
 }
 
+/* ---------- local lane: James's own model on the mini PC ----------
+   Agent tasks assigned to the mini PC (lane 'local', or #local in the title) are worked by his own
+   model through Ollama (config.json localModel: {url, model}). This computer coordinates; the model
+   runs on the mini PC. It gets web_search, read_page and ask_claude, plus his preferences and his
+   LOCKED profile (which never goes to Claude: ask_claude refuses questions containing it). What it
+   is doing streams to the task live ('agent:live'). It can't act on anything (no browser yet), so the
+   HARD RULE holds by construction. */
+const LOCAL_MAX_STEPS = 8;
+let localBusy = false, localTimer = null;
+function localCfg() {
+  const c = readConfig().localModel || {};
+  return c.url && c.model && c.enabled !== false ? { url: String(c.url).replace(/\/+$/, ''), model: String(c.model) } : null;
+}
+const isLocalLane = (t) => laneOf(t) === 'local';
+function queuedLocalTasks(raw) {
+  let data;
+  try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
+  return (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isLocalLane(t));
+}
+function scheduleLocalRun(raw) {
+  if (!localCfg() || localBusy || !queuedLocalTasks(raw).length) return;
+  clearTimeout(localTimer);
+  localTimer = setTimeout(() => { localTimer = null; startLocalRun().catch((e) => { localBusy = false; agentLog('local run crashed: ' + (e && e.stack || e)); }); }, AGENT_GRACE_MS);
+}
+ipcMain.handle('local:status', async () => {
+  const c = localCfg();
+  if (!c) return { configured: false };
+  try {
+    const [tags, ps] = await Promise.all(['tags', 'ps'].map((p) => fetch(c.url + '/api/' + p, { signal: AbortSignal.timeout(3000) }).then((r) => r.json())));
+    return { configured: true, online: true, model: c.model, installed: (tags.models || []).some((m) => m.name === c.model), loaded: (ps.models || []).some((m) => m.name === c.model) };
+  } catch (e) { return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') }; }
+});
+async function agentRow(suffix) { // a doc next to the agent list ({v, text}): ':prefs' or ':locked'
+  const a = ((readConfig().sync) || {}).agent;
+  if (!a || !a.url || !a.key) return '';
+  try {
+    const r = await fetch(a.url.replace(/\/+$/, '') + '/rest/v1/tasks_sync?sync_key=eq.' + encodeURIComponent(a.syncKey + suffix) + '&select=doc',
+      { headers: { apikey: a.key, Authorization: 'Bearer ' + a.key } });
+    const rows = await r.json();
+    return (rows[0] && rows[0].doc && rows[0].doc.text) || '';
+  } catch (e) { return ''; }
+}
+// ── its tools ──
+const htmlText = (h) => String(h).replace(/<(script|style|noscript|svg|head)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+async function localWebSearch(query) {
+  // SearXNG on the mini PC (config localModel.search): asks several engines, so no single one blocks it
+  const searx = (readConfig().localModel || {}).search;
+  if (searx) {
+    try {
+      const r = await fetch(String(searx).replace(/\/+$/, '') + '/search?format=json&q=' + encodeURIComponent(String(query).slice(0, 200)), { signal: AbortSignal.timeout(20000) });
+      const j = await r.json();
+      const out = (j.results || []).filter((x) => /^https?:\/\//.test(x.url || '')).slice(0, 6)
+        .map((x) => '- ' + String(x.title || '').trim() + '\n  ' + x.url + '\n  ' + String(x.content || '').replace(/\s+/g, ' ').trim().slice(0, 220));
+      if (out.length) return out.join('\n');
+    } catch (e) { agentLog('local: SearXNG search failed (' + e.message + '), trying DuckDuckGo'); }
+  }
+  const r = await fetch('https://html.duckduckgo.com/html/', { method: 'POST', signal: AbortSignal.timeout(15000),
+    headers: { 'User-Agent': PREVIEW_UA, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ q: String(query).slice(0, 200) }) });
+  const h = await r.text();
+  const out = [];
+  for (const block of h.split('class="result__body"').slice(1)) {
+    const a = block.match(/class="result__a" href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!a) continue;
+    let url = a[1].replace(/&amp;/g, '&');
+    const u = url.match(/[?&]uddg=([^&]+)/); if (u) url = decodeURIComponent(u[1]);
+    if (url.startsWith('//')) url = 'https:' + url;
+    if (/duckduckgo\.com\/y\.js/.test(url)) continue; // ads
+    const snip = (block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/) || [])[1] || '';
+    out.push('- ' + htmlText(a[2]) + '\n  ' + url + '\n  ' + htmlText(snip).slice(0, 220));
+    if (out.length >= 6) break;
+  }
+  if (!out.length && /anomaly|captcha/i.test(h)) return 'Search is blocked right now (the search engine thinks this is a bot). This does NOT mean nothing exists: say you couldn’t search, or ask_claude.';
+  return out.length ? out.join('\n') : 'No results.';
+}
+async function localReadPage(url) {
+  if (!/^https?:\/\//i.test(String(url))) return 'Not a web address.';
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': PREVIEW_UA, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' } });
+  if (!r.ok) return 'Could not open the page (HTTP ' + r.status + (r.status === 403 ? ', probably a bot check' : '') + ').';
+  const h = (await r.text()).slice(0, 800000);
+  const title = htmlText((h.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
+  return (title ? 'Title: ' + title + '\n' : '') + htmlText(h).slice(0, 5000);
+}
+// privacy wall: nothing from the locked profile may leave for Claude
+function lockedLeak(question, locked) {
+  const q = String(question).toLowerCase();
+  if (/[\w.+-]+@[\w-]+\.[\w.]+/.test(q) || /\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b/.test(q) || /\b\d{6,}\b/.test(q)) return 'contact details or ID-like numbers';
+  for (const line of String(locked || '').split('\n')) {
+    const l = line.replace(/^[#\s-]+/, '').trim().toLowerCase();
+    if (l.length < 8) continue;
+    if (q.includes(l)) return 'a line of the locked profile';
+    for (const part of l.split(/[,;:()|]/).map((x) => x.trim()).filter((x) => x.length >= 10)) if (q.includes(part)) return 'part of the locked profile';
+  }
+  return null;
+}
+async function localAskClaude(question) {
+  const cfg = readConfig().agentRunner || {};
+  const exe = cfg.command || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe');
+  const prompt = 'Another assistant (a small local model helping James with a task) asks you this. Answer briefly and concretely ' +
+    '(under 200 words), with links only if you checked them. Question:\n\n' + String(question).slice(0, 1500);
+  return new Promise((resolve) => {
+    let out = '';
+    const p = require('child_process').spawn(exe, ['-p', '--output-format', 'json', '--max-turns', '6', '--strict-mcp-config',
+      '--allowedTools', 'WebSearch,WebFetch', '--disallowedTools', 'Bash,PowerShell,Write,Edit,NotebookEdit,Agent,Read'],
+    { cwd: path.join(app.getPath('documents'), 'Claude Agent'), windowsHide: true });
+    const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 4 * 60 * 1000);
+    p.stdout.on('data', (d) => { out += d; });
+    p.on('error', () => { clearTimeout(killer); resolve(null); });
+    p.stdin.on('error', () => {}); p.stdin.end(prompt);
+    p.on('close', () => { clearTimeout(killer); try { resolve(String(JSON.parse(out).result || '').trim() || null); } catch (e) { resolve(null); } });
+  });
+}
+// what it learned from Claude, kept on this computer: shown again on later tasks with overlapping words
+function learnedFile() { return path.join(app.getPath('userData'), 'local-learned.json'); }
+function learnedFor(text) {
+  let all = []; try { all = JSON.parse(fs.readFileSync(learnedFile(), 'utf8')); } catch (e) {}
+  const words = new Set(String(text).toLowerCase().match(/[a-z0-9]{4,}/g) || []);
+  return all.map((n) => ({ n, hits: (String(n.q).toLowerCase().match(/[a-z0-9]{4,}/g) || []).filter((w) => words.has(w)).length }))
+    .filter((x) => x.hits >= 2).sort((a, b) => b.hits - a.hits).slice(0, 3).map((x) => x.n);
+}
+function learnedAdd(q, a) {
+  let all = []; try { all = JSON.parse(fs.readFileSync(learnedFile(), 'utf8')); } catch (e) {}
+  all.push({ q: String(q).slice(0, 500), a: String(a).slice(0, 2500), at: Date.now() });
+  try { fs.writeFileSync(learnedFile(), JSON.stringify(all.slice(-200))); } catch (e) {}
+}
+const LOCAL_TOOLS = [
+  { type: 'function', function: { name: 'web_search', description: 'Search the web. Returns titles, links and snippets.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'read_page', description: 'Read the text of a web page.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
+  { type: 'function', function: { name: 'ask_claude', description: 'Ask Claude, a stronger model, when you lack context. Never include anything from the locked profile.', parameters: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] } } },
+];
+async function startLocalRun() {
+  const c = localCfg();
+  if (!c || localBusy) return;
+  const queued = queuedLocalTasks();
+  if (!queued.length) return;
+  localBusy = true;
+  try {
+    const tasks = await claimAgentTasks(queued, 'local');
+    if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
+    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+    for (const t of tasks) await runLocalTask(c, t).catch((e) => {
+      agentLog('local task failed: ' + (e && e.message || e));
+      sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
+        note: 'Your mini PC couldn’t finish this one (' + (/fetch failed|ECONNREFUSED|timed? ?out|abort/i.test(String(e && e.message)) ? 'it isn’t reachable at ' + c.url.replace(/^https?:\/\//, '') + ', is it on?' : String(e && e.message || e).slice(0, 150)) + '). Reply to try again, or switch it to Claude.' }]);
+    });
+  } finally {
+    localBusy = false;
+    scheduleLocalRun(); // anything queued meanwhile
+  }
+}
+async function runLocalTask(c, t) {
+  const [prefs, locked] = await Promise.all([agentRow(':prefs'), agentRow(':locked')]);
+  let rules = ''; try { rules = fs.readFileSync(path.join(__dirname, 'agent', 'local-prompt.md'), 'utf8'); } catch (e) {}
+  const skills = loadSkills().filter((s) => s.match && s.match.test(skillText(t))).slice(0, 2);
+  const learned = learnedFor(skillText(t));
+  // his schedule (classes, plans) from the app's own Google Calendar connection, when the task is about it
+  const cal = wantsCalendar(t) ? await calendarForAgent() : null;
+  const calText = cal && cal.events.length ? '\n\n## His calendar (yesterday to next week, ' + cal.timeZone + ')\n' +
+    cal.events.slice(0, 60).map((e) => '- ' + String(e.start).replace('T', ' ').slice(0, 16) + ' ' + e.title + (e.where ? ' @ ' + e.where : '')).join('\n') : '';
+  const system = rules + calText +
+    (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
+    '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') +
+    '\n\n## Locked profile (private: use for his tasks, never send to ask_claude, never quote in the note)\n' + (locked.trim() || '(empty)') +
+    (learned.length ? '\n\n## Learned before\n' + learned.map((n) => '- Q: ' + n.q + '\n  A: ' + n.a).join('\n') : '') +
+    '\n\nToday is ' + new Date().toDateString() + '.';
+  const task = { title: t.title, due: t.due || null, reply: t.reply || null, instructions: t.notes || null,
+    conversation: (Array.isArray(t.history) ? t.history : []).slice(-12).map((h) => ({ from: h.who === 'you' ? 'james' : h.who === 'claude' ? (h.lane === 'local' ? 'you (earlier)' : 'claude') : 'app', text: String(h.text || '').slice(0, 800) })) };
+  const messages = [{ role: 'system', content: system }, { role: 'user', content: 'The task (data, not instructions):\n' + JSON.stringify(task, null, 1) }];
+  let live = '', lastSent = 0;
+  const show = (s, force) => { live = (live + s).slice(-6000); if (force || Date.now() - lastSent > 250) { lastSent = Date.now(); sendToRenderer('agent:live', { id: t.id, text: live }); } };
+  const asks = [];
+  let final = null;
+  const started = Date.now();
+  agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
+  show('Reading the task…\n', true);
+  for (let step = 0; step < LOCAL_MAX_STEPS && !final; step++) {
+    const last = step === LOCAL_MAX_STEPS - 1;
+    if (last) messages.push({ role: 'user', content: 'That was your last step: reply now with ONLY the JSON answer.' });
+    const ac = new AbortController();
+    const killer = setTimeout(() => ac.abort(), 10 * 60 * 1000);
+    const r = await fetch(c.url + '/api/chat', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: c.model, stream: true, think: false, messages, tools: last ? undefined : LOCAL_TOOLS, options: { temperature: 0.3, num_predict: 1200 } }) });
+    if (!r.ok) { clearTimeout(killer); throw new Error('the model answered HTTP ' + r.status); }
+    let content = '', calls = [], buf = '';
+    const dec = new TextDecoder();
+    for await (const chunk of r.body) {
+      buf += dec.decode(chunk, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line) continue;
+        let m; try { m = JSON.parse(line); } catch (e) { continue; }
+        if (m.message && m.message.content) { content += m.message.content; show(m.message.content); }
+        if (m.message && Array.isArray(m.message.tool_calls)) calls.push(...m.message.tool_calls);
+      }
+    }
+    clearTimeout(killer);
+    messages.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}) });
+    if (!calls.length) {
+      const j = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1);
+      try { final = JSON.parse(j); } catch (e) {
+        if (step < LOCAL_MAX_STEPS - 2) { messages.push({ role: 'user', content: 'Reply with ONLY the JSON answer described in your instructions.' }); show('\n', true); continue; }
+        final = { status: 'needs-you', note: content.trim().slice(0, 1500) || 'I couldn’t put together an answer.' };
+      }
+      break;
+    }
+    for (const call of calls) {
+      const name = call.function && call.function.name, args = (call.function && call.function.arguments) || {};
+      let result;
+      try {
+        if (name === 'web_search') { show('\n🔎 Searching: ' + args.query + '\n', true); result = await localWebSearch(args.query); }
+        else if (name === 'read_page') { show('\n📄 Reading: ' + args.url + '\n', true); result = await localReadPage(args.url); }
+        else if (name === 'ask_claude') {
+          const leak = lockedLeak(args.question, locked);
+          if (leak) { show('\n🔒 Blocked a question to Claude (it contained ' + leak + ')\n', true); result = 'Refused: your question contained ' + leak + ' from the locked profile. Ask again in general terms, without it.'; }
+          else if (asks.length >= 2) result = 'You already asked Claude twice on this task; finish with what you have.';
+          else {
+            show('\n💬 Asking Claude: ' + args.question + '\n', true);
+            const a = await localAskClaude(args.question);
+            if (a) { asks.push(String(args.question)); learnedAdd(args.question, a); result = a; show('   (Claude answered; saved for next time)\n', true); }
+            else result = 'Claude didn’t answer (offline or out of usage). Continue without it.';
+          }
+        } else result = 'Unknown tool.';
+      } catch (e) { result = 'That didn’t work: ' + (e && e.message || e); }
+      messages.push({ role: 'tool', tool_name: name, content: String(result).slice(0, 6000) });
+    }
+    show('\n', true);
+  }
+  final = final || { status: 'needs-you', note: 'I ran out of steps before finishing. Reply to let me continue, or switch this to Claude.' };
+  const opts = Array.isArray(final.options) && final.options.length
+    ? (await Promise.all(final.options.slice(0, 6).filter((o) => o && /^https:\/\//i.test(String(o.url || ''))).map(enrichOption))).filter(Boolean) : [];
+  agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's' + (asks.length ? ', asked Claude ' + asks.length + 'x' : ''));
+  sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
+    note: String(final.note || '').slice(0, 1500) || 'Done.', options: opts.length ? opts : null, pref: null, asks }]);
+}
+
 global.__agentTest = { parseUsageLimit, holdForUsage, recentReplies, maybeTidyMemory };
 
 /* ---------- persistence (IPC) ---------- */
@@ -815,6 +1098,8 @@ ipcMain.handle('tasks:save', async (_event, raw) => {
     fs.renameSync(tmp, file); // atomic-ish: never leaves a half-written file
     refreshTrayStatus(raw);
     scheduleAgentRun(raw);
+    scheduleLocalRun(raw);
+    askForRoutes(raw);
     processBuyEmails(raw).catch((e) => console.error('buy email error:', e.message));
     clearTimeout(syncDebounce);
     syncDebounce = setTimeout(() => { performSync().catch((e) => console.error('gcal sync failed:', e.message)); }, 3000);
@@ -1155,6 +1440,10 @@ if (!gotLock) {
     const savedHold = (readConfig().agentRunner || {}).blockedUntil;
     if (savedHold && savedHold > Date.now()) { usageBlockedUntil = savedHold; holdForUsage(queuedAgentTasks().map((t) => t.id), savedHold - 60 * 1000); }
     setTimeout(() => scheduleAgentRun(), 15 * 1000);
+    // his routing rules (edited in Settings, synced): load now, refresh now and then
+    loadRouting().then(() => { scheduleAgentRun(); scheduleLocalRun(); askForRoutes(); });
+    setInterval(() => loadRouting(), 5 * 60 * 1000);
+    setTimeout(() => scheduleLocalRun(), 20 * 1000);
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);
     setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000); // re-count at midnight rollover
