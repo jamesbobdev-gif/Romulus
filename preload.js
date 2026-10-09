@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('desktop', {
   rsiUndo: () => ipcRenderer.invoke('rsi:undo'),
   rsiStop: () => ipcRenderer.invoke('rsi:stop'),
   rsiNewChat: () => ipcRenderer.invoke('rsi:new-chat'),
+  rsiSetEnabled: (on) => ipcRenderer.invoke('rsi:set-enabled', on),
   rsiApply: (restart) => ipcRenderer.invoke('rsi:apply', restart),
   onRsiEvent: (cb) => ipcRenderer.on('rsi:event', (_event, m) => cb(m)),
   // Speak on desktop: Windows dictation; partials stream in while listening

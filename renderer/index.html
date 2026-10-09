@@ -332,6 +332,22 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .settings-inp:focus{border-color:#B9C2F2}
 textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:pre}
 .settings-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+/* Settings is its own page: while it's open, everything else under the header steps aside */
+body.settings-open main>*:not(.top):not(#settingsPanel){display:none!important}
+body.settings-open main{max-width:620px}
+body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
+.settings-head{display:flex;align-items:center;gap:10px;margin:0 0 16px}
+.settings-head h2{margin:0;font-family:var(--display);font-size:20px;font-weight:700;color:var(--ink)}
+.settings-back{border:1px solid var(--hairline);background:var(--surface);color:var(--ink);border-radius:8px;padding:5px 11px;font-family:var(--mono);font-size:11.5px;cursor:pointer}
+.settings-back:hover{border-color:var(--ink)}
+/* on/off switch */
+.switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;color:var(--ink);user-select:none}
+.switch input{position:absolute;opacity:0;width:1px;height:1px}
+.switch .track{flex:none;width:34px;height:20px;border-radius:10px;background:var(--hairline);position:relative;transition:background .15s}
+.switch .track::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.switch input:checked+.track{background:var(--accent)}
+.switch input:checked+.track::after{transform:translateX(14px)}
+.switch input:focus-visible+.track{outline:2px solid var(--accent);outline-offset:2px}
 .gcal-ok{font-family:var(--mono);font-size:11px;color:#2A7A3B;flex:1}
 
 /* ── daily swipe deck: right = today, left = tomorrow ── */
@@ -382,8 +398,12 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
   </header>
   <div class="mono counts" id="counts"></div>
 
-  <!-- Settings panel (hidden by default) -->
+  <!-- Settings page (hidden by default; replaces the lists while open) -->
   <section id="settingsPanel" hidden style="margin-top:16px">
+    <div class="settings-head">
+      <button id="settingsBack" class="settings-back" aria-label="Back to tasks">← Back</button>
+      <h2>Settings</h2>
+    </div>
     <div class="settings-panel">
       <span class="settings-label">Device sync</span>
       <p class="settings-hint">
@@ -455,6 +475,8 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
     <div class="settings-panel" id="rsiSection" hidden>
       <span class="settings-label">RSI — Romulus Self Improvement</span>
       <p class="settings-hint">Ask for a change to this app and Claude edits its code. Every change is saved as its own commit, so <b>Undo</b> takes it back (the tray menu has Undo too, in case a change breaks this window). Your tasks are never touched. Experimental.</p>
+      <label class="switch" style="margin-bottom:14px"><input type="checkbox" id="rsiOn"><span class="track" aria-hidden="true"></span><span>Let RSI change this app</span></label>
+      <div id="rsiBody" hidden>
       <div id="rsiLog" class="conv" hidden></div>
       <textarea id="rsiText" class="settings-inp" rows="3" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="e.g. make overdue tasks red instead of orange"></textarea>
       <div class="settings-row">
@@ -464,6 +486,7 @@ textarea.theme-css{resize:vertical;min-height:120px;line-height:1.5;white-space:
         <button id="rsiUndo" class="ghost mono danger" hidden>Undo last change</button>
         <button id="rsiNew" class="ghost mono" title="Start a fresh conversation (Claude forgets this one)">New chat</button>
         <span id="rsiStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
       </div>
     </div>
     <div class="settings-panel">
@@ -2583,6 +2606,7 @@ if(window.desktop&&window.desktop.rsiStatus)(function(){
     const s=await window.desktop.rsiStatus();
     if(!s.available){ $('rsiSection').hidden=true; return; }
     $('rsiSection').hidden=false; busy=s.busy;
+    $('rsiOn').checked=s.enabled; $('rsiBody').hidden=!s.enabled;
     $('rsiLog').textContent=''; s.chat.forEach(line);
     $('rsiUndo').hidden=!s.canUndo;
     show();
@@ -2606,6 +2630,7 @@ if(window.desktop&&window.desktop.rsiStatus)(function(){
     if(!r.ok)$('rsiStatus').textContent=r.error; else refresh();
   });
   $('rsiNew').addEventListener('click',async function(){ await window.desktop.rsiNewChat(); pending=null; refresh(); });
+  $('rsiOn').addEventListener('change',async function(){ await window.desktop.rsiSetEnabled(this.checked); refresh(); });
   refresh();
 })();
 $('newAttBtn').addEventListener('click',function(){ $('newAttFile').click(); });
@@ -2702,16 +2727,29 @@ function syncFillForm(){
   $('syncKeyW').value=w.syncKey||'';
   $('syncOffBtn').hidden=!syncEnabled();
 }
-$('settingsBtn').addEventListener('click',function(){
-  const p=$('settingsPanel'); p.hidden=!p.hidden;
-  $('settingsBtn').classList.toggle('active',!p.hidden);
-  if(!p.hidden){
+// Settings is its own page: ⚙ opens it in place of the lists; ⚙ again, ← Back or Esc returns
+function setSettingsOpen(open){
+  const p=$('settingsPanel'); if(p.hidden===!open)return;
+  p.hidden=!open;
+  document.body.classList.toggle('settings-open',open);
+  $('settingsBtn').classList.toggle('active',open);
+  if(open){
     syncFillForm();
     try{ $('themeCss').value=localStorage.getItem(THEME_KEY)||''; }catch(e){}
     if(gcalRefreshFn)gcalRefreshFn();
     prefsLoad();
   }
-});
+  window.scrollTo(0,0);
+}
+$('settingsBtn').addEventListener('click',function(){ setSettingsOpen($('settingsPanel').hidden); });
+$('settingsBack').addEventListener('click',function(){ setSettingsOpen(false); });
+// while it's open, the list's shortcuts (/, Ctrl+F, arrows, Space, Delete) stay off the hidden tasks
+document.addEventListener('keydown',function(e){
+  if($('settingsPanel').hidden)return;
+  const a=document.activeElement, inField=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
+  if(e.key==='Escape'&&!inField){ e.preventDefault(); e.stopImmediatePropagation(); setSettingsOpen(false); return; }
+  if(!inField||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'))e.stopImmediatePropagation();
+},true);
 /* Claude's preference notes: their own row next to the agent channel, so task
    sync (which rewrites the agent doc wholesale) can never clobber them */
 function prefsProfile(){
