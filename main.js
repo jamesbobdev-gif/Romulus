@@ -5,6 +5,7 @@ const http = require('http');
 const crypto = require('crypto');
 const pageReader = require('./agent/page-reader');
 const formMode = require('./agent/form-mode');
+const rsiModule = require('./agent/rsi');
 
 let mainWindow = null;
 let tray = null;
@@ -83,6 +84,9 @@ function createTray() {
       enabled: app.isPackaged && process.platform !== 'linux',
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked })
     },
+    { type: 'separator' },
+    // works even when an RSI change has broken the window
+    { label: 'RSI: Undo last change', click: () => { const r = rsi.undo(); if (r.ok) applyRsiChange(r.restart); else agentLog('RSI undo: ' + r.error); } },
     { type: 'separator' },
     { label: 'Quit Tasks', click: () => { isQuitting = true; app.quit(); } }
   ]));
@@ -404,6 +408,29 @@ async function enrichOption(o, lane) {
 function sendToRenderer(ch, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, payload);
 }
+
+/* RSI — Romulus Self Improvement: change the app itself from a chat (agent/rsi.js) */
+const rsi = rsiModule.create({
+  // the folder the app runs from when started with npm start; the installed app only with rsi.repo set
+  repoDir: () => app.isPackaged ? (readConfig().rsi || {}).repo || null : __dirname,
+  exe: () => (readConfig().agentRunner || {}).command || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe'),
+  log: agentLog,
+  onEvent: (m) => sendToRenderer('rsi:event', m),
+  getSession: () => (readConfig().rsi || {}).session || null,
+  setSession: (id) => { const c = readConfig(); c.rsi = Object.assign({}, c.rsi, { session: id || undefined }); writeConfig(c); },
+});
+// UI-only changes just reload the window; main-process changes need the whole app restarted
+function applyRsiChange(restart) {
+  if (restart) { isQuitting = true; app.relaunch(); app.exit(0); }
+  else if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.reload(); showWindow(); }
+}
+ipcMain.handle('rsi:status', () => rsi.status());
+ipcMain.handle('rsi:ask', (_e, text) => rsi.ask(String(text || '').slice(0, 4000)));
+ipcMain.handle('rsi:undo', () => rsi.undo());
+ipcMain.handle('rsi:stop', () => rsi.stop());
+ipcMain.handle('rsi:new-chat', () => rsi.newChat());
+ipcMain.handle('rsi:apply', (_e, restart) => { applyRsiChange(!!restart); return true; });
+
 function failAgentTasks(ids, why) {
   sendToRenderer('agent:results', ids.map((id) => ({ id, status: 'needs-you',
     note: 'Claude couldn’t finish this one (' + why + '). Reply to try again.', options: undefined, pref: null })));
