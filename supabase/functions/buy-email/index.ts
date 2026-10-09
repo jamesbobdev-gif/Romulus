@@ -17,7 +17,7 @@ function esc(s: unknown): string {
 }
 
 async function secrets(): Promise<Record<string, string>> {
-  const r = await fetch(`${BASE}/rest/v1/app_secrets?name=in.(buy_email_token,resend_api_key)&select=name,value`, {
+  const r = await fetch(`${BASE}/rest/v1/app_secrets?name=in.(buy_email_token,resend_api_key,buy_email_to)&select=name,value`, {
     headers: { apikey: SKEY, Authorization: `Bearer ${SKEY}` },
   });
   if (!r.ok) return {};
