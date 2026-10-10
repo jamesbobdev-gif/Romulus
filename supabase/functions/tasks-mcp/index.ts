@@ -522,6 +522,7 @@ async function callTool(name: string, a: any): Promise<string> {
           throw new UserError("this task isn't yours any more (James switched it, answered it elsewhere, or it was re-queued) — your result was not saved");
         t.status = status; t.done = false; t.note = note; // a finished task stays on his list until he checks it off
         t.reply = null; t.replyImages = null; t.repeatDue = false; t.waitUntil = null;
+        delete t.parked; // James parked the last answer; a fresh one needs a fresh look
         t.options = options.length ? options : null;
         addHistory(t, { who: "claude", lane: t.lane, text: note, ...(options.length ? { options: options.map((o: { label: string }) => o.label) } : {}) });
         t.updatedAt = Date.now();

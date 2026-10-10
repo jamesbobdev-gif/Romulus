@@ -83,6 +83,11 @@ For every field, give the value to enter:
   boxes; agreeing to terms is his call, so leave those "".
 - A field that already has the right value: give that value again.
 - Dates, phones and times: write them the way the field's label or example shows.
+- His profile's "Form answers" are his standard answers: use them for matching questions, even if
+  the wording differs ("Are you legally allowed to work…" = work authorization). A question there
+  with no answer means he hasn't decided: give "".
+- Quiz or test questions with a right answer (facts, math, definitions): choose the correct choice.
+  That is knowledge, not making things up. Questions about him still come only from his details.
 In "missing", list the fields the form needs that you left empty, in a few words each.
 Reply with only the JSON.`;
 
@@ -112,9 +117,23 @@ async function fill({ browser, state, ask, task, prefs, locked, details }) {
   try { plan = JSON.parse(raw); } catch (e) { return { text: 'Form mode couldn\'t read its own answer. Fill the fields with browser_fill_form instead.', filled: 0 }; }
   const values = (plan && plan.values) || {};
 
+  // the model takes a minute or more: look again, and find each field on the page as it is now (by its
+  // kind and label), so the refs aren't stale
+  const ids = {}, key = (f) => f.kind + '|' + f.label;
+  const count = (list) => list.map((f) => { const k = key(f); ids[k] = (ids[k] || 0) + 1; return k + '|' + ids[k]; });
+  const before = count(fields);
+  for (const k in ids) delete ids[k];
+  const seen = await pageReader.step(browser, 'browser_snapshot', {}, state);
+  // another tab came to the front, or the page moved on: type nothing into a page it didn't plan for
+  if (page && state.url && state.url !== page) return { text: 'The browser moved to a different page while form mode was thinking (now ' + state.url + '). Nothing was entered. Open the form again, then call fill_form.\n\nThe page now:\n' + seen.text, filled: 0 };
+  const nowFields = formFields(state), nowKeys = count(nowFields);
+  const current = (i) => nowFields[nowKeys.indexOf(before[i])];
+
   // what to do, field by field; only changes go to the page
   const todo = [], said = [], left = [];
-  for (const f of fields) {
+  for (const [i, f0] of fields.entries()) {
+    const f = Object.assign({}, current(i) || f0, { id: f0.id, secret: f0.secret });
+    if (!current(i)) { left.push('"' + clip(f0.label, 60) + '" (no longer on the page)'); continue; }
     const v = f.secret ? '' : String(values[f.id] == null ? '' : values[f.id]).trim();
     if (!v || v === f.now) {
       if (!v && !f.now && (f.req || f.secret)) left.push('"' + clip(f.label, 60) + '"' + (f.secret ? ' (he fills this himself)' : ''));
@@ -127,21 +146,29 @@ async function fill({ browser, state, ask, task, prefs, locked, details }) {
     said.push('"' + clip(f.label, 50) + '" = ' + (f.kind === 'check' ? v : '"' + clip(v, 60) + '"'));
   }
   const missing = [...new Set((Array.isArray(plan.missing) ? plan.missing : []).map((m) => clip(m, 80)).filter(Boolean).concat(left))].slice(0, 12);
-  if (!todo.length) return { text: 'Form mode had nothing new to enter on this page.' + (missing.length ? '\nMissing (he needs to give these): ' + missing.join(', ') : '') + '\n\nThe page now:\n' + (await pageReader.step(browser, 'browser_snapshot', {}, state)).text, filled: 0, missing };
-  let r = await pageReader.step(browser, 'browser_fill_form', { fields: todo }, state);
+  if (!todo.length) return { text: 'Form mode had nothing new to enter on this page.' + (missing.length ? '\nMissing (he needs to give these): ' + missing.join(', ') : '') + '\n\nThe page now:\n' + seen.text.replace(/\n\n\(You already looked[^)]*\)$/, ''), filled: 0, missing };
+  const r = await pageReader.step(browser, 'browser_fill_form', { fields: todo }, state);
+  const [how, view] = splitView(r.text);
   // a time or date box (<input type=time/date>) refuses "7pm" or "Oct 9": write it the way they take it, once
-  const again = todo.filter((f) => new RegExp('✗ "' + escapeRe(clip(f.name, 50)) + '" \\[' + escapeRe(f.target) + '\\]: Malformed value').test(r.text))
+  const again = todo.filter((f) => new RegExp('✗ "' + escapeRe(f.name.slice(0, 49)) + '[^"]*" \\[' + escapeRe(f.target) + '\\]: Malformed value').test(how))
     .map((f) => Object.assign({}, f, { value: machineValue(f.value) })).filter((f) => f.value != null);
-  if (again.length) r = await pageReader.step(browser, 'browser_fill_form', { fields: again }, state);
+  let retried = '', pageNow = view;
+  if (again.length) {
+    const r2 = await pageReader.step(browser, 'browser_fill_form', { fields: again }, state);
+    retried = '\nRewrote for the page and tried again: ' + again.map((f) => '"' + clip(f.name, 50) + '" = "' + f.value + '"').join(', ') + (r2.failed ? ' (still refused)' : ' (✓)');
+    pageNow = splitView(r2.text)[1] || pageNow;
+  }
   return {
-    text: 'Form mode entered ' + todo.length + ' field(s): ' + said.join(', ') + '.' +
+    text: 'Form mode tried ' + todo.length + ' field(s): ' + said.join(', ') + '.\n' + how + retried +
       (missing.length ? '\nMissing (he needs to give these): ' + missing.join(', ') : '') +
-      '\nCheck the page below: fix only what is wrong or still empty and that you have details for.\n\n' + r.text,
+      '\nCheck the page below: fix only what is wrong or still empty and that you have details for.' + (page ? '\n\nThe page now:\n' + page : ''),
     filled: todo.length, missing,
   };
 }
 
-const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// a step's text → [what happened, the page now]
+const splitView = (t) => { const i = String(t).indexOf('\n\nThe page now:\n'); return i < 0 ? [String(t), ''] : [t.slice(0, i), t.slice(i + 16)]; };
+const escapeRe =(s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // "7pm" / "7:30 PM" → "19:00" / "19:30"; "October 9, 2026" / "10/9/2026" → "2026-10-09"; null if neither
 function machineValue(v) {
   const s = String(v).trim();

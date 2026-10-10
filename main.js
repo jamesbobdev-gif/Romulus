@@ -5,6 +5,8 @@ const http = require('http');
 const crypto = require('crypto');
 const pageReader = require('./agent/page-reader');
 const formMode = require('./agent/form-mode');
+const localAnswer = require('./agent/local-answer');
+const siteNotes = require('./agent/site-notes');
 const rsiModule = require('./agent/rsi');
 
 let mainWindow = null;
@@ -138,7 +140,10 @@ function agentLog(msg) {
 // any agent task about internships) — never for anything else. Read-only.
 // Tasks about his schedule get his Google Calendar events (read-only, through the app's own calendar
 // connection) handed over with the task, so Claude doesn't need to log in to Google anywhere.
-const CALENDAR_WORDS = new RegExp('\\b(calendar|schedule|class(es)?|lectures?|meetings?|appointments?|events?|today|tonight|tomorrow|yesterday|this week|next week)\\b', 'i');
+// also questions about his free time ("a gym slot Thursday afternoon", "when am I free"): without his
+// calendar the mini PC model went looking for the gym's class times on the web
+const CALENDAR_WORDS = new RegExp('\\b(calendar|schedule|class(es)?|lectures?|meetings?|appointments?|events?|today|tonight|tomorrow|yesterday|this week|next week|weekend|' +
+  '(mon|tues|wednes|thurs|fri|satur|sun)days?|mornings?|afternoons?|evenings?|free|busy|slots?|availab(le|ility)|fit( [\\w-]+){0,4} in|when (can|could|should) i)\\b', 'i');
 function wantsCalendar(t) {
   const lastYou = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-1)[0];
   return CALENDAR_WORDS.test([t.title, t.reply, lastYou && lastYou.text].filter(Boolean).join(' '));
@@ -172,6 +177,11 @@ function loadSkills() {
     return { name: meta.name || f.replace(/\.md$/, ''), description: meta.description || '', match, body: m ? m[2] : raw, raw };
   });
 }
+/* Site notes (agent/site-notes.js): hand-written ones in agent/sites/, tips the mini PC learned in
+   <userData>/site-notes/ (the app's own folder can't be written to once it's packaged). */
+const siteNoteDirs = () => [path.join(__dirname, 'agent', 'sites'), path.join(app.getPath('userData'), 'site-notes')];
+const taskLinks = (t) => (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
+function siteNotesFor(urls, max = 3) { try { return siteNotes.forUrls(siteNotes.load(siteNoteDirs()), urls).slice(0, max); } catch (e) { return []; } }
 // what a skill's pattern is tested against: only his words (title, replies, instructions), since
 // Claude's own notes mention all sorts of things
 function skillText(t) {
@@ -681,7 +691,10 @@ async function startAgentRun() {
   const skillPart = !skills.length ? '' : '\n\n## Skills\nIndex (open any with the Read tool: skills/<name>.md):\n' +
     skills.map((s) => '- ' + s.name + ': ' + s.description).join('\n') +
     (loaded.length ? '\n\nLoaded for these tasks:\n\n' + loaded.map((s) => s.body.trim()).join('\n\n') : '');
-  const prompt = rules + skillPart + '\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
+  // notes on the sites these tasks link to
+  const notes = siteNotesFor(tasks.flatMap(taskLinks), 4);
+  const notePart = notes.length ? '\n\n## Site notes\n' + notes.map(siteNotes.show).join('\n\n') : '';
+  const prompt = rules + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief, null, 1) + '\n```\n';
 
   // why each newly routed task went to Claude (shown on the task)
@@ -983,6 +996,7 @@ function myDataSources(ctx) {
   section('his locked profile', ctx.locked);
   for (const e of (ctx.cal && ctx.cal.events) || []) out.push({ label: 'calendar ' + String(e.start).replace('T', ' ').slice(0, 16), text: e.title + (e.where ? ' @ ' + e.where : '') + (e.details ? '\n' + e.details : '') });
   for (const s of loadSkills()) out.push({ label: 'skill: ' + s.name, text: s.description + '\n' + s.body });
+  try { for (const n of siteNotes.load(siteNoteDirs())) out.push({ label: 'site note: ' + n.name + (n.learned ? ' (learned, unchecked)' : ''), text: n.sites.join(' ') + '\n' + n.body }); } catch (e) {}
   return out;
 }
 function searchMyData(query, ctx) {
@@ -1090,7 +1104,8 @@ current value. Every button, link and field has a ref in brackets, like [f1e15]:
 - Work one small step at a time: open the page, read what it shows, act, read the result.
 - A popup (cookies, sign-up offers) blocks the page: close it first ("Reject", "Close", "No thanks",
   or press Escape). Never accept marketing or sign-up offers.
-- **On a form, call fill_form first.** It fills every field it has his details for in one go and tells
+- **On a form, call fill_form first**, including pages of multiple-choice questions (radio buttons): one
+  fill_form answers the whole page, then click Next. Don't click answers one by one. It fills every field it has his details for in one go and tells
   you what it entered and what's missing. Then fix only what's wrong or still empty and that you have
   details for, and what the page complains about ("The page says: …"). Call it again on each new page
   of a multi-page form. Pass anything you found that the form needs (e.g. a time or an address) as details.
@@ -1118,21 +1133,48 @@ const LOCAL_NO_BROWSER = `
 You have **no browser** right now: you can't click, log in or fill in anything, so never offer to. If a
 page is blocked, say so and work from the search results.`;
 const FILL_FORM_TOOL = { type: 'function', function: { name: 'fill_form', description: 'Fill in every field of the form on the current page in one go, from his details. Use it first on any form page. details = anything you found that the form needs (optional).', parameters: { type: 'object', properties: { details: { type: 'string' } } } } };
-/* one short question with a forced JSON answer (form mode), streamed so a slow first word never trips
-   fetch's 5-minute header timeout */
+/* one streamed /api/chat call to the mini PC's Ollama. Not fetch: fetch gives up when no answer has
+   started after 5 minutes, and on the mini PC's processor reading a long page-heavy prompt can take
+   longer than that before the first word. Only our own 10-minute limit applies. onMessage gets each
+   streamed {message} as it arrives. */
+function ollamaChat(c, body, onMessage, ms = 10 * 60 * 1000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(c.url + '/api/chat');
+    let settled = false, req = null;
+    // ends the call once, whatever happens first; an error left unhandled here would crash the app
+    const finish = (err) => {
+      if (settled) return; settled = true; clearTimeout(killer);
+      if (err) { try { req.destroy(); } catch (e) {} reject(err); } else resolve();
+    };
+    req = require(u.protocol === 'https:' ? 'https' : 'http').request(u, { method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => {
+      res.on('error', (e) => finish(e));
+      if (res.statusCode !== 200) { res.resume(); return finish(new Error('the model answered HTTP ' + res.statusCode)); }
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => {
+        if (settled) return;
+        buf += d; let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line) continue;
+          let m; try { m = JSON.parse(line); } catch (e) { continue; }
+          if (m.error) return finish(new Error('the model said: ' + String(m.error).slice(0, 150)));
+          if (m.message) onMessage(m.message);
+        }
+      });
+      res.on('end', () => finish());
+    });
+    const killer = setTimeout(() => finish(new Error('the model took over ' + Math.round(ms / 60000) + ' minutes on one step (timed out)')), ms);
+    // network failures keep the words startLocalRun's note looks for ("fetch failed": not reachable)
+    req.on('error', (e) => finish(new Error(/^E[A-Z]+$/.test(e.code || '') ? 'fetch failed (' + e.code + ')' : e.message)));
+    req.end(JSON.stringify(body));
+  });
+}
+// one short question with a forced JSON answer (form mode)
 async function localAsk(c, messages, schema) {
-  const ac = new AbortController(), killer = setTimeout(() => ac.abort(), 10 * 60 * 1000);
-  try {
-    const r = await fetch(c.url + '/api/chat', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: c.model, stream: true, think: false, messages, format: schema, options: { temperature: 0, num_predict: 2000 } }) });
-    if (!r.ok) throw new Error('the model answered HTTP ' + r.status);
-    let out = '', buf = ''; const dec = new TextDecoder();
-    for await (const chunk of r.body) {
-      buf += dec.decode(chunk, { stream: true }); let i;
-      while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); try { const m = JSON.parse(line); if (m.message && m.message.content) out += m.message.content; } catch (e) {} }
-    }
-    return out;
-  } finally { clearTimeout(killer); }
+  let out = '';
+  await ollamaChat(c, { model: c.model, stream: true, think: false, messages, format: schema, options: { temperature: 0, num_predict: 2000 } }, (m) => { if (m.content) out += m.content; });
+  return out;
 }
 const LOCAL_TOOLS = [
   { type: 'function', function: { name: 'web_search', description: 'Search the web. Returns titles, links and snippets.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
@@ -1173,6 +1215,7 @@ async function runLocalTask(c, t) {
   // his schedule (classes, plans) from the app's own Google Calendar connection, when the task is about it
   const cal = wantsCalendar(t) ? await calendarForAgent() : null;
   const calText = cal && cal.events.length ? '\n\n## His calendar (yesterday to next week, ' + cal.timeZone + ')\n' +
+    'For anything about his time (free slots, when he can fit something in), work it out from these events, not the web.\n' +
     cal.events.slice(0, 60).map((e) => '- ' + String(e.start).replace('T', ' ').slice(0, 16) + ' ' + e.title + (e.where ? ' @ ' + e.where : '')).join('\n') : '';
   // Qwen's browser, when the mini PC's is reachable: locked to the task's links + his allowed sites
   let browser = null, sites = [];
@@ -1186,9 +1229,14 @@ async function runLocalTask(c, t) {
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
   const tools = browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, browser.tools) : LOCAL_TOOLS;
-  const maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
+  // notes on the task's sites go in its instructions; a site it reaches later gets its note then
+  const taskNotes = siteNotesFor(taskLinks(t));
+  const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set();
+  // long forms (30-page questionnaires) take ~2 steps a page: fill_form, then Next
+  const maxSteps = browser ? 120 : LOCAL_MAX_STEPS;
   const system = rules + (browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)') : LOCAL_NO_BROWSER) + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
+    (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') +
     '\n\n## Locked profile (private: use for his tasks, never quote in the note)\n' + (locked.trim() || '(empty)') +
     '\n\nToday is ' + new Date().toDateString() + '.';
@@ -1200,6 +1248,9 @@ async function runLocalTask(c, t) {
   let myCal = null, calTried = false; // his calendar, for search_my_data
   const page = {}; // what the browser last showed (refs, address), so slips in browser calls can be fixed
   let final = null, blocked = 0, forceAnswer = false;
+  let draft = '', wantJson = false; // an answer it gave as plain text, and whether the next reply must be the JSON
+  let seen = JSON.stringify(task); // everything it was shown: the task's own links, search results, pages
+  const searchedLinks = new Set(), opened = new Set(); // links its searches returned, pages it read
   const formsFilled = {}; // fill_form runs per page address
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
@@ -1207,36 +1258,30 @@ async function runLocalTask(c, t) {
   try {
   for (let step = 0; step < maxSteps && !final; step++) {
     const last = step === maxSteps - 1 || forceAnswer;
-    // keep the model's memory small: only the latest two tool results stay in full
-    const toolIdx = messages.map((m, i) => m.role === 'tool' ? i : -1).filter((i) => i >= 0);
-    toolIdx.slice(0, -2).forEach((i) => { if (messages[i].content.length > 300) messages[i].content = messages[i].content.slice(0, 300) + ' …(older result shortened)'; });
-    if (last) messages.push({ role: 'user', content: 'That was your last step: reply now with ONLY the JSON answer.' });
-    else if (browser && step === maxSteps - 5) messages.push({ role: 'user', content: 'Only 4 steps left. Finish what you are doing on the page, then answer with what you got done and what is left.' });
-    const ac = new AbortController();
-    const killer = setTimeout(() => ac.abort(), 10 * 60 * 1000);
-    const r = await fetch(c.url + '/api/chat', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: c.model, stream: true, think: false, messages, tools: last ? undefined : tools, options: { temperature: 0.3, num_predict: 1200 } }) });
-    if (!r.ok) { clearTimeout(killer); throw new Error('the model answered HTTP ' + r.status); }
-    let content = '', calls = [], buf = '';
-    const dec = new TextDecoder();
-    for await (const chunk of r.body) {
-      buf += dec.decode(chunk, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (!line) continue;
-        let m; try { m = JSON.parse(line); } catch (e) { continue; }
-        if (m.message && m.message.content) { content += m.message.content; show(m.message.content); }
-        if (m.message && Array.isArray(m.message.tool_calls)) calls.push(...m.message.tool_calls);
-      }
-    }
-    clearTimeout(killer);
+    // keep the model's memory small: only the latest tool result (two without a browser) stays in full.
+    // Pages are long, and each step the processor re-reads everything after the first thing that changed.
+    // A long task also has to stay inside the context (16k tokens, ~3.2 characters each, less room for the
+    // answer), or Ollama drops the oldest messages: the task itself first
+    const dropped = localAnswer.fitContext(messages, { keepFull: browser ? 1 : 2, limit: (16384 - 1400) * 3.2, fixed: JSON.stringify(tools).length });
+    if (dropped) agentLog('local: dropped ' + dropped + ' old step(s) to stay inside the context');
+    // nudges ride on the latest tool result: a new user turn makes Qwen's chat template re-render the
+    // earlier turns, and the mini PC then re-reads the whole conversation (5+ minutes on a long one)
+    const nudge = (text) => { const m = messages[messages.length - 1]; if (m.role === 'tool') m.content += '\n\n(' + text + ')'; else messages.push({ role: 'user', content: text }); };
+    if (last) nudge('That was your last step: reply now with ONLY the JSON answer.');
+    else if (browser && step === maxSteps - 5) nudge('Only 4 steps left. Finish what you are doing on the page, then answer with what you got done and what is left.');
+    let content = '', calls = [];
+    await ollamaChat(c, { model: c.model, stream: true, think: false, messages, tools: last || wantJson ? undefined : tools,
+      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: 1200 } }, (m) => {
+      if (m.content) { content += m.content; show(m.content); }
+      if (Array.isArray(m.tool_calls)) calls.push(...m.tool_calls);
+    });
     messages.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}) });
     if (!calls.length) {
-      const j = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1);
-      try { final = JSON.parse(j); } catch (e) {
-        if (step < maxSteps - 2) { messages.push({ role: 'user', content: 'Reply with ONLY the JSON answer described in your instructions.' }); show('\n', true); continue; }
-        final = { status: 'needs-you', note: content.trim().slice(0, 1500) || 'I couldn’t put together an answer.' };
+      final = localAnswer.keepDraft(localAnswer.readAnswer(content), draft);
+      if (!final) {
+        // answered in plain text: ask once more, with the JSON shape forced, and keep the text in case
+        if (!wantJson && step < maxSteps - 2) { draft = content; wantJson = true; messages.push({ role: 'user', content: localAnswer.ASK_FOR_JSON }); show('\n', true); continue; }
+        final = { status: 'needs-you', note: (draft || content).trim().slice(0, 6000) || 'I couldn’t put together an answer.' };
       }
       break;
     }
@@ -1244,14 +1289,22 @@ async function runLocalTask(c, t) {
       const name = call.function && call.function.name, args = (call.function && call.function.arguments) || {};
       let result;
       try {
-        if (name === 'web_search') { show('\n🔎 Searching: ' + args.query + '\n', true); result = await localWebSearch(args.query); }
-        else if (name === 'read_page') { show('\n📄 Reading: ' + args.url + '\n', true); result = await localReadPage(args.url); }
+        if (name === 'web_search') {
+          show('\n🔎 Searching: ' + args.query + '\n', true); result = await localWebSearch(args.query);
+          // nothing new: Holo4 searched 12 times in a row past an unopened shop listing
+          const links = String(result).match(/https?:\/\/[^\s)"'<>]+/g) || [];
+          const unread = links.filter((u) => !opened.has(u));
+          if (links.length && links.every((u) => searchedLinks.has(u)))
+            result += '\n\n(Nothing new: you have seen all of these results already. ' + (unread.length ? 'Open one you haven\'t read yet with read_page, like ' + unread[0] + ', instead of searching again.)' : 'Answer with what you have.)');
+          links.forEach((u) => searchedLinks.add(u));
+        } else if (name === 'read_page') { show('\n📄 Reading: ' + args.url + '\n', true); opened.add(String(args.url)); result = await localReadPage(args.url); }
         else if (name === 'search_my_data') {
           show('\n🗂 Searching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
         } else if (browser && name === 'fill_form') {
-          const at = page.url || '';
+          // per page: its address plus its questions, as many multi-page forms keep one address throughout
+          const at = (page.url || '') + '|' + formMode.formFields(page).map((f) => f.label).join('|');
           if ((formsFilled[at] = (formsFilled[at] || 0) + 1) > 2) result = 'Form mode already ran twice on this page. Fix the rest field by field, or answer.';
           else {
             show('\n📝 Form mode: filling the whole form at once…\n', true);
@@ -1274,22 +1327,58 @@ async function runLocalTask(c, t) {
           if (r.blocked && ++blocked >= 2) { forceAnswer = true; show('⛔ Stuck repeating itself: wrapping up\n', true); }
           // a page with a form it hasn't run form mode on yet: point it there
           else if (!r.failed && !formsFilled[page.url || ''] && formMode.formFields(page).filter((f) => !f.now).length >= 2) result += '\n\n(This page has a form: call fill_form to fill it in one go.)';
+          // a site it just reached: what's known about it, once
+          const host = siteNotes.hostOf(page.url);
+          if (host && !visited.has(host)) {
+            visited.add(host);
+            const fresh = siteNotesFor([page.url], 2).filter((n) => !noted.has(n.name));
+            fresh.forEach((n) => noted.add(n.name));
+            if (fresh.length) { result += '\n\n## Note on this site\n' + fresh.map(siteNotes.show).join('\n\n'); show('📌 Site note: ' + fresh.map((n) => n.name).join(', ') + '\n', true); }
+          }
         } else result = 'Unknown tool.';
       } catch (e) { result = 'That didn’t work: ' + (e && e.message || e); }
       messages.push({ role: 'tool', tool_name: name, content: String(result).slice(0, 6000) });
+      if (seen.length < 2e6) seen += '\n' + String(result); // in full: links in its options must come from here
     }
     show('\n', true);
   }
   } finally { if (browser) browser.close(); }
   final = final || { status: 'needs-you', note: 'I ran out of steps before finishing. Reply to let me continue, or switch this to Claude.' };
-  const opts = Array.isArray(final.options) && final.options.length
-    ? (await Promise.all(final.options.slice(0, 6).filter((o) => o && /^https:\/\//i.test(String(o.url || ''))).map((o) => enrichOption(o, 'local')))).filter(Boolean) : [];
+  // tips it left about sites it actually worked on in the browser, for next time
+  for (const tip of (Array.isArray(final.site_tips) ? final.site_tips : []).slice(0, 3)) {
+    const host = [...visited].find((h) => tip && siteNotes.covers(String(tip.site || '').toLowerCase().replace(/^https?:\/\/|^www\.|\/.*$/g, ''), h));
+    try { if (host && siteNotes.learn(siteNoteDirs()[1], host, tip.tip, new Date().toISOString().slice(0, 10))) agentLog('local: learned a tip about ' + host); } catch (e) {}
+  }
+  // options only with links it was actually shown: a made-up link is worse than none. Options it wrote
+  // into the note instead of `options` (a plain-text answer kept by keepDraft) are picked up from there
+  const listed = Array.isArray(final.options) && final.options.length ? final.options : localAnswer.optionsFromText(final.note);
+  const offered = listed.filter((o) => o && /^https:\/\//i.test(String(o.url || '')));
+  const real = offered.filter((o) => localAnswer.linkSeen(o.url, seen));
+  if (real.length < offered.length) {
+    agentLog('local: dropped ' + (offered.length - real.length) + ' option(s) with links it never saw');
+    final.note = String(final.note || '') + '\n\n(' + (offered.length - real.length) + ' suggestion(s) removed: their links weren’t on any page I read.)';
+  }
+  const opts = real.length ? (await Promise.all(real.slice(0, 6).map((o) => enrichOption(o, 'local')))).filter(Boolean) : [];
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
-    note: String(final.note || '').slice(0, 1500) || 'Done.', options: opts.length ? opts : null, pref: null }]);
+    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: null }]); // room for an essay
 }
 
 global.__agentTest = { parseUsageLimit, holdForUsage, recentReplies, maybeTidyMemory };
+
+/* ---------- course calendar feeds (agent/calendar-feeds.js) ---------- */
+// the private links stay in this computer's config; the renderer gets them back only for Settings
+const calendarFeeds = require('./agent/calendar-feeds');
+const feedUrls = () => (Array.isArray(readConfig().calendarFeeds) ? readConfig().calendarFeeds : []);
+ipcMain.handle('feeds:get', () => feedUrls());
+ipcMain.handle('feeds:save', (_event, urls) => {
+  const list = (Array.isArray(urls) ? urls : []).map((u) => String(u).trim()).filter(Boolean).slice(0, 10);
+  const bad = list.filter((u) => !calendarFeeds.normalUrl(u));
+  if (bad.length) return { ok: false, error: 'not an https/webcal link: ' + bad[0].slice(0, 50) };
+  const cfg = readConfig(); cfg.calendarFeeds = list; writeConfig(cfg);
+  return { ok: true };
+});
+ipcMain.handle('feeds:fetch', () => calendarFeeds.fetchAll(feedUrls()));
 
 /* ---------- persistence (IPC) ---------- */
 ipcMain.handle('tasks:load', async () => {
@@ -1594,6 +1683,7 @@ ipcMain.handle('gcal:connect', async () => {
           refresh_token: tokenData.refresh_token || (fresh.gcal.tokens && fresh.gcal.tokens.refresh_token),
           expiry_date: Date.now() + tokenData.expires_in * 1000
         };
+        fresh.gcal.scope = tokenData.scope || ''; // what he allowed (Gmail can be unticked on Google's screen)
         if (!fresh.gcal.tokens.refresh_token) { respond('Sign-in failed', 'Google did not return a refresh token.'); finish({ ok: false, error: 'Google did not return a refresh token. Revoke access at myaccount.google.com/permissions and try again.' }); return; }
         writeConfig(fresh);
         respond('Connected.', 'You can close this window and return to Tasks.');
@@ -1612,7 +1702,8 @@ ipcMain.handle('gcal:connect', async () => {
         client_id: g.clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: 'https://www.googleapis.com/auth/calendar.events',
+        // calendar events, plus reading (never changing) his Gmail for dates (agent/mail-events.js)
+        scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly',
         access_type: 'offline',
         prompt: 'consent',
         state
@@ -1645,6 +1736,71 @@ ipcMain.handle('gcal:disconnect', async () => {
 });
 
 ipcMain.handle('gcal:sync-now', async () => performSync());
+
+/* ---------- dates from Gmail (agent/mail-events.js) ----------
+   The renderer asks every 15 minutes; an unchanged mailbox costs one tiny Gmail call and no model.
+   New mail that mentions a date goes to Claude in one short call: the same signed-in claude CLI the
+   agent uses, with no tools, no connectors and a bare system prompt, so a call is ~1-2k tokens. */
+const mailEvents = require('./agent/mail-events');
+let mailChecking = false;
+const mailAllowed = (cfg) => !!(cfg.gcal && cfg.gcal.tokens && /gmail\.readonly/.test(cfg.gcal.scope || ''));
+// one structured answer from Claude: messages = [system, user], schema = what the answer must look like
+function claudeJson(messages, schema) {
+  const cfg = readConfig();
+  const exe = (cfg.agentRunner && cfg.agentRunner.command) || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe');
+  const model = (cfg.mailEvents && cfg.mailEvents.model) || 'claude-opus-5-5';
+  const args = ['-p', '--output-format', 'json', '--model', model, '--effort', 'low', '--tools', '', '--strict-mcp-config',
+    '--max-turns', '3', '--system-prompt', messages[0].content, '--json-schema', JSON.stringify(schema)];
+  return new Promise((resolve, reject) => {
+    const p = require('child_process').spawn(exe, args, { cwd: require('os').tmpdir(), windowsHide: true });
+    let out = '', err = '';
+    const killer = setTimeout(() => { try { p.kill(); } catch (e) {} reject(new Error('Claude took over 3 minutes')); }, 3 * 60 * 1000);
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', (e) => { clearTimeout(killer); reject(new Error('couldn’t start Claude: ' + e.message)); });
+    p.on('close', () => {
+      clearTimeout(killer);
+      let r; try { r = JSON.parse(out); } catch (e) { return reject(new Error((err || out || 'no answer from Claude').trim().slice(0, 200))); }
+      if (r.is_error || !r.structured_output) return reject(new Error(String(r.result || r.subtype || 'Claude gave no answer').slice(0, 200)));
+      resolve(JSON.stringify(r.structured_output));
+    });
+    p.stdin.end(messages[1].content);
+  });
+}
+ipcMain.handle('mail:status', () => {
+  const cfg = readConfig();
+  return { connected: !!(cfg.gcal && cfg.gcal.tokens), allowed: mailAllowed(cfg), enabled: !(cfg.mailEvents && cfg.mailEvents.enabled === false),
+    last: (cfg.mailEvents && cfg.mailEvents.last) || null };
+});
+ipcMain.handle('mail:set-enabled', (_e, on) => {
+  const cfg = readConfig(); cfg.mailEvents = Object.assign({}, cfg.mailEvents, { enabled: !!on }); writeConfig(cfg);
+  return true;
+});
+ipcMain.handle('mail:check', async () => {
+  const cfg = readConfig();
+  if (!mailAllowed(cfg) || (cfg.mailEvents && cfg.mailEvents.enabled === false)) return { skipped: 'off' };
+  if (mailChecking) return { skipped: 'busy' };
+  mailChecking = true;
+  const state = Object.assign({ seen: [] }, cfg.mailEvents && cfg.mailEvents.state);
+  try {
+    const gmail = async (sub) => {
+      const token = await refreshAccessToken(readConfig());
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + sub, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(20000) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.error && data.error.message) || 'Gmail HTTP ' + res.status);
+      return data;
+    };
+    const r = await mailEvents.check({ gmail, ask: claudeJson, state });
+    if (r.asked) agentLog('mail: ' + r.checked + ' new, ' + r.asked + ' to Claude, ' + r.items.length + ' date(s) found');
+    const fresh = readConfig();
+    fresh.mailEvents = Object.assign({}, fresh.mailEvents, { state, last: Date.now() });
+    writeConfig(fresh);
+    return { items: r.items, checked: r.checked, asked: r.asked };
+  } catch (e) {
+    agentLog('mail check failed: ' + e.message);
+    return { error: e.message.slice(0, 200) };
+  } finally { mailChecking = false; }
+});
 
 ipcMain.handle('gcal:delete-event', async (_e, eventId) => {
   const cfg = readConfig();
