@@ -26,6 +26,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoicePlugin.class); // talk to add a task (must be registered before super.onCreate)
+        registerPlugin(ShareLinkPlugin.class); // send an option's link to people
         super.onCreate(savedInstanceState);
         handle(getIntent());
     }

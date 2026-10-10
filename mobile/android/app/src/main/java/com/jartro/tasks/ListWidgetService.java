@@ -70,7 +70,12 @@ public class ListWidgetService extends RemoteViewsService {
                         if (!st.equals("needs-you") && !st.equals("working") && !st.equals("queued")) continue;
                         Row row = base(t, "agent");
                         row.checkable = false;
-                        if (st.equals("needs-you")) {
+                        if (st.equals("needs-you") && t.optBoolean("parked")) {
+                            // parked: James has seen it and set it aside — listed, but not counted
+                            row.sub = "Parked";
+                            row.due = "parked";
+                            row.sort = Long.MAX_VALUE / 2 - t.optLong("updatedAt");
+                        } else if (st.equals("needs-you")) {
                             needs++;
                             String note = SyncStore.str(t, "note");
                             row.sub = note == null ? "" : note.replaceAll("\\s+", " ");
