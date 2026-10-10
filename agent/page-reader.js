@@ -143,7 +143,9 @@ function outline(snapshot, opts = {}) {
     const empty = fields.filter((f) => f.empty).sort((a, b) => b.req - a.req);
     head.push('Form: ' + fields.length + ' field(s), ' + (fields.length - empty.length) + ' filled.' + (empty.length
       ? ' Still empty: ' + empty.slice(0, 12).map((f) => (f.req ? '⚠' : '') + '"' + clip(f.label, 50) + '" [' + f.ref + ']').join(', ') + (empty.length > 12 ? ', …' : '') +
-        (empty.some((f) => f.req) ? '  (⚠ = required)' : '')
+        (empty.some((f) => f.req) ? '  (⚠ = required)' : '') +
+        // clicking answers one by one costs a step each: a 30-page questionnaire never got to the end that way
+        (empty.length >= 2 ? ' Use fill_form to answer all of these in one step (multiple-choice questions too).' : '')
       : ' Nothing left empty.'));
   }
 

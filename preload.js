@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld('desktop', {
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
+  // course calendar feeds (Blackboard / D2L iCal links) → School list
+  feedsGet: () => ipcRenderer.invoke('feeds:get'),
+  feedsSave: (urls) => ipcRenderer.invoke('feeds:save', urls),
+  feedsFetch: () => ipcRenderer.invoke('feeds:fetch'),
+  // dates from Gmail → tasks (and so the calendar)
+  mailStatus: () => ipcRenderer.invoke('mail:status'),
+  mailSetEnabled: (on) => ipcRenderer.invoke('mail:set-enabled', on),
+  mailCheck: () => ipcRenderer.invoke('mail:check'),
   // RSI: change the app itself from a chat
   rsiStatus: () => ipcRenderer.invoke('rsi:status'),
   rsiAsk: (text) => ipcRenderer.invoke('rsi:ask', text),

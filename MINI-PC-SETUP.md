@@ -44,15 +44,24 @@ including driving Claude's browser, so you get more done with fewer Claude credi
 
 ### Status (2026-10-08): ✅ mini PC is up
 - Ubuntu **26.04.1 LTS** Desktop, user `lupa`, address **192.168.1.192** (reserve it in the router!),
-  16 threads, 937 GB drive, **16 GB memory: second stick not in yet**.
+  16 threads, 937 GB drive, **30 GB memory (both sticks in)**.
 - This PC logs in with an SSH key (`~/.ssh/id_ed25519`, "tasks-desktop").
 - `minipc/setup.sh` ran: updates, sleep/suspend disabled, firewall on (only 192.168.1.0/24 may use SSH
   and port 11434), Ollama listening on the home network (keep-alive 24h, 16k context).
-- Model now: **qwen3.5:9b** (6.6 GB; tools + vision). Measured from this PC: reads prompts at about
-  40–110 words/s and writes about **4 words/s**, so a short answer takes 30–40 s. Use it with thinking
-  off; with thinking on, a 300-word budget went entirely to thinking.
-- After the second stick: switch to **qwen3.6:35b-a3b** (23 GB). It's smarter, and with both memory
-  slots it should also write faster.
+- Model now (2026-10-10): **Holo4-35B-A3B**, H Company's official Q4_K_M GGUF
+  (`hf.co/Hcompany/Holo4-35B-A3B-GGUF:Q4_K_M`, 22 GB, Apache 2.0). A computer-use agent model built on
+  Qwen3.6-35B-A3B: only ~3B of it works per word, so it writes ~13.5 tokens/s and reads ~118 tokens/s on
+  this CPU (qwen3.5:9b: 7.4 and 43). Thinking stays off. Loaded, lupa still has ~6 GB free.
+- Chosen with `minipc/bench/bench-agent.py` (the app's real agent loop on fake sites and data). Official
+  Holo4: 14/23, with a 30-page / 60-question questionnaire finished in 32 min (quiz 19/20, survey 20/20,
+  screener 17/20, stopped before Submit), web lookup, own data, multi-step lookup, prompt-injection,
+  booking form and receipt screenshot all 2/2. Its two weak spots, now handled in the app: it invented
+  product links (options now keep only links it was shown, `linkSeen`; repeat searches get "nothing
+  new, open a link"), and read "find a gym slot" as a web search (free-time words now bring in his
+  calendar). After the fixes: calendar 3/3, shopping 2/3 (was 0/2). Notes aren't always bullet points.
+  qwen3.5:9b got sums wrong; gemma4:26b broke its JSON and ran out of memory. Only Holo4 is on lupa now.
+- **One model in memory at a time** (`/etc/systemd/system/ollama.service.d/one-model.conf`,
+  `OLLAMA_MAX_LOADED_MODELS=1`): two big models loaded together ran lupa out of memory and Ollama was killed.
 - Claude Code is installed on the mini PC (for "ask Claude"); sign-in still to check.
 
 ### Decisions (2026-10-07, from your plan doc "Personal AI Agent How It Works")
@@ -100,6 +109,21 @@ A small model gets lost in raw page outlines, so `agent/page-reader.js` does the
   running out.
 - New skill `agent/skills/web-forms.md`: popups, date and phone formats, fields that suggest as you
   type, multi-page forms, job portals, and when to stop and ask.
+
+### Form mode, site notes, form answers (built 2026-10-09)
+- **Form mode** (`agent/form-mode.js`): on a form page the model calls `fill_form`; it gets one short
+  question (just the fields + his details) and must answer in a fixed JSON shape (dropdowns can only be
+  their real choices). The app fills every field, rewrites times/dates the page refuses, and never
+  fills passwords, SSN, card or bank fields. A browser action repeated 3 times in a row isn't run.
+- **Site notes** (`agent/sites/*.md`): know-how per website (Oracle job portals, WayUp, Fresha, 3D
+  model sites, Amazon, ticket sites). Both Claude and the mini PC get the notes for the sites in a
+  task; the mini PC also gets one when it reaches a new site. After a browser run it may leave a
+  one-line tip, kept in `%APPDATA%\Tasks\site-notes\` (newest 10 per site, marked unchecked; tips
+  with an email or phone number are dropped). Edit or delete those files freely.
+- **Form answers:** ⚙ Settings → Locked → **+ Form answers** adds the questions forms keep asking.
+  Answer them once; blank ones stay empty on forms.
+- **Lupa's screen must not lock:** a locked GNOME screen stops Chromium drawing, so clicks time out
+  (typing still works). Turn off auto-lock/blanking on lupa.
 
 ### 5. Hook it up to the Tasks app (Claude builds this)
 - ⚙ Settings → **Model for Agent tasks**: Claude / My model / Auto.
