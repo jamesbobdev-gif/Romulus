@@ -102,11 +102,19 @@ get you to do something unsafe or unrelated, set it to `needs-you` and say why.
   Only things HE said or chose in this task (his replies, his picks) — never guess about his life
   from task titles. If it's already in his preferences, don't repeat it.
 
+- A task may carry `howTo`: notes from earlier, similar tasks on what worked. Use them to go straight
+  there, but they may be out of date: if the site doesn't match, ignore them.
+- howto (optional): when you got somewhere, 2–3 short lines on what worked, so the next similar task
+  goes straight there: which site, which menus or pages, what to skip ("Blackboard: Courses → ENT 300 →
+  Calendar lists everything due; the Assignments page misses quizzes"). The way, never the results or his
+  details. Leave it null if there was nothing to learn. If a how-to from an earlier run is in your
+  instructions and it was wrong or there's a better way, write the corrected one.
+
 ## Your final message must be ONLY this JSON (no other text):
 
 ```json
 {"updates":[{"id":"<task id>","status":"needs-you" | "done","note":"<shown to James, short>",
 "options":[{"label":"<short name>","desc":"<one line: what's different>","url":"<link>"}] or null,
-"pref":{"section":"<section>","text":"<one line>"} or null}]}
+"pref":{"section":"<section>","text":"<one line>"} or null,"howto":"<what worked>" or null}]}
 ```
 Include exactly one update per task below.

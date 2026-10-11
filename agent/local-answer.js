@@ -47,6 +47,9 @@ const ANSWER_SCHEMA = { type: 'object', properties: {
   status: { type: 'string', enum: ['done', 'needs-you'] }, note: { type: 'string' },
   options: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, desc: { type: 'string' }, url: { type: 'string' } } } },
   site_tips: { type: 'array', items: { type: 'object', properties: { site: { type: 'string' }, tip: { type: 'string' } } } },
+  pref: { type: ['object', 'null'], properties: { section: { type: 'string' }, text: { type: 'string' } } },
+  stuck: { type: ['object', 'null'], properties: { reason: { type: 'string' }, fix: { type: 'string' } } },
+  howto: { type: ['string', 'null'] },
 }, required: ['status', 'note'] };
 const ASK_FOR_JSON = 'Now give that as the JSON answer only: {"status":"done" or "needs-you","note":"<the answer you just wrote, in full>","options":[],"site_tips":[]}';
 const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).length;
