@@ -27,9 +27,33 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .stamp:hover{background:var(--chip);color:var(--ink)}
 .counts{color:var(--muted);margin-top:7px;min-height:13px}
 .counts .warn{color:var(--late)}
-.counts .go-agent{font:inherit;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
-.park-btn{display:block;font-family:var(--mono);font-size:10px;background:none;border:1px solid var(--hairline);border-radius:6px;color:var(--muted);padding:2px 7px;margin-top:8px;cursor:pointer}
-.park-btn:hover{color:var(--ink);border-color:var(--muted)}
+.needs-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;margin-top:6px;overflow:hidden;white-space:nowrap}
+.needs-bar[hidden]{display:none}
+.needs-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:2px;flex:none}
+.needs-chip{flex:none;display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;line-height:1;background:var(--chip);border:1px solid var(--hairline);color:var(--ink);border-radius:999px;padding:3px 8px 3px 6px;cursor:pointer}
+.needs-chip::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.needs-chip.more{color:var(--muted);padding:3px 8px}
+.needs-chip.more::before{display:none}
+.needs-chip:hover,.needs-chip.on{border-color:var(--muted)}
+.stuck{display:grid;gap:4px;white-space:normal}
+.stuck-row{display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:baseline}
+.stuck-k{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stuck-note{margin-top:8px;color:var(--muted);font-size:12.5px}
+.stuck-shot{margin-top:8px}
+.stuck-shot img{display:block;max-width:100%;max-height:260px;border:1px solid var(--hairline);border-radius:6px;cursor:zoom-in}
+.howto{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-top:1px solid var(--hairline)}
+.howto:first-child{border-top:0}
+.howto-task{font-size:13px;color:var(--ink)}
+.howto-meta{font-family:var(--mono);font-size:10px;color:var(--faint);grid-column:1}
+.howto-text{font-size:12.5px;color:var(--muted);line-height:1.5;grid-column:1}
+.howto-del{grid-column:2;grid-row:1/span 3;align-self:start}
+.lane-slider{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;margin:10px 0 12px;padding:3px;border-radius:999px;background:var(--chip);border:1px solid var(--hairline)}
+.lane-slider::before{content:'';position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.4,1),opacity .15s}
+.lane-slider.local::before{transform:translateX(100%)}
+.lane-slider.none::before{opacity:0}
+.lane-slider .lane-word{position:relative;z-index:1;border:0;background:none;padding:5px 14px;min-width:84px;border-radius:999px;color:var(--muted);cursor:pointer;font-family:var(--sans,inherit);font-size:12px;font-weight:500;transition:color .15s}
+.lane-slider .lane-word.on{color:var(--ink);cursor:default}
+.lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
 
 .composer{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:6px 8px 8px;box-shadow:0 1px 2px rgba(20,20,20,.03);transition:border-color .15s,box-shadow .15s}
@@ -89,6 +113,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .chip.st{border:1px solid var(--hairline);color:var(--muted)}
 .chip.st.working{border-color:var(--accent);color:var(--accent)}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
+.chip.st.tap{cursor:pointer;user-select:none;transition:filter .15s,transform .1s}
+.chip.st.tap:hover{filter:brightness(.95)}
+.chip.st.tap:active{transform:scale(.95)}
 .chip.st.ready{background:#E6F4EA;border-color:#B7DEC2;color:#1E6B3A} /* Claude finished; waits for James to check it off */
 .agent-note{font-size:13px;line-height:1.55;color:var(--ink);background:var(--chip);border-radius:8px;padding:9px 11px;margin:0 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
 /* option carousel: top 3 visible, scroll sideways (or the arrows) for the rest */
@@ -234,7 +261,7 @@ body.ideas-mode main{max-width:1180px}
 body.ideas-mode main>:not(#ideasView){max-width:580px;margin-left:auto;margin-right:auto}
 .ideas-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .ideas-bar .btn-accent{margin-left:0}
-.ideas-hint{color:var(--faint)}
+
 .idea-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-items:start}
 .idea-group{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:10px 12px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
@@ -292,7 +319,7 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .idea-addb{border:1px dashed var(--hairline);background:transparent;color:var(--faint);border-radius:11px;padding:8px 12px;font-size:13px;cursor:pointer;text-align:left}
 .idea-addb:hover{color:var(--ink);border-color:var(--faint)}
 .idea-empty{color:var(--faint);font-size:13px;padding:6px 2px}
-@media(max-width:520px){.ideas-hint{display:none}.idea-groups{grid-template-columns:1fr}}
+@media(max-width:520px){.idea-groups{grid-template-columns:1fr}}
 
 /* ── calendar view ── */
 .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
@@ -317,12 +344,6 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .cal-cell.has-tasks{cursor:pointer}
 .agent-live{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;background:#16181d;color:#d8dbe2;border-radius:10px;font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere} /* the mini PC's model, live */
 .lane-switch{display:block;margin:8px 0 0;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--hairline);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-.lane-toggle{display:inline-flex;align-items:center;gap:0;margin:8px 0 0;border:1px solid var(--hairline);border-radius:9px;overflow:hidden;flex-wrap:wrap}
-.lane-toggle .lane-ask{font-size:12px;color:var(--muted);padding:6px 10px;border-right:1px solid var(--hairline)}
-.lane-seg{border:0;background:transparent;color:var(--muted);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;padding:7px 12px;cursor:pointer}
-.lane-seg+.lane-seg{border-left:1px solid var(--hairline)}
-.lane-seg:hover{color:var(--ink)}
-.lane-seg.on{background:var(--ink);color:var(--bg);cursor:default}
 .lane-switch:hover{color:var(--ink);border-color:#CFCFC9}
 .cal-cell.has-tasks:hover{border-color:#CFCFC9}
 
@@ -442,6 +463,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
   </header>
   <div class="mono counts" id="counts"></div>
+  <div class="needs-bar" id="needsBar" hidden></div>
 
   <!-- Settings page (hidden by default; replaces the lists while open) -->
   <section id="settingsPanel" hidden style="margin-top:16px">
@@ -509,6 +531,11 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
         <button id="routingSaveBtn" class="btn-accent">Save</button>
         <span id="routingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
+    </div>
+    <div class="settings-panel" id="howtosSection" hidden>
+      <span class="settings-label">What worked before</span>
+      <p class="settings-hint">After an Agent task that didn't get stuck, Claude or your mini PC can note in a couple of lines what worked (which site, which menus). The next similar task starts from that note instead of from scratch. A newer note for the same kind of task replaces the old one. These stay on this computer. Delete any that look wrong.</p>
+      <div id="howtosList"></div>
     </div>
     <div class="settings-panel" id="feedsSection" hidden>
       <span class="settings-label">Course calendars</span>
@@ -657,7 +684,6 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
   <div id="ideasView" hidden>
     <div class="ideas-bar">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
-      <span class="mono ideas-hint">Drag ideas between groups · drag ⠿ to move a group · tap an idea to open its description · highlight lines to move them to a tab</span>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
   </div>
@@ -1528,9 +1554,17 @@ function buildRow(t,canDrag){
   const isAgentTask=taskWs(t)==='agent';
   if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); meta.appendChild(rc); }
   if(isAgentTask&&!t.done){
-    const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','parked']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
+    const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
     sc.title=t.status==='needs-you'&&t.parked?'You parked this — Claude’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'Claude got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
+    // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
+    if(t.status==='needs-you'){
+      sc.classList.add('tap'); sc.setAttribute('role','button'); sc.tabIndex=0;
+      sc.title=t.parked?'Stalled — tap to mark it as needing you again':'Needs you — tap to mark it stalled (set aside for now)';
+      const flip=function(e){ e.stopPropagation(); if(t.parked)delete t.parked; else t.parked=true; touch(); };
+      sc.addEventListener('click',flip);
+      sc.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); flip(e); } });
+    }
     meta.appendChild(sc);
     // which worker it's assigned to (Claude on this computer, or your own model on the mini PC)
     if(t.lane==='local'){ const lc=el('span','chip st','mini PC'); lc.title='Your own model on the mini PC handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
@@ -1625,17 +1659,16 @@ function buildPanel(t){
       setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
     }
   }
-  // who does it: one toggle, Claude | Mini PC. Switching asks first; a first pick (no rule matched) doesn't.
+  // who does it: a pill, Claude | Mini PC, with a highlight that slides across. Switching asks first; a first pick (no rule matched) doesn't.
   if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
     const now=laneNow(t);
-    const tg=el('div','lane-toggle'); tg.setAttribute('role','group'); tg.setAttribute('aria-label','Who does this task');
-    if(!now)tg.appendChild(el('span','lane-ask','Who should do this?'));
+    const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
     [['claude','Claude'],['local','Mini PC']].forEach(function(o){
-      const b=el('button','lane-seg'+(now===o[0]?' on':''),o[1]);
-      b.setAttribute('aria-pressed',String(now===o[0]));
-      b.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':'Claude has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
-      b.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,o[0]); });
-      tg.appendChild(b);
+      const w=el('button','lane-word'+(now===o[0]?' on':''),o[1]);
+      w.setAttribute('role','radio'); w.setAttribute('aria-checked',String(now===o[0]));
+      w.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':'Claude has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
+      w.addEventListener('click',function(e){ e.stopPropagation(); if(now!==o[0])setLane(t,o[0]); });
+      tg.appendChild(w);
     });
     panel.appendChild(tg);
   }
@@ -1643,15 +1676,18 @@ function buildPanel(t){
   const staleFail=agentBusy&&/^Claude couldn’t finish/.test(t.note||'');
   if(taskWs(t)==='agent'&&t.note&&!staleFail){
     const nb=el('div','agent-note');
-    nb.appendChild(el('b',null,agentBusy?'Claude’s last message':t.status==='needs-you'&&!t.parked?'Claude needs you':'From Claude'));
-    nb.appendChild(document.createTextNode(t.note));
-    // park: seen it, not now — stays on the Agent tab but stops counting as "needs you"
-    if(t.status==='needs-you'&&!t.done){
-      const pk=el('button','park-btn',t.parked?'Unpark (needs me again)':'Park it (seen, not now)');
-      pk.title=t.parked?'Count this as needing you again':'Keep it here, but stop counting it as needing you';
-      pk.addEventListener('click',function(e){ e.stopPropagation(); if(t.parked)delete t.parked; else t.parked=true; touch(); });
-      nb.appendChild(pk);
-    }
+    const who=t.lane==='local'?'Mini PC':'Claude';
+    const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
+    if(agentBusy||stuck||t.status!=='needs-you')nb.appendChild(el('b',null,agentBusy?who+'’s last message':stuck?who+' stopped':'From '+who));
+    if(stuck){
+      const sk=el('div','stuck');
+      const row=function(label,text){ if(!text)return; const r=el('div','stuck-row'); r.appendChild(el('span','stuck-k',label)); r.appendChild(el('span',null,text)); sk.appendChild(r); };
+      row('Why',t.stuck.reason); row('Fix',t.stuck.fix);
+      nb.appendChild(sk);
+      // the model's own note, when it says more than the reason above
+      if(t.note&&t.note.indexOf(t.stuck.reason)===-1)nb.appendChild(el('div','stuck-note',t.note));
+      if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What the browser showed when it stopped. Click to enlarge'; } nb.appendChild(ps); }
+    } else nb.appendChild(document.createTextNode(t.note));
     panel.appendChild(nb);
   }
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose
@@ -1729,11 +1765,11 @@ function buildPanel(t){
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
     const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to Claude');
-    ta.placeholder=agentBusy?'Add something for Claude…':'Answer Claude…';
+    ta.placeholder=agentBusy?'Add something…':'Your answer…';
     ta.value=replyDrafts[t.id]||''; // survives a re-render from a background sync
     ta.dataset.replyFor=t.id;
     ta.addEventListener('input',function(){ if(ta.value)replyDrafts[t.id]=ta.value; else delete replyDrafts[t.id]; saveDrafts(); });
-    const send=el('button','btn-accent','Send to Claude');
+    const send=el('button','btn-accent','Send');
     // photos: pick (phone: camera or gallery), preview, remove; uploaded when you send
     const atts=pendingAtts[t.id]||(pendingAtts[t.id]=[]);
     const arow=el('div','att-row');
@@ -1776,7 +1812,7 @@ function buildPanel(t){
       sending=true; send.disabled=true; send.textContent=atts.length?'Uploading\u2026':'Sending\u2026';
       let urls=[];
       try{ for(const a of atts)urls.push(await uploadAttachment(a.blob)); }
-      catch(err){ sending=false; send.disabled=false; send.textContent='Send to Claude'; status.className='att-status err'; status.textContent='Couldn\u2019t send the photos: '+err.message; return; }
+      catch(err){ sending=false; send.disabled=false; send.textContent='Send'; status.className='att-status err'; status.textContent='Couldn\u2019t send the photos: '+err.message; return; }
       atts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); atts.length=0;
       delete replyDrafts[t.id]; saveDrafts();
       const lt=liveTask(t); // a sync during the upload may have swapped the task object
@@ -2004,9 +2040,21 @@ function render(){
   if(overdue)cHtml+=' &middot; <span class="warn">'+overdue+' overdue</span>';
   else if(dueToday)cHtml+=' &middot; '+dueToday+' due today';
   // parked = you've seen it and set it aside: still there, but no longer counted as needing you
-  const needsYou=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&!t.parked; }).length;
-  if(needsYou)cHtml+=' &middot; <button class="warn go-agent" title="Open the task that needs you (click again for the next one)">agent: '+needsYou+' need'+(needsYou===1?'s':'')+' you</button>';
+  const needing=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&!t.parked; })
+    .sort(function(a,b){ return getSortKey(a)-getSortKey(b); }); // same order as the Agent tab
   $('counts').innerHTML=cHtml;
+  // one chip per task that needs you; tapping it opens that task on the Agent tab
+  const nb=$('needsBar'); nb.innerHTML=''; nb.hidden=!needing.length;
+  if(needing.length)nb.appendChild(el('span','needs-label','needs you:'));
+  const shortNames=uniqueShortNames(needing.map(function(t){ return t.title; }));
+  needing.forEach(function(t,i){
+    const c=el('button','needs-chip'+(state.activeTab==='agent'&&state.selectedId===t.id?' on':''));
+    c.textContent=shortNames[i];
+    c.title=t.title+(t.note?'\n\n'+t.note.replace(/\s+/g,' ').slice(0,200):''); // the name lives in the hover
+    c.addEventListener('click',function(){ openTaskById(t.id); });
+    nb.appendChild(c);
+  });
+  fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
   $('newTitle').placeholder=onAgent?'Add a task for Claude…':onSchool?'Add an assignment… (tag = class)':'Add a task…';
 
@@ -2069,17 +2117,52 @@ function render(){
 /* ── calendar view ── */
 function formatDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
-// "agent: N need you" in the header opens a task that needs you; each click moves on to the next one
-let goAgentLast=null;
-$('counts').addEventListener('click',function(e){
-  if(!e.target.closest('.go-agent'))return;
-  const ids=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&!t.parked; })
-    .sort(function(a,b){ return getSortKey(a)-getSortKey(b); }).map(function(t){ return t.id; }); // same order as the Agent tab
-  if(!ids.length){ switchTab('agent'); return; }
-  const next=ids[(ids.indexOf(goAgentLast)+1)%ids.length]; // not found → -1 → the first one
-  if(goAgentLast&&goAgentLast!==next)state.expanded.delete(goAgentLast); // fold the one you just looked at
-  goAgentLast=next; openTaskById(next);
-});
+// one line only: chips that don't fit fold into "+N", which opens the Agent tab
+function fitNeedsBar(){
+  const nb=$('needsBar'); if(nb.hidden)return;
+  const chips=[].slice.call(nb.querySelectorAll('.needs-chip')); if(!chips.length||!nb.clientWidth)return; // not laid out yet: nothing to measure
+  const more=el('button','needs-chip more'); more.title='Open the Agent tab';
+  more.addEventListener('click',function(){ switchTab('agent'); });
+  const over=function(){ return nb.scrollWidth>nb.clientWidth+1; };
+  if(!over())return;
+  let hidden=0;
+  nb.appendChild(more);
+  for(let i=chips.length-1;i>=0&&over();i--){ chips[i].remove(); hidden++; more.textContent='+'+hidden; }
+  more.title=hidden+' more need you — open the Agent tab';
+}
+let fitNeedsTimer=null;
+window.addEventListener('resize',function(){ clearTimeout(fitNeedsTimer); fitNeedsTimer=setTimeout(function(){ if(!$('needsBar').hidden)renderActive(); },150); });
+// a couple of words that say which task it is: "Look for motherboard that will allow…" → "motherboard"
+const SHORT_SKIP=('a an the my me i you your our some any for of on in at from up out into onto through about please under over near around by like '+
+  'look find search get check see go use apply make do help try want need can could should would').split(' ');
+const SHORT_STOP='that which who so because if when while with and or but to'.split(' '); // a new clause: the subject's already said
+function shortName(title,n){
+  const clauses=String(title||'').toLowerCase()
+    .replace(/#\S+/g,' ').replace(/\([^)]*\)?/g,' ') // #tags, (asides)
+    .split(/[:;,.!?—–]| - /);
+  let out=[];
+  // the first clause that says something ("Apply — Congresswoman Brown" → "congresswoman brown")
+  for(let c=0;c<clauses.length&&!out.length;c++){
+    const words=clauses[c].split(/\s+/).map(function(w){ return w.replace(/^[^\w$]+|[^\w$]+$/g,''); }).filter(Boolean);
+    for(let i=0;i<words.length&&out.length<n;i++){
+      if(SHORT_STOP.indexOf(words[i])!==-1&&out.length)break;
+      if(SHORT_SKIP.indexOf(words[i])===-1&&SHORT_STOP.indexOf(words[i])===-1)out.push(words[i]);
+    }
+  }
+  if(!out.length)return String(title||'').trim().split(/\s+/).slice(0,2).join(' ').toLowerCase().slice(0,22)||'task';
+  const name=out.join(' ');
+  return name.length>22?name.slice(0,21)+'…':name;
+}
+// two words each; a third (and more) only where two tasks would read the same
+function uniqueShortNames(titles){
+  const names=titles.map(function(t){ return shortName(t,2); });
+  for(let n=3;n<=5;n++){
+    const dup=names.map(function(x,i){ return names.indexOf(x)!==i||names.lastIndexOf(x)!==i; });
+    if(dup.indexOf(true)===-1)break;
+    dup.forEach(function(d,i){ if(d)names[i]=shortName(titles[i],n); });
+  }
+  return names;
+}
 function switchTab(tab){
   closeDayPop();
   if(tab!==state.activeTab)state.selectedId=null;
@@ -2993,6 +3076,25 @@ function tidySchool(r){
   fold(); spread(); fold();
   return out;
 }
+// Settings: the how-tos kept from earlier Agent tasks (see agent/howtos.js)
+function drawHowtos(){
+  const box=$('howtosList'); if(!box||!window.desktop||!window.desktop.howtosList)return;
+  window.desktop.howtosList().then(function(list){
+    box.innerHTML='';
+    if(!list.length){ box.appendChild(el('p','settings-hint','Nothing yet. Notes appear here as Agent tasks finish.')); return; }
+    list.forEach(function(h){
+      const row=el('div','howto');
+      row.appendChild(el('div','howto-task',h.task));
+      row.appendChild(el('div','howto-meta',h.date+' \u00B7 '+(h.lane==='local'?'mini PC':'Claude')+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
+      row.appendChild(el('div','howto-text',h.text));
+      const del=el('button','ghost mono danger howto-del','Delete');
+      del.addEventListener('click',function(){ window.desktop.howtosDelete(h.id).then(drawHowtos); });
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  }).catch(function(){});
+}
+if(window.desktop&&window.desktop.howtosList){ $('howtosSection').hidden=false; drawHowtos(); }
 if(window.desktop&&window.desktop.feedsFetch){
   $('feedsSection').hidden=false;
   window.desktop.feedsGet().then(function(urls){ $('feedsText').value=(urls||[]).join('\n'); }).catch(function(){});
@@ -3164,6 +3266,7 @@ function syncFillForm(){
 function setSettingsOpen(open){
   const p=$('settingsPanel'); if(p.hidden===!open)return;
   p.hidden=!open;
+  if(open)drawHowtos(); // new ones since it was last open
   document.body.classList.toggle('settings-open',open);
   $('settingsBtn').classList.toggle('active',open);
   if(open){
@@ -3410,11 +3513,15 @@ if(window.desktop&&window.desktop.onAgentResults){
       delete liveText[t.id];
       // "done" = finished: the task stays in the Agent tab until James checks it off himself
       t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked; // a fresh answer needs a fresh look
+      // it stopped for something in its way: why, what to do, and what its browser showed
+      t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
+      t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;
       t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null;
       if('options' in u)t.options=u.options;
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Mini PC asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
+      if(t.shot)extra.images=[t.shot];
       agentSay(t,'claude',u.note,Object.keys(extra).length?extra:null);
       if(u.pref)prefLines.push(u.pref);
     });
@@ -3840,6 +3947,8 @@ store.load().then(async function(data){
       if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; }
       if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; }
       if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true; if(t.parked&&out.status==='needs-you')out.parked=true;
+        if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object')out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')};
+        if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link

@@ -92,6 +92,48 @@ public class ListWidgetService extends RemoteViewsService {
                     }
                     header = needs > 0 ? needs + " need" + (needs == 1 ? "s" : "") + " you" : (working > 0 ? working + " in progress" : "all clear");
                     if (needs > 0) headerColor = 0xFF8A5A00;
+                } else if (mode.equals("status")) {
+                    // what the workers are doing: running → queued → finished (done stays until James checks it off)
+                    SyncStore.Row r = SyncStore.fetch(ctx, "agent");
+                    if (r == null) return;
+                    int working = 0, queued = 0, finished = 0, needs = 0;
+                    long now = System.currentTimeMillis();
+                    for (JSONObject t : open(r.doc, pending)) {
+                        String st = t.optString("status", "queued");
+                        if (st.equals("needs-you")) { if (!t.optBoolean("parked")) needs++; continue; } // the other widget lists these
+                        Row row = base(t, "agent");
+                        String who = workerName(t);
+                        long updated = t.optLong("updatedAt");
+                        if (st.equals("working")) {
+                            working++;
+                            long since = t.optLong("claimedAt", updated);
+                            row.sub = who + (since > 0 ? " · since " + clock(since) : "");
+                            row.due = "working"; row.dueColor = SyncStore.COLOR_ACCENT;
+                            row.sort = -since;
+                        } else if (st.equals("queued")) {
+                            queued++;
+                            long wait = t.optLong("waitUntil");
+                            row.sub = wait > now ? "Held until " + clock(wait) + " (usage limit)"
+                                    : t.has("lane") && !t.isNull("lane") ? "Next up for " + who : "Waiting to be routed";
+                            row.due = "queued";
+                            row.sort = Long.MAX_VALUE / 4 + updated; // oldest first: that's the order they run
+                        } else if (st.equals("done")) {
+                            finished++;
+                            String note = SyncStore.str(t, "note");
+                            row.sub = who + (note == null ? "" : " · " + note.replaceAll("\\s+", " "));
+                            row.due = updated > 0 ? "done " + clock(updated) : "done"; row.dueColor = 0xFF2E7D32;
+                            row.checkable = true; // clear it off the board
+                            row.sort = Long.MAX_VALUE / 2 - updated; // newest first
+                        } else continue;
+                        fresh.add(row);
+                    }
+                    List<String> parts = new ArrayList<>();
+                    if (working > 0) parts.add(working + " working");
+                    if (queued > 0) parts.add(queued + " queued");
+                    if (finished > 0) parts.add(finished + " done");
+                    if (needs > 0) parts.add(needs + " need" + (needs == 1 ? "s" : "") + " you");
+                    header = parts.isEmpty() ? "idle" : String.join(" · ", parts);
+                    if (working > 0) headerColor = SyncStore.COLOR_ACCENT;
                 } else if (mode.equals("school")) {
                     SyncStore.Row r = SyncStore.fetch(ctx, "school");
                     if (r == null) return;
@@ -178,6 +220,20 @@ public class ListWidgetService extends RemoteViewsService {
             r.channel = channel;
             r.title = t.optString("title", "");
             return r;
+        }
+
+        private static String workerName(JSONObject t) {
+            return "local".equals(t.optString("lane")) ? "Mini PC" : "Claude";
+        }
+
+        /** "2:14pm", or "Tue 2:14pm" when it isn't today. */
+        private static String clock(long ms) {
+            java.util.Calendar c = java.util.Calendar.getInstance(), now = java.util.Calendar.getInstance();
+            c.setTimeInMillis(ms);
+            String time = new java.text.SimpleDateFormat("h:mma", java.util.Locale.US).format(c.getTime()).toLowerCase(java.util.Locale.US);
+            boolean sameDay = c.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR)
+                    && c.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR);
+            return sameDay ? time : new java.text.SimpleDateFormat("EEE", java.util.Locale.US).format(c.getTime()) + " " + time;
         }
 
         private static String firstImage(JSONObject t) {

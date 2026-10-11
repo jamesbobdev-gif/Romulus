@@ -15,7 +15,7 @@ import android.widget.RemoteViews;
 public abstract class ListWidgetProvider extends AppWidgetProvider {
     static final String ACTION_REFRESH = "com.jartro.tasks.LIST_WIDGET_REFRESH";
 
-    abstract String mode();         // "today" | "agent" | "school"
+    abstract String mode();         // "today" | "agent" | "status" | "school"
     abstract String title();
     abstract String emptyText();
     abstract String tabToOpen();    // tab the header opens: "list" | "agent" | "school"

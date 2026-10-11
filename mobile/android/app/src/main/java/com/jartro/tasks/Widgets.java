@@ -18,6 +18,7 @@ final class Widgets {
         notify(mgr, ctx, TodayWidgetProvider.class, R.id.w_list);
         notify(mgr, ctx, AgentWidgetProvider.class, R.id.w_list);
         notify(mgr, ctx, SchoolWidgetProvider.class, R.id.w_list);
+        notify(mgr, ctx, AgentStatusWidgetProvider.class, R.id.w_list);
     }
 
     private static void notify(AppWidgetManager mgr, Context ctx, Class<?> provider, int listId) {

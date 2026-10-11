@@ -181,6 +181,25 @@ function loadSkills() {
    <userData>/site-notes/ (the app's own folder can't be written to once it's packaged). */
 const siteNoteDirs = () => [path.join(__dirname, 'agent', 'sites'), path.join(app.getPath('userData'), 'site-notes')];
 const taskLinks = (t) => (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
+// how-tos: what worked on earlier, similar tasks (agent/howtos.js), kept on this computer
+const howtos = require('./agent/howtos');
+const howtoFile = () => path.join(app.getPath('userData'), 'task-howtos.json');
+function howtosFor(t) { try { return howtos.forTask(howtos.load(howtoFile()), skillText(t), taskLinks(t)); } catch (e) { return []; } }
+function learnHowto(t, text, urls, lane) {
+  if (!text) return;
+  try {
+    const r = howtos.learn(howtos.load(howtoFile()), { task: t.title, text, urls, lane, today: new Date().toISOString().slice(0, 10) });
+    if (!r) return;
+    howtos.save(howtoFile(), r.list);
+    agentLog((lane === 'local' ? 'local: ' : '') + 'learned a how-to for "' + String(t.title).slice(0, 50) + '"' + (r.replaced ? ' (replaced ' + r.replaced + ' older)' : ''));
+  } catch (e) { agentLog('how-to not saved: ' + e.message); }
+}
+ipcMain.handle('howtos:list', () => howtos.load(howtoFile()).slice().reverse());
+ipcMain.handle('howtos:delete', (_event, id) => {
+  const list = howtos.load(howtoFile()), rest = list.filter((h) => h.id !== id);
+  if (rest.length !== list.length) howtos.save(howtoFile(), rest);
+  return rest.length !== list.length;
+});
 function siteNotesFor(urls, max = 3) { try { return siteNotes.forUrls(siteNotes.load(siteNoteDirs()), urls).slice(0, max); } catch (e) { return []; } }
 // what a skill's pattern is tested against: only his words (title, replies, instructions), since
 // Claude's own notes mention all sorts of things
@@ -677,7 +696,8 @@ async function startAgentRun() {
     repeats: t.repeat ? { every: t.repeat.every, at: t.repeat.at } : null,
     scheduledRun: !!t.repeatDue,
     checkInboxFirst: wantsInbox(t) ? true : undefined,
-    calendar: calendar && wantsCalendar(t) ? calendar : undefined }));
+    calendar: calendar && wantsCalendar(t) ? calendar : undefined,
+    howTo: (() => { const h = howtosFor(t); return h.length ? h.map(howtos.show) : undefined; })() }));
   // skills: the ones matching these tasks go in full; the rest are listed so Claude can open them itself
   const skills = loadSkills();
   const loaded = skills.filter((s) => tasks.some((t) => s.match && s.match.test(skillText(t)))).slice(0, 4);
@@ -754,10 +774,10 @@ async function startAgentRun() {
     for (const u of valid) {
       u.status = u.status === 'done' ? 'done' : 'needs-you';
       u.note = u.note ? String(u.note).slice(0, 1500) : null;
-      // {section, text} → "Section|text" (the renderer files it under that heading); a plain string still works
-      u.pref = !u.pref ? null : typeof u.pref === 'object'
-        ? (u.pref.text ? String(u.pref.section || 'Other').replace(/[|\n]/g, ' ').slice(0, 40) + '|' + String(u.pref.text).replace(/\n/g, ' ').slice(0, 200) : null)
-        : String(u.pref).replace(/\n/g, ' ').slice(0, 200);
+      u.pref = prefLine(u.pref);
+      const task = tasks.find((x) => x.id === u.id);
+      if (task && typeof u.howto === 'string') learnHowto(task, u.howto, taskLinks(task).concat((Array.isArray(u.options) ? u.options : []).map((o) => o && o.url).filter(Boolean)), 'claude');
+      delete u.howto;
       const opts = Array.isArray(u.options) && u.options.length
         ? (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean) : [];
       u.options = opts.length ? opts : null;
@@ -913,13 +933,26 @@ function scheduleLocalRun(raw) {
   clearTimeout(localTimer);
   localTimer = setTimeout(() => { localTimer = null; startLocalRun().catch((e) => { localBusy = false; agentLog('local run crashed: ' + (e && e.stack || e)); }); }, AGENT_GRACE_MS);
 }
+// a preference an agent wants saved: {section, text} → "Section|text" (the renderer files it under that
+// heading); a plain string still works
+function prefLine(p) {
+  if (!p) return null;
+  if (typeof p === 'object') return p.text ? String(p.section || 'Other').replace(/[|\n]/g, ' ').slice(0, 40) + '|' + String(p.text).replace(/\n/g, ' ').slice(0, 200) : null;
+  return String(p).replace(/\n/g, ' ').slice(0, 200);
+}
+let localHeardAt = 0; // last time the mini PC streamed part of an answer
 ipcMain.handle('local:status', async () => {
   const c = localCfg();
   if (!c) return { configured: false };
   try {
-    const [tags, ps] = await Promise.all(['tags', 'ps'].map((p) => fetch(c.url + '/api/' + p, { signal: AbortSignal.timeout(3000) }).then((r) => r.json())));
+    // with every core busy on a task its replies can take a few seconds: 3 s showed "isn't reachable"
+    // in the middle of a run that was going fine
+    const [tags, ps] = await Promise.all(['tags', 'ps'].map((p) => fetch(c.url + '/api/' + p, { signal: AbortSignal.timeout(10000) }).then((r) => r.json())));
     return { configured: true, online: true, model: c.model, installed: (tags.models || []).some((m) => m.name === c.model), loaded: (ps.models || []).some((m) => m.name === c.model) };
-  } catch (e) { return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') }; }
+  } catch (e) {
+    if (Date.now() - localHeardAt < 3 * 60 * 1000) return { configured: true, online: true, model: c.model, installed: true, loaded: true };
+    return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
+  }
 });
 async function agentRow(suffix) { // a doc next to the agent list ({v, text}): ':prefs' or ':locked'
   const a = ((readConfig().sync) || {}).agent;
@@ -1021,9 +1054,36 @@ function searchMyData(query, ctx) {
 const QWEN_BROWSER_LOCAL_PORT = 9336;
 let qwenTunnel = null;
 const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
+/* After each task: one blank tab left, every other tab closed. Tabs piled up between tasks (Blackboard,
+   D2L…) and kept their memory on a mini PC that froze when memory ran out. Logins stay (cookies). */
+async function tidyAgentTabs() {
+  const base = 'http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json';
+  try {
+    const pages = (await fetch(base + '/list', { signal: AbortSignal.timeout(3000) }).then((r) => r.json())).filter((p) => p.type === 'page');
+    if (pages.length === 1 && pages[0].url === 'about:blank') return;
+    await fetch(base + '/new?about:blank', { method: 'PUT', signal: AbortSignal.timeout(3000) });
+    for (const p of pages) await fetch(base + '/close/' + p.id, { method: 'PUT', signal: AbortSignal.timeout(3000) }).catch(() => {});
+    agentLog('local: closed ' + pages.length + ' browser tab(s) on the mini PC');
+  } catch (e) {} // the browser may be gone already: nothing to tidy
+}
+/* GNOME on the mini PC switched its displays to power-save (even with blanking set to "never"), and
+   with no screen on it stops drawing Chromium: every click timed out ("the screen appears locked").
+   Waking the displays before each browser run costs one quick ssh. Never fails a task. */
+function wakeMiniPcDisplay(ssh) {
+  return new Promise((resolve) => {
+    const cmd = 'export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus; ' +
+      'gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig ' +
+      '--method org.freedesktop.DBus.Properties.Set org.gnome.Mutter.DisplayConfig PowerSaveMode "<0>"';
+    const p = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', ssh, cmd], { windowsHide: true, stdio: 'ignore' });
+    const done = () => { clearTimeout(t); resolve(); };
+    const t = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(); }, 15000);
+    p.on('exit', done); p.on('error', done);
+  });
+}
 async function ensureQwenBrowser() {
   const b = (readConfig().localModel || {}).browser;
   if (!b || !b.ssh) return false;
+  await wakeMiniPcDisplay(b.ssh);
   if (await qwenBrowserUp()) return true;
   if (qwenTunnel) { try { qwenTunnel.kill(); } catch (e) {} qwenTunnel = null; }
   qwenTunnel = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30',
@@ -1153,6 +1213,7 @@ function ollamaChat(c, body, onMessage, ms = 10 * 60 * 1000) {
       res.setEncoding('utf8');
       res.on('data', (d) => {
         if (settled) return;
+        localHeardAt = Date.now(); // it's answering: the status check mustn't call it unreachable
         buf += d; let i;
         while ((i = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
@@ -1181,6 +1242,41 @@ const LOCAL_TOOLS = [
   { type: 'function', function: { name: 'read_page', description: 'Read the text of a web page.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
   { type: 'function', function: { name: 'search_my_data', description: 'Search what his Tasks app already knows: all his tasks and their conversations (including what was found on earlier tasks), notes, preferences, locked profile, calendar and skills.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
 ];
+/* When a mini PC run stops for something in its way, James gets why, what to do, and a picture of
+   what its browser showed. The screenshot goes to his attachments bucket like the photos he adds. */
+async function miniPcScreenshot() {
+  const node = findNode();
+  if (!node || !(await qwenBrowserUp())) return null;
+  const script = path.join(agentBrowserDir(), 'browser-shot.js');
+  try {
+    const src = fs.readFileSync(path.join(__dirname, 'agent', 'browser-shot.js'), 'utf8');
+    try { if (fs.readFileSync(script, 'utf8') !== src) fs.writeFileSync(script, src); } catch (e) { fs.writeFileSync(script, src); }
+  } catch (e) { return null; }
+  const out = await new Promise((resolve) => {
+    let buf = '';
+    const p = require('child_process').spawn(node, [script, String(QWEN_BROWSER_LOCAL_PORT)], { windowsHide: true });
+    const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 30 * 1000);
+    p.stdout.on('data', (d) => { buf += d; });
+    p.on('error', () => { clearTimeout(killer); resolve({}); });
+    p.on('close', () => { clearTimeout(killer); try { resolve(JSON.parse(buf)); } catch (e) { resolve({}); } });
+  });
+  if (!out.jpeg) { agentLog('local: no screenshot (the mini PC\'s browser didn\'t draw one)'); return null; }
+  const a = ((readConfig().sync) || {}).agent || {};
+  if (!a.url || !a.key || !a.syncKey) return null;
+  const base = a.url.replace(/\/+$/, ''), file = a.syncKey + '/stuck-' + Date.now().toString(36) + '.jpg';
+  try {
+    const r = await fetch(base + '/storage/v1/object/agent-attachments/' + file, { method: 'POST', body: Buffer.from(out.jpeg, 'base64'),
+      headers: { apikey: a.key, Authorization: 'Bearer ' + a.key, 'Content-Type': 'image/jpeg' }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) { agentLog('local: screenshot upload failed (' + r.status + ')'); return null; }
+  } catch (e) { agentLog('local: screenshot upload failed: ' + e.message); return null; }
+  return base + '/storage/v1/object/public/agent-attachments/' + file;
+}
+// {reason, fix} from the model or the app, trimmed; null when there's nothing usable
+function cleanStuck(s) {
+  if (!s || typeof s !== 'object') return null;
+  const reason = String(s.reason || '').trim().slice(0, 300), fix = String(s.fix || '').trim().slice(0, 400);
+  return reason || fix ? { reason: reason || 'It couldn’t carry on.', fix: fix || 'Reply “try again”, or switch it to Claude.' } : null;
+}
 async function startLocalRun() {
   const c = localCfg();
   if (!c || localBusy) return;
@@ -1196,10 +1292,20 @@ async function startLocalRun() {
     const tasks = await claimAgentTasks(queued, 'local');
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
-    for (const t of tasks) await runLocalTask(c, t).catch((e) => {
-      agentLog('local task failed: ' + (e && e.message || e) + (slept ? ' (after this computer slept)' : ''));
-      sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
-        note: 'Your mini PC couldn’t finish this one (' + (slept ? 'this computer went to sleep while it worked, which cut the connection; keep the lid open, or set closing the lid to do nothing when plugged in' : /fetch failed|ECONNREFUSED|timed? ?out|abort/i.test(String(e && e.message)) ? 'it isn’t reachable at ' + c.url.replace(/^https?:\/\//, '') + ', is it on?' : String(e && e.message || e).slice(0, 150)) + '). Reply to try again, or switch it to Claude.' }]);
+    for (const t of tasks) await runLocalTask(c, t).catch(async (e) => {
+      const msg = String(e && e.message || e);
+      agentLog('local task failed: ' + msg + (slept ? ' (after this computer slept)' : ''));
+      const where = c.url.replace(/^https?:\/\//, '');
+      const stuck = slept
+        ? { reason: 'This computer went to sleep while the mini PC worked, which cut the connection.', fix: 'Keep the lid open (or set closing the lid to do nothing when plugged in), then reply “try again”.' }
+        : /fetch failed|ECONNREFUSED|abort/i.test(msg)
+        ? { reason: 'The mini PC isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
+        : /timed? ?out/i.test(msg)
+        ? { reason: 'The mini PC’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the mini PC, or switch this to Claude.' }
+        : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
+      const shot = await miniPcScreenshot().catch(() => null);
+      sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
+        note: 'Your mini PC couldn’t finish this one. ' + stuck.reason }]);
     });
   } finally {
     localBusy = false;
@@ -1231,12 +1337,16 @@ async function runLocalTask(c, t) {
   const tools = browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, browser.tools) : LOCAL_TOOLS;
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   const taskNotes = siteNotesFor(taskLinks(t));
+  const earlier = howtosFor(t);
+  if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set();
-  // long forms (30-page questionnaires) take ~2 steps a page: fill_form, then Next
-  const maxSteps = browser ? 120 : LOCAL_MAX_STEPS;
+  // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
+  // fill_form, then Next). A shopping task with 120 went round in circles for too long
+  let maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
   const system = rules + (browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)') : LOCAL_NO_BROWSER) + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
+    (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
     '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') +
     '\n\n## Locked profile (private: use for his tasks, never quote in the note)\n' + (locked.trim() || '(empty)') +
     '\n\nToday is ' + new Date().toDateString() + '.';
@@ -1247,10 +1357,11 @@ async function runLocalTask(c, t) {
   const show = (s, force) => { live = (live + s).slice(-6000); if (force || Date.now() - lastSent > 250) { lastSent = Date.now(); sendToRenderer('agent:live', { id: t.id, text: live }); } };
   let myCal = null, calTried = false; // his calendar, for search_my_data
   const page = {}; // what the browser last showed (refs, address), so slips in browser calls can be fixed
-  let final = null, blocked = 0, forceAnswer = false;
+  let final = null, blocked = 0, forceAnswer = false, clickTimeouts = 0;
   let draft = '', wantJson = false; // an answer it gave as plain text, and whether the next reply must be the JSON
   let seen = JSON.stringify(task); // everything it was shown: the task's own links, search results, pages
   const searchedLinks = new Set(), opened = new Set(); // links its searches returned, pages it read
+  const madeCalls = new Set(); let repeats = 0; // searches and page reads already made, and how often it repeated one
   const formsFilled = {}; // fill_form runs per page address
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
@@ -1288,6 +1399,15 @@ async function runLocalTask(c, t) {
     for (const call of calls) {
       const name = call.function && call.function.name, args = (call.function && call.function.arguments) || {};
       let result;
+      // the same search or page again: Holo4 read one page and ran one search twice each, in turn
+      const key = (name === 'web_search' || name === 'read_page') ? name + ':' + String(args.query || args.url || '').trim().toLowerCase() : null;
+      if (key && madeCalls.has(key)) {
+        repeats++;
+        messages.push({ role: 'tool', tool_name: name, content: 'You already did exactly this (' + name + ') and have its result above. Don\'t repeat it: try a different page or search, or answer now with what you found.' });
+        if (repeats >= 2) { forceAnswer = true; show('⛔ Going in circles: wrapping up\n', true); }
+        continue;
+      }
+      if (key) madeCalls.add(key);
       try {
         if (name === 'web_search') {
           show('\n🔎 Searching: ' + args.query + '\n', true); result = await localWebSearch(args.query);
@@ -1303,6 +1423,7 @@ async function runLocalTask(c, t) {
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
         } else if (browser && name === 'fill_form') {
+          maxSteps = Math.max(maxSteps, 120); // a form: long questionnaires get room to finish
           // per page: its address plus its questions, as many multi-page forms keep one address throughout
           const at = (page.url || '') + '|' + formMode.formFields(page).map((f) => f.label).join('|');
           if ((formsFilled[at] = (formsFilled[at] || 0) + 1) > 2) result = 'Form mode already ran twice on this page. Fix the rest field by field, or answer.';
@@ -1320,7 +1441,7 @@ async function runLocalTask(c, t) {
           show('\n' + label + '\n', true);
           const r = await pageReader.step(browser, name, args, page);
           if (r.locked) show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true);
-          else if (r.failed) show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true);
+          else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (/timeout|timed out/i.test(r.text)) clickTimeouts++; }
           const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
           result = r.text;
@@ -1343,7 +1464,21 @@ async function runLocalTask(c, t) {
     show('\n', true);
   }
   } finally { if (browser) browser.close(); }
-  final = final || { status: 'needs-you', note: 'I ran out of steps before finishing. Reply to let me continue, or switch this to Claude.' };
+  let stuck = null;
+  if (!final) {
+    final = { status: 'needs-you', note: 'I ran out of steps before finishing. Reply to let me continue, or switch this to Claude.' };
+    stuck = { reason: 'It used all ' + maxSteps + ' of its steps without finishing.', fix: 'Reply “keep going” to give it more steps, or switch it to Claude.' };
+  }
+  // finished: close its tabs. Not when it's waiting on him: a filled form waiting for his yes is in a tab
+  if (browser && final.status === 'done') await tidyAgentTabs();
+  if (final.status !== 'done') {
+    stuck = cleanStuck(final.stuck) || stuck;
+    if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on the mini PC kept timing out: its screen is probably locked or asleep.',
+      fix: 'Unlock the mini PC (or turn off its screen lock and sleep), then reply “try again”.' };
+  }
+  if (!stuck && typeof final.howto === 'string') learnHowto(t, final.howto, [...visited].map((h) => 'https://' + h).concat(taskLinks(t)), 'local');
+  // a picture of what the browser showed, when it stopped there
+  const shot = stuck && browser ? await miniPcScreenshot().catch(() => null) : null;
   // tips it left about sites it actually worked on in the browser, for next time
   for (const tip of (Array.isArray(final.site_tips) ? final.site_tips : []).slice(0, 3)) {
     const host = [...visited].find((h) => tip && siteNotes.covers(String(tip.site || '').toLowerCase().replace(/^https?:\/\/|^www\.|\/.*$/g, ''), h));
@@ -1361,7 +1496,7 @@ async function runLocalTask(c, t) {
   const opts = real.length ? (await Promise.all(real.slice(0, 6).map((o) => enrichOption(o, 'local')))).filter(Boolean) : [];
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
-    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: null }]); // room for an essay
+    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot }]); // room for an essay
 }
 
 global.__agentTest = { parseUsageLimit, holdForUsage, recentReplies, maybeTidyMemory };

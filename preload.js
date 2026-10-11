@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('desktop', {
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // course calendar feeds (Blackboard / D2L iCal links) → School list
+  // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)
+  howtosList: () => ipcRenderer.invoke('howtos:list'),
+  howtosDelete: (id) => ipcRenderer.invoke('howtos:delete', id),
   feedsGet: () => ipcRenderer.invoke('feeds:get'),
   feedsSave: (urls) => ipcRenderer.invoke('feeds:save', urls),
   feedsFetch: () => ipcRenderer.invoke('feeds:fetch'),

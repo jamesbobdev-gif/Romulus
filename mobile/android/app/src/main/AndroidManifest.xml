@@ -67,6 +67,13 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_agent_info" />
         </receiver>
+        <receiver android:name=".AgentStatusWidgetProvider" android:label="Tasks: Agent status" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_status_info" />
+        </receiver>
         <receiver android:name=".SchoolWidgetProvider" android:label="Tasks: School" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
