@@ -77,13 +77,23 @@ Tasks are saved to a `tasks.json` file in the app's user-data folder (e.g. `%APP
 
 The **Ideas** tab holds ideas as note cards, as long as you like, that you sort into groups.
 
-- Tap **+ Add an idea** in a group and write. Enter starts a new line; click away (or Esc) to save, or Ctrl+Enter to save and start another. New ideas can start in **Unsorted**.
+- Tap **+ Add an idea** in a group and write. Tap an idea to drop down its description, made of sections: **+ Add a section** gives it a heading and text, and tapping a section changes it. **Edit title** renames the idea; **Delete** (tap twice) removes it. Highlight lines in a section and a bar pops up: **→ To-do** or **→ Agent** turns each line into its own task there and takes it out of the description. Enter starts a new line; click away (or Esc) to save, or Ctrl+Enter to save and start another. New ideas can start in **Unsorted**.
 - Long ideas show their first few lines; click (tap) a card to read all of it and edit it. Clear the text or press **Delete** to remove it.
 - **+ Group** makes a new group; click its name to rename it, the dot to change its colour, and × to remove it (its ideas go back to Unsorted).
 - **Unsorted** is the default group: new ideas can start there and removed groups' ideas land there. You can rename it and change its colour too; it just can't be removed.
 - Drag a card into another group, or above/below another card to reorder; the others slide aside. On a phone, press and hold a card to pick it up.
+- Drag a group by its ⠿ handle to move the whole group around the board (Unsorted too). With the handle focused, the arrow keys move it one place.
 
 Ideas sync across devices with the personal channel, in their own row (`<personal sync key>:ideas`), so they never show up as tasks or in Claude's task tools.
+
+## RSI — Romulus Self Improvement (experimental)
+
+⚙ Settings → **RSI**: ask for a change to the app in a chat and Claude Code edits its source.
+
+- Desktop only, and only when the app runs from this folder (`npm start`). The installed app's files are packed, so there it needs `"rsi": {"repo": "C:\\path\\to\\tasks-app"}` in `config.json`, and changes only reach the installed copy after `npm run dist`.
+- It won't start while the folder has uncommitted changes. Each change is committed as `RSI: <your request>`; **Undo** (in the panel, or the tray menu if a change breaks the window) reverts the latest one.
+- Claude can only read and edit files in this folder: no shell, no web, and never `agent/rsi.js` itself. A change that doesn't parse is thrown away instead of committed. Your tasks live in `%APPDATA%`, outside the folder.
+- UI changes apply with **Reload to see it**; changes to `main.js`, `preload.js` or `agent/` need **Restart to apply**. The phone gets them only after an APK rebuild.
 
 ## Quick reference
 

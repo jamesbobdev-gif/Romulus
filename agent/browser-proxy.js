@@ -68,6 +68,9 @@ async function frontCurrentTab() {
      until "approved" is true, which the dispatcher sets only when James's latest reply is a yes */
 const LOCK_FILE = process.env.TASKS_BROWSER_LOCK || '';
 const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|apply|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate)\b/i;
+// signing out is never part of a task, even after a yes: it ends the logins James made on the mini PC
+// (Blackboard, D2L…), and only he can sign back in
+const SIGN_OUT = /\b(sign|log) ?(out|off)\b|logout|signout|logoff/i;
 function lockState() {
   if (!LOCK_FILE) return null;
   try {
@@ -91,10 +94,12 @@ function lockedOut(msg) {
   const name = msg.params.name, a = msg.params.arguments || {};
   if (name === 'browser_navigate' || (name === 'browser_tabs' && a.url)) {
     if (!hostAllowed(String(a.url || ''), lock.hosts)) return 'This browser is locked to the links in the task (' + (lock.hosts.join(', ') || 'none') + '). ' + a.url + ' is not one of them.';
+    if (SIGN_OUT.test(String(a.url || ''))) return 'Locked: never sign out. James stays logged in to his sites on this browser.';
   }
+  const label = name === 'browser_click' ? (refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '') : '';
+  if (SIGN_OUT.test(label)) return 'Locked: "' + label.trim() + '" would sign James out. Never sign out; carry on with the task.';
   if (lock.approved) return null;
   if (name === 'browser_click') {
-    const label = (refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '');
     if (FINAL.test(label)) return 'Locked: "' + label.trim() + '" looks like a final step (submit, send, buy, book…). Stop here and ask James to reply yes.';
   }
   // any Enter: "Enter", "NumpadEnter", "Shift+Enter", "Control+Enter"… all submit a form
