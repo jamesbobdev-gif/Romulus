@@ -7,5 +7,6 @@
     <string name="widget_today_desc">Today: due today and overdue. Tap the circle to check it off.</string>
     <string name="widget_agent_desc">Claude needs you: Agent tasks waiting on your answer.</string>
     <string name="widget_school_desc">School: next test countdown and upcoming assignments.</string>
+    <string name="widget_status_desc">Agent status: what Claude and the mini PC are working on, what\'s queued, and what they just finished.</string>
     <string name="widget_quick_desc">Quick add: a new task, or one for Claude.</string>
 </resources>

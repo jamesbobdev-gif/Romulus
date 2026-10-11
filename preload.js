@@ -26,6 +26,26 @@ contextBridge.exposeInMainWorld('desktop', {
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
+  // course calendar feeds (Blackboard / D2L iCal links) → School list
+  // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)
+  howtosList: () => ipcRenderer.invoke('howtos:list'),
+  howtosDelete: (id) => ipcRenderer.invoke('howtos:delete', id),
+  feedsGet: () => ipcRenderer.invoke('feeds:get'),
+  feedsSave: (urls) => ipcRenderer.invoke('feeds:save', urls),
+  feedsFetch: () => ipcRenderer.invoke('feeds:fetch'),
+  // dates from Gmail → tasks (and so the calendar)
+  mailStatus: () => ipcRenderer.invoke('mail:status'),
+  mailSetEnabled: (on) => ipcRenderer.invoke('mail:set-enabled', on),
+  mailCheck: () => ipcRenderer.invoke('mail:check'),
+  // RSI: change the app itself from a chat
+  rsiStatus: () => ipcRenderer.invoke('rsi:status'),
+  rsiAsk: (text) => ipcRenderer.invoke('rsi:ask', text),
+  rsiUndo: () => ipcRenderer.invoke('rsi:undo'),
+  rsiStop: () => ipcRenderer.invoke('rsi:stop'),
+  rsiNewChat: () => ipcRenderer.invoke('rsi:new-chat'),
+  rsiSetEnabled: (on) => ipcRenderer.invoke('rsi:set-enabled', on),
+  rsiApply: (restart) => ipcRenderer.invoke('rsi:apply', restart),
+  onRsiEvent: (cb) => ipcRenderer.on('rsi:event', (_event, m) => cb(m)),
   // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
   voiceStop: () => ipcRenderer.invoke('voice:stop'),

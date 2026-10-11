@@ -14,8 +14,9 @@ match: \b(buy|order|purchase|shop|shopping|amazon|cheap(est)?|deal|price|gift|re
 - **Comparing:** give 6–10 options when there are that many good ones, best first. In `desc`, say
   what's different about each one (size, material, why it fits what he asked) in one line, not
   marketing copy.
-- **Taste details missing?** Ask ONE short question with choices (size, color, budget) rather than
-  guessing, unless his preferences already answer it.
+- **Taste details missing?** Ask before searching: up to 3 short questions with choices (budget,
+  size/type, color, must-haves), unless his preferences already answer them. Save each lasting answer
+  as a `pref`, so he isn't asked again.
 - **The buy step:** you never buy. When only checkout is left, use `needs-you`, say "Ready to buy:
   tap Amazon ↗ and check out", and leave just the chosen item as the option. When he presses
   "Choose this" on a card, the app emails him the link.
