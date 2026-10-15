@@ -13,141 +13,18 @@ const providers = require('./agent/providers');
 const helpers = require('./agent/helpers');
 const supabase = require('./agent/supabase');
 const store = require('./main/store');
-
-let mainWindow = null;
-let tray = null;
-let isQuitting = false;
-
-const ICON = path.join(__dirname, 'assets', 'icon.png');
-const APP_PAGE = path.join(__dirname, 'renderer', 'index.html');
+const win = require('./main/window');
+const trayMod = require('./main/tray');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
 
-// True only for the app's own bundled page — never a website the window was
-// somehow pointed at.
-function isAppPage(u) {
-  try {
-    const parsed = new URL(String(u || ''));
-    if (parsed.protocol !== 'file:') return false;
-    return path.normalize(require('url').fileURLToPath(parsed)).toLowerCase() === path.normalize(APP_PAGE).toLowerCase();
-  } catch (e) { return false; }
-}
-
-// Every desktop function (tasks, mail, calendars, RSI self-editing…) is an IPC
-// handler. Only answer calls coming from the app's own page in its top frame,
-// so a stray page or iframe can never reach them.
-function trustedSender(event) {
-  const f = event && event.senderFrame;
-  return !!(f && !f.parent && isAppPage(f.url));
-}
-const rawHandle = ipcMain.handle.bind(ipcMain);
-ipcMain.handle = (channel, fn) => rawHandle(channel, (event, ...args) => {
-  if (!trustedSender(event)) throw new Error('Blocked: untrusted sender');
-  return fn(event, ...args);
-});
-
+win.guardIpc(ipcMain);
 store.init({ userData: () => app.getPath('userData'), safeStorage: require('electron').safeStorage });
 const { dataFile, readConfig, writeConfig, agentLog } = store;
-
-/* ---------- window ---------- */
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 760,
-    height: 860,
-    minWidth: 420,
-    minHeight: 480,
-    title: 'Tasks',
-    icon: ICON,
-    backgroundColor: '#FBFBFA',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
-  // The window only ever shows the app itself: no navigating away, no pop-ups.
-  // Web links go to the real browser instead.
-  const toBrowser = (url) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {}); };
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => { toBrowser(url); return { action: 'deny' }; });
-  mainWindow.webContents.on('will-navigate', (e, url) => {
-    if (isAppPage(url)) return;
-    e.preventDefault();
-    toBrowser(url);
-  });
-  mainWindow.webContents.on('will-redirect', (e, url) => { if (!isAppPage(url)) e.preventDefault(); });
-  mainWindow.webContents.on('will-attach-webview', (e) => e.preventDefault());
-
-  const loadApp = () => mainWindow.loadFile(APP_PAGE);
-  // A failed load (e.g. antivirus briefly locking the asar at login) otherwise
-  // leaves a blank window forever — retry until it sticks.
-  loadApp().catch(() => setTimeout(loadApp, 1500));
-  mainWindow.webContents.on('did-fail-load', () => setTimeout(loadApp, 1500));
-
-  // Closing the window hides it to the tray; the app keeps running
-  // so it can reappear when the screen wakes. Quit from the tray menu.
-  mainWindow.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault();
-      mainWindow.hide();
-    }
-  });
-  mainWindow.on('closed', () => { mainWindow = null; });
-}
-
-function showWindow() {
-  if (!mainWindow) { createWindow(); return; }
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
-}
-
-/* ---------- tray ---------- */
-function createTray() {
-  const icon = nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 });
-  tray = new Tray(icon);
-  tray.setToolTip('Tasks');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Tasks', click: showWindow },
-    {
-      label: 'Start when I log in',
-      type: 'checkbox',
-      checked: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false,
-      enabled: app.isPackaged && process.platform !== 'linux',
-      click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked })
-    },
-    { type: 'separator' },
-    // works even when an RSI change has broken the window
-    { label: 'RSI: Undo last change', click: () => { const r = rsi.undo(); if (r.ok) applyRsiChange(r.restart); else agentLog('RSI undo: ' + r.error); } },
-    { type: 'separator' },
-    { label: 'Quit Tasks', click: () => { isQuitting = true; app.quit(); } }
-  ]));
-  tray.on('click', showWindow);
-}
-
-// Tray tooltip shows overdue / due-today counts, e.g. "Tasks — 3 overdue · 1 due today".
-function refreshTrayStatus(raw) {
-  if (!tray) return;
-  let data;
-  try {
-    data = raw != null ? JSON.parse(raw) : JSON.parse(fs.readFileSync(dataFile(), 'utf8'));
-  } catch (e) { return; }
-  const tasks = Array.isArray(data.tasks) ? data.tasks : [];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  let overdue = 0, dueToday = 0;
-  for (const t of tasks) {
-    if (t.done || !t.due || t.ws === 'agent') continue; // agent tasks are Claude's, not yours
-    const [y, m, d] = t.due.split('-').map(Number);
-    const diff = Math.round((new Date(y, m - 1, d) - today) / 864e5);
-    if (diff < 0) overdue++;
-    else if (diff === 0) dueToday++;
-  }
-  const parts = [];
-  if (overdue) parts.push(overdue + ' overdue');
-  if (dueToday) parts.push(dueToday + ' due today');
-  tray.setToolTip(parts.length ? 'Tasks — ' + parts.join(' · ') : 'Tasks');
-}
+const { showWindow, sendToRenderer } = win;
+trayMod.init({ dataFile, showWindow, quit: win.quit, rsiUndo: () => rsi.undo(), applyRsiChange: win.applyRsiChange, agentLog, icon: win.ICON });
+const { refreshTrayStatus } = trayMod;
 
 /* ---------- agent runner ----------
    When an Agent-tab task is queued (new, or James replied), start a headless
@@ -483,7 +360,7 @@ let previewWindows = 0;
 async function hiddenWindowPreview(url) {
   while (previewWindows >= 3) await new Promise((r) => setTimeout(r, 300)); // at most 3 hidden pages at once
   previewWindows++;
-  const w = new BrowserWindow({ show: false, width: 1200, height: 900, webPreferences: { sandbox: true, contextIsolation: true } });
+  const w = win.newHiddenWindow({ show: false, width: 1200, height: 900, webPreferences: { sandbox: true, contextIsolation: true } });
   w.webContents.setAudioMuted(true);
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   try {
@@ -528,9 +405,6 @@ async function enrichOption(o, lane) {
       price: price || null, rating: rating ? rating + '★' : null });
   } catch (e) { return Object.assign(base, { url: clean }); }
 }
-function sendToRenderer(ch, payload) {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, payload);
-}
 
 /* RSI — Romulus Self Improvement: change the app itself from a chat (agent/rsi.js) */
 const rsi = rsiModule.create({
@@ -543,18 +417,13 @@ const rsi = rsiModule.create({
   getSession: () => (readConfig().rsi || {}).session || null,
   setSession: (id) => { const c = readConfig(); c.rsi = Object.assign({}, c.rsi, { session: id || undefined }); writeConfig(c); },
 });
-// UI-only changes just reload the window; main-process changes need the whole app restarted
-function applyRsiChange(restart) {
-  if (restart) { isQuitting = true; app.relaunch(); app.exit(0); }
-  else if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.reload(); showWindow(); }
-}
 ipcMain.handle('rsi:status', () => rsi.status());
 ipcMain.handle('rsi:ask', (_e, text) => rsi.ask(String(text || '').slice(0, 4000)));
 ipcMain.handle('rsi:undo', () => rsi.undo());
 ipcMain.handle('rsi:stop', () => rsi.stop());
 ipcMain.handle('rsi:new-chat', () => rsi.newChat());
 ipcMain.handle('rsi:set-enabled', (_e, on) => { const c = readConfig(); c.rsi = Object.assign({}, c.rsi, { enabled: !!on }); writeConfig(c); if (!on) rsi.stop(); return rsi.status(); });
-ipcMain.handle('rsi:apply', (_e, restart) => { applyRsiChange(!!restart); return true; });
+ipcMain.handle('rsi:apply', (_e, restart) => { win.applyRsiChange(!!restart); return true; });
 
 function failAgentTasks(ids, why) {
   sendToRenderer('agent:results', ids.map((id) => ({ id, status: 'needs-you',
@@ -1947,7 +1816,7 @@ async function performSyncOnce() {
       fs.renameSync(file + '.tmp', file);
     } catch (e) { console.error('calendar sync: could not save event ids:', e.message); }
   }
-  if (mainWindow) mainWindow.webContents.send('gcal:sync-done', changed.map((t) => ({ id: t.id, googleEventId: t.googleEventId, calRef: t.calRef || null })));
+  sendToRenderer('gcal:sync-done', changed.map((t) => ({ id: t.id, googleEventId: t.googleEventId, calRef: t.calRef || null })));
   return changed;
 }
 
@@ -2114,8 +1983,8 @@ if (!gotLock) {
       }
     }
 
-    createWindow();
-    createTray();
+    win.createWindow();
+    trayMod.createTray();
     refreshTrayStatus();
     setInterval(() => refreshTrayStatus(), 60 * 60 * 1000);
     // tasks left waiting while the app was closed get picked up shortly after start
@@ -2139,7 +2008,7 @@ if (!gotLock) {
     app.on('activate', showWindow); // macOS dock click
   });
 
-  app.on('before-quit', () => { isQuitting = true; });
+  app.on('before-quit', () => win.setQuitting());
 
   // Window closed -> keep running in the tray (don't quit).
   app.on('window-all-closed', () => {});
