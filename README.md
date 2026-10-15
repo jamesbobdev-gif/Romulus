@@ -65,7 +65,7 @@ Hit **Apply** to see it instantly; **Reset** returns to the default. Your theme 
 
 ## Sharing the app
 
-Give people `dist/Tasks Setup 1.0.0.exe` — it contains no personal data or credentials. They get their own empty task list, and can optionally connect their own Google Calendar and their own device sync in ⚙ Settings. (Windows may show an "unrecognized app" warning since the installer is unsigned — "More info → Run anyway".)
+Give people `dist/Tasks Setup 1.0.0.exe` — it contains no personal data or credentials. Never add `seed-config.json` to the build: it holds your sync keys, and anyone with them can read and edit your lists. To set up another computer of yours, copy `seed-config.json` into that computer's `%APPDATA%/tasks` folder before first launch instead. They get their own empty task list, and can sign in with Google or Microsoft (or paste any calendar link) under ⚙ Settings → Calendars, then pick per calendar whether tasks go onto it and whether its events become to-dos (repeating events like classes are skipped by default). One-click sign-in needs the app's own OAuth clients in `oauth-clients.json` (see `oauth-clients.example.json`; kept out of git, bundled into the build). Without a Google one, people paste their own Google Cloud credential instead. (Windows may show an "unrecognized app" warning since the installer is unsigned — "More info → Run anyway".)
 
 Do **not** share your built APK from `mobile/` — your private sync credentials are baked into it.
 

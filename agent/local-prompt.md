@@ -46,7 +46,9 @@ stuck: only when something got in your way and you couldn't carry on (a login pa
 asleep screen, a captcha, a page that won't load, a button that does nothing). reason = what
 happened, in one plain sentence ("Blackboard showed its login page"). fix = the exact thing for him
 to do, then reply "try again" ("Log in to Blackboard in the mini PC's browser"). A question for him,
-or a final step waiting on his yes, is not stuck: leave it null.
+or a final step waiting on his yes, is not stuck: leave it null. Only say stuck from what you saw in
+THIS run: an earlier message on the task about a login or a locked screen may be out of date (he may
+have fixed it), so look at the browser first.
 
 howto (optional): when you got somewhere, 2–3 short lines on what worked, so the next similar task
 goes straight there: which site, which menus or pages, what to skip ("Blackboard: Courses → ENT 300 →
