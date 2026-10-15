@@ -14,7 +14,7 @@ npm start
 ## How the code is laid out
 
 - `main.js` starts the Electron main process. It only wires the pieces together: each module gets what it shares with the others (config, the log, the window…) through its `init(ctx)` and lists its IPC calls in `handlers`.
-- `main/` holds the desktop plumbing: the window and tray, saving tasks, config and secrets (`store.js`), calendar sync and accounts, Gmail dates, "Buy this" emails, Speak, and the RSI wiring.
+- `main/` holds the desktop plumbing: the window and tray, saving tasks, config and secrets (`store.js`), calendar sync and accounts, Gmail dates, the morning look-ahead, "Buy this" emails, and Speak.
 - `agent/` holds the Agent tab: routing between lanes, the Claude runner, the mini PC (local) lane with its tools and browser, AI connections, the usage-limit hold, the weekly memory tidy, and their helpers.
 - `preload.js` is the bridge between the two.
 - `renderer/` is the UI. `index.html` holds the markup, `styles.css` the look, and `js/*.js` the page scripts. They are plain scripts, with no bundler: they share one global scope and load in the order `index.html` lists them, ending with `init.js`. So declare a top-level name in one file only, and don't use a later file's names in code that runs while the page loads.
@@ -95,15 +95,6 @@ The **Ideas** tab holds ideas as note cards, as long as you like, that you sort 
 - Drag a group by its ⠿ handle to move the whole group around the board (Unsorted too). With the handle focused, the arrow keys move it one place.
 
 Ideas sync across devices with the personal channel, in their own row (`<personal sync key>:ideas`), so they never show up as tasks or in Claude's task tools.
-
-## RSI — Romulus Self Improvement (experimental)
-
-⚙ Settings → **RSI**: ask for a change to the app in a chat and Claude Code edits its source.
-
-- Desktop only, and only when the app runs from this folder (`npm start`). The installed app's files are packed, so there it needs `"rsi": {"repo": "C:\\path\\to\\tasks-app"}` in `config.json`, and changes only reach the installed copy after `npm run dist`.
-- It won't start while the folder has uncommitted changes. Each change is committed as `RSI: <your request>`; **Undo** (in the panel, or the tray menu if a change breaks the window) reverts the latest one.
-- Claude can only read and edit files in this folder: no shell, no web, and never `agent/rsi.js` itself. A change that doesn't parse is thrown away instead of committed. Your tasks live in `%APPDATA%`, outside the folder.
-- UI changes apply with **Reload to see it**; changes to `main.js`, `main/`, `preload.js` or `agent/` need **Restart to apply**. The phone gets them only after an APK rebuild.
 
 ## Quick reference
 

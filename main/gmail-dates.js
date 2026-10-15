@@ -17,11 +17,12 @@ const handle = (ch, fn) => { handlers[ch] = fn; };
 let mailChecking = false;
 const mailAllowed = () => !!calendars.gmailAccount();
 // one structured answer from Claude: messages = [system, user], schema = what the answer must look like
-function claudeJson(messages, schema) {
+// (opts: {model, effort} — the look-ahead thinks a bit harder than the date check)
+function claudeJson(messages, schema, opts = {}) {
   const cfg = readConfig();
   const exe = (cfg.agentRunner && cfg.agentRunner.command) || path.join(os.homedir(), '.local', 'bin', 'claude.exe');
-  const model = (cfg.mailEvents && cfg.mailEvents.model) || 'claude-opus-5-5';
-  const args = ['-p', '--output-format', 'json', '--model', model, '--effort', 'low', '--tools', '', '--strict-mcp-config',
+  const model = opts.model || (cfg.mailEvents && cfg.mailEvents.model) || 'claude-opus-5-5';
+  const args = ['-p', '--output-format', 'json', '--model', model, '--effort', opts.effort || 'low', '--tools', '', '--strict-mcp-config',
     '--max-turns', '3', '--system-prompt', messages[0].content, '--json-schema', JSON.stringify(schema)];
   return new Promise((resolve, reject) => {
     const p = require('child_process').spawn(exe, args, { cwd: os.tmpdir(), windowsHide: true });
@@ -39,6 +40,16 @@ function claudeJson(messages, schema) {
     p.stdin.end(messages[1].content);
   });
 }
+// one read-only Gmail API call (his account from Settings → Calendars, with Gmail ticked)
+async function gmail(sub) {
+  const acct = calendars.gmailAccount();
+  if (!acct) throw new Error('Gmail isn’t connected');
+  const token = await calendars.tokenFor(acct.id);
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + sub, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(20000) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.error && data.error.message) || 'Gmail HTTP ' + res.status);
+  return data;
+}
 handle('mail:status', () => {
   const cfg = readConfig();
   return { connected: (cfg.calAccounts || []).some((a) => a.provider === 'google'), allowed: mailAllowed(), enabled: !(cfg.mailEvents && cfg.mailEvents.enabled === false),
@@ -55,15 +66,6 @@ handle('mail:check', async () => {
   mailChecking = true;
   const state = Object.assign({ seen: [] }, cfg.mailEvents && cfg.mailEvents.state);
   try {
-    const gmail = async (sub) => {
-      const acct = calendars.gmailAccount();
-      if (!acct) throw new Error('Gmail isn’t connected');
-      const token = await calendars.tokenFor(acct.id);
-      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + sub, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(20000) });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && data.error && data.error.message) || 'Gmail HTTP ' + res.status);
-      return data;
-    };
     const r = await mailEvents.check({ gmail, ask: claudeJson, state });
     if (r.asked) agentLog('mail: ' + r.checked + ' new, ' + r.asked + ' to Claude, ' + r.items.length + ' date(s) found');
     const fresh = readConfig();
@@ -77,4 +79,4 @@ handle('mail:check', async () => {
 });
 
 
-module.exports = { init, handlers };
+module.exports = { init, handlers, gmail, claudeJson, mailAllowed };

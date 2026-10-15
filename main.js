@@ -10,7 +10,6 @@ const calendars = require('./agent/calendars');
 const store = require('./main/store');
 const win = require('./main/window');
 const trayMod = require('./main/tray');
-const rsiWiring = require('./main/rsi');
 const speak = require('./main/speak');
 const feeds = require('./main/feeds');
 const persistence = require('./main/persistence');
@@ -19,9 +18,11 @@ const buyEmails = require('./main/buy-emails');
 const deviceSync = require('./main/device-sync');
 const calendarAccounts = require('./main/calendar-accounts');
 const gmailDates = require('./main/gmail-dates');
+const lookAheadMod = require('./main/look-ahead');
 const usage = require('./agent/usage-limit');
 const routingMod = require('./agent/routing');
 const ai = require('./agent/ai-connections');
+const usageMeter = require('./agent/usage-meter');
 const agentBrowser = require('./agent/agent-browser');
 const taskContext = require('./agent/task-context');
 const qwenBrowser = require('./agent/qwen-browser');
@@ -46,8 +47,8 @@ const ctx = {
   documents: () => app.getPath('documents'),
   isPackaged: app.isPackaged,
   dataFile: store.dataFile, readConfig, writeConfig, agentLog: store.agentLog,
-  sendToRenderer: win.sendToRenderer, showWindow, newHiddenWindow: win.newHiddenWindow, applyRsiChange: win.applyRsiChange,
-  quit: win.quit, icon: win.ICON, rsiUndo: () => rsiWiring.rsi.undo(), refreshTrayStatus,
+  sendToRenderer: win.sendToRenderer, showWindow, newHiddenWindow: win.newHiddenWindow,
+  quit: win.quit, icon: win.ICON, refreshTrayStatus,
   openExternal: (u) => shell.openExternal(u),
   powerSaveBlocker, powerMonitor,
   scheduleAgentRun: (raw) => runner.scheduleAgentRun(raw),
@@ -55,7 +56,7 @@ const ctx = {
   memoryTidying: () => memoryTidy.isTidying(),
   compactHowtos: (asked) => localLane.compactHowtos(asked),
 };
-const modules = [trayMod, rsiWiring, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates,
+const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod,
   usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane];
 for (const m of modules) {
   m.init(ctx);
@@ -65,6 +66,16 @@ const { holdForUsage } = usage;
 const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
 const { scheduleLocalRun } = localLane;
+let situationNow = null;
+async function refreshSituation() {
+  const was = JSON.stringify(situationNow);
+  const local = await localLane.localStatus().catch(() => ({ online: false }));
+  const claude = usageMeter.snapshot().claude || {};
+  situationNow = { localUp: !!(local.configured && local.online), cloudUp: ai.cloudOrder().length > 0,
+    claudeTight: !!claude.out || claude.pct >= 0.9 || claude.week >= 0.95 };
+  routingMod.noteSituation(situationNow);
+  if (was !== JSON.stringify(situationNow)) { scheduleAgentRun(); scheduleLocalRun(); } // a waiting task may have a new home
+}
 const { maybeTidyMemory } = memoryTidy;
 
 global.__agentTest = { parseUsageLimit: usage.parseUsageLimit, holdForUsage, recentReplies: memoryTidy.recentReplies, maybeTidyMemory };
@@ -114,6 +125,9 @@ if (!gotLock) {
     // his routing rules (edited in Settings, synced): load now, refresh now and then
     loadRouting().then(() => { scheduleAgentRun(); scheduleLocalRun(); askForRoutes(); });
     setInterval(() => loadRouting(), 5 * 60 * 1000);
+    // what auto routing knows: is the mini PC answering, is a cloud AI connected, is Claude near its limit
+    refreshSituation();
+    setInterval(() => refreshSituation(), 2 * 60 * 1000);
     setTimeout(() => scheduleLocalRun(), 20 * 1000);
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);

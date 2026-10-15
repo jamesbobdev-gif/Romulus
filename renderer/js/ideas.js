@@ -483,7 +483,7 @@ function ideaNote(text){
   wrap.addEventListener('pointerdown',function(e){
     const h=e.target.closest('.idea-gsize'); if(!h||e.button>0)return;
     e.preventDefault(); e.stopPropagation();
-    // start from the box's real width (columns stretch to fill the row)
+    // start from the box's real width (narrower than --idea-w on a small window)
     d={x:e.clientX,w:h.parentNode.getBoundingClientRect().width,pid:e.pointerId};
     h.classList.add('on'); document.body.classList.add('idea-sizing');
   });

@@ -28,6 +28,146 @@
       <button id="settingsBack" class="settings-back" aria-label="Back to tasks">← Back</button>
       <h2>Settings</h2>
     </div>
+    <div id="aiUsage" hidden></div>
+    <details class="settings-panel settings-collapse settings-group" id="agentGroup">
+      <summary class="settings-label">Romulus &amp; AI</summary>
+      <div class="settings-sub" id="aiSection" hidden>
+        <h3 class="settings-subhead">AI connections</h3>
+        <p class="settings-hint">Tried top to bottom; if one is out, the next takes over.</p>
+        <div id="aiList"></div>
+        <span id="aiStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="settings-sub" id="routingSection" hidden>
+        <h3 class="settings-subhead">Who does Agent tasks</h3>
+        <p class="settings-hint">First matching rule wins. Comma-separate words. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title overrides.</p>
+        <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> — tasks mentioning these (or card/SSN numbers) always go to the mini PC.</p>
+        <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
+        <div id="routingRules"></div>
+        <div class="settings-row" style="margin-top:8px">
+          <button id="routingAddBtn" class="ghost mono">+ Add rule</button>
+        </div>
+        <div class="settings-row" style="margin-top:10px;align-items:center">
+          <span style="font-size:13.5px">When no rule matches:</span>
+          <select id="routingDefault" class="settings-inp" style="width:auto">
+            <option value="auto">Auto (picks for you)</option>
+            <option value="ask">Ask me</option>
+            <option value="claude">Claude</option>
+            <option value="local">Mini PC</option>
+          </select>
+        </div>
+        <p class="settings-hint" style="margin-top:6px">Auto sends inbox, web and shopping tasks to the cloud and writing and forms to the mini PC. If one side is offline or Claude is near its limit, it uses the other side. You can still switch any task yourself.</p>
+        <p class="settings-hint" style="margin-top:14px">Sites the mini PC may open, one per line.</p>
+        <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
+        <div class="settings-row" style="margin-top:10px">
+          <button id="routingSaveBtn" class="btn-accent">Save</button>
+          <span id="routingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="settings-sub" id="agentBrowserSection" hidden>
+        <h3 class="settings-subhead">Romulus's browser</h3>
+        <p class="settings-hint">Romulus's own Chrome window. Log in to sites here. It asks before buying or submitting.</p>
+        <div class="settings-row">
+          <button id="agentBrowserBtn" class="ghost mono">Open Romulus's browser</button>
+          <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="settings-sub" id="howtosSection" hidden>
+        <h3 class="settings-subhead">What worked before</h3>
+        <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
+        <div id="howtosList"></div>
+        <div class="settings-row" style="margin-top:10px">
+          <button id="howtosCompactBtn" class="ghost mono">Compact now</button>
+          <span id="howtosStatus" class="mono" style="font-size:11px;color:var(--muted)">Notes that overlap are merged on their own</span>
+        </div>
+      </div>
+    </details>
+    <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
+      <summary class="settings-label">About you</summary>
+      <div class="settings-sub" id="prefsSection" hidden>
+        <h3 class="settings-subhead">What Romulus knows about you</h3>
+        <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
+        <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “James”&#10;- Morning appointments work best"></textarea>
+        <div class="settings-row">
+          <button id="prefsSaveBtn" class="btn-accent">Save</button>
+          <span id="prefsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="settings-sub" id="lockedSection" hidden>
+        <h3 class="settings-subhead">Locked — only your mini PC sees this</h3>
+        <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. Romulus's cloud AIs never read it. No passwords, card numbers or SSN.</p>
+        <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
+        <div class="settings-row">
+          <button id="lockedSaveBtn" class="btn-accent">Save</button>
+          <button id="lockedFormBtn" class="ghost mono" title="Adds the questions forms keep asking, for you to answer once">+ Form answers</button>
+          <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+    </details>
+    <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
+      <summary class="settings-label">Romulus features</summary>
+      <div class="settings-sub" id="lookAheadSection" hidden>
+        <h3 class="settings-subhead">Morning look-ahead</h3>
+        <p class="settings-hint">Each morning Romulus reads the next two weeks of your calendar, last week's email and what it knows about you, and adds what needs doing to the Agent list. It only suggests; you reply to start it.</p>
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="lookAheadOn"><span class="track" aria-hidden="true"></span><span>Look ahead every morning</span></label>
+        <div class="settings-row">
+          <button id="lookAheadRun" class="ghost mono">Run now</button>
+          <span id="lookAheadStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="settings-sub" id="wakeSection" hidden>
+        <h3 class="settings-subhead">Hey Romulus</h3>
+        <p class="settings-hint">Say <b>“Hey Romulus”</b>, wait for the chime, then speak. Screen-on only; 40 MB one-time download.</p>
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="wakeOn"><span class="track" aria-hidden="true"></span><span>Listen for “Hey Romulus”</span></label>
+        <div class="settings-row">
+          <button id="wakeOverlayBtn" class="ghost mono" hidden>Let it open the app by itself</button>
+          <span id="wakeStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+    </details>
+    <details class="settings-panel settings-collapse settings-group" id="calGroup">
+      <summary class="settings-label">Calendars</summary>
+      <div class="settings-sub" id="gcalSection">
+        <h3 class="settings-subhead">Calendars</h3>
+        <p class="settings-hint">Connect a calendar, then choose what each one does.</p>
+        <div class="settings-row">
+          <button id="calGoogleBtn" class="ghost mono">+ Google</button>
+          <button id="calMsBtn" class="ghost mono">+ Microsoft</button>
+          <button id="calLinkBtn" class="ghost mono">+ Calendar link</button>
+        </div>
+        <span id="calErr" class="mono" style="display:block;color:var(--late);font-size:11px;margin-top:6px"></span>
+        <div id="calLinkBox" hidden style="margin-top:10px">
+          <p class="settings-hint">Paste a subscribe link (.ics or webcal://). Read-only.</p>
+          <input id="calLinkUrl" class="settings-inp" placeholder="https://… or webcal://…" autocomplete="off" spellcheck="false">
+          <input id="calLinkName" class="settings-inp" placeholder="Name (optional)" autocomplete="off">
+          <div class="settings-row"><button id="calLinkAdd" class="btn-accent">Add</button></div>
+        </div>
+        <!-- this build has no Google sign-in client of its own: use your own credential -->
+        <div id="gcalSetup" hidden style="margin-top:10px">
+          <p class="settings-hint">This copy of the app doesn't have Google sign-in built in. Make a free <a id="gcalConsoleLink">Google Cloud credential</a> (application type <b>Desktop app</b>, about 5 minutes) and paste it here.</p>
+          <input id="gcalClientId" class="settings-inp" placeholder="Client ID" autocomplete="off" spellcheck="false">
+          <input id="gcalClientSecret" class="settings-inp" placeholder="Client Secret" type="password" autocomplete="off">
+          <div class="settings-row"><button id="gcalConnectBtn" class="btn-accent">Connect</button></div>
+        </div>
+        <div id="calAccounts"></div>
+        <div id="mailEventsBox" class="cal-acct" hidden>
+          <label class="switch" style="margin-bottom:6px"><input type="checkbox" id="mailOn"><span class="track" aria-hidden="true"></span><span>Turn dates in my Gmail into tasks</span></label>
+          <p class="settings-hint" style="margin:0">Only reads new mail. <span id="mailStatus"></span></p>
+        </div>
+        <div class="settings-row" id="calSyncRow" hidden style="margin-top:12px">
+          <button id="gcalSyncBtn" class="ghost mono">Sync now</button>
+          <span id="calStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="settings-sub" id="feedsSection" hidden>
+        <h3 class="settings-subhead">Course calendars</h3>
+        <p class="settings-hint">Paste calendar links, one per line; due dates land on School. <b>Blackboard:</b> Calendar → ⚙ → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
+        <textarea id="feedsText" class="settings-inp" rows="3" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="Blackboard calendar link&#10;D2L calendar link" autocomplete="off" spellcheck="false"></textarea>
+        <div class="settings-row" style="margin-top:10px">
+          <button id="feedsSaveBtn" class="btn-accent">Save &amp; import</button>
+          <span id="feedsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+    </details>
     <details class="settings-panel settings-collapse" id="syncSection">
       <summary class="settings-label">Device sync</summary>
       <p class="settings-hint">
@@ -55,109 +195,8 @@
         <span id="syncStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </details>
-    <div class="settings-panel" id="prefsSection" hidden>
-      <span class="settings-label">What Romulus knows about you</span>
-      <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
-      <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “James”&#10;- Morning appointments work best"></textarea>
-      <div class="settings-row">
-        <button id="prefsSaveBtn" class="btn-accent">Save</button>
-        <span id="prefsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div class="settings-panel" id="lockedSection" hidden>
-      <span class="settings-label">Locked — only your mini PC sees this</span>
-      <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. Romulus's cloud AIs never read it. No passwords, card numbers or SSN.</p>
-      <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
-      <div class="settings-row">
-        <button id="lockedSaveBtn" class="btn-accent">Save</button>
-        <button id="lockedFormBtn" class="ghost mono" title="Adds the questions forms keep asking, for you to answer once">+ Form answers</button>
-        <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div class="settings-panel" id="routingSection" hidden>
-      <span class="settings-label">Who does Agent tasks</span>
-      <p class="settings-hint">First matching rule wins. Comma-separate words. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title overrides.</p>
-      <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> — tasks mentioning these (or card/SSN numbers) always go to the mini PC.</p>
-      <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
-      <div id="routingRules"></div>
-      <div class="settings-row" style="margin-top:8px">
-        <button id="routingAddBtn" class="ghost mono">+ Add rule</button>
-      </div>
-      <div class="settings-row" style="margin-top:10px;align-items:center">
-        <span style="font-size:13.5px">When no rule matches:</span>
-        <select id="routingDefault" class="settings-inp" style="width:auto">
-          <option value="ask">Ask me</option>
-          <option value="claude">Claude</option>
-          <option value="local">Mini PC</option>
-        </select>
-      </div>
-      <p class="settings-hint" style="margin-top:14px">Sites the mini PC may open, one per line.</p>
-      <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
-      <div class="settings-row" style="margin-top:10px">
-        <button id="routingSaveBtn" class="btn-accent">Save</button>
-        <span id="routingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div class="settings-panel" id="howtosSection" hidden>
-      <span class="settings-label">What worked before</span>
-      <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
-      <div id="howtosList"></div>
-      <div class="settings-row" style="margin-top:10px">
-        <button id="howtosCompactBtn" class="ghost mono">Compact now</button>
-        <span id="howtosStatus" class="mono" style="font-size:11px;color:var(--muted)">Notes that overlap are merged on their own</span>
-      </div>
-    </div>
-    <div class="settings-panel" id="feedsSection" hidden>
-      <span class="settings-label">Course calendars</span>
-      <p class="settings-hint">Paste calendar links, one per line; due dates land on School. <b>Blackboard:</b> Calendar → ⚙ → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
-      <textarea id="feedsText" class="settings-inp" rows="3" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="Blackboard calendar link&#10;D2L calendar link" autocomplete="off" spellcheck="false"></textarea>
-      <div class="settings-row" style="margin-top:10px">
-        <button id="feedsSaveBtn" class="btn-accent">Save &amp; import</button>
-        <span id="feedsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div class="settings-panel" id="aiSection" hidden>
-      <span class="settings-label">AI connections</span>
-      <p class="settings-hint">Tried top to bottom; if one is out, the next takes over.</p>
-      <div id="aiList"></div>
-      <span id="aiStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
-    </div>
-    <div class="settings-panel" id="agentBrowserSection" hidden>
-      <span class="settings-label">Romulus's browser</span>
-      <p class="settings-hint">Romulus's own Chrome window. Log in to sites here. It asks before buying or submitting.</p>
-      <div class="settings-row">
-        <button id="agentBrowserBtn" class="ghost mono">Open Romulus's browser</button>
-        <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div class="settings-panel" id="rsiSection" hidden>
-      <span class="settings-label">RSI — Romulus Self Improvement</span>
-      <p class="settings-hint">Ask for a change and Romulus edits itself. <b>Undo</b> reverts it. Experimental.</p>
-      <label class="switch" style="margin-bottom:14px"><input type="checkbox" id="rsiOn"><span class="track" aria-hidden="true"></span><span>Let RSI change this app</span></label>
-      <div id="rsiBody" hidden>
-      <div id="rsiLog" class="conv" hidden></div>
-      <textarea id="rsiText" class="settings-inp" rows="3" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="e.g. make overdue tasks red instead of orange"></textarea>
-      <div class="settings-row">
-        <button id="rsiSend" class="btn-accent" style="margin-left:0">Ask</button>
-        <button id="rsiStop" class="ghost mono" hidden>Stop</button>
-        <button id="rsiApply" class="ghost mono" hidden></button>
-        <button id="rsiUndo" class="ghost mono danger" hidden>Undo last change</button>
-        <button id="rsiNew" class="ghost mono" title="Start a fresh conversation (Romulus forgets this one)">New chat</button>
-        <span id="rsiStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-      </div>
-    </div>
-    <div class="settings-panel" id="wakeSection" hidden>
-      <span class="settings-label">Hey Romulus</span>
-      <p class="settings-hint">Say <b>“Hey Romulus”</b>, wait for the chime, then speak. Screen-on only; 40 MB one-time download.</p>
-      <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="wakeOn"><span class="track" aria-hidden="true"></span><span>Listen for “Hey Romulus”</span></label>
-      <div class="settings-row">
-        <button id="wakeOverlayBtn" class="ghost mono" hidden>Let it open the app by itself</button>
-        <span id="wakeStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div class="settings-panel">
-      <span class="settings-label">Theme</span>
+    <details class="settings-panel settings-collapse" id="themeSection">
+      <summary class="settings-label">Theme</summary>
       <p class="settings-hint">Paste CSS to restyle the app.</p>
       <textarea id="themeCss" class="settings-inp theme-css" rows="9" spellcheck="false" placeholder=":root{
   --bg:#FBFBFA;      /* page background */
@@ -175,39 +214,7 @@
         <button id="themeResetBtn" class="ghost mono danger">Reset</button>
         <span id="themeStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
-    </div>
-    <div class="settings-panel" id="gcalSection">
-      <span class="settings-label">Calendars</span>
-      <p class="settings-hint">Connect a calendar, then choose what each one does.</p>
-      <div class="settings-row">
-        <button id="calGoogleBtn" class="ghost mono">+ Google</button>
-        <button id="calMsBtn" class="ghost mono">+ Microsoft</button>
-        <button id="calLinkBtn" class="ghost mono">+ Calendar link</button>
-      </div>
-      <span id="calErr" class="mono" style="display:block;color:var(--late);font-size:11px;margin-top:6px"></span>
-      <div id="calLinkBox" hidden style="margin-top:10px">
-        <p class="settings-hint">Paste a subscribe link (.ics or webcal://). Read-only.</p>
-        <input id="calLinkUrl" class="settings-inp" placeholder="https://… or webcal://…" autocomplete="off" spellcheck="false">
-        <input id="calLinkName" class="settings-inp" placeholder="Name (optional)" autocomplete="off">
-        <div class="settings-row"><button id="calLinkAdd" class="btn-accent">Add</button></div>
-      </div>
-      <!-- this build has no Google sign-in client of its own: use your own credential -->
-      <div id="gcalSetup" hidden style="margin-top:10px">
-        <p class="settings-hint">This copy of the app doesn't have Google sign-in built in. Make a free <a id="gcalConsoleLink">Google Cloud credential</a> (application type <b>Desktop app</b>, about 5 minutes) and paste it here.</p>
-        <input id="gcalClientId" class="settings-inp" placeholder="Client ID" autocomplete="off" spellcheck="false">
-        <input id="gcalClientSecret" class="settings-inp" placeholder="Client Secret" type="password" autocomplete="off">
-        <div class="settings-row"><button id="gcalConnectBtn" class="btn-accent">Connect</button></div>
-      </div>
-      <div id="calAccounts"></div>
-      <div id="mailEventsBox" class="cal-acct" hidden>
-        <label class="switch" style="margin-bottom:6px"><input type="checkbox" id="mailOn"><span class="track" aria-hidden="true"></span><span>Turn dates in my Gmail into tasks</span></label>
-        <p class="settings-hint" style="margin:0">Only reads new mail. <span id="mailStatus"></span></p>
-      </div>
-      <div class="settings-row" id="calSyncRow" hidden style="margin-top:12px">
-        <button id="gcalSyncBtn" class="ghost mono">Sync now</button>
-        <span id="calStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </div>
+    </details>
   </section>
 
   <div class="rule" aria-hidden="true"></div>
@@ -286,6 +293,7 @@
 
 <script src="js/sync.js"></script>
 <script src="js/core.js"></script>
+<script src="js/recur.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
 <script src="js/lists.js"></script>
@@ -296,6 +304,7 @@
 <script src="js/settings.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/calendars.js"></script>
+<script src="js/look-ahead.js"></script>
 <script src="js/swipe.js"></script>
 <script src="js/init.js"></script>
 </body>

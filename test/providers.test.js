@@ -20,7 +20,7 @@ test('Gemini without the CLI: the API with Google Search, the key in a header', 
   try {
     const r = await providers.runGeminiApi({ ai: { geminiKey: 'k123' } }, { prompt: 'p' });
     assert.strictEqual(r.text, '{"updates": []}');
-    assert.match(sent.url, /models\/gemini-flash-latest:generateContent$/);
+    assert.match(sent.url, /models\/gemini-4-argon:generateContent$/);
     assert.strictEqual(sent.init.headers['x-goog-api-key'], 'k123');
     assert.deepStrictEqual(JSON.parse(sent.init.body).tools, [{ google_search: {} }]);
   } finally { global.fetch = real; }
@@ -32,6 +32,28 @@ test('Gemini API: a 429 is out of usage, no key is a sign-in problem', async () 
   try {
     assert.strictEqual((await providers.runGeminiApi({ ai: { geminiKey: 'k' } }, { prompt: 'p' })).limit, true);
     assert.strictEqual((await providers.runGeminiApi({}, { prompt: 'p' })).auth, true);
+  } finally { global.fetch = real; }
+});
+
+test('Gemini tries Argon, then Flash, then Flash-Lite while Google turns models away', async () => {
+  const real = global.fetch, urls = [];
+  const replies = [{ status: 429, error: { message: 'limit: 0, model: gemini-4-argon' } }, { status: 503, error: { message: 'high demand' } }];
+  global.fetch = async (url) => { urls.push(url.match(/models\/([^:]+):/)[1]); const e = replies.shift();
+    return e ? { ok: false, status: e.status, json: async () => ({ error: e.error }) } : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }) }; };
+  try {
+    const r = await providers.runGeminiApi({ ai: { geminiKey: 'k' } }, { prompt: 'p' });
+    assert.strictEqual(r.text, 'ok');
+    assert.deepStrictEqual(urls, ['gemini-4-argon', 'gemini-flash-latest', 'gemini-3.5-flash-lite']);
+  } finally { global.fetch = real; }
+});
+
+test('Gemini: a model set in Settings goes first, Flash-Lite after it; a bad key stops there', async () => {
+  const real = global.fetch, urls = [];
+  global.fetch = async (url) => { urls.push(url.match(/models\/([^:]+):/)[1]); return { ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid' } }) }; };
+  try {
+    const r = await providers.runGeminiApi({ ai: { geminiKey: 'k', geminiModel: 'gemini-3.8-flash' } }, { prompt: 'p' });
+    assert.strictEqual(r.auth, true);
+    assert.deepStrictEqual(urls, ['gemini-3.8-flash']);
   } finally { global.fetch = real; }
 });
 
@@ -60,7 +82,7 @@ test('ChatGPT: no key is a sign-in problem, a 429 is out of usage', async () => 
   const real = global.fetch;
   global.fetch = async () => ({ ok: false, status: 429, json: async () => ({ error: { message: 'quota' } }) });
   try {
-    assert.strictEqual((await providers.runOpenAI({}, { prompt: 'p' })).auth, true);
+    assert.strictEqual((await providers.runOpenAI({ ai: { openaiVia: 'key' } }, { prompt: 'p' })).auth, true);
     assert.strictEqual((await providers.runOpenAI({ ai: { openaiKey: 'k' } }, { prompt: 'p' })).limit, true);
   } finally { global.fetch = real; }
 });
@@ -72,4 +94,20 @@ test('a custom note replaces the "This run" note (helpers want plain text)', asy
     await providers.runOpenRouter({ ai: { openrouterKey: 'k' } }, { prompt: 'p', note: '' });
     assert.strictEqual(body.messages[0].content, 'p');
   } finally { global.fetch = real; }
+});
+
+test('ChatGPT: the plan (Codex) unless he saved a key; his choice wins either way', () => {
+  assert.strictEqual(providers.settings({}).openaiVia, 'chatgpt');
+  assert.strictEqual(providers.settings({ ai: { openaiKey: 'k' } }).openaiVia, 'key');
+  assert.strictEqual(providers.settings({ ai: { openaiKey: 'k', openaiVia: 'chatgpt' } }).openaiVia, 'chatgpt');
+  assert.strictEqual(providers.settings({ ai: { openaiVia: 'bogus' } }).openaiVia, 'chatgpt');
+});
+
+test('Codex runs get web search only: shell, apps, browser and its own config off, read-only', () => {
+  const a = providers.codexArgs('codex.js', 'out.txt');
+  for (const f of ['shell_tool', 'unified_exec', 'code_mode_host', 'apps', 'plugins', 'browser_use', 'computer_use', 'multi_agent'])
+    assert.ok(a.some((x, i) => x === f && a[i - 1] === '--disable'), f);
+  assert.ok(a.includes('--ignore-user-config') && a.includes('--ephemeral'));
+  assert.strictEqual(a[a.indexOf('--sandbox') + 1], 'read-only');
+  assert.strictEqual(a[a.length - 1], '-');
 });
