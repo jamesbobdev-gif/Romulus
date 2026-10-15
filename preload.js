@@ -7,13 +7,17 @@ contextBridge.exposeInMainWorld('desktop', {
   syncGetCfg: () => ipcRenderer.invoke('sync:get-cfg'),
   syncSaveCfg: (cfg) => ipcRenderer.invoke('sync:save-cfg', cfg),
 
-  gcalStatus: () => ipcRenderer.invoke('gcal:status'),
   gcalGetCfg: () => ipcRenderer.invoke('gcal:get-cfg'),
   gcalSaveCfg: (cfg) => ipcRenderer.invoke('gcal:save-cfg', cfg),
-  gcalConnect: () => ipcRenderer.invoke('gcal:connect'),
-  gcalDisconnect: () => ipcRenderer.invoke('gcal:disconnect'),
   gcalSyncNow: () => ipcRenderer.invoke('gcal:sync-now'),
-  gcalDeleteEvent: (id) => ipcRenderer.invoke('gcal:delete-event', id),
+  gcalDeleteEvent: (id, calRef) => ipcRenderer.invoke('gcal:delete-event', id, calRef),
+  // calendar accounts (Google, Microsoft, calendar links): where tasks go, which calendars become to-dos
+  calOverview: (fresh) => ipcRenderer.invoke('cal:overview', fresh),
+  calConnect: (provider, own) => ipcRenderer.invoke('cal:connect', provider, own),
+  calAddLink: (url, name) => ipcRenderer.invoke('cal:add-link', url, name),
+  calRemove: (id) => ipcRenderer.invoke('cal:remove', id),
+  calSetPrefs: (change) => ipcRenderer.invoke('cal:set-prefs', change),
+  calPull: () => ipcRenderer.invoke('cal:pull'),
   gcalOpenUrl: (url) => ipcRenderer.invoke('gcal:open-url', url),
   onSyncDone: (cb) => ipcRenderer.on('gcal:sync-done', (_event, tasks) => cb(tasks)),
   onAgentWorking: (cb) => ipcRenderer.on('agent:working', (_event, ids) => cb(ids)),
@@ -24,6 +28,12 @@ contextBridge.exposeInMainWorld('desktop', {
   localStatus: () => ipcRenderer.invoke('local:status'),
   // routing: James's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
+  // AI connections: Claude / Gemini / OpenRouter for the Agent lane, in his order
+  aiStatus: () => ipcRenderer.invoke('ai:status'),
+  aiSave: (change) => ipcRenderer.invoke('ai:save', change),
+  aiGeminiInstall: () => ipcRenderer.invoke('ai:gemini-install'),
+  aiGeminiSignin: () => ipcRenderer.invoke('ai:gemini-signin'),
+  aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // course calendar feeds (Blackboard / D2L iCal links) → School list

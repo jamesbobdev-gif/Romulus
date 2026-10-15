@@ -22,7 +22,9 @@ try{ if(!localStorage.getItem('tasks.sync.v1')) localStorage.setItem('tasks.sync
 ${addChannel('agent', agentCfg)}
 ${addChannel('school', schoolCfg)}
 </script>`;
-html = html.replace('<head>', '<head>\n' + seed);
+// calendar accounts on the phone (window.phoneCal, read by the Settings → Calendars panel)
+const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.js'), 'utf8') + '</script>';
+html = html.replace('<head>', () => '<head>\n' + seed + '\n' + calPhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
@@ -37,4 +39,15 @@ if (fs.existsSync(path.join(__dirname, 'android'))) {
   fs.writeFileSync(path.join(rawDir, 'agent_sync_config.json'), JSON.stringify(agentCfg || {}));
   fs.writeFileSync(path.join(rawDir, 'school_sync_config.json'), JSON.stringify(schoolCfg || {}));
   console.log('res/raw/sync_config.json written for the widget');
+  // the phone's own sign-in clients for calendar accounts (CalAccountsPlugin.java), from oauth-clients.json:
+  // Google needs an Android-type client of its own; Microsoft is the desktop's Entra app with an Android platform added
+  const oauthFile = path.join(__dirname, '..', 'oauth-clients.json');
+  const oauth = fs.existsSync(oauthFile) ? JSON.parse(fs.readFileSync(oauthFile, 'utf8')) : {};
+  const phoneClients = {
+    google: { clientId: (oauth.googleAndroid && oauth.googleAndroid.clientId) || '' },
+    microsoft: { clientId: (oauth.microsoft && oauth.microsoft.clientId) || '' }
+  };
+  fs.writeFileSync(path.join(rawDir, 'oauth_clients.json'), JSON.stringify(phoneClients));
+  console.log('res/raw/oauth_clients.json written (Google: ' + (phoneClients.google.clientId ? 'set' : 'not set up') +
+    ', Microsoft: ' + (phoneClients.microsoft.clientId ? 'set' : 'not set up') + ')');
 }

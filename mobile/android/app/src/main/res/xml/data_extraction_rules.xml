@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- calendar sign-in tokens and links (CalAccountsPlugin) stay on this phone, out of backups and transfers -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="cal_accounts.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="cal_accounts.xml" />
+    </device-transfer>
+</data-extraction-rules>

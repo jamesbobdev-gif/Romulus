@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -17,6 +19,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- calendar sign-in coming back from the browser (CalAccountsPlugin): Google, then Microsoft -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${applicationId}" android:path="/oauth2redirect" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="msauth" android:host="${applicationId}" />
             </intent-filter>
             <!-- "Tasks" in Android's Share menu: shared text/links and images go to the Agent tab -->
             <intent-filter android:label="Send to Claude">
@@ -111,6 +126,12 @@
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
 
+        <!-- "Hey Romulus": listens for the wake word while the screen is on -->
+        <service
+            android:name=".WakeWordService"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -125,6 +146,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- talk to add a task -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- "Hey Romulus" -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />

@@ -54,9 +54,76 @@ function ownCall(name, args) {
   });
 }
 const resultText = (m) => (m && m.result && Array.isArray(m.result.content) ? m.result.content.map((c) => c.text || '').join('\n') : '');
+// → the current tab's address (or null)
 async function frontCurrentTab() {
-  const idx = (resultText(await ownCall('browser_tabs', { action: 'list' })).match(/- (\d+): \(current\)/) || [])[1];
+  const list = resultText(await ownCall('browser_tabs', { action: 'list' }));
+  const idx = (list.match(/- (\d+): \(current\)/) || [])[1];
   if (idx != null) await ownCall('browser_tabs', { action: 'select', index: Number(idx) });
+  return currentUrl(list);
+}
+const currentUrl = (text) => (text.match(/^- \d+: \(current\) \[.*\]\(([^()\s]+)\)(?: \[crashed\])?\s*$/m) || [])[1] || null;
+
+/* Mail guard, for Claude's runs on the desktop (TASKS_BROWSER_MAIL). James is logged in to his mail
+   (and Google/Microsoft accounts) in this browser, and the same run reads web pages that anyone can
+   write. A page could tell Claude to open his mail and then carry what it read off to some server.
+     "taint": once a mail page has been seen in this run (opened, or a tab already on it), the run is
+       marked in TASKS_BROWSER_TAINT (written before Claude sees the page). From then on: no opening
+       other sites, no typing or clicking on a page outside mail, and no Send (or Enter) unless
+       TASKS_BROWSER_APPROVED is set (James's latest reply was a yes). main.js's hook refuses
+       WebFetch/WebSearch for the rest of the run, and the app treats its answer like an inbox run's.
+     "block": mail is off limits (Gemini, which has its own web tools that no hook can stop). */
+const MAIL_MODE = process.env.TASKS_BROWSER_MAIL || '';
+const TAINT_FILE = process.env.TASKS_BROWSER_TAINT || '';
+const MAIL_APPROVED = process.env.TASKS_BROWSER_APPROVED === '1';
+// his private pages: mail, and the account pages that hold the same kind of thing
+const PRIVATE = ['mail.google.com', 'calendar.google.com', 'contacts.google.com', 'drive.google.com', 'myaccount.google.com',
+  'outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'outlook.cloud.microsoft', 'onedrive.live.com',
+  'mail.yahoo.com', 'mail.proton.me', 'www.icloud.com'];
+const LOGIN = ['accounts.google.com', 'login.microsoftonline.com', 'login.live.com', 'login.yahoo.com', 'account.proton.me'];
+const isPrivate = (url) => hostAllowed(url, PRIVATE);
+const mailSide = (url) => /^(about:blank|chrome-error:)/.test(String(url)) || hostAllowed(url, PRIVATE.concat(LOGIN));
+let tainted = false;
+function taint(url) {
+  if (tainted) return;
+  tainted = true;
+  try { if (TAINT_FILE) require('fs').writeFileSync(TAINT_FILE, JSON.stringify({ url: String(url).slice(0, 200), at: Date.now() })); } catch (e) {}
+}
+// what a page answer shows: its address, and the current tab in a tab list
+const shownUrls = (text) => [...text.matchAll(/^- Page URL: (\S+)/gm)].map((m) => m[1]).concat(currentUrl(text) || []);
+const TYPING = new Set(['browser_click', 'browser_type', 'browser_fill_form', 'browser_select_option', 'browser_drag', 'browser_press_key', 'browser_handle_dialog']);
+// → a reason to refuse this tool call, or null. `here` is the current tab's address (actions only).
+function mailRefusal(msg, here) {
+  if (!MAIL_MODE || !msg.params) return null;
+  const name = msg.params.name, a = msg.params.arguments || {};
+  const to = name === 'browser_navigate' || (name === 'browser_tabs' && a.url) ? String(a.url || '') : null;
+  if (MAIL_MODE === 'block') {
+    if ((to && isPrivate(to)) || (here && isPrivate(here))) return 'His mail and account pages are not available in this run. Say in your note what you could not check.';
+    return null;
+  }
+  if (here && isPrivate(here)) taint(here); // e.g. a tab left on his inbox
+  if (to && isPrivate(to)) { taint(to); return null; }
+  if (!tainted) return null;
+  const why = 'This run has opened James\'s mail, so it can no longer use other sites (a page could have asked for his mail to be sent somewhere). ';
+  if (to && !mailSide(to)) return why + 'Finish the mail part and say in your note what is left; the rest runs next time.';
+  if (TYPING.has(name) && here && !mailSide(here)) return why + 'This page (' + here.slice(0, 80) + ') is outside his mail.';
+  if (!MAIL_APPROVED) {
+    const label = name === 'browser_click' ? (refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '') : '';
+    if (FINAL.test(label)) return 'Not without a yes: "' + label.trim() + '" looks like Send or another final step. List exactly what you will send in your note and ask James to reply yes.';
+    if ((name === 'browser_press_key' && /(^|\+)\s*(numpad)?enter\s*$/i.test(String(a.key || ''))) || (name === 'browser_type' && a.submit))
+      return 'Not without a yes: Enter can send. Ask James to reply yes first.';
+  }
+  return null;
+}
+// Playwright's answer → the line to pass on: marks the run when it shows a mail page, or (block mode) hides it
+function mailFilter(line) {
+  if (!MAIL_MODE || !/mail|outlook|google|icloud|onedrive|proton/i.test(line)) return line;
+  let m = null; try { m = JSON.parse(line); } catch (e) { return line; }
+  if (!m || m.id == null || !m.result) return line;
+  const hit = shownUrls(resultText(m)).find(isPrivate);
+  if (!hit) return line;
+  if (MAIL_MODE === 'block') return JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'That tab is on his mail or account pages, which are not available in this run. Open another page.' }], isError: true } }) + '\n';
+  taint(hit);
+  return line;
 }
 
 /* Locked mode, for the mini PC's local lane (James's own model, which also holds his private profile).
@@ -115,7 +182,7 @@ child.stdout.on('data', (d) => {
   let i;
   while ((i = outBuf.indexOf('\n')) >= 0) {
     const line = outBuf.slice(0, i + 1); outBuf = outBuf.slice(i + 1);
-    if (LOCK_FILE && line.includes('[ref=')) { try { learnRefs(resultText(JSON.parse(line))); } catch (e) {} }
+    if ((LOCK_FILE || MAIL_MODE) && line.includes('[ref=')) { try { learnRefs(resultText(JSON.parse(line))); } catch (e) {} }
     if (line.includes('"proxy-')) {
       let m = null; try { m = JSON.parse(line); } catch (e) {}
       if (m && typeof m.id === 'string' && m.id.startsWith('proxy-')) {
@@ -123,7 +190,7 @@ child.stdout.on('data', (d) => {
         continue; // ours (or a late answer to one of ours)
       }
     }
-    process.stdout.write(line);
+    process.stdout.write(mailFilter(line));
   }
 });
 
@@ -139,12 +206,12 @@ process.stdin.on('data', (d) => {
       if (/"method"\s*:\s*"tools\/call"/.test(line)) {
         if (!started) { started = true; await ensureBrowser(); }
         let msg = null; try { msg = JSON.parse(line); } catch (e) {}
-        const refused = msg && lockedOut(msg);
+        const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
+        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here));
         if (refused) { // answer it ourselves; Playwright never sees the call
           process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
           return;
         }
-        if (msg && msg.params && ACTIONS.has(msg.params.name)) await frontCurrentTab();
       }
       child.stdin.write(line);
     });
