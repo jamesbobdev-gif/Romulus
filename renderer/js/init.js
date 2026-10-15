@@ -1,0 +1,54 @@
+/* Start-up: load the tasks, first render, start syncing. Loads last.
+   One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
+'use strict';
+
+/* ── init ── */
+$('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+$('stamp').addEventListener('click',function(){ switchTab('calendar'); });
+store.load().then(async function(data){
+  // desktop: seed sync settings from config.json if this renderer has none yet
+  if(window.desktop&&window.desktop.syncGetCfg){
+    try{
+      const n=normalizeSyncCfg(await window.desktop.syncGetCfg());
+      if(n&&!syncState.cfg){ syncState.cfg=n; localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(n)); }
+      // an agent channel added to config.json later is picked up without a reset
+      else if(n){ let add=false; ['work','agent','school'].forEach(function(k){ if(n[k]&&!syncState.cfg[k]){ syncState.cfg[k]=n[k]; add=true; } }); if(add)localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg)); }
+    }catch(e){}
+  }
+  if(data&&Array.isArray(data.tasks)){
+    state.tasks=data.tasks.map(function(t){
+      const out={
+        id:t.id||uid(), title:String(t.title||''), done:!!t.done, due:t.due||null, dueTime:t.dueTime||null, tag:t.tag||null, ws:taskWs(t), pin:t.pin!=null?t.pin:null, googleEventId:t.googleEventId||null,
+        created:t.created||Date.now(),
+        updatedAt:t.updatedAt||t.created||Date.now(),
+        // backward-compatible: existing subs without a 'due' field get null
+        subs:Array.isArray(t.subs)?t.subs.map(function(s){
+          return {id:s.id||uid(),title:String(s.title||''),done:!!s.done,due:s.due||null};
+        }):[]
+      };
+      if(Array.isArray(t.images)&&t.images.length)out.images=t.images.slice(0,12); // context screenshots on a task
+      if(t.plan){ out.plan=t.plan; out.planSet=t.planSet||null; } // morning swipe decision
+      if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; }
+      if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; }
+      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true; if(t.parked&&out.status==='needs-you')out.parked=true;
+        if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object')out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')};
+        if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
+        out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
+        out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
+        if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
+        // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
+        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(PINNED_CLOUDS.indexOf(t.cloud)!==-1&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
+        // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
+        // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
+        if(window.desktop&&out.status==='working'&&(out.lane!=='local'||window.desktop.localStatus))out.status='queued'; }
+      return out;
+    });
+    state.tombstones=Array.isArray(data.tombstones)?data.tombstones:[];
+  }
+  state.ideas=normIdeas(data&&data.ideas);
+  rebuildSnap();
+  render(); // list is the default active tab
+  startSyncLoop();
+  setTimeout(function(){ swipeReady=true; maybeShowSwipe(); },4000); // after the first sync, so another device's choices are in
+  setTimeout(runDueRepeats,10*1000);
+});
