@@ -64,6 +64,7 @@ public class VoicePlugin extends Plugin {
                 return;
             }
             release();
+            WakeWordService.hold(true); // "Hey Romulus" lets go of the mic while this listens
             active = call;
             lastPartial = "";
             recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
@@ -110,6 +111,7 @@ public class VoicePlugin extends Plugin {
         PluginCall c = active;
         active = null;
         getActivity().runOnUiThread(this::release);
+        WakeWordService.hold(false);
         if (c == null) return;
         if (error != null) c.reject(error); else c.resolve(result);
     }

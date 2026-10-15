@@ -1,0 +1,13 @@
+{
+  "_readme": "Copy to oauth-clients.json (kept out of git). google: a Google Cloud OAuth client of type Desktop app. googleAndroid: a second client in the same project, type Android (package com.jartro.tasks + the signing certificate's SHA-1, Advanced settings → Enable custom URI scheme), for the phone. microsoft: an Entra app registration (Application (client) ID) with a Mobile and desktop platform redirect of http://localhost/oauth2callback, plus an Android platform (package com.jartro.tasks + signature hash) for the phone.",
+  "google": {
+    "clientId": "xxxx.apps.googleusercontent.com",
+    "clientSecret": "GOCSPX-xxxx"
+  },
+  "googleAndroid": {
+    "clientId": "yyyy.apps.googleusercontent.com"
+  },
+  "microsoft": {
+    "clientId": "00000000-0000-0000-0000-000000000000"
+  }
+}

@@ -22,11 +22,14 @@ import java.util.ArrayList;
 
 public class MainActivity extends BridgeActivity {
     private final Handler main = new Handler(Looper.getMainLooper());
+    static volatile boolean visible = false; // "Hey Romulus" can always bring the app forward while it's showing
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoicePlugin.class); // talk to add a task (must be registered before super.onCreate)
         registerPlugin(ShareLinkPlugin.class); // send an option's link to people
+        registerPlugin(WakeWordPlugin.class); // "Hey Romulus"
+        registerPlugin(CalAccountsPlugin.class); // Google / Microsoft calendar sign-in
         super.onCreate(savedInstanceState);
         handle(getIntent());
     }
@@ -41,6 +44,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        visible = true;
+        WakeWordService.startIfWanted(this); // a mic service has to be started from the foreground
         // opening the app is the freshest moment we have — redraw the widgets
         Widgets.refreshAll(this);
     }
@@ -48,6 +53,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
+        visible = false;
         // leaving the app usually follows an edit — refresh so the widgets show it
         Widgets.refreshAll(this);
     }

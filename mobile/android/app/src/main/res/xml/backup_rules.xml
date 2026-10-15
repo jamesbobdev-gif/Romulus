@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- calendar sign-in tokens and links (CalAccountsPlugin) stay on this phone, out of Google backups -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="cal_accounts.xml" />
+</full-backup-content>

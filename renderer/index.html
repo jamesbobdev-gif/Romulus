@@ -27,6 +27,11 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .stamp:hover{background:var(--chip);color:var(--ink)}
 .counts{color:var(--muted);margin-top:7px;min-height:13px}
 .counts .warn{color:var(--late)}
+.connect-card{margin:28px auto 0;max-width:420px;text-align:center;padding:22px 20px;border:1px dashed var(--hairline);border-radius:12px}
+.connect-card[hidden]{display:none}
+.connect-card b{display:block;font-size:15px;margin-bottom:6px}
+.connect-card p{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 14px}
+.settings-inp.flash,.settings-label.flash{outline:2px solid var(--accent);outline-offset:2px}
 .needs-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;margin-top:6px;overflow:hidden;white-space:nowrap}
 .needs-bar[hidden]{display:none}
 .needs-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:2px;flex:none}
@@ -77,6 +82,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .fchip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
 
 .search{display:block;width:100%;margin:14px 0 0;border:1px solid var(--hairline);border-radius:9px;padding:8px 11px;font-family:var(--display);font-size:13.5px;background:var(--surface);color:var(--ink);outline:0;transition:border-color .15s,box-shadow .15s}
+.search[hidden]{display:none}
 .search::placeholder{color:#A9A9A3}
 .search:focus{border-color:#B9C2F2;box-shadow:0 0 0 3px rgba(39,66,200,.07)}
 
@@ -256,14 +262,16 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
   --idea-plain:var(--surface);--idea-yellow:#FFF1B8;--idea-green:#D6F0D9;
   --idea-blue:#D9E3FF;--idea-pink:#FAD9E3;--idea-purple:#E7DAFA;
 }
-body.ideas-mode main{max-width:1180px}
-/* only the board goes wide: the header and tabs stay put like on every other tab */
-body.ideas-mode main>:not(#ideasView){max-width:580px;margin-left:auto;margin-right:auto}
 .ideas-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .ideas-bar .btn-accent{margin-left:0}
 
-.idea-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-items:start}
-.idea-group{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:10px 12px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
+.idea-gsize{position:absolute;top:10px;bottom:10px;right:-8px;width:12px;cursor:ew-resize;touch-action:none;z-index:2}
+.idea-gsize::after{content:'';position:absolute;top:50%;left:5px;width:3px;height:36px;margin-top:-18px;border-radius:2px;background:var(--faint);opacity:0;transition:opacity .15s}
+.idea-group:hover .idea-gsize::after,.idea-gsize.on::after{opacity:.6}
+body.idea-sizing,body.idea-sizing *{cursor:ew-resize!important;user-select:none}
+@media(max-width:520px),(pointer:coarse){.idea-gsize{display:none}}
+.idea-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(var(--idea-w,280px),100%),1fr));gap:14px;align-items:start}
+.idea-group{position:relative;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:10px 12px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
 .idea-ghead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .idea-ggrip{border:0;background:transparent;color:var(--faint);cursor:grab;font-size:15px;line-height:1;padding:3px 2px;border-radius:5px;touch-action:none;flex:none}
@@ -289,13 +297,20 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .idea-card.editing{cursor:text;padding:8px 10px 6px 12px}
 .idea-card textarea{display:block;width:100%;border:0;outline:0;resize:none;background:transparent;font:inherit;color:inherit;padding:2px 0;margin:0;min-height:60px;overflow:hidden}
 .idea-edit-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
-.idea-edit-foot .mono{opacity:.55;font-size:9.5px}
-.idea-card .x{border:0;background:transparent;color:inherit;opacity:.55;cursor:pointer;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:6px}
+.idea-edit-foot .mono{opacity:.6;font-size:10.5px}
+.idea-edit-foot>span:last-child:not(.mono){flex:none;white-space:nowrap}
+.idea-card .x{border:0;background:transparent;color:inherit;opacity:.7;cursor:pointer;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:6px}
 .idea-card .x:hover{opacity:1;background:rgba(20,20,20,.08)}
 .idea-card.hasdesc{padding-right:26px}
 .idea-card.hasdesc::after{content:'▾';position:absolute;top:10px;right:10px;opacity:.45;font-size:11px}
+.idea-card.open{padding-right:34px}
+.idea-fold{position:absolute;top:4px;right:4px;width:28px;height:28px;border:0;border-radius:7px;background:transparent;color:inherit;opacity:.7;cursor:pointer;font-size:17px;line-height:1}
+.idea-fold:hover{opacity:1;background:rgba(20,20,20,.08)}
 .idea-card.open{cursor:pointer}
 .idea-card .idea-title{font-weight:600}
+.idea-card.open .idea-title{cursor:text;padding:2px 6px;margin:-2px -6px;border-radius:7px}
+.idea-card.open div.idea-title:hover{background:rgba(20,20,20,.05)}
+.idea-card.open.editing{padding:10px 34px 10px 12px;cursor:default}
 .idea-card .idea-secs{margin-top:6px;padding-top:4px;border-top:1px solid rgba(20,20,20,.1);display:flex;flex-direction:column;gap:2px;animation:ideaDrop .18s ease}
 .idea-card .idea-sec{padding:5px 6px;margin:0 -6px;border-radius:7px;cursor:text;user-select:text;-webkit-user-select:text}
 .idea-card .idea-sec:not(.editing):hover{background:rgba(20,20,20,.05)}
@@ -320,6 +335,7 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .idea-addb:hover{color:var(--ink);border-color:var(--faint)}
 .idea-empty{color:var(--faint);font-size:13px;padding:6px 2px}
 @media(max-width:520px){.idea-groups{grid-template-columns:1fr}}
+body.ideas-mode main{max-width:1600px} /* the board gets the whole window, so bigger boxes still sit side by side */
 
 /* ── calendar view ── */
 .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
@@ -405,6 +421,17 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .switch input:checked+.track::after{transform:translateX(14px)}
 .switch input:focus-visible+.track{outline:2px solid var(--accent);outline-offset:2px}
 .gcal-ok{font-family:var(--mono);font-size:11px;color:#2A7A3B;flex:1}
+.cal-acct{border-top:1px solid var(--hairline);padding:12px 0 4px;margin-top:12px}
+.cal-acct-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.cal-acct-head b{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-acct-head .mono{font-size:10.5px;color:var(--muted);flex:1}
+.cal-acct-err{font-family:var(--mono);font-size:11px;color:var(--late);margin:2px 0 6px}
+.cal-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 0}
+.cal-name{flex:1;min-width:140px;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-row .switch{font-size:12px;color:var(--muted);gap:7px}
+.cal-opts{margin:0 0 6px 12px;padding-left:10px;border-left:2px solid var(--hairline);display:flex;flex-direction:column;gap:6px}
+.cal-opts label.chk{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer}
+.cal-opts .settings-inp{margin:0}
 
 /* ── daily swipe deck: right = today, left = tomorrow ── */
 .chip.plan{background:var(--accent);color:#fff;border:0}
@@ -484,6 +511,14 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
       <input id="syncUrlW" class="settings-inp" placeholder="Work project URL" autocomplete="off" spellcheck="false">
       <input id="syncAnonKeyW" class="settings-inp" placeholder="Work anon public key" type="password" autocomplete="off">
       <input id="syncKeyW" class="settings-inp" placeholder="Work sync key" autocomplete="off" spellcheck="false">
+      <span class="settings-label" id="syncAgentLabel" style="margin-top:14px">Agent list (tasks Claude and your mini PC do for you)</span>
+      <input id="syncUrlA" class="settings-inp" placeholder="Agent project URL (blank = same as personal)" autocomplete="off" spellcheck="false">
+      <input id="syncAnonKeyA" class="settings-inp" placeholder="Agent anon public key (blank = same as personal)" type="password" autocomplete="off">
+      <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key" autocomplete="off" spellcheck="false">
+      <span class="settings-label" id="syncSchoolLabel" style="margin-top:14px">School list</span>
+      <input id="syncUrlS" class="settings-inp" placeholder="School project URL (blank = same as personal)" autocomplete="off" spellcheck="false">
+      <input id="syncAnonKeyS" class="settings-inp" placeholder="School anon public key (blank = same as personal)" type="password" autocomplete="off">
+      <input id="syncKeyS" class="settings-inp" placeholder="School sync key" autocomplete="off" spellcheck="false">
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
         <button id="syncGenBtn" class="ghost mono">Generate key</button>
@@ -513,6 +548,8 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     <div class="settings-panel" id="routingSection" hidden>
       <span class="settings-label">Who does Agent tasks</span>
       <p class="settings-hint">Your rules decide, no AI involved. They're checked top to bottom against the task's words, and the first match wins. Separate words with commas. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title always wins. Each task shows which rule sent it, and you can switch it any time.</p>
+      <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private: always the mini PC.</b> A new task that mentions any of these words in its title or notes, or something that looks like a card or social security number, goes to your mini PC instead of Claude. Checked before your rules; only a <span class="mono">#claude</span> tag overrides it.</p>
+      <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
       <div id="routingRules"></div>
       <div class="settings-row" style="margin-top:8px">
         <button id="routingAddBtn" class="ghost mono">+ Add rule</button>
@@ -546,6 +583,12 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
         <span id="feedsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </div>
+    <div class="settings-panel" id="aiSection" hidden>
+      <span class="settings-label">AI connections</span>
+      <p class="settings-hint">Which AIs do your cloud Agent tasks, top to bottom: the first one that's on and ready gets the task, and if it's out of usage or signed out, the next one takes over. Private tasks still go to your mini PC. Keys stay on this computer.</p>
+      <div id="aiList"></div>
+      <span id="aiStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
+    </div>
     <div class="settings-panel" id="agentBrowserSection" hidden>
       <span class="settings-label">Claude's browser</span>
       <p class="settings-hint">When an Agent task needs a website, Claude uses its own Chrome window — separate from your everyday Chrome. Open it to watch, or to log in to sites you want Claude to use. It fills things in but asks you before anything final (buy, submit, send, book).</p>
@@ -571,6 +614,15 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
       </div>
       </div>
     </div>
+    <div class="settings-panel" id="wakeSection" hidden>
+      <span class="settings-label">Hey Romulus</span>
+      <p class="settings-hint">Say <b>“Hey Romulus”</b>, wait for the chime, then say a task (“add essay to school Friday”), a tab (“open ideas”), or ask Claude something (“find me a cheap flight to Denver”). It listens only while the screen is on. The wake word is heard on this phone, so nothing is sent anywhere until you speak after the chime. Turning it on downloads a 40 MB speech model once. It uses a little battery.</p>
+      <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="wakeOn"><span class="track" aria-hidden="true"></span><span>Listen for “Hey Romulus”</span></label>
+      <div class="settings-row">
+        <button id="wakeOverlayBtn" class="ghost mono" hidden>Let it open the app by itself</button>
+        <span id="wakeStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
     <div class="settings-panel">
       <span class="settings-label">Theme</span>
       <p class="settings-hint">Paste CSS to restyle the app — the variables below control most of the look. Apply to see it instantly; Reset returns to the default style.</p>
@@ -592,32 +644,36 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
       </div>
     </div>
     <div class="settings-panel" id="gcalSection">
-      <span class="settings-label">Google Calendar</span>
-      <!-- Not yet configured -->
-      <div id="gcalSetup">
-        <p class="settings-hint">
-          Tasks with a due date sync to Google Calendar — tasks with a time become timed events, dateless-time tasks become all-day events.<br>
-          You need a free <a id="gcalConsoleLink">Google Cloud credential</a> (choose <b>Desktop app</b> as the application type) — takes about 5 minutes to set up.
-        </p>
+      <span class="settings-label">Calendars</span>
+      <p class="settings-hint">Sign in to connect your calendars. Then choose, calendar by calendar, whether your tasks go onto it and whether its events show up as to-dos. Nothing goes on or comes off a calendar until you switch it on.</p>
+      <div class="settings-row">
+        <button id="calGoogleBtn" class="btn-accent">Sign in with Google</button>
+        <button id="calMsBtn" class="btn-accent">Sign in with Microsoft</button>
+        <button id="calLinkBtn" class="ghost mono">+ Calendar link</button>
+      </div>
+      <span id="calErr" class="mono" style="display:block;color:var(--late);font-size:11px;margin-top:6px"></span>
+      <div id="calLinkBox" hidden style="margin-top:10px">
+        <p class="settings-hint">Paste a calendar's subscribe link (.ics or webcal://), e.g. from iCloud (Share Calendar → Public), Outlook (Publish calendar) or any app with "subscribe". Read-only: events can become to-dos, but tasks can't be put on it.</p>
+        <input id="calLinkUrl" class="settings-inp" placeholder="https://… or webcal://…" autocomplete="off" spellcheck="false">
+        <input id="calLinkName" class="settings-inp" placeholder="Name (optional)" autocomplete="off">
+        <div class="settings-row"><button id="calLinkAdd" class="btn-accent">Add</button></div>
+      </div>
+      <!-- this build has no Google sign-in client of its own: use your own credential -->
+      <div id="gcalSetup" hidden style="margin-top:10px">
+        <p class="settings-hint">This copy of the app doesn't have Google sign-in built in. Make a free <a id="gcalConsoleLink">Google Cloud credential</a> (application type <b>Desktop app</b>, about 5 minutes) and paste it here.</p>
         <input id="gcalClientId" class="settings-inp" placeholder="Client ID" autocomplete="off" spellcheck="false">
         <input id="gcalClientSecret" class="settings-inp" placeholder="Client Secret" type="password" autocomplete="off">
-        <div class="settings-row">
-          <button id="gcalConnectBtn" class="btn-accent">Connect</button>
-          <span id="gcalConnectErr" class="mono" style="color:var(--late);font-size:11px"></span>
-        </div>
+        <div class="settings-row"><button id="gcalConnectBtn" class="btn-accent">Connect</button></div>
       </div>
-      <!-- Connected -->
-      <div id="gcalConnected" hidden>
-        <div class="settings-row">
-          <span class="gcal-ok">✓ Connected to Google Calendar</span>
-          <button id="gcalSyncBtn" class="ghost mono">Sync now</button>
-          <button id="gcalDisconnectBtn" class="ghost mono danger">Disconnect</button>
-        </div>
-        <div id="mailEventsBox" style="margin-top:14px">
-          <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="mailOn"><span class="track" aria-hidden="true"></span><span>Add dates from my Gmail</span></label>
-          <p class="settings-hint">Every 15 minutes, new mail is checked for appointments, interviews, deadlines and events, which land on your Human list and calendar. A quiet inbox costs nothing; only new mail that mentions a date is sent to Claude, in one short request. Read-only: nothing in Gmail is changed.</p>
-          <span id="mailStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-        </div>
+      <div id="calAccounts"></div>
+      <div class="settings-row" id="calSyncRow" hidden style="margin-top:10px">
+        <button id="gcalSyncBtn" class="ghost mono">Sync now</button>
+        <span id="calStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div id="mailEventsBox" hidden style="margin-top:14px">
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="mailOn"><span class="track" aria-hidden="true"></span><span>Add dates from my Gmail</span></label>
+        <p class="settings-hint">Every 15 minutes, new mail is checked for appointments, interviews, deadlines and events, which land on your Human list and calendar. A quiet inbox costs nothing; only new mail that mentions a date is sent to Claude, in one short request. Read-only: nothing in Gmail is changed.</p>
+        <span id="mailStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </div>
   </section>
@@ -627,8 +683,9 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
   <!-- Tab bar replaces the rule -->
   <div class="tabs" role="tablist">
     <button id="tabList" class="tab active" role="tab" aria-selected="true">Human</button>
-    <button id="tabAgent" class="tab"       role="tab" aria-selected="false" hidden>Agent</button>
-    <button id="tabSchool" class="tab"      role="tab" aria-selected="false" hidden>School</button>
+    <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
+    <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
+    <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Ideas</button>
   </div>
@@ -645,9 +702,10 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
       <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
       <button id="addBtn" class="btn-accent">Add</button>
     </div>
-    <div id="voiceToast" class="voice-toast" hidden></div>
     <div id="newAtts" class="att-thumbs" style="padding:2px 8px 6px" hidden></div>
   </section>
+  <!-- outside the add box, so a spoken command's result shows on Ideas (no add box there) too -->
+  <div id="voiceToast" class="voice-toast" hidden></div>
 
   <!-- List view -->
   <div id="listView">
@@ -656,6 +714,11 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     <div id="filters" class="filters" hidden></div>
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
+    <div id="connectCard" class="connect-card" hidden>
+      <b id="connectTitle"></b>
+      <p id="connectText"></p>
+      <button id="connectBtn" class="btn-accent">Connect in Settings</button>
+    </div>
 
     <section id="doneSection" hidden>
       <div class="done-head">
@@ -772,6 +835,7 @@ function inTab(t,tab){
   const ws=taskWs(t);
   if(tab==='agent')return ws==='agent';
   if(tab==='school')return ws==='school';
+  if(tab==='work')return ws==='work';
   return ws==='personal'||ws==='work'||(ws==='school'&&schoolSurfaced(t));
 }
 function syncHeaders(p){ return {'apikey':p.key,'Authorization':'Bearer '+p.key,'Content-Type':'application/json'}; }
@@ -1077,8 +1141,8 @@ async function addTask(){
     addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add';
   }
   const due=$('newDue').value||null; const dueTime=due?($('newTime').value||null):null; const tag=$('newTag').value.trim()||null;
-  // adding on the Agent tab files it for Claude; with the Work filter on, under work
-  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.wsFilter==='work')?'work':'personal';
+  // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
+  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
   if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;
@@ -1140,6 +1204,70 @@ function parseSpokenTask(text,now){
   if(title)title=title.charAt(0).toUpperCase()+title.slice(1);
   return {title:title, due:due?formatDate(due):null, dueTime:due&&time?time:null};
 }
+/* Spoken commands ("Hey Romulus …"): where the words go, before parseSpokenTask reads dates out of them.
+     "go to ideas" / "open the work tab"                → {kind:'tab'}
+     "add monkey tinder to app ideas" / "new idea …"    → {kind:'idea', group}
+     "add finish the report to work"                    → {kind:'task', tab:'work'}
+     "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
+   "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
+const VOICE_TABS={human:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas'};
+const VOICE_TAB_NAME={list:'Human',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Ideas'};
+function voiceTabOk(tab){ return tab==='agent'?agentConfigured():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
+// "app" / "app ideas" / "the app ideas group" → that idea group's id ('' = Unsorted); undefined = no such group
+function voiceIdeaGroup(dest){
+  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?)\b/g,' ').replace(/\s+/g,' ').trim(); };
+  const d=bare(dest); if(!d)return undefined;
+  const all=[{id:'',name:state.ideas.inbox.name||'Unsorted'}].concat(state.ideas.groups);
+  const hit=all.find(function(g){ return bare(g.name)===d; });
+  return hit?hit.id:undefined;
+}
+// where "… to X" points: a tab, an idea group, or nothing we know (then "to X" is part of the task)
+function voiceDest(raw){
+  const d=String(raw||'').toLowerCase().replace(/^(?:the|my)\s+/,'').replace(/\s+(?:tab|list|page|board|group)$/,'').trim();
+  if(VOICE_TABS[d]&&VOICE_TABS[d]!=='calendar')return VOICE_TABS[d]==='ideas'?{kind:'idea',group:''}:{kind:'task',tab:VOICE_TABS[d]};
+  const g=voiceIdeaGroup(d);
+  return g===undefined?null:{kind:'idea',group:g};
+}
+function parseVoiceCommand(said,curTab,smart){
+  let s=String(said||'').trim().replace(/\s+/g,' ')
+    .replace(/^(?:(?:hey|hi|ok|okay)\s+)?romulus\b[\s,.!:]*/i,'').replace(/^(?:please|can you|could you)\s+/i,'').replace(/[\s.!?]+$/,'');
+  let tab=null, m;
+  // "go to the ideas tab (and …)" — the tab first, then whatever follows
+  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|personal|main|home|agent|claude|school|work|calendar|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
+  if(m){ tab=VOICE_TABS[m[1].toLowerCase()]; s=m[2].trim(); if(!s)return {kind:'tab',tab:tab}; }
+  // Claude / the agent
+  m=/^(?:send|give|hand|pass)\s+(?:this\s+|it\s+)?(?:over\s+)?(?:to\s+)?(?:the\s+)?(?:agent|claude)\s*[,:]?\s*(?:to\s+)?(.+)$/i.exec(s)
+    ||/^(?:tell|ask|have|get)\s+(?:the\s+)?(?:agent|claude)\s*[,:]?\s*(?:to\s+)?(.+)$/i.exec(s);
+  if(m)return {kind:'task',tab:'agent',text:m[1]};
+  m=/^(?:send|give|hand|pass)\s+(.+?)\s+(?:over\s+)?to\s+(?:the\s+)?(?:agent|claude)$/i.exec(s);
+  if(m)return {kind:'task',tab:'agent',text:m[1]};
+  // "new idea …" / "add an idea …" / "… as an idea"
+  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?idea|idea)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
+  if(m)return {kind:'idea',group:'',text:m[1]};
+  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?idea$/i.exec(s);
+  if(m)return {kind:'idea',group:'',text:m[1]};
+  // "add X to Y": try the last "to/in/on/under" first, so "add go to the store to work" files "go to the store" under work
+  const verb=/^(?:add|put|write|save|note|make|create|jot(?:\s+down)?)\s+(?:a\s+(?:task|note)\s+)?/i.exec(s);
+  const body=verb?s.slice(verb[0].length):s;
+  const preps=[]; const re=/\s+(?:to|in|into|on|under|onto)\s+/gi; let p;
+  while((p=re.exec(body)))preps.push({at:p.index,end:p.index+p[0].length});
+  for(let i=preps.length-1;i>=0;i--){
+    const text=body.slice(0,preps[i].at).trim(); if(!text)continue;
+    // the place can be followed by more of the task: "to work on friday" → work, "… on friday"
+    const words=body.slice(preps[i].end).split(' ');
+    for(let n=Math.min(words.length,5);n>=1;n--){
+      const dest=voiceDest(words.slice(0,n).join(' ')); if(!dest)continue;
+      return Object.assign(dest,{text:(text+' '+words.slice(n).join(' ')).trim()});
+    }
+  }
+  const where=tab||curTab;
+  if(where==='ideas')return {kind:'idea',group:'',text:body};
+  // after "Hey Romulus" (smart): a question or an errand that isn't a plain to-do goes to Claude, word for word
+  if(smart&&!tab&&!verb&&agentConfigured()&&VOICE_ASK.test(s))return {kind:'task',tab:'agent',text:s,raw:true};
+  return {kind:'task',tab:where==='calendar'?'list':where,text:verb?body:s};
+}
+// "what's on Friday", "find me a cheap flight", "email Sam that …": Claude's job, not a to-do of yours
+const VOICE_ASK=/^(?:what|what's|whats|when|where|who|whose|why|how|which|is|are|was|were|do|does|did|can|could|would|will|should|find|look\s+up|look\s+for|search|google|research|book|order|check|email|e-mail|text|message|reply|draft|write\s+(?:me|an?\s+email|a\s+message)|plan|compare|summari[sz]e|figure\s+out|help\s+me|show\s+me|tell\s+me|explain|get\s+me)\b/i;
 let voiceOn=false;
 const MIC_LABEL=I.mic+'<span>Speak</span>';
 function voiceToast(msg,isErr){ const t=$('voiceToast'); if(!t)return; t.textContent=msg; t.className='voice-toast'+(isErr?' err':''); t.hidden=!msg; clearTimeout(voiceToast._t); if(msg)voiceToast._t=setTimeout(function(){ t.hidden=true; },6000); }
@@ -1159,11 +1287,14 @@ function voiceEngine(){
   };
   return null;
 }
-async function voiceAdd(){
+// smart: started by "Hey Romulus" (see WakeWordService.java), so questions and errands can go to Claude
+async function voiceAdd(smart){
   const v=voiceEngine(); if(!v)return;
   const btn=$('micBtn'), ti=$('newTitle');
-  if(voiceOn){ try{ await v.stop(); }catch(e){} return; } // tap again: done talking
-  voiceOn=true; btn.classList.add('listening'); btn.innerHTML=I.stop+'<span>Listening\u2026</span>'; voiceToast('Listening\u2026 say the task (and a day, if it has one)');
+  if(voiceOn){ if(smart!==true){ try{ await v.stop(); }catch(e){} } return; } // tap again: done talking
+  smart=smart===true;
+  voiceOn=true; btn.classList.add('listening'); btn.innerHTML=I.stop+'<span>Listening\u2026</span>';
+  voiceToast(smart?'Hey! Listening\u2026 a task, or ask Claude something':'Listening\u2026 say the task (and a day, if it has one)');
   const before=ti.value, prevPh=ti.placeholder; ti.value=''; ti.placeholder='Listening\u2026';
   let partial=null, heard=''; try{ partial=v.onPartial(function(text){ heard=text; ti.value=text; }); }catch(e){}
   buzz('tap');
@@ -1178,14 +1309,28 @@ async function voiceAdd(){
     // "no match"): then use the last words it showed while you were talking
     const said=((r&&r.text)||heard||'').trim();
     if(!said){ ti.value=before; voiceToast('Didn\u2019t catch that \u2014 tap Speak and try again',true); return; }
-    const p=parseSpokenTask(said);
+    const cmd=parseVoiceCommand(said,state.activeTab,smart);
+    if(cmd.tab&&!voiceTabOk(cmd.tab)){ ti.value=before; voiceToast('The '+VOICE_TAB_NAME[cmd.tab]+' list isn\u2019t connected on this device',true); return; }
+    if(cmd.kind==='tab'){ ti.value=before; switchTab(cmd.tab); window.scrollTo(0,0); voiceToast('Opened '+VOICE_TAB_NAME[cmd.tab]); return; }
+    if(cmd.kind==='idea'){
+      ti.value=before;
+      const text=cmd.text.trim().replace(/^./,function(c){ return c.toUpperCase(); });
+      ideaAddCard(cmd.group,text); switchTab('ideas');
+      voiceToast('Added \u201C'+text+'\u201D to Ideas \u2192 '+(ideaGroup(cmd.group).name||'Unsorted'));
+      return;
+    }
+    // a task: go to its tab so addTask files it there (and you can see it land)
+    if(cmd.tab!==state.activeTab)switchTab(cmd.tab);
+    if(cmd.tab==='list')state.wsFilter=null; // "add \u2026 to human" shouldn't land under the Work filter
+    // what you asked Claude stays as you said it (no dates pulled out of "what's on Friday")
+    const p=cmd.raw?{title:cmd.text.charAt(0).toUpperCase()+cmd.text.slice(1),due:null,dueTime:null}:parseSpokenTask(cmd.text);
     if(!p.title){ ti.value=before; voiceToast('Heard \u201C'+said+'\u201D but no task in it',true); return; }
     // fill the boxes like you'd typed it, add, then put the sticky date/time back how they were
     const dueEl=$('newDue'), timeEl=$('newTime'), oldDue=dueEl.value, oldTime=timeEl.value;
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
     await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
-    voiceToast('Added \u201C'+p.title+'\u201D \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
+    voiceToast(cmd.raw?'Sent to Claude: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
   }finally{
@@ -1353,7 +1498,7 @@ function drawComposerAtts(){
 function openTaskById(id){
   const t=state.tasks.find(function(x){ return x.id===id; }); if(!t)return;
   const w=taskWs(t);
-  const tab=w==='agent'?'agent':(w==='school'&&schoolConfigured())?'school':'list';
+  const tab=w==='agent'?'agent':(w==='school'&&schoolConfigured())?'school':(w==='work'&&workConfigured())?'work':'list';
   if(t.done)state.showDone=true;
   if(tab==='list'&&state.wsFilter&&w!==state.wsFilter&&!(w==='school'&&state.wsFilter==='personal'))state.wsFilter=null;
   // drop a tag filter or search that would hide it
@@ -1371,10 +1516,14 @@ function openTaskById(id){
 window.__tasksHook=function(p){
   p=p||{};
   if(p.kind==='open'){ openTaskById(p.arg); return 'ok'; }
-  if(p.kind==='tab'){ switchTab(p.arg==='agent'&&agentConfigured()?'agent':p.arg==='school'&&schoolConfigured()?'school':'list'); window.scrollTo(0,0); return 'ok'; }
+  if(p.kind==='tab'){ switchTab(p.arg==='agent'&&agentConfigured()?'agent':p.arg==='school'&&schoolConfigured()?'school':p.arg==='work'&&workConfigured()?'work':'list'); window.scrollTo(0,0); return 'ok'; }
   if(p.kind==='voice'){
     switchTab(p.arg==='agent'&&agentConfigured()?'agent':'list'); window.scrollTo(0,0);
     setTimeout(voiceAdd,300); return 'ok';
+  }
+  if(p.kind==='wake'){ // "Hey Romulus" (WakeWordService.java): listen right where you are
+    if(!$('settingsPanel').hidden)setSettingsOpen(false);
+    setTimeout(function(){ voiceAdd(true); },250); return 'ok';
   }
   if(p.kind==='quickAdd'){
     switchTab(p.arg==='agent'&&agentConfigured()?'agent':'list'); window.scrollTo(0,0);
@@ -1441,9 +1590,9 @@ function setLane(t,to){
   buzz('tap'); touch();
 }
 function moveTask(t,toWs){
-  if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId);
+  if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   const now=Date.now();
-  const c=Object.assign({},t,{id:uid(),ws:toWs,googleEventId:null,updatedAt:now,subs:t.subs.map(function(s){ return Object.assign({},s); })});
+  const c=Object.assign({},t,{id:uid(),ws:toWs,googleEventId:null,calRef:null,updatedAt:now,subs:t.subs.map(function(s){ return Object.assign({},s); })});
   if(toWs==='agent'){ c.fromWs=taskWs(t); c.status='queued'; c.note=null; c.reply=null; c.options=null; c.done=false; c.repeat=null; c.nextRun=null; c.repeatDue=false;
     // carry any screenshots into Claude's view: as reply images + a conversation entry
     const imgs=Array.isArray(t.images)?t.images.slice(0,6):[];
@@ -1474,7 +1623,7 @@ function toggleDone(t,liEl,checkEl){
   else { checkEl.classList.add('on'); liEl.classList.add('leaving'); setTimeout(function(){ setDone(liveTask(t),true); touch(); },200); }
 }
 function deleteTask(t){
-  if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId);
+  if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; }); state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:Date.now()});
   buzz('delete');
@@ -1532,7 +1681,7 @@ function buildRow(t,canDrag){
     tagChip.addEventListener('click',function(e){ e.stopPropagation(); state.filter=(state.filter===t.tag)?null:t.tag; render(); });
     meta.appendChild(tagChip);
   }
-  if(workConfigured()&&taskWs(t)==='work'&&state.wsFilter!=='work'){
+  if(workConfigured()&&taskWs(t)==='work'&&state.wsFilter!=='work'&&state.activeTab!=='work'){
     meta.appendChild(el('span','chip ws','work'));
   }
   // what the morning swipe decided: picked for today, or pushed to tomorrow's deck
@@ -1590,7 +1739,7 @@ function buildRow(t,canDrag){
   meta.appendChild(pen);
   if(agentConfigured()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
-    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to Agent (Claude does it)';
+    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to Agent (Claude does it)';
     const mv=iconBtn(isAgentTask?I.human:I.bot,mvLabel); mv.title=mvLabel;
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
     meta.appendChild(mv);
@@ -1623,7 +1772,7 @@ function buildPanel(t){
       hist.forEach(function(h){
         const who=h.who==='you'?'you':h.who==='claude'?'claude':'sys';
         const b=el('div','conv-msg '+who);
-        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':'Claude')+' \u00B7 '+fmtWhen(h.at)));
+        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':h.via==='gemini'?'Gemini':h.via==='openrouter'?'OpenRouter':'Claude')+' \u00B7 '+fmtWhen(h.at)));
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
@@ -2020,10 +2169,21 @@ function render(){
       if(ta&&document.activeElement!==ta){ ta.focus(); try{ ta.setSelectionRange(s,e); }catch(err){} }
     });
   }
-  const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school';
-  const tab=onAgent?'agent':onSchool?'school':'list';
-  $('tabAgent').hidden=!agentConfigured();
-  $('tabSchool').hidden=!schoolConfigured();
+  const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work';
+  const tab=onAgent?'agent':onSchool?'school':onWork?'work':'list';
+  // every tab shows from the start; one whose list isn't connected yet says how to connect it
+  const unconnected=onAgent?!agentConfigured():onSchool?!schoolConfigured():onWork?!workConfigured():false;
+  document.querySelector('.composer').hidden=unconnected;
+  $('searchBox').hidden=unconnected;
+  $('connectCard').hidden=!unconnected;
+  if(unconnected){
+    const what=onAgent?['Agent','agent','Hand tasks to Claude on this computer or your mini PC: they work on them and come back when they need you.']
+      :onSchool?['School','school','Your assignments, with due dates pulled in from your course calendars.']
+      :['Work','work','A second list that syncs with your work project.'];
+    $('connectTitle').textContent='Connect your '+what[0]+' list';
+    $('connectText').textContent=what[2]+' It’s shared online between your computer'+(onAgent?', phone and mini PC':' and phone')+', so it needs connecting once.';
+    $('connectBtn').setAttribute('data-ws',what[1]);
+  }
   const tasks=state.tasks.filter(function(t){ return inTab(t,tab); });
   // a tag named like a list ("work") would repeat the Personal/Work chips above,
   // so it gets no chip of its own; the tasks keep their tag
@@ -2056,7 +2216,7 @@ function render(){
   });
   fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
-  $('newTitle').placeholder=onAgent?'Add a task for Claude…':onSchool?'Add an assignment… (tag = class)':'Add a task…';
+  $('newTitle').placeholder=onAgent?'Add a task for Claude…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
 
   // workspace filter chips (only when a work list is connected; not on the Agent tab)
   const wsf=$('wsFilters'); wsf.innerHTML='';
@@ -2096,7 +2256,8 @@ function render(){
   openVis.forEach(function(t){ ol.appendChild(buildRow(t,true)); });
 
   const es=$('emptyState');
-  if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for Claude yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':'Nothing here yet — add your first task above.'; }
+  if(unconnected){ es.hidden=true; }
+  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for Claude yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
   else if(openVis.length===0){
     es.hidden=false;
     es.textContent=q?'No matches for "'+$('searchBox').value.trim()+'".':(state.filter?'Nothing open under "'+state.filter+'".':'All clear.');
@@ -2168,7 +2329,7 @@ function switchTab(tab){
   if(tab!==state.activeTab)state.selectedId=null;
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabCal','calendar'],['tabIdeas','ideas']].forEach(function(p){
+  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
@@ -2177,6 +2338,7 @@ function switchTab(tab){
   $('ideasView').hidden=tab!=='ideas';
   document.querySelector('.composer').hidden=tab==='ideas';
   document.body.classList.toggle('ideas-mode',tab==='ideas');
+  if(tab==='calendar')$('newTitle').placeholder='Add a task…'; // render() sets it on the list tabs; don't keep the last one's
   if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else render();
 }
 
@@ -2252,8 +2414,22 @@ function ideaRemoveCard(id){
 }
 function ideaAddCard(gid,text){
   const list=ideaCardsIn(gid);
-  state.ideas.cards.push({id:uid(),text:text,group:gid,order:list.length?list[list.length-1].order+1:0,updatedAt:Date.now()});
-  persist();
+  const c={id:uid(),text:'',group:gid,order:list.length?list[list.length-1].order+1:0,updatedAt:0};
+  state.ideas.cards.push(c); ideaSetFullText(c,text);
+}
+// an idea as one piece of text: the title, then its notes on the lines under it
+// (older ideas with headed sections show each heading on its own line)
+function ideaFullText(c){
+  const notes=(c.sections||[]).map(function(s){ return [s.title,s.body].filter(Boolean).join('\n'); }).filter(Boolean).join('\n\n');
+  return notes?c.text+'\n'+notes:c.text;
+}
+function ideaSetFullText(c,v){
+  v=v.replace(/^\s*\n/,'').replace(/\s+$/,'');
+  const i=v.indexOf('\n'), title=(i<0?v:v.slice(0,i)).trim(), notes=i<0?'':v.slice(i+1).replace(/^\s*\n/,'');
+  const secs=notes.trim()?[{id:(c.sections&&c.sections[0]&&c.sections[0].id)||uid(),title:'',body:notes}]:null;
+  if(title===c.text&&JSON.stringify(secs)===JSON.stringify(c.sections||null))return;
+  c.text=title; if(secs)c.sections=secs; else delete c.sections;
+  c.updatedAt=Date.now(); persist();
 }
 function ideaAddGroup(){
   const gs=state.ideas.groups, now=Date.now();
@@ -2337,109 +2513,80 @@ function drawIdeas(){
     const flow=el('div','idea-cards'); flow.dataset.group=g.id;
     cards.forEach(function(c){
       const b=el('div','idea-card'); b.dataset.id=c.id;
-      if(ideaUI.editing===c.id){
-        b.classList.add('editing');
-        const ta=ideaTextBox(c.text,'Edit idea');
-        let done=false;
-        const commit=function(){
-          if(done)return; done=true; ideaUI.editing=null;
-          const cc=ideaCard(c.id), v=ta.value.replace(/\s+$/,'');
-          if(cc){ if(!v.trim())ideaRemoveCard(c.id); else if(v!==cc.text){ cc.text=v; cc.updatedAt=Date.now(); persist(); } }
-          drawIdeas();
-        };
-        ta.addEventListener('keydown',function(e){ if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); commit(); } });
-        ta.addEventListener('blur',commit);
-        const foot=el('div','idea-edit-foot');
-        foot.appendChild(el('span','mono','click away to save'));
-        const x=el('button','x','Delete'); x.setAttribute('aria-label','Delete idea');
-        x.addEventListener('mousedown',function(e){ e.preventDefault(); });
-        x.addEventListener('click',function(){ done=true; ideaUI.editing=null; ideaRemoveCard(c.id); drawIdeas(); });
-        foot.appendChild(x);
-        b.appendChild(ta); b.appendChild(foot); focusEl=ta;
-      } else if(ideaUI.open===c.id){ // tapped open: its sections drop down under the title
+      if(ideaUI.open===c.id||ideaUI.editing===c.id){ // tapped open: its notes drop down under the title; tap any text to edit
         b.classList.add('open');
-        b.appendChild(el('div','idea-title',c.text));
-        const secs=el('div','idea-secs');
-        const ed=ideaUI.descing&&ideaUI.descing.id===c.id?ideaUI.descing.sec:null;
-        (c.sections||[]).concat(ed==='new'?[{id:'new',title:'',body:''}]:[]).forEach(function(s){
-          if(ed===s.id){
-            const blk=el('div','idea-sec editing');
-            const hd=el('input','idea-sechead'); hd.value=s.title; hd.placeholder='Section heading'; hd.setAttribute('aria-label','Section heading'); hd.fit=function(){};
-            const ta=ideaTextBox(s.body,'Write this section…');
-            let done=false;
-            const commit=function(){
-              if(done)return; done=true; ideaUI.descing=null;
-              const cc=ideaCard(c.id), t=hd.value.trim(), v=ta.value.replace(/\s+$/,'');
-              if(cc){
-                const list=(cc.sections||[]).slice(), i=list.findIndex(function(x){ return x.id===s.id; });
-                if(!t&&!v.trim()){ if(i>=0)list.splice(i,1); } // emptied out: the section goes
-                else if(i<0)list.push({id:uid(),title:t,body:v});
-                else if(list[i].title!==t||list[i].body!==v)list[i]={id:s.id,title:t,body:v};
-                if(JSON.stringify(list)!==JSON.stringify(cc.sections||[])){ if(list.length)cc.sections=list; else delete cc.sections; cc.updatedAt=Date.now(); persist(); }
-              }
-              drawIdeas();
-            };
-            // saves once focus leaves both the heading and the text
-            blk.addEventListener('focusout',function(){ setTimeout(function(){ if(!blk.contains(document.activeElement))commit(); },0); });
-            [hd,ta].forEach(function(n){ n.addEventListener('keydown',function(e){ if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); commit(); } }); });
-            hd.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.ctrlKey&&!e.metaKey){ e.preventDefault(); ta.focus(); } });
-            blk.appendChild(hd); blk.appendChild(ta);
-            if(s.id!=='new'){
-              const sf=el('div','idea-edit-foot'); sf.appendChild(el('span','mono','click away to save'));
-              const x=el('button','x','Delete section'); x.setAttribute('aria-label','Delete section');
-              x.addEventListener('mousedown',function(e){ e.preventDefault(); });
-              x.addEventListener('click',function(){ hd.value=''; ta.value=''; commit(); });
-              sf.appendChild(x); blk.appendChild(sf);
-            }
-            secs.appendChild(blk); focusEl=s.id==='new'?hd:ta;
-          } else {
+        const fold=el('button','idea-fold','▴'); fold.title='Collapse'; fold.setAttribute('aria-label','Collapse idea');
+        fold.addEventListener('mousedown',function(e){ e.preventDefault(); });
+        fold.addEventListener('click',function(){
+          const a=document.activeElement; if(a&&b.contains(a))a.blur(); // saves what's being typed first
+          ideaUI.open=null; ideaUI.editing=null; ideaUI.confirmDel=null; drawIdeas();
+        });
+        b.appendChild(fold);
+        if(ideaUI.editing===c.id){ // one box: the first line is the title, everything under it is the notes
+          b.classList.add('editing');
+          const ta=ideaTextBox(ideaFullText(c),'Idea title\nNotes underneath…');
+          let done=false;
+          const commit=function(){
+            if(done)return; done=true; ideaUI.editing=null;
+            const cc=ideaCard(c.id);
+            if(cc){ if(!ta.value.trim())ideaRemoveCard(c.id); else ideaSetFullText(cc,ta.value); }
+            drawIdeas();
+          };
+          ta.addEventListener('keydown',function(e){ if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); commit(); } });
+          ta.addEventListener('blur',commit);
+          b.appendChild(ta); focusEl=ta;
+          if(ideaUI.caret==='notes'&&!c.sections){ ta.value+='\n'; } // "+ Add notes": start on the line under the title
+          ideaUI.caret=null;
+        } else {
+          const tt=el('div','idea-title',c.text); tt.title='Click to edit';
+          b.appendChild(tt);
+          const secs=el('div','idea-secs');
+          (c.sections||[]).forEach(function(s){
             const blk=el('div','idea-sec'); blk.dataset.sec=s.id;
             if(s.title)blk.appendChild(el('div','idea-sechead',s.title));
             if(s.body)blk.appendChild(el('div','idea-secbody',s.body));
             blk.addEventListener('click',function(){
               const sel=window.getSelection(); if(sel&&!sel.isCollapsed&&blk.contains(sel.anchorNode))return; // highlighting lines to move, not editing
-              ideaUI.descing={id:c.id,sec:s.id}; drawIdeas();
+              ideaUI.editing=c.id; drawIdeas();
             });
             secs.appendChild(blk);
+          });
+          if(!c.sections){
+            const add=el('button','idea-secadd','+ Add notes');
+            add.addEventListener('click',function(){ ideaUI.editing=c.id; ideaUI.caret='notes'; drawIdeas(); });
+            secs.appendChild(add);
           }
-        });
-        if(ed!=='new'){
-          const add=el('button','idea-secadd',(c.sections||[]).length?'+ Add section':'+ Add a section');
-          add.addEventListener('click',function(){ ideaUI.descing={id:c.id,sec:'new'}; drawIdeas(); });
-          secs.appendChild(add);
+          b.appendChild(secs);
         }
-        b.appendChild(secs);
         const foot=el('div','idea-edit-foot idea-ofoot');
-        foot.appendChild(el('span','mono','tap the title to close'));
+        foot.appendChild(el('span','mono',ideaUI.editing===c.id?'esc to save':''));
         const btns=el('span');
-        const et=el('button','x','Edit title'); et.setAttribute('aria-label','Edit idea title');
-        et.addEventListener('mousedown',function(e){ e.preventDefault(); });
-        et.addEventListener('click',function(){ ideaUI.descing=null; ideaUI.editing=c.id; drawIdeas(); });
         const sure=ideaUI.confirmDel===c.id;
         const del=el('button','x'+(sure?' sure':''),sure?'Tap again to delete':'Delete'); del.setAttribute('aria-label','Delete idea');
         del.addEventListener('mousedown',function(e){ e.preventDefault(); });
         del.addEventListener('click',function(){
           if(!sure){ ideaUI.confirmDel=c.id; drawIdeas(); return; }
-          ideaUI.confirmDel=null; ideaUI.open=null; ideaUI.descing=null; ideaRemoveCard(c.id); drawIdeas();
+          ideaUI.confirmDel=null; ideaUI.open=null; ideaUI.descing=null; ideaUI.editing=null; ideaRemoveCard(c.id); drawIdeas();
         });
-        btns.appendChild(et); btns.appendChild(del); foot.appendChild(btns);
+        btns.appendChild(del); foot.appendChild(btns);
         b.appendChild(foot);
       } else {
         b.appendChild(el('div','clip',c.text));
-        if(c.sections){ b.classList.add('hasdesc'); b.title='Tap to show its sections'; }
+        b.title=c.sections?'Click to open its notes · double-click to edit':'Click to open · double-click to edit';
+        if(c.sections)b.classList.add('hasdesc');
       }
       flow.appendChild(b);
     });
     if(ideaUI.adding===g.id){
-      const b=el('div','idea-card editing'); const ta=ideaTextBox('','Write an idea…');
+      const b=el('div','idea-card editing'); const ta=ideaTextBox('','Idea title\nNotes underneath…');
       let done=false;
-      const save=function(){ const v=ta.value.replace(/\s+$/,''); if(v.trim())ideaAddCard(g.id,v); };
+      const save=function(){ if(ta.value.trim())ideaAddCard(g.id,ta.value); };
       ta.addEventListener('keydown',function(e){
         if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); done=true; save(); drawIdeas(); } // saved; a fresh box opens for the next one
         else if(e.key==='Escape'){ e.preventDefault(); done=true; save(); ideaUI.adding=null; drawIdeas(); }
       });
       ta.addEventListener('blur',function(){ if(done)return; done=true; ideaUI.adding=null; save(); drawIdeas(); });
-      const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','click away to save · ctrl+enter for another'));
+      const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','esc to save'));
       b.appendChild(ta); b.appendChild(foot); flow.appendChild(b); focusEl=ta;
     } else {
       const add=el('button','idea-addb','+ Add an idea'); add.setAttribute('aria-label','Add an idea to this group');
@@ -2449,6 +2596,7 @@ function drawIdeas(){
     if(!g.id&&!cards.length&&!state.ideas.groups.length&&ideaUI.adding!=='')
       flow.insertBefore(el('div','idea-empty','Write ideas here, then make groups and drag them in.'),flow.firstChild);
     sec.appendChild(flow);
+    const sz=el('div','idea-gsize'); sz.title='Drag to make the boxes wider or narrower'; sec.appendChild(sz);
     wrap.appendChild(sec);
   });
   if(focusEl&&!$('ideasView').hidden){ focusEl.focus(); focusEl.setSelectionRange(focusEl.value.length,focusEl.value.length); focusEl.fit(); }
@@ -2608,7 +2756,7 @@ function ideaNote(text){
   wrap.addEventListener('pointerdown',function(e){
     if(e.button>0||ideaUI.drag||ideaUI.gdrag)return;
     let b=e.target.closest('.idea-card'); if(!b||!b.dataset.id||b.classList.contains('editing'))return;
-    if(e.target.closest('.idea-secs,.idea-ofoot'))return; // the open card's sections and buttons handle their own taps
+    if(e.target.closest('.idea-secs,.idea-ofoot,.idea-fold'))return; // the open card's sections and buttons handle their own taps
     const a=document.activeElement;
     if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&wrap.contains(a)){ // save what's being typed first (that redraws the cards)
       const id=b.dataset.id; a.blur();
@@ -2636,7 +2784,20 @@ function ideaNote(text){
     const d=ideaUI.drag; if(!d||e.pointerId!==d.pid)return;
     if(d.active){ finish(d,true); return; }
     clearTimeout(d.timer); ideaUI.drag=null;
-    if(ideaCard(d.id)){ ideaUI.adding=null; ideaUI.descing=null; ideaUI.confirmDel=null; ideaUI.open=ideaUI.open===d.id?null:d.id; drawIdeas(); } // a click/tap: open or close its description
+    if(ideaCard(d.id)){ // a click/tap opens it; on an open one it edits the text (so a double-click goes straight to editing)
+      ideaUI.adding=null; ideaUI.descing=null; ideaUI.confirmDel=null;
+      if(ideaUI.open===d.id)ideaUI.editing=d.id; else { ideaUI.open=d.id; ideaUI.editing=null; }
+      drawIdeas();
+    }
+  });
+  $('ideasView').addEventListener('pointerdown',function(e){ // a click on empty board space folds the open idea
+    if(e.button>0||!ideaUI.open||ideaUI.editing||e.target.closest('.idea-card,button,input,textarea,.idea-gsize'))return;
+    ideaUI.open=null; ideaUI.confirmDel=null; drawIdeas();
+  });
+  document.addEventListener('keydown',function(e){ // esc closes the open idea (when nothing's being typed in)
+    if(e.key!=='Escape'||$('ideasView').hidden||!ideaUI.open)return;
+    const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return; // there esc just saves
+    ideaUI.open=null; ideaUI.confirmDel=null; drawIdeas();
   });
   document.addEventListener('pointercancel',function(e){
     const d=ideaUI.drag; if(!d||e.pointerId!==d.pid)return;
@@ -2644,6 +2805,41 @@ function ideaNote(text){
   });
   wrap.addEventListener('contextmenu',function(e){ if(e.target.closest('.idea-card')&&!e.target.closest('.idea-secs'))e.preventDefault(); }); // long-press menu on phones (but sections can still be highlighted)
   $('ideaAddGroup').addEventListener('click',ideaAddGroup);
+})();
+
+/* box size (desktop): drag the right edge of any group to make every box wider or narrower; the grid
+   fits as many across as it can. Ctrl/⌘ + scroll over the board does the same. Kept per device. */
+(function(){
+  const KEY='tasks.ideaBoxW', wrap=$('ideaGroups');
+  let cur=280;
+  function set(w,save){
+    cur=Math.max(200,Math.min(640,Math.round(w/10)*10||280));
+    wrap.style.setProperty('--idea-w',cur+'px');
+    if(save)try{ localStorage.setItem(KEY,String(cur)); }catch(e){}
+  }
+  let w=280; try{ w=+localStorage.getItem(KEY)||280; }catch(e){}
+  set(w,false);
+  let d=null;
+  wrap.addEventListener('pointerdown',function(e){
+    const h=e.target.closest('.idea-gsize'); if(!h||e.button>0)return;
+    e.preventDefault(); e.stopPropagation();
+    // start from the box's real width (columns stretch to fill the row)
+    d={x:e.clientX,w:h.parentNode.getBoundingClientRect().width,pid:e.pointerId};
+    h.classList.add('on'); document.body.classList.add('idea-sizing');
+  });
+  document.addEventListener('pointermove',function(e){ if(d&&e.pointerId===d.pid)set(d.w+e.clientX-d.x,false); });
+  function end(e){
+    if(!d||e.pointerId!==d.pid)return;
+    document.body.classList.remove('idea-sizing');
+    set(cur,true); d=null;
+    wrap.querySelectorAll('.idea-gsize.on').forEach(function(n){ n.classList.remove('on'); });
+  }
+  document.addEventListener('pointerup',end); document.addEventListener('pointercancel',end);
+  wrap.addEventListener('dblclick',function(e){ if(e.target.closest('.idea-gsize'))set(280,true); }); // back to the default size
+  wrap.addEventListener('wheel',function(e){
+    if(!(e.ctrlKey||e.metaKey))return; e.preventDefault();
+    set(cur+(e.deltaY<0?20:-20),true);
+  },{passive:false});
 })();
 
 /* moving whole groups: grab the ⠿ handle; the group lifts off, a dashed gap follows the pointer
@@ -2952,6 +3148,85 @@ if(window.desktop&&window.desktop.openAgentBrowser){
     catch(e){ $('agentBrowserStatus').textContent='couldn’t open it'; }
   });
 }
+/* AI connections (desktop only): Claude / Gemini / OpenRouter for the cloud Agent lane, in his order */
+if(window.desktop&&window.desktop.aiStatus){
+  $('aiSection').hidden=false;
+  let ai=null;
+  const say=function(t){ $('aiStatusLine').textContent=t||''; if(t)setTimeout(function(){ if($('aiStatusLine').textContent===t)$('aiStatusLine').textContent=''; },4000); };
+  const save=async function(change,msg){ try{ ai=await window.desktop.aiSave(change); aiDraw(); say(msg||'saved'); }catch(e){ say('save failed'); } };
+  const keyRow=function(ph,saveAs,label){
+    const r=el('div','settings-row'); r.style.marginTop='8px';
+    const k=el('input','settings-inp'); k.type='password'; k.placeholder=ph; k.style.flex='1'; k.style.margin='0'; k.autocomplete='off';
+    const b=el('button','ghost mono',label||'Save key');
+    b.addEventListener('click',function(){ const v=k.value.trim(); if(!v)return; const c={}; c[saveAs]=v; save(c,'key saved'); });
+    r.appendChild(k); r.appendChild(b); return r;
+  };
+  const statusText=function(id){
+    if(id==='claude')return ai.claudeBlockedUntil?'out of usage until '+fmtWhen(ai.claudeBlockedUntil):'Claude Code on this computer';
+    if(id==='gemini'){ const g=ai.gemini;
+      if(!g.installed)return 'not installed';
+      return g.signedIn?'signed in with Google':g.hasKey?'API key '+g.key:'installed, not signed in'; }
+    const o=ai.openrouter; return o.hasKey?'key '+o.key+' · '+o.model:'no key yet';
+  };
+  function aiDraw(){
+    const list=$('aiList'); list.innerHTML='';
+    ai.order.forEach(function(p,i){
+      const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
+      const head=el('div','settings-row'); head.style.marginTop='0';
+      const sw=el('label','switch'); const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=p.on;
+      sw.appendChild(cb); const tr=el('span','track'); tr.setAttribute('aria-hidden','true'); sw.appendChild(tr);
+      sw.appendChild(el('span','',(i+1)+'. '+ai.names[p.id]));
+      cb.addEventListener('change',function(){ const o=ai.order.map(function(x){ return {id:x.id,on:x.id===p.id?cb.checked:x.on}; }); save({order:o}); });
+      head.appendChild(sw);
+      const st=el('span','mono',statusText(p.id)); st.style.cssText='font-size:11px;color:var(--muted);flex:1;text-transform:none;letter-spacing:0';
+      head.appendChild(st);
+      if(i>0){ const up=el('button','ghost mono','↑'); up.title='Try this one earlier';
+        up.addEventListener('click',function(){ const o=ai.order.slice(); o.splice(i-1,0,o.splice(i,1)[0]); save({order:o}); }); head.appendChild(up); }
+      box.appendChild(head);
+      if(p.id==='gemini'){
+        const g=ai.gemini, r=el('div','settings-row'); r.style.marginTop='8px';
+        if(!g.installed){
+          const b=el('button','ghost mono','Install Gemini CLI');
+          b.addEventListener('click',async function(){ b.disabled=true; b.textContent='installing… (a minute or two)';
+            try{ const res=await window.desktop.aiGeminiInstall(); ai=res.status; aiDraw(); say(res.ok?'installed: now sign in':'install failed: '+res.error); }
+            catch(e){ say('install failed'); b.disabled=false; } });
+          r.appendChild(b);
+        } else {
+          const b=el('button','ghost mono',g.signedIn?'Switch Google account':'Sign in with Google');
+          b.title='Opens Gemini in a window: pick "Sign in with Google", finish in your browser, then close the window';
+          b.addEventListener('click',async function(){ const res=await window.desktop.aiGeminiSignin();
+            say(res.ok?'finish signing in in the Gemini window, then come back here':res.error);
+            setTimeout(async function(){ ai=await window.desktop.aiStatus(); aiDraw(); },20000); });
+          const chk=el('button','ghost mono','Check'); chk.addEventListener('click',async function(){ ai=await window.desktop.aiStatus(); aiDraw(); say(statusText('gemini')); });
+          r.appendChild(b); r.appendChild(chk);
+        }
+        box.appendChild(r);
+        if(g.installed&&!g.signedIn)box.appendChild(keyRow(g.hasKey?'replace Gemini API key':'or paste a Gemini API key (aistudio.google.com)','geminiKey'));
+      }
+      if(p.id==='openrouter'){
+        const o=ai.openrouter;
+        box.appendChild(keyRow(o.hasKey?'replace OpenRouter key':'OpenRouter API key (openrouter.ai/keys)','openrouterKey'));
+        const r=el('div','settings-row'); r.style.marginTop='4px';
+        const m=el('input','settings-inp'); m.value=o.model; m.placeholder='model, e.g. openrouter/auto'; m.style.cssText='flex:1;margin:0';
+        const mb=el('button','ghost mono','Save model'); mb.addEventListener('click',function(){ save({openrouterModel:m.value.trim()},'model saved'); });
+        r.appendChild(m); r.appendChild(mb);
+        if(o.hasKey){ const t=el('button','ghost mono','Test key'); t.addEventListener('click',async function(){ say('checking…');
+          const res=await window.desktop.aiOpenRouterCheck();
+          say(res.ok?'key works'+(res.usage!=null?' · $'+Number(res.usage).toFixed(2)+' used'+(res.limit!=null?' of $'+res.limit:''):''):'key failed: '+res.error); }); r.appendChild(t); }
+        box.appendChild(r);
+        const ws=el('label','switch'); ws.style.marginTop='8px'; const wc=document.createElement('input'); wc.type='checkbox'; wc.checked=o.web;
+        ws.appendChild(wc); const wt=el('span','track'); wt.setAttribute('aria-hidden','true'); ws.appendChild(wt);
+        ws.appendChild(el('span','','Add web search results (costs a little extra)'));
+        wc.addEventListener('change',function(){ save({openrouterWeb:wc.checked}); });
+        box.appendChild(ws);
+        box.appendChild(el('p','settings-hint','OpenRouter answers without a browser, files or Gmail, so it’s best as a backup for questions and research.'));
+        box.lastChild.style.margin='8px 0 0';
+      }
+      list.appendChild(box);
+    });
+  }
+  window.desktop.aiStatus().then(function(s){ ai=s; aiDraw(); }).catch(function(){ $('aiSection').hidden=true; });
+}
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
    config). Each item keeps its id (from the feed's own UID), so a re-import never adds copies. What the
    feed last said per item is remembered here, so: a deadline the teacher moves is followed unless he set
@@ -3017,7 +3292,7 @@ function tidySchool(r){
   const out={merged:0,labeled:0,removed:0};
   const daysApart=function(a,b){ return Math.abs((new Date(a+'T12:00')-new Date(b+'T12:00'))/864e5); };
   const drop=function(t){
-    if(t.googleEventId&&window.desktop&&window.desktop.gcalDeleteEvent)window.desktop.gcalDeleteEvent(t.googleEventId);
+    if(t.googleEventId&&window.desktop&&window.desktop.gcalDeleteEvent)window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
     state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; }); state.expanded.delete(t.id);
     state.tombstones.push({id:t.id,deletedAt:Date.now()});
   };
@@ -3168,6 +3443,32 @@ if(window.desktop&&window.desktop.rsiStatus)(function(){
   $('rsiOn').addEventListener('change',async function(){ await window.desktop.rsiSetEnabled(this.checked); refresh(); });
   refresh();
 })();
+/* "Hey Romulus" (phone app only): WakeWordPlugin.java / WakeWordService.java */
+(function(){
+  const cap=window.Capacitor;
+  if(!(cap&&typeof cap.nativePromise==='function'&&cap.isPluginAvailable&&cap.isPluginAvailable('WakeWord')))return;
+  const call=function(m){ return cap.nativePromise('WakeWord',m,{}); };
+  $('wakeSection').hidden=false;
+  function show(s){
+    $('wakeOn').checked=!!s.on;
+    // without "Display over other apps", Android makes you tap a notification after the chime
+    $('wakeOverlayBtn').hidden=!s.on||s.overlay;
+    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.overlay?'listening while the screen is on':'on · you’ll tap a notification to talk unless you allow this'):'';
+  }
+  function refresh(){ call('status').then(show).catch(function(){}); }
+  cap.addListener('WakeWord','progress',function(d){ if(d&&d.pct!=null)$('wakeStatus').textContent='downloading speech model… '+d.pct+'%'; });
+  $('wakeOn').addEventListener('change',async function(){
+    const on=this.checked; this.disabled=true;
+    if(on)$('wakeStatus').textContent='starting…';
+    try{ show(await call(on?'enable':'disable')); }
+    catch(e){ $('wakeStatus').textContent=(e&&e.message)||'didn’t work'; this.checked=false; }
+    finally{ this.disabled=false; }
+  });
+  $('wakeOverlayBtn').addEventListener('click',function(){ call('openOverlaySettings'); });
+  // coming back from Android's settings (or "Turn off" in the notification) changes things under us
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden)refresh(); });
+  refresh();
+})();
 $('newAttBtn').addEventListener('click',function(){ $('newAttFile').click(); });
 $('micBtn').innerHTML=MIC_LABEL;
 $('micBtn').addEventListener('click',voiceAdd);
@@ -3182,8 +3483,19 @@ $('newAttFile').addEventListener('change',function(){ const f=Array.from(this.fi
 })();
 $('tabList').addEventListener('click',function(){ switchTab('list'); });
 $('tabAgent').addEventListener('click',function(){ switchTab('agent'); });
+$('connectBtn').addEventListener('click',function(){
+  const ws=this.getAttribute('data-ws');
+  const field=ws==='agent'?'syncKeyA':ws==='school'?'syncKeyS':'syncUrlW';
+  const label=ws==='agent'?'syncAgentLabel':ws==='school'?'syncSchoolLabel':null;
+  setSettingsOpen(true);
+  requestAnimationFrame(function(){
+    const f=$(field); (label?$(label):f).scrollIntoView({block:'center'}); f.focus();
+    [f,label&&$(label)].filter(Boolean).forEach(function(n){ n.classList.add('flash'); setTimeout(function(){ n.classList.remove('flash'); },1800); });
+  });
+});
 $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
+$('tabWork').addEventListener('click',function(){ switchTab('work'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
@@ -3195,7 +3507,7 @@ $('clearDone').addEventListener('click',function(){
   else {
     clearTimeout(clearTimer); state.confirmClear=false;
     const now=Date.now();
-    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':'list'; // only clear the tab you're looking at
+    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':'list'; // only clear the tab you're looking at
     const gone=function(t){ return t.done&&inTab(t,curTab); };
     state.tasks.forEach(function(t){ if(gone(t))state.tombstones.push({id:t.id,deletedAt:now}); });
     state.tasks=state.tasks.filter(function(t){ return !gone(t); });
@@ -3260,6 +3572,10 @@ function syncFillForm(){
   $('syncUrlW').value=w.url||'';
   $('syncAnonKeyW').value=w.key||'';
   $('syncKeyW').value=w.syncKey||'';
+  const ag=c.agent||{}, sc=c.school||{};
+  // the project URL/key show only when they differ from personal's (blank = the same)
+  $('syncUrlA').value=ag.url&&ag.url!==p.url?ag.url:''; $('syncAnonKeyA').value=ag.key&&ag.key!==p.key?ag.key:''; $('syncKeyA').value=ag.syncKey||'';
+  $('syncUrlS').value=sc.url&&sc.url!==p.url?sc.url:''; $('syncAnonKeyS').value=sc.key&&sc.key!==p.key?sc.key:''; $('syncKeyS').value=sc.syncKey||'';
   $('syncOffBtn').hidden=!syncEnabled();
 }
 // Settings is its own page: ⚙ opens it in place of the lists; ⚙ again, ← Back or Esc returns
@@ -3346,6 +3662,9 @@ $('lockedFormBtn').addEventListener('click',function(){
 const ROUTING_START={v:1,default:'ask',rules:[
   {words:'email, send, outlook, gmail',lane:'claude'},{words:'buy, find, look up, search',lane:'claude'},
   {words:'fill, form, apply',lane:'local'},{words:'write, draft, essay',lane:'local'}]};
+// same list as PRIVATE_DEFAULT in main.js
+const PRIVATE_START='password, passcode, pin number, bank, bank account, credit card, debit card, ssn, social security, '+
+  'passport, tax, taxes, salary, payslip, medical, doctor, health, therapy, therapist, prescription, grades, transcript, report card';
 function routingProfile(){
   const a=syncState.cfg&&syncState.cfg.agent;
   return validProfile(a)?{url:a.url,key:a.key,syncKey:a.syncKey+':routing'}:null;
@@ -3371,6 +3690,7 @@ async function routingLoad(){
   $('routingRules').innerHTML=''; d.rules.forEach(function(r){ $('routingRules').appendChild(routingRow(r)); });
   $('routingDefault').value=d.default==='claude'||d.default==='local'?d.default:'ask';
   $('routingSites').value=(Array.isArray(d.sites)?d.sites:[]).join('\n');
+  $('routingPrivate').value=typeof d.private==='string'?d.private:PRIVATE_START;
   $('routingStatus').textContent='';
 }
 $('routingAddBtn').addEventListener('click',function(){ const r=routingRow({words:'',lane:'local'}); $('routingRules').appendChild(r); r.querySelector('input').focus(); });
@@ -3382,7 +3702,8 @@ $('routingSaveBtn').addEventListener('click',async function(){
   $('routingStatus').textContent='saving…';
   try{
     const sites=$('routingSites').value.split(/[\n,]+/).map(function(x){ return x.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,''); }).filter(Boolean);
-    await syncPushDoc(p,{v:1,default:$('routingDefault').value,rules:rules,sites:sites});
+    const priv=$('routingPrivate').value.split(/[\n,]+/).map(function(x){ return x.trim(); }).filter(Boolean).join(', ');
+    await syncPushDoc(p,{v:1,default:$('routingDefault').value,private:priv,rules:rules,sites:sites});
     if(window.desktop&&window.desktop.routingChanged)window.desktop.routingChanged();
     $('routingStatus').textContent='saved';
   }catch(e){ $('routingStatus').textContent='save failed ('+e.message+')'; }
@@ -3437,12 +3758,14 @@ $('syncSaveBtn').addEventListener('click',function(){
   if(!url||!key||!sk){ setSyncStatus('fill in the three personal fields',true); return; }
   const anyW=urlW||keyW||skW;
   if(anyW&&(!urlW||!keyW||!skW)){ setSyncStatus('work list needs all three fields (or none)',true); return; }
-  const prevAgent=syncState.cfg&&syncState.cfg.agent; // no form fields for it — keep it
-  const prevSchool=syncState.cfg&&syncState.cfg.school;
+  // Agent / School: only the sync key is needed when they live in the personal project
+  const side=function(u,k,sk2){ u=$(u).value.trim(); k=$(k).value.trim(); sk2=$(sk2).value.trim(); return sk2?{url:u||url,key:k||key,syncKey:sk2}:null; };
+  const agentP=side('syncUrlA','syncAnonKeyA','syncKeyA'), schoolP=side('syncUrlS','syncAnonKeyS','syncKeyS');
+  if(agentP&&agentP.syncKey===sk||schoolP&&schoolP.syncKey===sk){ setSyncStatus('Agent and School need their own sync keys, not the personal one',true); return; }
   syncState.cfg={personal:{url:url,key:key,syncKey:sk}};
   if(anyW)syncState.cfg.work={url:urlW,key:keyW,syncKey:skW};
-  if(prevAgent)syncState.cfg.agent=prevAgent;
-  if(prevSchool)syncState.cfg.school=prevSchool;
+  if(agentP)syncState.cfg.agent=agentP;
+  if(schoolP)syncState.cfg.school=schoolP;
   localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg));
   if(window.desktop&&window.desktop.syncSaveCfg)window.desktop.syncSaveCfg(syncState.cfg);
   $('syncOffBtn').hidden=false;
@@ -3521,6 +3844,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Mini PC asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
+      if(u.via==='gemini'||u.via==='openrouter')extra.via=u.via;
       if(t.shot)extra.images=[t.shot];
       agentSay(t,'claude',u.note,Object.keys(extra).length?extra:null);
       if(u.pref)prefLines.push(u.pref);
@@ -3596,62 +3920,154 @@ async function appendPrefs(lines){
   }catch(e){ console.error('prefs append failed',e); }
 }
 
-/* ── Google Calendar settings (Electron only) ── */
+/* ── Calendars: Google / Microsoft / calendar links, on the desktop (main process) or the phone (mobile/cal-phone.js) ──
+   Per calendar: "Tasks go here" (one calendar at a time; the desktop's main puts the tasks on it) and "Add to to-dos"
+   (its events in the next two weeks become personal to-dos, tagged with the calendar's name). Repeating
+   events (classes, weekly meetings) are skipped unless allowed, and so are ones with a skipped word. */
 let gcalRefreshFn=null;
-if(window.desktop && window.desktop.gcalStatus){
-  // When background sync finishes, update in-memory googleEventId values silently
-  window.desktop.onSyncDone(function(updatedTasks){
+const calApi=(window.desktop&&window.desktop.calOverview)?window.desktop:(window.phoneCal||null);
+if(calApi){
+  // When background sync finishes, update in-memory event ids silently
+  if(window.desktop&&window.desktop.onSyncDone)window.desktop.onSyncDone(function(updatedTasks){
     updatedTasks.forEach(function(t){
       const ex=state.tasks.find(function(x){ return x.id===t.id; });
-      if(ex) ex.googleEventId=t.googleEventId;
+      if(ex){ ex.googleEventId=t.googleEventId; ex.calRef=t.calRef||null; }
     });
   });
-
-  gcalRefreshFn=async function(){
-    const s=await window.desktop.gcalStatus();
-    $('gcalSetup').hidden=s.connected;
-    $('gcalConnected').hidden=!s.connected;
-    if(!s.connected){
-      const c=await window.desktop.gcalGetCfg();
-      if(c.clientId) $('gcalClientId').value=c.clientId;
-      if(c.clientSecret) $('gcalClientSecret').value=c.clientSecret;
-    }
+  const calErr=function(m){ $('calErr').textContent=m||''; };
+  const escH=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  const PROV={google:'Google',microsoft:'Microsoft',ics:'Calendar link'};
+  let calData=null;
+  gcalRefreshFn=async function(fresh){
+    try{ calData=await calApi.calOverview(!!fresh); }catch(e){ calErr('Couldn’t load calendars: '+e.message); return; }
+    const box=$('calAccounts'); box.innerHTML='';
+    calData.accounts.forEach(function(a){
+      const el=document.createElement('div'); el.className='cal-acct';
+      let h='<div class="cal-acct-head"><b>'+escH(a.label)+'</b><span class="mono">'+PROV[a.provider]+'</span><button class="ghost mono danger" data-remove>Remove</button></div>';
+      if(a.broken||a.error)h+='<div class="cal-acct-err">'+(a.broken?'Signed out — sign in with '+PROV[a.provider]+' again.':escH(a.error))+'</div>';
+      a.calendars.forEach(function(c){
+        h+='<div class="cal-row" data-ref="'+escH(c.ref)+'"><span class="cal-name" title="'+escH(c.name)+'">'+escH(c.name)+(c.primary&&a.provider!=='ics'?' <span class="mono" style="font-size:10px;color:var(--faint)">main</span>':'')+'</span>'+
+          (c.canWrite?'<label class="switch"><input type="checkbox" data-push'+(c.push?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Tasks go here</span></label>':'')+
+          '<label class="switch"><input type="checkbox" data-pull'+(c.pull?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Add to to-dos</span></label></div>';
+        if(c.pull)h+='<div class="cal-opts" data-ref="'+escH(c.ref)+'"><label class="chk"><input type="checkbox" data-rep'+(c.pull.skipRepeating!==false?' checked':'')+'> Skip repeating events (classes, weekly meetings)</label>'+
+          '<input class="settings-inp" data-words placeholder="Also skip events with these words, e.g. lecture, lab, office hours" value="'+escH(c.pull.skipWords||'')+'"></div>';
+        if(c.needsReconnect)h+='<div class="cal-acct-err">Sign in with Google again to see your other calendars.</div>';
+      });
+      el.innerHTML=h;
+      el.querySelector('[data-remove]').addEventListener('click',async function(){
+        if(this.dataset.armed!=='1'){ this.dataset.armed='1'; this.textContent='Remove?'; return; }
+        await calApi.calRemove(a.id); gcalRefreshFn();
+      });
+      el.querySelectorAll('[data-push]').forEach(function(inp){ inp.addEventListener('change',async function(){
+        const ref=inp.closest('[data-ref]').dataset.ref;
+        await calApi.calSetPrefs({push:inp.checked?ref:null});
+        $('calStatus').textContent=inp.checked?'putting your tasks on it…':'taking your tasks off it…';
+        gcalRefreshFn();
+      }); });
+      el.querySelectorAll('[data-pull]').forEach(function(inp){ inp.addEventListener('change',async function(){
+        const ref=inp.closest('[data-ref]').dataset.ref, ch={}; ch[ref]=inp.checked?{skipRepeating:true,skipWords:''}:null;
+        await calApi.calSetPrefs({pull:ch});
+        await gcalRefreshFn();
+        if(inp.checked)calTick();
+      }); });
+      el.querySelectorAll('.cal-opts').forEach(function(o){
+        const save=async function(){ const ch={}; ch[o.dataset.ref]={skipRepeating:o.querySelector('[data-rep]').checked,skipWords:o.querySelector('[data-words]').value}; await calApi.calSetPrefs({pull:ch}); calTick(); };
+        o.querySelector('[data-rep]').addEventListener('change',save);
+        o.querySelector('[data-words]').addEventListener('change',save);
+      });
+      box.appendChild(el);
+    });
+    $('calSyncRow').hidden=!calData.accounts.length;
+    if(calData.phone)$('gcalSection').querySelector('.settings-hint').textContent='Sign in to connect your calendars, then choose which calendars’ events show up as to-dos. Nothing comes off a calendar until you switch it on. Putting your tasks on a calendar is set up in the desktop app.';
+    $('mailEventsBox').hidden=!calData.accounts.some(function(a){ return a.provider==='google'; });
+    if(window.mailRefresh)window.mailRefresh();
   };
 
+  /* calendar events → to-dos. Each keeps the id main gives it, so it's added once; a deleted one isn't
+     brought back; an event that moves is followed unless he changed the to-do's date himself */
+  const CAL_SEEN_KEY='tasks.calSeen';
+  const calTick=async function(){
+    let r; try{ r=await calApi.calPull(state.tasks.map(function(t){ return t.googleEventId; }).filter(Boolean)); }catch(e){ return; }
+    let seen={}; try{ seen=JSON.parse(localStorage.getItem(CAL_SEEN_KEY)||'{}')||{}; }catch(e){}
+    const byId={}; state.tasks.forEach(function(t){ byId[t.id]=t; });
+    const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
+    const norm=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
+    let added=0, moved=0;
+    r.items.forEach(function(e){
+      const was=seen[e.id], now=e.due+' '+(e.dueTime||'');
+      seen[e.id]=now;
+      const t=byId[e.id];
+      if(t){
+        if(was&&was!==now&&!t.done&&(t.due+' '+(t.dueTime||''))===was){ t.due=e.due; t.dueTime=e.dueTime; moved++; }
+        return;
+      }
+      if(was||tombed[e.id])return;
+      if(state.tasks.some(function(x){ return x.due===e.due&&norm(x.title)===norm(e.title); }))return;
+      state.tasks.push({id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime||null,tag:e.tag||null,notes:e.notes||null,ws:'personal',subs:[],googleEventId:null,fromCal:e.cal,created:Date.now()});
+      added++;
+    });
+    try{ localStorage.setItem(CAL_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
+    if(added||moved)touch();
+    $('calStatus').textContent=r.errors.length?r.errors[0]:(added?added+' event'+(added>1?'s':'')+' added to your to-dos':'')+'';
+  };
+
+  $('calGoogleBtn').addEventListener('click',async function(){
+    calErr('');
+    if(calData&&!calData.builtIn.google&&calData.phone){ calErr('Google sign-in isn’t set up in this copy of the app yet (oauth-clients.json).'); return; }
+    if(calData&&!calData.builtIn.google){ $('gcalSetup').hidden=false; const c=await window.desktop.gcalGetCfg(); if(c.clientId)$('gcalClientId').value=c.clientId; if(c.clientSecret)$('gcalClientSecret').value=c.clientSecret; return; }
+    const b=this; b.textContent='Opening browser…'; b.disabled=true;
+    const r=await calApi.calConnect('google');
+    b.textContent='Sign in with Google'; b.disabled=false;
+    if(!r.ok)calErr(r.error||'Sign-in failed.'); gcalRefreshFn(true);
+  });
+  $('calMsBtn').addEventListener('click',async function(){
+    calErr('');
+    const b=this; b.textContent='Opening browser…'; b.disabled=true;
+    const r=await calApi.calConnect('microsoft');
+    b.textContent='Sign in with Microsoft'; b.disabled=false;
+    if(!r.ok)calErr(r.needsClient?'Microsoft sign-in isn’t set up in this copy of the app yet (oauth-clients.json).':(r.error||'Sign-in failed.')); gcalRefreshFn(true);
+  });
+  $('calLinkBtn').addEventListener('click',function(){ $('calLinkBox').hidden=!$('calLinkBox').hidden; if(!$('calLinkBox').hidden)$('calLinkUrl').focus(); });
+  $('calLinkAdd').addEventListener('click',async function(){
+    calErr('');
+    const b=this; b.textContent='Checking…'; b.disabled=true;
+    const r=await calApi.calAddLink($('calLinkUrl').value,$('calLinkName').value);
+    b.textContent='Add'; b.disabled=false;
+    if(!r.ok){ calErr(r.error); return; }
+    $('calLinkUrl').value=''; $('calLinkName').value=''; $('calLinkBox').hidden=true; gcalRefreshFn(true);
+  });
   $('gcalConsoleLink').addEventListener('click',function(e){
     e.preventDefault();
     window.desktop.gcalOpenUrl('https://console.cloud.google.com/apis/credentials');
   });
-
   $('gcalConnectBtn').addEventListener('click',async function(){
     const id=$('gcalClientId').value.trim(); const sec=$('gcalClientSecret').value.trim();
-    $('gcalConnectErr').textContent='';
-    if(!id||!sec){ $('gcalConnectErr').textContent='Enter both fields.'; return; }
+    calErr('');
+    if(!id||!sec){ calErr('Enter both fields.'); return; }
     $('gcalConnectBtn').textContent='Opening browser…'; $('gcalConnectBtn').disabled=true;
     await window.desktop.gcalSaveCfg({clientId:id,clientSecret:sec});
-    const r=await window.desktop.gcalConnect();
+    const r=await window.desktop.calConnect('google',{clientId:id,clientSecret:sec});
     $('gcalConnectBtn').textContent='Connect'; $('gcalConnectBtn').disabled=false;
-    if(r.ok){ await gcalRefreshFn(); }
-    else { $('gcalConnectErr').textContent=r.error||'Connection failed.'; }
+    if(r.ok){ $('gcalSetup').hidden=true; gcalRefreshFn(true); }
+    else calErr(r.error||'Connection failed.');
   });
-
   $('gcalSyncBtn').addEventListener('click',async function(){
     $('gcalSyncBtn').textContent='Syncing…'; $('gcalSyncBtn').disabled=true;
-    await window.desktop.gcalSyncNow();
+    if(window.desktop&&window.desktop.gcalSyncNow)await window.desktop.gcalSyncNow(); await calTick();
     $('gcalSyncBtn').textContent='Sync now'; $('gcalSyncBtn').disabled=false;
   });
-
-  $('gcalDisconnectBtn').addEventListener('click',async function(){
-    await window.desktop.gcalDisconnect(); await gcalRefreshFn();
-  });
+  gcalRefreshFn();
+  if(calApi.onConnected)calApi.onConnected(function(){ gcalRefreshFn(true); }); // phone: a sign-in that finished after Android closed the app
+  // shortly after start (sync has loaded the lists by then), then every 15 minutes
+  setTimeout(calTick,45*1000); setInterval(calTick,15*60*1000);
 
   /* Dates from Gmail: main checks the mailbox (free when nothing's new) and asks Claude
      about new mail that mentions a date. Each found date is a personal task with its own id, added once:
      one he deleted isn't brought back, and one already on a list (same day, same name) isn't doubled. */
-  if(window.desktop.mailCheck){
+  if(window.desktop&&window.desktop.mailCheck){
     const mailSay=function(st,r){
       if(!st.connected)return '';
-      if(!st.allowed)return 'Disconnect and Connect again, and tick Gmail on Google’s screen, to allow this.';
+      if(!st.allowed)return 'Sign in with Google again, and tick Gmail on Google’s screen, to allow this.';
       if(!st.enabled)return 'off';
       if(r&&r.error)return 'last check failed: '+r.error;
       if(r&&r.items&&r.items.length)return r.items.length+' date'+(r.items.length>1?'s':'')+' added from email just now';
@@ -3676,7 +4092,8 @@ if(window.desktop && window.desktop.gcalStatus){
         $('mailStatus').textContent=mailSay(await window.desktop.mailStatus(),r);
       }catch(e){}
     };
-    window.desktop.mailStatus().then(function(st){ $('mailOn').checked=st.enabled; $('mailStatus').textContent=mailSay(st); }).catch(function(){});
+    window.mailRefresh=function(){ window.desktop.mailStatus().then(function(st){ $('mailOn').checked=st.enabled; $('mailStatus').textContent=mailSay(st); }).catch(function(){}); };
+    window.mailRefresh();
     $('mailOn').addEventListener('change',async function(){
       await window.desktop.mailSetEnabled($('mailOn').checked);
       if($('mailOn').checked)mailTick(); else $('mailStatus').textContent='off';
@@ -3685,7 +4102,7 @@ if(window.desktop && window.desktop.gcalStatus){
     setTimeout(mailTick,60*1000); setInterval(mailTick,15*60*1000);
   } else $('mailEventsBox').hidden=true;
 } else {
-  $('gcalSection').hidden=true; // Google Calendar sync runs on the desktop app only
+  $('gcalSection').hidden=true; // a plain browser: no calendar accounts
 }
 
 /* ── daily swipe: once a day, decide today (right) or tomorrow (left) for each task ──
@@ -3928,7 +4345,7 @@ store.load().then(async function(data){
       const n=normalizeSyncCfg(await window.desktop.syncGetCfg());
       if(n&&!syncState.cfg){ syncState.cfg=n; localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(n)); }
       // an agent channel added to config.json later is picked up without a reset
-      else if(n){ let add=false; ['agent','school'].forEach(function(k){ if(n[k]&&!syncState.cfg[k]){ syncState.cfg[k]=n[k]; add=true; } }); if(add)localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg)); }
+      else if(n){ let add=false; ['work','agent','school'].forEach(function(k){ if(n[k]&&!syncState.cfg[k]){ syncState.cfg[k]=n[k]; add=true; } }); if(add)localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg)); }
     }catch(e){}
   }
   if(data&&Array.isArray(data.tasks)){
