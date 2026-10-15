@@ -10,7 +10,7 @@
      what was filled, what's still empty and what he needs to give
    Passwords, SSN, card and bank numbers are never filled, whatever it answers. The browser lock
    (agent/browser-proxy.js) still refuses final clicks: this only types and chooses.
-   No Electron here, so it can be tested on its own (main.js passes in `ask`, which calls Ollama). */
+   No Electron here, so it can be tested on its own (agent/local-lane.js passes in `ask`, which calls Ollama). */
 
 const pageReader = require('./page-reader');
 

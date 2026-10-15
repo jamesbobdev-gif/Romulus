@@ -18,6 +18,7 @@
     "productName": "Tasks",
     "files": [
       "main.js",
+      "main/**",
       "preload.js",
       "renderer/**",
       "assets/**",

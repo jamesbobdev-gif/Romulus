@@ -440,7 +440,7 @@ def tool(sc, st, name, a):
         r = search(sc, a.get('query', '')); links = re.findall(r'https?://[^\s)"<>]+', r)
         seen_l, opened = st.setdefault('searched', set()), st.setdefault('opened', set())
         unread = [u for u in links if u not in opened]
-        if links and all(u in seen_l for u in links):  # as the app does (main.js)
+        if links and all(u in seen_l for u in links):  # as the app does (agent/local-lane.js)
             r += '\n\n(Nothing new: you have seen all of these results already. ' + (f"Open one you haven't read yet with read_page, like {unread[0]}, instead of searching again.)" if unread else 'Answer with what you have.)')
         seen_l.update(links); return r
     if name == 'read_page':
