@@ -27,11 +27,12 @@ function wantsCalendar(t) {
   const lastYou = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-1)[0];
   return CALENDAR_WORDS.test([t.title, t.reply, lastYou && lastYou.text].filter(Boolean).join(' '));
 }
-async function calendarForAgent() { // yesterday through the next 7 days; null if no calendar is connected
+// yesterday through the next 7 days (the look-ahead asks for today + 14); null if no calendar is connected
+async function calendarForAgent({ back = 1, days = 9 } = {}) {
   if (!(readConfig().calAccounts || []).length) return null;
   try {
-    const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 1);
-    const to = new Date(from); to.setDate(to.getDate() + 9);
+    const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - back);
+    const to = new Date(from); to.setDate(to.getDate() + days);
     const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     // anyone can put an event on his calendar by sending an invitation, and its title, place and
     // description are then their words in a run that can reach the web. Invitations he hasn't said yes

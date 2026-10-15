@@ -32,7 +32,10 @@ contextBridge.exposeInMainWorld('desktop', {
   aiStatus: () => ipcRenderer.invoke('ai:status'),
   aiSave: (change) => ipcRenderer.invoke('ai:save', change),
   aiGeminiInstall: () => ipcRenderer.invoke('ai:gemini-install'),
+  aiCodexInstall: () => ipcRenderer.invoke('ai:codex-install'),
+  aiCodexLogin: () => ipcRenderer.invoke('ai:codex-login'),
   aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
+  aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // course calendar feeds (Blackboard / D2L iCal links) → School list
@@ -47,15 +50,10 @@ contextBridge.exposeInMainWorld('desktop', {
   mailStatus: () => ipcRenderer.invoke('mail:status'),
   mailSetEnabled: (on) => ipcRenderer.invoke('mail:set-enabled', on),
   mailCheck: () => ipcRenderer.invoke('mail:check'),
-  // RSI: change the app itself from a chat
-  rsiStatus: () => ipcRenderer.invoke('rsi:status'),
-  rsiAsk: (text) => ipcRenderer.invoke('rsi:ask', text),
-  rsiUndo: () => ipcRenderer.invoke('rsi:undo'),
-  rsiStop: () => ipcRenderer.invoke('rsi:stop'),
-  rsiNewChat: () => ipcRenderer.invoke('rsi:new-chat'),
-  rsiSetEnabled: (on) => ipcRenderer.invoke('rsi:set-enabled', on),
-  rsiApply: (restart) => ipcRenderer.invoke('rsi:apply', restart),
-  onRsiEvent: (cb) => ipcRenderer.on('rsi:event', (_event, m) => cb(m)),
+  // morning look-ahead: what's coming up that needs doing → Agent tasks waiting on him
+  lookAheadStatus: () => ipcRenderer.invoke('lookahead:status'),
+  lookAheadSetEnabled: (on) => ipcRenderer.invoke('lookahead:set-enabled', on),
+  lookAheadTick: (force) => ipcRenderer.invoke('lookahead:tick', force),
   // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
   voiceStop: () => ipcRenderer.invoke('voice:stop'),

@@ -201,14 +201,16 @@ function laneNow(t){
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
   return last?(last.lane==='local'?'local':'claude'):null;
 }
-function setLane(t,to){
+const LANE_NAMES={claude:'Claude',gemini:'Gemini',openai:'ChatGPT',local:'your mini PC'};
+const laneAsks={}; // task id → the lane a switch is waiting on your OK for (asked in the panel)
+function setLane(t,to,ok){
   const from=laneNow(t);
-  if(from===to)return;
-  // switching (not a first pick) asks first
-  const name={claude:'Claude',gemini:'Gemini',openai:'ChatGPT',local:'your mini PC'}[to];
-  if(from&&!window.confirm(to==='local'
-    ?'Send this task to your mini PC? It takes over with the whole conversation.'
-    :'Send this task to '+name+'? '+name+' will see the whole conversation, including anything the others wrote.'))return;
+  if(from===to){ delete laneAsks[t.id]; render(); return; }
+  // switching (not a first pick) asks first — in the panel, not window.confirm: on Windows a native
+  // dialog leaves Electron's page deaf to the keyboard afterwards, so the reply box wouldn't type
+  const name=LANE_NAMES[to];
+  if(from&&!ok){ laneAsks[t.id]=to; render(); return; }
+  delete laneAsks[t.id];
   t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1)t.cloud=to; else delete t.cloud; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt;
   t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
   agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
@@ -218,7 +220,7 @@ function moveTask(t,toWs){
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   const now=Date.now();
   const c=Object.assign({},t,{id:uid(),ws:toWs,googleEventId:null,calRef:null,updatedAt:now,subs:t.subs.map(function(s){ return Object.assign({},s); })});
-  if(toWs==='agent'){ c.fromWs=taskWs(t); c.status='queued'; c.note=null; c.reply=null; c.options=null; c.done=false; c.repeat=null; c.nextRun=null; c.repeatDue=false;
+  if(toWs==='agent'){ c.fromWs=taskWs(t); c.status='queued'; c.note=null; c.reply=null; c.options=null; c.done=false; c.repeat=null; c.nextRun=null; c.repeatDue=false; delete c.recur; delete c.recurNext;
     // carry any screenshots into Claude's view: as reply images + a conversation entry
     const imgs=Array.isArray(t.images)?t.images.slice(0,6):[];
     c.replyImages=imgs.length?imgs:null;
@@ -240,6 +242,8 @@ function setDone(t,v){
     if(!v&&t.status==='done')t.status='queued';
     if(v)t.status='done';
   }
+  else if(v)spawnRecur(t); // a repeating to-do: the next one appears
+  else unspawnRecur(t);
 }
 function toggleDone(t,liEl,checkEl){
   if(!t.done)buzz('check'); // only finishing something buzzes

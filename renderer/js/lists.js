@@ -64,6 +64,7 @@ function buildRow(t,canDrag){
     }
   }
   const isAgentTask=taskWs(t)==='agent';
+  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; meta.appendChild(rc); }
   if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); meta.appendChild(rc); }
   if(isAgentTask&&!t.done){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
@@ -153,7 +154,8 @@ function buildPanel(t){
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
     const local=t.lane==='local';
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
-    sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?'Claude is on it':outOfUsage?'Claude is out of usage':'Waiting for Claude'));
+    const cloudName={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[t.cloud]||'Claude';
+    sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':'Waiting for '+cloudName));
     sb.appendChild(document.createTextNode(local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
@@ -183,6 +185,18 @@ function buildPanel(t){
       tg.appendChild(w);
     });
     panel.appendChild(tg);
+    const ask=laneAsks[t.id];
+    if(ask&&ask!==now){
+      const name=LANE_NAMES[ask];
+      const ar=el('div','lane-ask');
+      ar.appendChild(el('span',null,ask==='local'?'Send this task to your mini PC? It takes over with the whole conversation.'
+        :'Send this task to '+name+'? '+name+' will see the whole conversation, including anything the others wrote.'));
+      const yes=el('button','btn-accent','Switch'), no=el('button','btn-ghost','Cancel');
+      yes.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,ask,true); });
+      no.addEventListener('click',function(e){ e.stopPropagation(); delete laneAsks[t.id]; render(); });
+      ar.appendChild(yes); ar.appendChild(no);
+      panel.appendChild(ar);
+    } else if(ask)delete laneAsks[t.id];
   }
   // a stale failure message isn't worth showing once the task is being retried
   const staleFail=agentBusy&&/^Claude couldn’t finish/.test(t.note||'');
@@ -210,7 +224,13 @@ function buildPanel(t){
     opts.forEach(function(o,i){
       const label=String(o.label||('Option '+(i+1)));
       const card=el('div','agent-opt'+(t.reply&&t.reply.indexOf(label)!==-1?' picked':''));
-      if(o.image&&/^https:\/\//i.test(String(o.image))){ const im=document.createElement('img'); im.src=o.image; im.alt=label; im.loading='lazy'; im.referrerPolicy='no-referrer'; im.addEventListener('error',function(){ im.remove(); }); im.title='Click to enlarge'; im.addEventListener('click',function(e){ e.stopPropagation(); openLightbox(opts,i); }); card.appendChild(im); }
+      // no picture (or one that won't load): a tile with the site's name, so every card's text lines up
+      const noPic=function(){ return el('div','opt-nopic',o.url?siteName(o.url):label.charAt(0)); };
+      if(o.image&&/^https:\/\//i.test(String(o.image))){ const im=document.createElement('img'); im.src=o.image; im.alt=label; im.loading='lazy'; im.referrerPolicy='no-referrer'; im.addEventListener('error',function(){ im.replaceWith(noPic()); });
+        // a wide page banner fills the frame; a product shot stays whole on white
+        im.addEventListener('load',function(){ if(im.naturalWidth>im.naturalHeight*1.25)im.classList.add('wide'); });
+        im.title='Click to enlarge'; im.addEventListener('click',function(e){ e.stopPropagation(); openLightbox(opts,i); }); card.appendChild(im); }
+      else card.appendChild(noPic());
       card.appendChild(el('div','opt-label',(i+1)+'. '+label));
       if(o.desc)card.appendChild(el('div','opt-desc',String(o.desc)));
       const metaBits=[o.price,o.rating].filter(Boolean);
@@ -385,13 +405,34 @@ function buildPanel(t){
   const dueIn=el('input','sm'); dueIn.type='date'; dueIn.value=t.due||''; dueIn.setAttribute('aria-label','Task due date');
   const timeIn=el('input','sm'); timeIn.type='time'; timeIn.value=t.dueTime||''; timeIn.setAttribute('aria-label','Task due time');
   function syncTimeState(){ timeIn.disabled=!dueIn.value; }
-  dueIn.addEventListener('change',function(){ t.due=dueIn.value||null; if(!t.due){ t.dueTime=null; timeIn.value=''; } syncTimeState(); touch(); });
+  dueIn.addEventListener('change',function(){
+    t.due=dueIn.value||null; if(!t.due){ t.dueTime=null; timeIn.value=''; }
+    if(t.recur){ if(t.due)t.recur.dom=Number(t.due.slice(8)); else t.recur=null; } // a repeat needs a date to count from
+    syncTimeState(); touch();
+  });
   timeIn.addEventListener('change',function(){ t.dueTime=timeIn.value||null; touch(); });
   syncTimeState();
   const tagIn=el('input','sm'); tagIn.value=t.tag||''; tagIn.placeholder='tag'; tagIn.setAttribute('list','tagOptions'); tagIn.setAttribute('aria-label','Tag');
   tagIn.addEventListener('change',function(){ t.tag=tagIn.value.trim()||null; touch(); });
   tagIn.addEventListener('keydown',function(e){ if(e.key==='Enter')tagIn.blur(); });
   pm.appendChild(dueIn); pm.appendChild(timeIn); pm.appendChild(tagIn); panel.appendChild(pm);
+
+  // repeat: ticking it off makes the next one (recur.js); agent tasks use their own schedule above
+  if(taskWs(t)!=='agent'&&!t.done){
+    const rr=el('div','panel-meta repeat-row');
+    rr.appendChild(el('span','lbl','Repeat'));
+    const rs=document.createElement('select'); rs.className='sm'; rs.setAttribute('aria-label','Repeat');
+    RECUR_OPTIONS.forEach(function(p){ const o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; rs.appendChild(o); });
+    rs.value=t.recur&&RECUR_CHIPS[t.recur.every]?t.recur.every:'';
+    rs.addEventListener('change',function(){
+      if(!rs.value){ t.recur=null; touch(); return; }
+      if(!t.due)t.due=formatDate(new Date()); // counts from its due date: an undated one starts today
+      t.recur={every:rs.value,dom:Number(t.due.slice(8)),series:(t.recur&&t.recur.series)||t.id};
+      touch();
+    });
+    rr.appendChild(rs);
+    panel.appendChild(rr);
+  }
 
   // Screenshots: attach context photos to any (non-agent) task. Reuses the
   // agent-attachments bucket; carried to Claude if the task is handed to Agent.

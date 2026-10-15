@@ -17,7 +17,7 @@ test('private words and card numbers stay on the mini PC', () => {
 });
 
 test('his rules in order, then the default', () => {
-  routing.useRouting(null); // default rules, default 'ask'
+  routing.useRouting({ v: 2, rules: routing.ROUTING_DEFAULT.rules, default: 'ask' });
   assert.deepStrictEqual(routing.routeTask({ title: 'Find a desk lamp' }), { lane: 'claude', reason: 'rule: buy, find, look up, search' });
   assert.deepStrictEqual(routing.routeTask({ title: 'draft a cover letter' }), { lane: 'local', reason: 'rule: write, draft, essay' });
   assert.deepStrictEqual(routing.routeTask({ title: 'something else' }), { lane: 'ask', reason: 'no rule matched' });
@@ -42,4 +42,39 @@ test('laneOf keeps a lane already set', () => {
   routing.useRouting(null);
   assert.strictEqual(routing.laneOf({ title: 'look up my bank', lane: 'claude' }), 'claude');
   assert.strictEqual(routing.isClaudeLane({ title: 'Find a lamp' }), true);
+});
+
+test('auto picks from what the task needs', () => {
+  routing.useRouting({ v: 2, rules: [], default: 'auto' });
+  routing.noteSituation({ localUp: true, cloudUp: true, claudeTight: false });
+  assert.strictEqual(routing.routeTask({ title: 'check my inbox for the invoice' }).lane, 'claude');
+  assert.strictEqual(routing.routeTask({ title: 'cheapest flights to Denver' }).lane, 'claude');
+  assert.strictEqual(routing.routeTask({ title: 'draft a thank-you note' }).lane, 'local');
+  assert.strictEqual(routing.routeTask({ title: 'fill the volunteer form' }).lane, 'local');
+  assert.deepStrictEqual(routing.routeTask({ title: 'something else' }), { lane: 'claude', reason: 'auto: quickest for everyday tasks' });
+  routing.noteSituation({ claudeTight: true });
+  assert.deepStrictEqual(routing.routeTask({ title: 'something else' }), { lane: 'local', reason: 'auto: Claude is near its limit' });
+});
+
+test('auto goes around a side that is down', () => {
+  routing.useRouting({ v: 2, rules: [{ words: 'draft', lane: 'local' }], default: 'auto' });
+  routing.noteSituation({ localUp: false, cloudUp: true, claudeTight: false });
+  assert.strictEqual(routing.routeTask({ title: 'write an essay' }).lane, 'claude');
+  assert.strictEqual(routing.routeTask({ title: 'draft a letter' }).lane, 'claude'); // his rule, but the mini PC is down
+  assert.strictEqual(routing.routeTask({ title: 'my bank statement' }).lane, 'local'); // private still never leaves
+  routing.noteSituation({ localUp: true, cloudUp: false });
+  assert.strictEqual(routing.routeTask({ title: 'find a lamp' }).lane, 'local');
+  routing.useRouting({ v: 2, rules: [{ words: 'draft', lane: 'local' }], default: 'claude' });
+  routing.noteSituation({ localUp: false, cloudUp: true });
+  assert.strictEqual(routing.routeTask({ title: 'draft a letter' }).lane, 'local'); // not auto: his rule stands
+  routing.noteSituation({ localUp: null, cloudUp: null, claudeTight: false });
+});
+
+test('the old ask default becomes auto; a saved v2 choice stays', () => {
+  routing.useRouting({ v: 1, rules: [], default: 'ask' });
+  assert.strictEqual(routing.getRouting().default, 'auto');
+  routing.useRouting({ v: 2, rules: [], default: 'ask' });
+  assert.strictEqual(routing.getRouting().default, 'ask');
+  routing.useRouting({ v: 1, rules: [], default: 'local' });
+  assert.strictEqual(routing.getRouting().default, 'local');
 });

@@ -18,6 +18,25 @@ function syncFillForm(){
   $('syncUrlS').value=sc.url&&sc.url!==p.url?sc.url:''; $('syncAnonKeyS').value=sc.key&&sc.key!==p.key?sc.key:''; $('syncKeyS').value=sc.syncKey||'';
   $('syncOffBtn').hidden=!syncEnabled();
 }
+// every Settings panel folds shut by its title; the ones he leaves open stay open next time
+const SETTINGS_OPEN_KEY='tasks.settingsOpen';
+(function(){
+  let open={}; try{ open=JSON.parse(localStorage.getItem(SETTINGS_OPEN_KEY)||'{}')||{}; }catch(e){}
+  document.querySelectorAll('#settingsPanel details.settings-collapse[id]').forEach(function(d){
+    if(open[d.id])d.open=true;
+    d.addEventListener('toggle',function(){
+      open[d.id]=d.open; if(!d.open)delete open[d.id];
+      try{ localStorage.setItem(SETTINGS_OPEN_KEY,JSON.stringify(open)); }catch(e){}
+    });
+  });
+})();
+// a group panel shows only while one of its settings does (each script unhides its own as it finds it applies)
+(function(){
+  const groups=document.querySelectorAll('#settingsPanel details.settings-group');
+  const fit=function(){ groups.forEach(function(g){ const h=!g.querySelector('.settings-sub:not([hidden])'); if(g.hidden!==h)g.hidden=h; }); };
+  fit();
+  new MutationObserver(fit).observe($('settingsPanel'),{subtree:true,attributes:true,attributeFilter:['hidden']});
+})();
 // Settings is its own page: ⚙ opens it in place of the lists; ⚙ again, ← Back or Esc returns
 function setSettingsOpen(open){
   const p=$('settingsPanel'); if(p.hidden===!open)return;
@@ -99,7 +118,7 @@ $('lockedFormBtn').addEventListener('click',function(){
 });
 // routing rules: their own row next to the agent list, {v, rules:[{words, lane}], default}; the desktop
 // app applies them (main.js routeTask), and the same defaults live there
-const ROUTING_START={v:1,default:'ask',rules:[
+const ROUTING_START={v:2,default:'auto',rules:[
   {words:'email, send, outlook, gmail',lane:'claude'},{words:'buy, find, look up, search',lane:'claude'},
   {words:'fill, form, apply',lane:'local'},{words:'write, draft, essay',lane:'local'}]};
 // same list as PRIVATE_DEFAULT in main.js
@@ -128,7 +147,8 @@ async function routingLoad(){
   let d=null; try{ d=await syncPull(p); }catch(e){ $('routingStatus').textContent='could not load ('+e.message+')'; return; }
   if(!d||!Array.isArray(d.rules))d=ROUTING_START;
   $('routingRules').innerHTML=''; d.rules.forEach(function(r){ $('routingRules').appendChild(routingRow(r)); });
-  $('routingDefault').value=d.default==='claude'||d.default==='local'?d.default:'ask';
+  // before auto existed (v1) 'ask' was just the starting value: show auto, as the desktop app now uses
+  $('routingDefault').value=['claude','local','ask'].indexOf(d.default)!==-1&&(d.v>=2||d.default!=='ask')?d.default:'auto';
   $('routingSites').value=(Array.isArray(d.sites)?d.sites:[]).join('\n');
   $('routingPrivate').value=typeof d.private==='string'?d.private:PRIVATE_START;
   $('routingStatus').textContent='';
@@ -143,7 +163,7 @@ $('routingSaveBtn').addEventListener('click',async function(){
   try{
     const sites=$('routingSites').value.split(/[\n,]+/).map(function(x){ return x.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,''); }).filter(Boolean);
     const priv=$('routingPrivate').value.split(/[\n,]+/).map(function(x){ return x.trim(); }).filter(Boolean).join(', ');
-    await syncPushDoc(p,{v:1,default:$('routingDefault').value,private:priv,rules:rules,sites:sites});
+    await syncPushDoc(p,{v:2,default:$('routingDefault').value,private:priv,rules:rules,sites:sites});
     if(window.desktop&&window.desktop.routingChanged)window.desktop.routingChanged();
     $('routingStatus').textContent='saved';
   }catch(e){ $('routingStatus').textContent='save failed ('+e.message+')'; }

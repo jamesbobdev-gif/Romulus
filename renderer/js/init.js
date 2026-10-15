@@ -26,6 +26,7 @@ store.load().then(async function(data){
           return {id:s.id||uid(),title:String(s.title||''),done:!!s.done,due:s.due||null};
         }):[]
       };
+      if(t.recur&&t.recur.every&&out.ws!=='agent'){ out.recur=t.recur; if(t.recurNext)out.recurNext=t.recurNext; } // repeating to-do (recur.js)
       if(Array.isArray(t.images)&&t.images.length)out.images=t.images.slice(0,12); // context screenshots on a task
       if(t.plan){ out.plan=t.plan; out.planSet=t.planSet||null; } // morning swipe decision
       if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; }
@@ -47,6 +48,7 @@ store.load().then(async function(data){
   }
   state.ideas=normIdeas(data&&data.ideas);
   rebuildSnap();
+  if(spawnMissedRecurs())persist();
   render(); // list is the default active tab
   startSyncLoop();
   setTimeout(function(){ swipeReady=true; maybeShowSwipe(); },4000); // after the first sync, so another device's choices are in

@@ -14,7 +14,7 @@ if(window.desktop&&window.desktop.openAgentBrowser){
 }
 /* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter for the cloud Agent lane, in his order */
 if(window.desktop&&window.desktop.aiStatus){
-  $('aiSection').hidden=false;
+  $('aiSection').hidden=false; $('aiUsage').hidden=false;
   let ai=null;
   const say=function(t){ $('aiStatusLine').textContent=t||''; if(t)setTimeout(function(){ if($('aiStatusLine').textContent===t)$('aiStatusLine').textContent=''; },4000); };
   const save=async function(change,msg){ try{ ai=await window.desktop.aiSave(change); aiDraw(); say(msg||'saved'); }catch(e){ say('save failed'); } };
@@ -30,10 +30,13 @@ if(window.desktop&&window.desktop.aiStatus){
     if(id==='gemini'){ const g=ai.gemini;
       if(!g.hasKey)return 'needs an API key';
       return 'API key '+g.key+(g.installed?' · CLI (browser)':' · API (search only)'); }
-    if(id==='openai'){ const g=ai.openai; return g.hasKey?'key '+g.key+' · '+g.model:'no key yet'; }
+    if(id==='openai'){ const g=ai.openai;
+      if(g.via==='chatgpt')return g.codex.signedIn?'your ChatGPT plan (via Codex)':'not signed in';
+      return g.hasKey?'key '+g.key+' · '+g.model:'no key yet'; }
     const o=ai.openrouter; return o.hasKey?'key '+o.key+' · '+o.model:'no key yet';
   };
   function aiDraw(){
+    usageDraw();
     const list=$('aiList'); list.innerHTML='';
     ai.order.forEach(function(p,i){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
@@ -50,6 +53,22 @@ if(window.desktop&&window.desktop.aiStatus){
       box.appendChild(head);
       if(p.id==='gemini'){
         const g=ai.gemini;
+        // unlike Claude, Gemini can't use a Google sign-in any more (Google ended that for personal accounts), so walk him through the key
+        if(!g.hasKey){
+          const how=el('div','settings-hint'); how.style.margin='8px 0 0';
+          how.appendChild(el('p','','Gemini needs a free API key. Google no longer lets personal accounts sign in like Claude does.')); how.lastChild.style.margin='0';
+          const ol=document.createElement('ol'); ol.style.cssText='margin:6px 0 0;padding-left:20px';
+          ['Open Google AI Studio (button below) and sign in with your Google account.',
+           'Click “Create API key”, then copy it. No card is needed.',
+           'Paste it in the box below and press Save key.',
+           'Optional: turn on billing for the key so Google doesn’t use your tasks. You only pay for what you use, usually pennies.'
+          ].forEach(function(t){ ol.appendChild(el('li','',t)); });
+          how.appendChild(ol);
+          const ob=el('button','ghost mono','Open Google AI Studio ↗'); ob.style.marginTop='6px';
+          ob.addEventListener('click',function(){ openExternal('https://aistudio.google.com/apikey'); });
+          how.appendChild(ob);
+          box.appendChild(how);
+        }
         box.appendChild(keyRow(g.hasKey?'replace Gemini API key':'Gemini API key (aistudio.google.com/apikey)','geminiKey'));
         // the CLI is optional: it gives Gemini the agent browser and your photos; without it, Google Search only
         if(!g.installed){
@@ -65,14 +84,39 @@ if(window.desktop&&window.desktop.aiStatus){
         gw.style.margin='8px 0 0'; box.appendChild(gw);
       }
       if(p.id==='openai'){
-        const g=ai.openai;
-        box.appendChild(keyRow(g.hasKey?'replace OpenAI API key':'OpenAI API key (platform.openai.com/api-keys)','openaiKey'));
-        const r=el('div','settings-row'); r.style.marginTop='4px';
-        const m=el('input','settings-inp'); m.value=g.model; m.placeholder='model, e.g. gpt-5-mini'; m.style.cssText='flex:1;margin:0';
-        const mb=el('button','ghost mono','Save model'); mb.addEventListener('click',function(){ save({openaiModel:m.value.trim()},'model saved'); });
-        r.appendChild(m); r.appendChild(mb); box.appendChild(r);
-        box.appendChild(el('p','settings-hint','ChatGPT answers with web search but no browser, files or Gmail. The API key is billed separately from a ChatGPT Plus subscription. OpenAI doesn’t train on API data.'));
-        box.lastChild.style.margin='8px 0 0';
+        const g=ai.openai, cx=g.codex;
+        const swap=function(label,via){ const b=el('button','ghost mono',label); b.addEventListener('click',function(){ save({openaiVia:via}); }); return b; };
+        if(g.via==='chatgpt'){
+          // his ChatGPT plan, through OpenAI's Codex CLI: install it once, then sign in in the browser
+          const r=el('div','settings-row'); r.style.marginTop='8px';
+          if(!cx.installed){
+            const b=el('button','ghost mono','Install Codex (needed to sign in)');
+            b.addEventListener('click',async function(){ b.disabled=true; b.textContent='installing… (a minute or two)';
+              try{ const res=await window.desktop.aiCodexInstall(); ai=res.status; aiDraw(); say(res.ok?'installed: now sign in':'install failed: '+res.error); }
+              catch(e){ say('install failed'); b.disabled=false; } });
+            r.appendChild(b);
+          } else {
+            if(cx.signedIn){ const ok=el('span','','✓ Signed in with ChatGPT'); ok.style.cssText='font-size:13px;flex:1'; r.appendChild(ok); }
+            const b=el('button','ghost mono',cx.signedIn?'Sign in again':'Sign in with ChatGPT');
+            b.addEventListener('click',async function(){ b.disabled=true; b.textContent='finish signing in in your browser…';
+              try{ const res=await window.desktop.aiCodexLogin(); ai=res.status; aiDraw(); say(res.ok?'signed in':'sign-in failed: '+res.error); }
+              catch(e){ say('sign-in failed'); b.disabled=false; } });
+            r.appendChild(b);
+          }
+          box.appendChild(r);
+          const r2=el('div','settings-row'); r2.style.marginTop='4px'; r2.appendChild(swap('Use an API key instead','key')); box.appendChild(r2);
+          box.appendChild(el('p','settings-hint','Runs on your ChatGPT plan through OpenAI’s Codex app, so it counts against your plan’s Codex limits, not a paid API key. It gets web search only: no browser, files, Gmail or shell.'));
+          box.lastChild.style.margin='8px 0 0';
+        } else {
+          box.appendChild(keyRow(g.hasKey?'replace OpenAI API key':'OpenAI API key (platform.openai.com/api-keys)','openaiKey'));
+          const r=el('div','settings-row'); r.style.marginTop='4px';
+          const m=el('input','settings-inp'); m.value=g.model; m.placeholder='model, e.g. gpt-5-mini'; m.style.cssText='flex:1;margin:0';
+          const mb=el('button','ghost mono','Save model'); mb.addEventListener('click',function(){ save({openaiModel:m.value.trim()},'model saved'); });
+          r.appendChild(m); r.appendChild(mb); box.appendChild(r);
+          const r2=el('div','settings-row'); r2.style.marginTop='4px'; r2.appendChild(swap('Use my ChatGPT plan instead','chatgpt')); box.appendChild(r2);
+          box.appendChild(el('p','settings-hint','ChatGPT answers with web search but no browser, files or Gmail. The API key is billed separately from a ChatGPT Plus subscription. OpenAI doesn’t train on API data.'));
+          box.lastChild.style.margin='8px 0 0';
+        }
       }
       if(p.id==='openrouter'){
         const o=ai.openrouter;
@@ -109,7 +153,70 @@ if(window.desktop&&window.desktop.aiStatus){
     list.appendChild(el('p','settings-hint','Up to 4 questions at once, spread across the AIs above. Private tasks and your details never go out.'));
     list.lastChild.style.margin='6px 0 0';
   }
-  window.desktop.aiStatus().then(function(s){ ai=s; aiDraw(); }).catch(function(){ $('aiSection').hidden=true; });
+  /* the usage pool: one bar per AI that's on. Claude's are its real 5-hour and weekly limits; Gemini counts
+     today's calls against the daily limit Google named (once it has); ChatGPT is pay as you go, so no bar */
+  let use=null, useBusy=false;
+  const pctTxt=function(x){ return Math.round((x||0)*100)+'%'; };
+  const atTime=function(ms){ return new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); };
+  function usageDraw(){
+    const box=$('aiUsage'); box.innerHTML='';
+    if(!ai)return;
+    // its own card at the top of Settings, always open
+    const wrap=el('div','settings-panel');
+    const head=el('div','settings-row'); head.style.cssText='margin-top:0;justify-content:space-between;align-items:center';
+    head.appendChild(el('span','settings-label','Usage')); head.lastChild.style.marginBottom='0';
+    const rf=el('button','ghost mono',useBusy?'checking…':'↻'); rf.title='Check again now'; rf.disabled=useBusy;
+    rf.addEventListener('click',function(){ usageLoad(true); });
+    head.appendChild(rf); wrap.appendChild(head);
+    const row=function(name,pct,text,out){
+      const r=el('div',''); r.style.cssText='display:flex;align-items:center;gap:10px;margin-top:8px';
+      const n=el('span','',name); n.style.cssText='width:96px;flex:none;font-size:13px';
+      const track=el('div',''); track.style.cssText='flex:1;height:8px;border-radius:4px;background:var(--chip);overflow:hidden;min-width:60px';
+      if(out||pct!=null){ const f=el('div',''); const p=out?1:Math.max(0,Math.min(1,pct));
+        f.style.cssText='height:100%;border-radius:4px;width:'+(p*100)+'%;background:'+(out||p>=0.8?'var(--late)':'var(--accent)');
+        track.appendChild(f); }
+      const t=el('span','mono',text); t.style.cssText='flex:1.3;font-size:11px;color:'+(out?'var(--late)':'var(--muted)')+';text-transform:none;letter-spacing:0';
+      r.appendChild(n); r.appendChild(track); r.appendChild(t); wrap.appendChild(r);
+    };
+    const on=ai.order.filter(function(p){ return p.on; }).map(function(p){ return p.id; });
+    if(!on.length){ wrap.appendChild(el('p','settings-hint','No AI is switched on.')); box.appendChild(wrap); return; }
+    const u=use||{};
+    on.forEach(function(id){
+      if(id==='claude'){
+        const c=u.claude;
+        if(!c){ row('Claude · 5h',null,use?'no reading yet':'checking…'); return; }
+        if(c.out){ row('Claude',1,'out until '+(c.out===true?'it resets':fmtWhen(c.out)),true); return; }
+        row('Claude · 5h',c.pct,pctTxt(c.pct)+' used'+(c.fiveReset?' · resets '+atTime(c.fiveReset):''));
+        row('Claude · week',c.week,pctTxt(c.week)+' used'+(c.weekReset?' · resets '+fmtWhen(c.weekReset):''));
+      } else if(id==='gemini'){
+        const g=u.gemini;
+        if(!ai.gemini.hasKey){ row('Gemini',null,'no key yet'); return; }
+        if(!g){ row('Gemini',null,'…'); return; }
+        if(g.out){ row('Gemini',1,'out until '+fmtWhen(g.out),true); return; }
+        row('Gemini',g.pct,g.perDay?g.calls+' of '+g.perDay+' today':g.calls+' today · daily limit not hit yet');
+      } else if(id==='openai'){
+        const o=u.openai;
+        if(ai.openai.via==='chatgpt'){
+          if(!ai.openai.codex.signedIn){ row('ChatGPT',null,'not signed in'); return; }
+          row('ChatGPT',null,o?o.calls+' runs · '+o.tokensText+' tokens this month (on your ChatGPT plan)':'…'); return; }
+        if(!ai.openai.hasKey){ row('ChatGPT',null,'no key yet'); return; }
+        row('ChatGPT',null,o?o.calls+' calls · '+o.tokensText+' tokens this month (pay as you go)':'…');
+      } else if(id==='openrouter'){
+        const o=u.openrouter;
+        if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
+        if(!o){ row('OpenRouter',null,'…'); return; }
+        const cr=o.credit;
+        row('OpenRouter',o.pct,cr?'$'+Number(cr.usage||0).toFixed(2)+(cr.limit?' of $'+cr.limit:' used · no limit set'):o.calls+' calls this month');
+      }
+    });
+    box.appendChild(wrap);
+  }
+  function usageLoad(refresh){
+    if(!window.desktop.aiUsage||useBusy)return;
+    useBusy=true; usageDraw();
+    window.desktop.aiUsage(refresh).then(function(u){ use=u; }).catch(function(){}).then(function(){ useBusy=false; usageDraw(); });
+  }
+  window.desktop.aiStatus().then(function(s){ ai=s; aiDraw(); usageLoad(false); }).catch(function(){ $('aiSection').hidden=true; $('aiUsage').hidden=true; });
 }
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
    config). Each item keeps its id (from the feed's own UID), so a re-import never adds copies. What the
@@ -188,9 +295,12 @@ function tidySchool(r){
   const alias={};
   r.items.forEach(function(e){ if(e.course&&courseTag(e.course)&&e.courseName)alias[e.courseName.toLowerCase()]=courseTag(e.course); });
   const label=function(t,tag){ if(tag&&t.tag!==tag){ t.tag=tag; out.labeled++; } };
-  school().forEach(function(t){
+  // every task's tag, done ones and other lists too, or a stale "Astronomy" chip sits beside "PHYS 1010"
+  state.tasks.forEach(function(t){
     const raw=String(t.tag||'').trim();
     if(raw)label(t,courseTag(raw)||alias[raw.toLowerCase()]||raw);
+  });
+  school().forEach(function(t){
     const m=String(t.title||'').match(COURSE_RX);
     const code=m&&courseTag(m[1]+' '+m[2]);
     if(code&&(!t.tag||t.tag===code)){
@@ -295,54 +405,6 @@ if(window.desktop&&window.desktop.feedsFetch){
   const feedsTick=function(){ importCourseFeeds().then(function(r){ if(r&&(r.added||r.moved||r.errors.length||(r.tidy&&(r.tidy.merged||r.tidy.removed||r.tidy.labeled))))$('feedsStatus').textContent=feedsSay(r); }).catch(function(){}); };
   setTimeout(feedsTick,20000); setInterval(feedsTick,3*60*60*1000);
 }
-/* RSI: change the app itself from a chat (desktop, run from its source folder) */
-if(window.desktop&&window.desktop.rsiStatus)(function(){
-  let busy=false, pending=null; // pending: the last change, waiting to be seen (reload or restart)
-  function line(m){
-    const log=$('rsiLog'); log.hidden=false;
-    const who=m.who==='change'?'sys':m.who;
-    const b=el('div','conv-msg '+who);
-    if(m.who==='claude'){ b.appendChild(el('div','conv-who','RSI')); b.appendChild(document.createTextNode(m.text)); }
-    else b.textContent=m.text;
-    log.appendChild(b); log.scrollTop=log.scrollHeight;
-  }
-  function show(){
-    $('rsiSend').disabled=busy; $('rsiStop').hidden=!busy;
-    $('rsiStatus').textContent=busy?'working…':'';
-    $('rsiApply').hidden=busy||!pending;
-    if(pending)$('rsiApply').textContent=pending.restart?'Restart to apply':'Reload to see it';
-  }
-  async function refresh(){
-    const s=await window.desktop.rsiStatus();
-    if(!s.available){ $('rsiSection').hidden=true; return; }
-    $('rsiSection').hidden=false; busy=s.busy;
-    $('rsiOn').checked=s.enabled; $('rsiBody').hidden=!s.enabled;
-    $('rsiLog').textContent=''; s.chat.forEach(line);
-    $('rsiUndo').hidden=!s.canUndo;
-    show();
-  }
-  window.desktop.onRsiEvent(function(m){
-    if(m.who==='busy'){ busy=m.busy; if(!busy)refresh(); show(); return; }
-    line(m);
-    if(m.who==='change')pending=m;
-  });
-  $('rsiSend').addEventListener('click',async function(){
-    const text=$('rsiText').value.trim(); if(!text||busy)return;
-    const r=await window.desktop.rsiAsk(text);
-    if(r.ok){ $('rsiText').value=''; pending=null; } else $('rsiStatus').textContent=r.error;
-  });
-  $('rsiText').addEventListener('keydown',function(e){ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); $('rsiSend').click(); } });
-  $('rsiStop').addEventListener('click',function(){ window.desktop.rsiStop(); });
-  $('rsiApply').addEventListener('click',function(){ if(pending)window.desktop.rsiApply(pending.restart); });
-  $('rsiUndo').addEventListener('click',async function(){
-    if(!confirm('Undo the last RSI change?'))return;
-    const r=await window.desktop.rsiUndo();
-    if(!r.ok)$('rsiStatus').textContent=r.error; else refresh();
-  });
-  $('rsiNew').addEventListener('click',async function(){ await window.desktop.rsiNewChat(); pending=null; refresh(); });
-  $('rsiOn').addEventListener('change',async function(){ await window.desktop.rsiSetEnabled(this.checked); refresh(); });
-  refresh();
-})();
 /* "Hey Romulus" (phone app only): WakeWordPlugin.java / WakeWordService.java */
 (function(){
   const cap=window.Capacitor;
