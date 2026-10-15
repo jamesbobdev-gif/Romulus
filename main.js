@@ -15,6 +15,11 @@ const supabase = require('./agent/supabase');
 const store = require('./main/store');
 const win = require('./main/window');
 const trayMod = require('./main/tray');
+const usage = require('./agent/usage-limit');
+const routingMod = require('./agent/routing');
+const ai = require('./agent/ai-connections');
+const agentBrowser = require('./agent/agent-browser');
+const taskContext = require('./agent/task-context');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
@@ -26,79 +31,28 @@ const { showWindow, sendToRenderer } = win;
 trayMod.init({ dataFile, showWindow, quit: win.quit, rsiUndo: () => rsi.undo(), applyRsiChange: win.applyRsiChange, agentLog, icon: win.ICON });
 const { refreshTrayStatus } = trayMod;
 
-/* ---------- agent runner ----------
-   When an Agent-tab task is queued (new, or James replied), start a headless
-   Claude Code session with ONLY web search/fetch, hand it the queued tasks +
-   his preferences, and pass its JSON answer to the renderer, which applies it
-   and syncs like any other edit. Claude never touches the sync data itself. */
-const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
-const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
-let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
-
-// Inbox check happens in the background, only for internship tasks (the daily internship hunt and
-// any agent task about internships) — never for anything else. Read-only.
-// Tasks about his schedule get his Google Calendar events (read-only, through the app's own calendar
-// connection) handed over with the task, so Claude doesn't need to log in to Google anywhere.
-// also questions about his free time ("a gym slot Thursday afternoon", "when am I free"): without his
-// calendar the mini PC model went looking for the gym's class times on the web
-const CALENDAR_WORDS = new RegExp('\\b(calendar|schedule|class(es)?|lectures?|meetings?|appointments?|events?|today|tonight|tomorrow|yesterday|this week|next week|weekend|' +
-  '(mon|tues|wednes|thurs|fri|satur|sun)days?|mornings?|afternoons?|evenings?|free|busy|slots?|availab(le|ility)|fit( [\\w-]+){0,4} in|when (can|could|should) i)\\b', 'i');
-function wantsCalendar(t) {
-  const lastYou = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-1)[0];
-  return CALENDAR_WORDS.test([t.title, t.reply, lastYou && lastYou.text].filter(Boolean).join(' '));
+// what the main-process modules share: handed to each one's init()
+const ctx = {
+  userData: () => app.getPath('userData'),
+  documents: () => app.getPath('documents'),
+  isPackaged: app.isPackaged,
+  dataFile, readConfig, writeConfig, agentLog, sendToRenderer, showWindow,
+  scheduleAgentRun: (raw) => scheduleAgentRun(raw),
+  scheduleLocalRun: (raw) => scheduleLocalRun(raw),
+  compactHowtos: (asked) => compactHowtos(asked),
+};
+const modules = [usage, routingMod, ai, agentBrowser, taskContext];
+for (const m of modules) {
+  m.init(ctx);
+  for (const [channel, fn] of Object.entries(m.handlers || {})) ipcMain.handle(channel, fn);
 }
-async function calendarForAgent() { // yesterday through the next 7 days; null if no calendar is connected
-  if (!(readConfig().calAccounts || []).length) return null;
-  try {
-    const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 1);
-    const to = new Date(from); to.setDate(to.getDate() + 9);
-    const iso = (x) => (x instanceof Date ? x.toISOString() : x);
-    // anyone can put an event on his calendar by sending an invitation, and its title, place and
-    // description are then their words in a run that can reach the web. Invitations he hasn't said yes
-    // (or maybe) to come without them: just the time and who sent it. Declined ones are left out.
-    const evs = (await calendars.upcoming(from, to)).filter((e) => !(e.invite && e.invite.answer === 'declined')).slice(0, 150);
-    return { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, events: evs.map((e) => e.invite && !/^(accepted|tentative)$/.test(e.invite.answer)
-      ? { start: iso(e.start), end: iso(e.end), title: '(invitation, not answered yet)', invitedBy: String(e.invite.from).replace(/[^\w.@+-]/g, '').slice(0, 80) || undefined }
-      : { start: iso(e.start), end: iso(e.end), title: String(e.title || '').replace(/\s+/g, ' ').slice(0, 150),
-        where: e.where ? String(e.where).slice(0, 100) : undefined, details: e.notes ? String(e.notes).slice(0, 200) : undefined,
-        invitedBy: e.invite ? String(e.invite.from).replace(/[^\w.@+-]/g, '').slice(0, 80) || undefined : undefined }) };
-  } catch (e) { agentLog('calendar for agent failed: ' + e.message); return null; }
-}
-/* Skills: short how-to files in agent/skills/*.md (frontmatter: name, description, match = a regex
-   tested against the task). Matching ones are put in the run's instructions; all of them are copied
-   to the work folder so Claude can open others it decides it needs. The mini PC reuses the same files. */
-function loadSkills() {
-  const dir = path.join(__dirname, 'agent', 'skills');
-  let files = [];
-  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort(); } catch (e) { return []; }
-  return files.map((f) => {
-    const raw = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r/g, '');
-    const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-    const meta = {};
-    if (m) m[1].split('\n').forEach((l) => { const i = l.indexOf(':'); if (i > 0) meta[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
-    let match = null; try { if (meta.match) match = new RegExp(meta.match, 'i'); } catch (e) { agentLog('skill ' + f + ': bad match pattern'); }
-    return { name: meta.name || f.replace(/\.md$/, ''), description: meta.description || '', match, body: m ? m[2] : raw, raw };
-  });
-}
-/* Site notes (agent/site-notes.js): hand-written ones in agent/sites/, tips the mini PC learned in
-   <userData>/site-notes/ (the app's own folder can't be written to once it's packaged). */
-const siteNoteDirs = () => [path.join(__dirname, 'agent', 'sites'), path.join(app.getPath('userData'), 'site-notes')];
-const taskLinks = (t) => (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
-// how-tos: what worked on earlier, similar tasks (agent/howtos.js), kept on this computer
-const howtos = require('./agent/howtos');
-const howtoFile = () => path.join(app.getPath('userData'), 'task-howtos.json');
-function howtosFor(t) { try { return howtos.forTask(howtos.load(howtoFile()), skillText(t), taskLinks(t)); } catch (e) { return []; } }
-function learnHowto(t, text, urls, lane) {
-  if (!text) return;
-  try {
-    const r = howtos.learn(howtos.load(howtoFile()), { task: t.title, text, urls, lane, today: new Date().toISOString().slice(0, 10) });
-    if (!r) return;
-    howtos.save(howtoFile(), r.list);
-    agentLog((lane === 'local' ? 'local: ' : '') + 'learned a how-to for "' + String(t.title).slice(0, 50) + '"' + (r.replaced ? ' (replaced ' + r.replaced + ' older)' : ''));
-    if (howtos.groups(r.list).length) setTimeout(() => compactHowtos(false).catch(() => {}), 30 * 1000);
-  } catch (e) { agentLog('how-to not saved: ' + e.message); }
-}
+const { parseUsageLimit, holdForUsage } = usage;
+const { loadRouting, routeTask, laneOf, isClaudeLane, askForRoutes, privateMatch } = routingMod;
+const { cloudOrder, cloudReady, PINNED_CLOUDS } = ai;
+const { AGENT_BROWSER_PORT, BROWSER_DENIED, agentBrowserDir, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor,
+  webGuardSettings, saidYes, ensureAgentBrowser } = agentBrowser;
+const { wantsCalendar, calendarForAgent, loadSkills, siteNoteDirs, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
+  wantsInbox, agentRow, prefLine, claimAgentTasks, howtoFile } = taskContext;
 /* overlapping how-tos merged into one (agent/howtos.js compact). Done by the mini PC's model only, so
    notes from private tasks never leave his machines; on its own it waits until the mini PC is free. */
 let howtoCompacting = false;
@@ -121,20 +75,17 @@ async function compactHowtos(asked) {
   finally { howtoCompacting = false; }
 }
 ipcMain.handle('howtos:compact', () => compactHowtos(true));
-ipcMain.handle('howtos:list', () => howtos.load(howtoFile()).slice().reverse());
-ipcMain.handle('howtos:delete', (_event, id) => {
-  const list = howtos.load(howtoFile()), rest = list.filter((h) => h.id !== id);
-  if (rest.length !== list.length) howtos.save(howtoFile(), rest);
-  return rest.length !== list.length;
-});
-function siteNotesFor(urls, max = 3) { try { return siteNotes.forUrls(siteNotes.load(siteNoteDirs()), urls).slice(0, max); } catch (e) { return []; } }
-// what a skill's pattern is tested against: only his words (title, replies, instructions), since
-// Claude's own notes mention all sorts of things
-function skillText(t) {
-  const mine = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-2).map((h) => h.text || '');
-  return [t.title, t.reply, t.notes, ...mine].filter(Boolean).join('\n');
-}
-function wantsInbox(t) { return !!t.useInbox || /\bintern(ship)?s?\b/i.test(String(t.title || '')); }
+
+/* ---------- agent runner ----------
+   When an Agent-tab task is queued (new, or James replied), start a headless
+   Claude Code session with ONLY web search/fetch, hand it the queued tasks +
+   his preferences, and pass its JSON answer to the renderer, which applies it
+   and syncs like any other edit. Claude never touches the sync data itself. */
+const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
+const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
+const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
+let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
+
 // what a run may do in Gmail when a task asks for an inbox check: look, never touch
 const GMAIL_READ_TOOLS = ['search_threads', 'get_thread', 'get_message', 'list_labels'].map((n) => 'mcp__claude_ai_Gmail__' + n);
 const GMAIL_WRITE_TOOLS = ['send_message', 'reply', 'forward', 'create_draft', 'update_draft', 'delete_draft', 'get_draft', 'list_drafts',
@@ -149,181 +100,15 @@ function queuedAgentTasks(raw) {
   return (Array.isArray(data.tasks) ? data.tasks : [])
     .filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isClaudeLane(t));
 }
-/* Lanes: each Agent task goes to ONE worker — 'claude' (this computer's Claude runner) or 'local' (James's
-   own model on the mini PC). A task that already has a lane keeps it (switching changes it). A new one
-   is routed by HIS rules, no AI involved: a #local / #claude tag in the title, then his rules in order
-   (first match wins), then his default (claude, local, or 'ask' = he picks). The rules live next to the
-   agent list (doc {v, rules:[{words, lane}], default}) and are edited in ⚙ Settings on any device. */
-// private words: checked before his rules (only a #claude tag beats them); a match always stays on the mini PC
-const PRIVATE_DEFAULT = 'password, passcode, pin number, bank, bank account, credit card, debit card, ssn, social security, ' +
-  'passport, tax, taxes, salary, payslip, medical, doctor, health, therapy, therapist, prescription, grades, transcript, report card';
-const ROUTING_DEFAULT = { v: 1, default: 'ask', private: PRIVATE_DEFAULT, rules: [
-  { words: 'email, send, outlook, gmail', lane: 'claude' },
-  { words: 'buy, find, look up, search', lane: 'claude' },
-  { words: 'fill, form, apply', lane: 'local' },
-  { words: 'write, draft, essay', lane: 'local' },
-] };
-let routing = ROUTING_DEFAULT;
-async function loadRouting() {
-  const a = supabase.channel(readConfig());
-  if (!a) return;
-  try {
-    const row = await supabase.readRow(a, ':routing', { timeout: 8000 });
-    const d = row && row.doc;
-    routing = d && Array.isArray(d.rules) ? d : ROUTING_DEFAULT;
-    if (typeof routing.private !== 'string') routing = Object.assign({}, routing, { private: PRIVATE_DEFAULT }); // saved before private words existed
-  } catch (e) {} // keep the last rules we had
-}
-/* ⚙ AI connections: which cloud AIs the Agent lane may use, in order. Keys stay in config.json on this
-   computer; the page only ever gets them back masked. */
-const maskKey = (k) => k ? k.slice(0, 6) + '…' + k.slice(-4) : '';
-function aiStatus() {
-  const c = readConfig(), s = providers.settings(c);
-  return { order: s.order, names: providers.NAMES, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usageBlockedUntil > Date.now() ? usageBlockedUntil : 0,
-    gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
-    openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel },
-    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr } };
-}
-ipcMain.handle('ai:status', () => aiStatus());
-ipcMain.handle('ai:save', (_e, change) => {
-  const c = readConfig(), ai = Object.assign({}, c.ai);
-  change = change || {};
-  if (Array.isArray(change.order)) ai.order = change.order.map((p) => ({ id: String(p.id), on: !!p.on }));
-  for (const k of ['geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel']) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
-  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers']) if (typeof change[k] === 'boolean') ai[k] = change[k];
-  c.ai = ai; writeConfig(c);
-  scheduleAgentRun();
-  return aiStatus();
-});
-let geminiInstall = null;
-ipcMain.handle('ai:gemini-install', () => {
-  geminiInstall = geminiInstall || new Promise((resolve) => {
-    agentLog('gemini: installing @google/gemini-cli');
-    let out = '';
-    const p = require('child_process').spawn('npm', ['install', '-g', '--no-audit', '--no-fund', '@google/gemini-cli'], { shell: true, windowsHide: true });
-    p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { out += d; });
-    p.on('error', (e) => resolve({ ok: false, error: e.message }));
-    p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: out.trim().split('\n').slice(-3).join(' ').slice(0, 300) || 'npm exited ' + code }));
-  }).finally(() => { geminiInstall = null; });
-  return geminiInstall.then((r) => Object.assign(r, { status: aiStatus() }));
-});
-ipcMain.handle('ai:openrouter-check', async () => {
-  const s = providers.settings(readConfig());
-  return s.openrouterKey ? providers.openRouterCheck(s.openrouterKey) : { ok: false, error: 'no key saved' };
-});
-ipcMain.handle('routing:changed', async () => { await loadRouting(); scheduleAgentRun(); scheduleLocalRun(); return true; });
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const wordHit = (text, words) => words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(text));
-// → what made a task private (a word from his list, or something shaped like a card / social security number), or null
-function privateMatch(t) {
-  const text = [t.title, t.notes].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').map((h) => h.text))
-    .map((x) => String(x || '')).join('\n').toLowerCase();
-  const words = String(routing.private || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
-  const hit = wordHit(text, words);
-  if (hit) return hit;
-  if (/(^|[^0-9])(\d[ -]?){12,18}\d([^0-9]|$)/.test(text)) return 'a card number';
-  if (/(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)/.test(text)) return 'a social security number';
-  return null;
-}
-// → {lane: 'claude' | 'local' | 'ask', reason}
-function routeTask(t) {
-  const title = String(t.title || '');
-  if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
-  if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
-  const priv = privateMatch(t);
-  if (priv) return { lane: 'local', reason: 'private: ' + priv };
-  // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
-  const answered = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
-  if (answered) return { lane: answered.lane === 'local' ? 'local' : 'claude', reason: 'continuing the conversation' };
-  const text = (title + '\n' + String(t.notes || '')).toLowerCase();
-  for (const rule of routing.rules || []) {
-    const words = String(rule.words || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
-    const hit = wordHit(text, words);
-    if (hit && (rule.lane === 'claude' || rule.lane === 'local')) return { lane: rule.lane, reason: 'rule: ' + words.join(', ') };
-  }
-  const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
-  return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
-}
-const laneOf = (t) => t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
-function isClaudeLane(t) { return laneOf(t) === 'claude'; }
-// unassigned tasks whose route is 'ask': James picks (the renderer turns them into a question with two buttons)
-const askedRoute = new Set();
-function askForRoutes(raw) {
-  let data;
-  try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return; }
-  const ask = (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' &&
-    !t.lane && laneOf(t) === 'ask' && !askedRoute.has(t.id + '|' + (t.updatedAt || 0)));
-  if (!ask.length) return;
-  ask.forEach((t) => askedRoute.add(t.id + '|' + (t.updatedAt || 0)));
-  sendToRenderer('agent:route-ask', ask.map((t) => t.id));
-}
-// claim on the server first (atomic: only one worker can win a queued task) → the tasks we may run
-async function claimAgentTasks(tasks, lane = 'claude') {
-  const a = supabase.channel(readConfig());
-  if (!a) return tasks;
-  const worker = (lane === 'local' ? 'relay@' : 'claude@') + require('os').hostname();
-  const won = [];
-  for (const t of tasks) {
-    let ok = null;
-    for (let i = 0; i < 3 && ok !== true; i++) { // our own reply may still be uploading: try a few times
-      if (i) await new Promise((r) => setTimeout(r, 4000));
-      try {
-        const r = await fetch(supabase.base(a) + '/rpc/agent_claim_task', {
-          method: 'POST', headers: supabase.headers(a, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ p_sync_key: a.syncKey, p_task_id: t.id, p_worker: worker, p_lane: lane }), signal: AbortSignal.timeout(10000) });
-        ok = r.ok ? (await r.json()) === true : null;
-      } catch (e) { ok = null; }
-      if (ok === null) break; // server unreachable: nobody else can claim it either — go ahead
-    }
-    if (ok === false) agentLog('claim: ' + t.id.slice(0, 8) + ' is taken or changed, skipping');
-    else won.push(t);
-  }
-  return won;
-}
-/* Claude usage limit: instead of failing, hold the queue until the reset time Claude reports,
-   then start by itself. Survives restarts (config.json agentRunner.blockedUntil). */
-let usageBlockedUntil = 0, usageTimer = null;
-const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-function parseUsageLimit(text) { // → when to try again (ms) if this is a usage-limit message, else null
-  const s = String(text || '');
-  if (!/usage limit|limit reached|hit your (usage )?limit|out of (extra )?usage|5-hour limit|weekly limit|session limit/i.test(s)) return null;
-  const epoch = s.match(/limit reached\|(\d{10,13})/i);
-  if (epoch) { const n = Number(epoch[1]); return n < 1e12 ? n * 1000 : n; }
-  // "resets 3pm", "resets at 3:30 PM", "resets Oct 5, 3pm" (a time needs am/pm, so "Oct 5" isn't read as 5 o'clock)
-  const m = s.match(/resets?\s+(?:at\s+|on\s+)?(?:([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-  if (m) {
-    let h = Number(m[3]); const min = Number(m[4] || 0); const ap = m[5].toLowerCase();
-    if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
-    const d = new Date(); d.setSeconds(0, 0); d.setHours(h, min);
-    const mi = m[1] ? MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()) : -1;
-    if (mi >= 0) { d.setMonth(mi, Number(m[2])); if (d.getTime() < Date.now() - 86400000) d.setFullYear(d.getFullYear() + 1); }
-    else if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
-    return d.getTime();
-  }
-  return Date.now() + 30 * 60 * 1000; // limit hit, no time given: look again in 30 min
-}
-function holdForUsage(ids, resetAt) {
-  usageBlockedUntil = Math.max(resetAt, Date.now() + 60 * 1000) + 60 * 1000; // a minute's grace after the reset
-  try { const cfg = readConfig(); cfg.agentRunner = Object.assign({}, cfg.agentRunner, { blockedUntil: usageBlockedUntil }); writeConfig(cfg); } catch (e) {}
-  agentLog('usage limit: holding ' + ids.length + ' task(s) until ' + new Date(usageBlockedUntil).toLocaleString());
-  sendToRenderer('agent:waiting', { ids, until: usageBlockedUntil });
-  clearTimeout(usageTimer);
-  usageTimer = setTimeout(() => {
-    usageBlockedUntil = 0;
-    try { const cfg = readConfig(); if (cfg.agentRunner) { delete cfg.agentRunner.blockedUntil; writeConfig(cfg); } } catch (e) {}
-    agentLog('usage should be back: running the queue');
-    scheduleAgentRun();
-  }, Math.max(1000, usageBlockedUntil - Date.now()));
-}
 function scheduleAgentRun(raw) {
   if ((readConfig().agentRunner || {}).enabled === false) return;
   const queued = queuedAgentTasks(raw);
   const n = queued.length;
   if (!n) return;
   // Claude out of usage and no other AI connected: mark new ones as waiting, the timer starts them
-  if (Date.now() < usageBlockedUntil && !cloudOrder().some((id) => id !== 'claude')) {
-    sendToRenderer('agent:waiting', { ids: queued.map((t) => t.id), until: usageBlockedUntil });
-    if (!usageTimer) holdForUsage(queued.map((t) => t.id), usageBlockedUntil - 60 * 1000);
+  if (Date.now() < usage.blockedUntil() && !cloudOrder().some((id) => id !== 'claude')) {
+    sendToRenderer('agent:waiting', { ids: queued.map((t) => t.id), until: usage.blockedUntil() });
+    if (!usage.isHolding()) holdForUsage(queued.map((t) => t.id), usage.blockedUntil() - 60 * 1000);
     return;
   }
   if (!agentTimer) agentLog('queued: ' + n + ' task(s), starting in ' + (AGENT_GRACE_MS / 1000) + 's');
@@ -429,100 +214,6 @@ function failAgentTasks(ids, why) {
   sendToRenderer('agent:results', ids.map((id) => ({ id, status: 'needs-you',
     note: 'Couldn’t finish this one (' + why + '). Reply to try again.', options: undefined, pref: null })));
 }
-/* Agent browser: the Tasks app's own Chrome window (own profile in %APPDATA%\Tasks\agent-browser,
-   separate from James's everyday Chrome). Claude drives it through Playwright's MCP server — it
-   decides by itself when a task needs it — and it opens only on first use, then stays open. */
-const AGENT_BROWSER_PORT = 9334;
-const PLAYWRIGHT_MCP = '@playwright/mcp@0.0.83';
-// things a page could abuse: running its own code, sending his files, closing the window under him
-const BROWSER_DENIED = ['browser_run_code_unsafe', 'browser_evaluate', 'browser_file_upload', 'browser_drop', 'browser_close',
-  'browser_network_request'].map((n) => 'mcp__browser__' + n);
-function agentBrowserDir() { return path.join(app.getPath('userData'), 'agent-browser'); }
-function findChrome() {
-  const env = process.env;
-  return [path.join(env['ProgramFiles'] || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe')]
-    .find((p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }) || null;
-}
-function findNode() {
-  try { return require('child_process').execFileSync('where', ['node'], { encoding: 'utf8', windowsHide: true }).split(/\r?\n/)[0].trim() || null; }
-  catch (e) { return null; }
-}
-let browserToolInstall = null;
-// → path of the MCP config to hand Claude, or null (no Chrome/Node, or the install failed: the run goes on without a browser)
-async function prepareAgentBrowser() {
-  const dir = agentBrowserDir(), toolDir = path.join(dir, 'tool');
-  const cli = path.join(toolDir, 'node_modules', '@playwright', 'mcp', 'cli.js');
-  const chrome = findChrome(), node = findNode();
-  if (!chrome || !node) { agentLog('browser: not available (' + (!chrome ? 'no Chrome' : 'no Node') + ')'); return null; }
-  if (!fs.existsSync(cli)) {
-    browserToolInstall = browserToolInstall || new Promise((resolve) => {
-      fs.mkdirSync(toolDir, { recursive: true });
-      if (!fs.existsSync(path.join(toolDir, 'package.json'))) fs.writeFileSync(path.join(toolDir, 'package.json'), '{"private":true}');
-      agentLog('browser: installing ' + PLAYWRIGHT_MCP);
-      const p = require('child_process').spawn('npm', ['install', '--no-audit', '--no-fund', PLAYWRIGHT_MCP], { cwd: toolDir, shell: true, windowsHide: true });
-      p.on('error', () => resolve()); p.on('close', () => resolve());
-    }).finally(() => { browserToolInstall = null; });
-    await browserToolInstall;
-    if (!fs.existsSync(cli)) { agentLog('browser: install failed'); return null; }
-  }
-  const proxy = path.join(dir, 'browser-proxy.js');
-  const src = fs.readFileSync(path.join(__dirname, 'agent', 'browser-proxy.js'), 'utf8');
-  try { if (fs.readFileSync(proxy, 'utf8') !== src) fs.writeFileSync(proxy, src); } catch (e) { fs.writeFileSync(proxy, src); }
-  const guard = path.join(dir, 'web-guard.js');
-  const guardSrc = fs.readFileSync(path.join(__dirname, 'agent', 'web-guard.js'), 'utf8');
-  try { if (fs.readFileSync(guard, 'utf8') !== guardSrc) fs.writeFileSync(guard, guardSrc); } catch (e) { fs.writeFileSync(guard, guardSrc); }
-  const cfgFile = path.join(dir, 'mcp.json');
-  fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { browser: { command: node,
-    args: [proxy, cli, chrome, path.join(dir, 'profile'), String(AGENT_BROWSER_PORT)] } } }));
-  return cfgFile;
-}
-/* His mail is open in the agent browser, and web runs read pages anyone can write: see the mail
-   guard in agent/browser-proxy.js. Claude's runs: once a mail page has been seen, the proxy writes
-   mailSeenFile(), the browser stays on his mail, and the web-guard hook refuses WebFetch/WebSearch.
-   Gemini's runs: mail is off limits (its own web tools can't be stopped mid-run). */
-const mailSeenFile = () => path.join(agentBrowserDir(), 'mail-seen.json');
-const mailSeen = () => fs.existsSync(mailSeenFile());
-function browserCfgFor(baseCfg, mode, approved) { // → this run's MCP config
-  const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
-  j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0' };
-  const f = path.join(agentBrowserDir(), 'mcp-' + mode + '.json');
-  fs.writeFileSync(f, JSON.stringify(j));
-  return f;
-}
-function webGuardSettings() { // → a --settings file with the hook, or null
-  const node = findNode();
-  if (!node) return null;
-  const q = (x) => '"' + String(x).replace(/\\/g, '/') + '"'; // forward slashes: fine for node, and for whichever shell runs hooks
-  const f = path.join(agentBrowserDir(), 'web-guard-settings.json');
-  fs.writeFileSync(f, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'WebFetch|WebSearch',
-    hooks: [{ type: 'command', command: q(node) + ' ' + q(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + q(mailSeenFile()), timeout: 15 }] }] } }));
-  return f;
-}
-// his latest reply is a yes to something Claude asked him to say yes to
-function saidYes(t) {
-  const hist = Array.isArray(t.history) ? t.history : [];
-  const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
-  const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply)( it)?\b/i.test(lastYou) && /reply\s*\**\s*yes/i.test(asked);
-}
-// ⚙ "Open agent browser": so James can watch it or log in to sites he wants Claude to use
-async function openAgentBrowser() {
-  const chrome = findChrome();
-  if (!chrome) return { ok: false, error: 'Chrome isn’t installed' };
-  const up = await fetch('http://127.0.0.1:' + AGENT_BROWSER_PORT + '/json/version', { signal: AbortSignal.timeout(1000) }).then((r) => r.ok).catch(() => false);
-  const args = up ? ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), 'about:blank'] // already open: new tab in it
-    : ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), '--remote-debugging-port=' + AGENT_BROWSER_PORT,
-      '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', // same as agent/browser-proxy.js
-      '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
-  fs.mkdirSync(path.join(agentBrowserDir(), 'profile'), { recursive: true });
-  require('child_process').spawn(chrome, args, { detached: true, stdio: 'ignore' }).unref();
-  return { ok: true };
-}
-ipcMain.handle('agent:open-browser', () => openAgentBrowser());
-
 /* Speak (desktop): Windows' own offline dictation (System.Speech), run in a hidden PowerShell. It listens
    to the default microphone until a pause, streams what it's hearing ("P:" lines → the task box), and
    returns the final text ("F:" line); the renderer turns it into a task the same way as on the phone. */
@@ -583,19 +274,6 @@ ipcMain.handle('voice:stop', () => { const p = voiceProc; voiceProc = null; if (
 // Preview pictures for option cards through Claude's browser, for sites whose bot check stops the plain
 // fetch and the hidden window. Pages open in background tabs that are closed again; if the browser isn't
 // running it's started minimized. Calls made within a moment of each other share one helper process.
-const agentBrowserUp = () => fetch('http://127.0.0.1:' + AGENT_BROWSER_PORT + '/json/version', { signal: AbortSignal.timeout(1000) }).then((r) => r.ok).catch(() => false);
-async function ensureAgentBrowser() {
-  if (await agentBrowserUp()) return true;
-  const chrome = findChrome();
-  if (!chrome) return false;
-  fs.mkdirSync(path.join(agentBrowserDir(), 'profile'), { recursive: true });
-  require('child_process').spawn(chrome, ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), '--remote-debugging-port=' + AGENT_BROWSER_PORT,
-    '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--start-minimized',
-    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'],
-  { detached: true, stdio: 'ignore' }).unref();
-  for (let i = 0; i < 40; i++) { if (await agentBrowserUp()) return true; await new Promise((r) => setTimeout(r, 250)); }
-  return false;
-}
 const previewBatches = {};
 function agentBrowserPreview(url, lane) {
   const k = lane === 'local' ? 'local' : 'claude';
@@ -735,7 +413,7 @@ async function startAgentRun() {
   agentProc = 'running';
   try {
     for (const id of order) {
-      if (id === 'claude' && Date.now() < usageBlockedUntil) continue; // still out of usage
+      if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
       agentLog('asking ' + providers.NAMES[id] + ' (' + ids.length + ' task(s))');
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
@@ -784,16 +462,6 @@ async function startAgentRun() {
   if (valid.length) sendToRenderer('agent:results', valid);
   if (missing.length) failAgentTasks(missing, 'it skipped this task');
   scheduleAgentRun(); // anything queued while this run was going
-}
-// the cloud AIs a task can be pinned to on the pill (t.cloud; its lane stays 'claude' on the server)
-const PINNED_CLOUDS = ['gemini', 'openai'];
-function cloudReady(id) {
-  const c = readConfig(), s = providers.settings(c);
-  return id === 'claude' || (id === 'gemini' ? providers.geminiStatus(c).ready : id === 'openai' ? !!s.openaiKey : !!s.openrouterKey);
-}
-// the connected cloud AIs, in his order, that can run right now
-function cloudOrder() {
-  return providers.settings(readConfig()).order.filter((p) => p.on).map((p) => p.id).filter(cloudReady);
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
 function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
@@ -878,7 +546,7 @@ function recentReplies() { // James's own words to Claude in the last 14 days, w
 }
 async function maybeTidyMemory() {
   const cfg = readConfig().agentRunner || {};
-  if (cfg.enabled === false || memoryTidying || agentProc || agentTimer || Date.now() < usageBlockedUntil) return;
+  if (cfg.enabled === false || memoryTidying || agentProc || agentTimer || Date.now() < usage.blockedUntil()) return;
   if (cfg.lastMemoryTidy && Date.now() - cfg.lastMemoryTidy < MEMORY_TIDY_EVERY_MS) return;
   if (queuedAgentTasks().length) return; // real tasks first
   memoryTidying = true;
@@ -989,13 +657,6 @@ function scheduleLocalRun(raw) {
   clearTimeout(localTimer);
   localTimer = setTimeout(() => { localTimer = null; startLocalRun().catch((e) => { localBusy = false; agentLog('local run crashed: ' + (e && e.stack || e)); }); }, AGENT_GRACE_MS);
 }
-// a preference an agent wants saved: {section, text} → "Section|text" (the renderer files it under that
-// heading); a plain string still works
-function prefLine(p) {
-  if (!p) return null;
-  if (typeof p === 'object') return p.text ? String(p.section || 'Other').replace(/[|\n]/g, ' ').slice(0, 40) + '|' + String(p.text).replace(/\n/g, ' ').slice(0, 200) : null;
-  return String(p).replace(/\n/g, ' ').slice(0, 200);
-}
 /* what the agents said before his latest reply is marked stale: it was true then ("the screen is locked",
    "log in first"), and his reply may mean he has fixed it since */
 function staleMarked(history) {
@@ -1016,10 +677,6 @@ ipcMain.handle('local:status', async () => {
     return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
   }
 });
-async function agentRow(suffix) { // a doc next to the agent list ({v, text}): ':prefs' or ':locked'
-  const a = supabase.channel(readConfig());
-  return a ? supabase.readText(a, suffix) : '';
-}
 // ── its tools ──
 const htmlText = (h) => String(h).replace(/<(script|style|noscript|svg|head)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
@@ -1319,7 +976,7 @@ function runHelperOn(id, prompt) {
   if (id === 'gemini') return providers.runGeminiApi(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
-  if (Date.now() < usageBlockedUntil) return Promise.resolve({ why: 'out of usage' });
+  if (Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
   const exe = (cfg.agentRunner || {}).command || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe');
   const dir = path.join(app.getPath('userData'), 'helper-run'); // empty: nothing of his to read
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
@@ -1427,7 +1084,7 @@ async function runLocalTask(c, t) {
   // Qwen's browser, when the mini PC's is reachable: locked to the task's links + his allowed sites
   let browser = null, sites = [];
   if (await ensureQwenBrowser()) {
-    sites = (Array.isArray(routing.sites) ? routing.sites : String(routing.sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
+    sites = (Array.isArray(routingMod.getRouting().sites) ? routingMod.getRouting().sites : String(routingMod.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
     const links = (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
     const lockFile = path.join(app.getPath('userData'), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
@@ -1546,7 +1203,7 @@ async function runLocalTask(c, t) {
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
         } else if (canAsk && name === 'ask_helpers') {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
-          const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.private, locked }) }));
+          const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routingMod.getRouting().private, locked }) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
           refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the mini PC (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
@@ -1989,7 +1646,7 @@ if (!gotLock) {
     setInterval(() => refreshTrayStatus(), 60 * 60 * 1000);
     // tasks left waiting while the app was closed get picked up shortly after start
     const savedHold = (readConfig().agentRunner || {}).blockedUntil;
-    if (savedHold && savedHold > Date.now()) { usageBlockedUntil = savedHold; holdForUsage(queuedAgentTasks().map((t) => t.id), savedHold - 60 * 1000); }
+    if (savedHold && savedHold > Date.now()) { holdForUsage(queuedAgentTasks().map((t) => t.id), savedHold - 60 * 1000); }
     setTimeout(() => scheduleAgentRun(), 15 * 1000);
     // his routing rules (edited in Settings, synced): load now, refresh now and then
     loadRouting().then(() => { scheduleAgentRun(); scheduleLocalRun(); askForRoutes(); });
