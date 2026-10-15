@@ -172,7 +172,7 @@ async function voiceAdd(smart){
   if(voiceOn){ if(smart!==true){ try{ await v.stop(); }catch(e){} } return; } // tap again: done talking
   smart=smart===true;
   voiceOn=true; btn.classList.add('listening'); btn.innerHTML=I.stop+'<span>Listening\u2026</span>';
-  voiceToast(smart?'Hey! Listening\u2026 a task, or ask Claude something':'Listening\u2026 say the task (and a day, if it has one)');
+  voiceToast(smart?'Hey! Listening\u2026 a task, or ask Romulus something':'Listening\u2026 say the task (and a day, if it has one)');
   const before=ti.value, prevPh=ti.placeholder; ti.value=''; ti.placeholder='Listening\u2026';
   let partial=null, heard=''; try{ partial=v.onPartial(function(text){ heard=text; ti.value=text; }); }catch(e){}
   buzz('tap');
@@ -208,7 +208,7 @@ async function voiceAdd(smart){
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
     await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
-    voiceToast(cmd.raw?'Sent to Claude: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
+    voiceToast(cmd.raw?'Sent to Romulus: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
   }finally{

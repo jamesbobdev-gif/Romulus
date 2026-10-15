@@ -107,7 +107,7 @@ function drawComposerAtts(){
   const box=document.getElementById('newAtts'); if(!box)return;
   box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='calendar';
   composerAtts.forEach(function(a,i){
-    const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for Claude';
+    const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for Romulus';
     im.addEventListener('click',function(){ openLightbox(composerAtts.map(function(x,j){ return {image:x.preview,label:'Photo '+(j+1)}; }),i); });
     const x=el('button',null,'\u2715'); x.setAttribute('aria-label','Remove photo');
     x.addEventListener('click',function(){ URL.revokeObjectURL(a.preview); composerAtts.splice(i,1); drawComposerAtts(); });

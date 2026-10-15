@@ -68,7 +68,7 @@ function buildRow(t,canDrag){
   if(isAgentTask&&!t.done){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
-    sc.title=t.status==='needs-you'&&t.parked?'You parked this — Claude’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'Claude got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
+    sc.title=t.status==='needs-you'&&t.parked?'You parked this — Romulus’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'Romulus got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
     // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
     if(t.status==='needs-you'){
       sc.classList.add('tap'); sc.setAttribute('role','button'); sc.tabIndex=0;
@@ -102,7 +102,7 @@ function buildRow(t,canDrag){
   meta.appendChild(pen);
   if(agentConfigured()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
-    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to Agent (Claude does it)';
+    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to Agent (Romulus does it)';
     const mv=iconBtn(isAgentTask?I.human:I.bot,mvLabel); mv.title=mvLabel;
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
     meta.appendChild(mv);
@@ -276,7 +276,7 @@ function buildPanel(t){
   }
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
-    const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to Claude');
+    const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to Romulus');
     ta.placeholder=agentBusy?'Add something…':'Your answer…';
     ta.value=replyDrafts[t.id]||''; // survives a re-render from a background sync
     ta.dataset.replyFor=t.id;
@@ -540,7 +540,7 @@ function render(){
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
-    const what=onAgent?['Agent','agent','Hand tasks to Claude on this computer or your mini PC: they work on them and come back when they need you.']
+    const what=onAgent?['Agent','agent','Hand tasks to Romulus — on this computer or your mini PC: they work on them and come back when they need you.']
       :onSchool?['School','school','Your assignments, with due dates pulled in from your course calendars.']
       :['Work','work','A second list that syncs with your work project.'];
     $('connectTitle').textContent='Connect your '+what[0]+' list';
@@ -579,7 +579,7 @@ function render(){
   });
   fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
-  $('newTitle').placeholder=onAgent?'Add a task for Claude…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
+  $('newTitle').placeholder=onAgent?'Add a task for Romulus…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
 
   // workspace filter chips (only when a work list is connected; not on the Agent tab)
   const wsf=$('wsFilters'); wsf.innerHTML='';
@@ -620,7 +620,7 @@ function render(){
 
   const es=$('emptyState');
   if(unconnected){ es.hidden=true; }
-  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for Claude yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
+  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for Romulus yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
   else if(openVis.length===0){
     es.hidden=false;
     es.textContent=q?'No matches for "'+$('searchBox').value.trim()+'".':(state.filter?'Nothing open under "'+state.filter+'".':'All clear.');
