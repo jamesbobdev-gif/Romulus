@@ -12,6 +12,7 @@ const calendars = require('./agent/calendars');
 const providers = require('./agent/providers');
 const helpers = require('./agent/helpers');
 const supabase = require('./agent/supabase');
+const store = require('./main/store');
 
 let mainWindow = null;
 let tray = null;
@@ -46,50 +47,8 @@ ipcMain.handle = (channel, fn) => rawHandle(channel, (event, ...args) => {
   return fn(event, ...args);
 });
 
-function dataFile() {
-  return path.join(app.getPath('userData'), 'tasks.json');
-}
-function configFile() {
-  return path.join(app.getPath('userData'), 'config.json');
-}
-/* Secrets in config.json (sign-in tokens, client secrets, sync keys, API keys, private calendar
-   and webhook links) are stored encrypted with Windows' own encryption (safeStorage → DPAPI), so
-   the file is useless if copied off this account. Everything else stays plain so it can still be
-   hand-edited; a secret typed in by hand is picked up as-is and encrypted on the next save. */
-const SECRET_KEYS = new Set(['access_token', 'refresh_token', 'id_token', 'clientSecret', 'key', 'syncKey',
-  'geminiKey', 'openaiKey', 'openrouterKey', 'buyEmailUrl', 'calendarFeeds']);
-const ENC = 'enc:v1:';
-const { safeStorage } = require('electron');
-function canEncrypt() { try { return safeStorage.isEncryptionAvailable(); } catch (e) { return false; } }
-function sealValue(v) {
-  if (Array.isArray(v)) return v.map(sealValue);
-  if (typeof v !== 'string' || !v || v.startsWith(ENC) || !canEncrypt()) return v;
-  return ENC + safeStorage.encryptString(v).toString('base64');
-}
-function openValue(v) {
-  if (Array.isArray(v)) return v.map(openValue);
-  if (typeof v !== 'string' || !v.startsWith(ENC)) return v;
-  try { return safeStorage.decryptString(Buffer.from(v.slice(ENC.length), 'base64')); } catch (e) { return v; }
-}
-// fn applied to each secret value; calAccounts[].url is a private calendar link there (but not elsewhere)
-function mapSecrets(o, fn, inCalAccounts) {
-  if (Array.isArray(o)) return o.map((x) => mapSecrets(x, fn, inCalAccounts));
-  if (!o || typeof o !== 'object') return o;
-  const out = {};
-  for (const [k, v] of Object.entries(o)) {
-    out[k] = SECRET_KEYS.has(k) || (inCalAccounts && k === 'url') ? fn(v) : mapSecrets(v, fn, k === 'calAccounts');
-  }
-  return out;
-}
-function readConfig() {
-  try { return mapSecrets(JSON.parse(fs.readFileSync(configFile(), 'utf8')), openValue); } catch (e) { return {}; }
-}
-function writeConfig(cfg) {
-  try {
-    fs.mkdirSync(path.dirname(configFile()), { recursive: true });
-    fs.writeFileSync(configFile(), JSON.stringify(mapSecrets(cfg, sealValue)));
-  } catch (e) {}
-}
+store.init({ userData: () => app.getPath('userData'), safeStorage: require('electron').safeStorage });
+const { dataFile, readConfig, writeConfig, agentLog } = store;
 
 /* ---------- window ---------- */
 function createWindow() {
@@ -200,14 +159,6 @@ const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks
 const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
 let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
 
-// small rolling diary of what the runner did, for "why didn't it answer?" questions
-function agentLog(msg) {
-  try {
-    const f = path.join(app.getPath('userData'), 'agent-runner.log');
-    try { if (fs.statSync(f).size > 200 * 1024) fs.renameSync(f, f + '.old'); } catch (e) {}
-    fs.appendFileSync(f, new Date().toISOString() + ' ' + msg + '\n');
-  } catch (e) {}
-}
 // Inbox check happens in the background, only for internship tasks (the daily internship hunt and
 // any agent task about internships) — never for anything else. Read-only.
 // Tasks about his schedule get his Google Calendar events (read-only, through the app's own calendar
@@ -2138,8 +2089,7 @@ if (!gotLock) {
   app.on('second-instance', showWindow);
 
   app.whenReady().then(() => {
-    // encrypt any secrets still sitting in config.json as plain text (older versions, or typed in by hand)
-    try { const raw = JSON.parse(fs.readFileSync(configFile(), 'utf8')); if (canEncrypt()) writeConfig(mapSecrets(raw, openValue)); } catch (e) {}
+    store.sealPlainSecrets(); // secrets still in config.json as plain text get encrypted
     // Setting up another computer: drop seed-config.json (sync links, runner off) into its user-data
     // folder (%APPDATA%/tasks) before first launch. It fills in a fresh install that has no sync yet, so
     // every list shows up without setup; it never overrides. It is never bundled into the installer —
