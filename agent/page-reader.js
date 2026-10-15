@@ -354,11 +354,16 @@ async function step(browser, name, args0, state, opts = {}) {
   let text = failed || /^Partly done/.test(res) ? firstLines(res, name === 'browser_fill_form' ? 30 : 4).replace(/### Error\n?|(browserBackend\.callTool: )?Error: /g, '').replace(/\x1b\[\d+m/g, '').slice(0, 1200) : ('Done: ' + (firstLines(res.replace(/^### Result\n/, ''), name === 'browser_fill_form' ? 30 : 3) || name.replace('browser_', '')).slice(0, 400));
   if (stale) text += '\nThat ref isn\'t on the page as it is now. Here is the page now; use only refs shown below.';
   else if (failed && !locked) text += '\nLook at the page below and try another way.';
-  // clicks wait for the page to draw, and a locked or sleeping screen on the mini PC never draws
-  if (/Timeout \d+ms exceeded[\s\S]*attempting (click|check|uncheck)/.test(res)) text += '\n(Clicks are timing out: the mini PC\'s screen is probably locked or asleep. Typing still works. If clicks keep failing, answer "needs-you" and say his mini PC\'s screen needs unlocking.)';
+  // clicks wait for the page to draw, and a locked or sleeping screen on the mini PC never draws;
+  // a page that never finishes loading (a slow site, or the mini PC busy) is a different problem
+  const timedOut = failed && /Timeout \d+ms exceeded|timed out/i.test(res);
+  const clickTimeout = timedOut && (/attempting (click|check|uncheck)/.test(res) || name === 'browser_click' || name === 'browser_select_option');
+  const loadTimeout = timedOut && !clickTimeout;
+  if (clickTimeout) text += '\n(Clicks are timing out: the mini PC\'s screen is probably locked or asleep. Typing still works. If clicks keep failing, answer "needs-you" and say his mini PC\'s screen needs unlocking.)';
+  else if (loadTimeout) text += '\n(The page took too long to load: the site is slow or the mini PC is busy. It may have partly loaded: look at the page below. If it is empty, open it once more; if it keeps timing out, answer "needs-you" and say the site wouldn\'t load.)';
   if (repeats >= 2) text += '\n(You have now done exactly this twice. If it still isn\'t right, try another way: a third time won\'t be run.)';
   if (CHANGES_PAGE.has(name) && !locked) text += '\n\nThe page now:\n' + await look(browser, state, max);
-  return { args, text, failed, locked };
+  return { args, text, failed, locked, clickTimeout, loadTimeout };
 }
 
 module.exports = { outline, fixArgs, step, parse, FINAL };

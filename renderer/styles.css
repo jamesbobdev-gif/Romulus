@@ -53,6 +53,10 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .lane-slider.none::before{opacity:0}
 .lane-slider .lane-word{position:relative;z-index:1;border:0;background:none;padding:5px 10px;min-width:68px;border-radius:999px;color:var(--muted);cursor:pointer;font-family:var(--sans,inherit);font-size:12px;font-weight:500;transition:color .15s}
 .lane-slider .lane-word.on{color:var(--ink);cursor:default}
+.lane-ask{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 12px;padding:9px 12px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);font-size:12.5px;line-height:1.4}
+.lane-ask span{flex:1 1 220px}
+.lane-ask .btn-accent{margin-left:0}
+.lane-ask .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;padding:7px 13px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
 
@@ -112,6 +116,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .chip.school{background:#EAF4EC;color:#2A7A3B;border:0}
 .chip.later{border:1px dashed var(--hairline);color:var(--faint)}
 .chip.st{border:1px solid var(--hairline);color:var(--muted)}
+.chip.recur{border:1px solid var(--hairline);color:var(--muted)} /* repeating to-do */
 .chip.st.working{border-color:var(--accent);color:var(--accent)}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
 .chip.st.tap{cursor:pointer;user-select:none;transition:filter .15s,transform .1s}
@@ -133,16 +138,19 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .agent-opt{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .agent-opt.picked{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .agent-opt img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff;border-radius:6px}
+.agent-opt img.wide{object-fit:cover}
+.agent-opt .opt-nopic{width:100%;aspect-ratio:1;border-radius:6px;background:var(--hairline);color:var(--muted);display:flex;align-items:center;justify-content:center;padding:10px;box-sizing:border-box;font-family:var(--display);font-size:15px;font-weight:600;text-align:center;overflow-wrap:anywhere}
 .agent-opt .opt-label{font-size:13px;font-weight:600;line-height:1.3}
 .agent-opt .opt-desc{font-size:12px;color:var(--muted);line-height:1.4;flex:1}
 .agent-opt .opt-meta{font-family:var(--mono);font-size:10.5px;color:var(--ink)}
-.agent-opt .opt-btns{display:flex;gap:6px}
+.agent-opt .opt-btns{display:flex;flex-wrap:wrap;gap:6px}
 .agent-opt .opt-btns button{flex:1;font-family:var(--display);font-size:11.5px;font-weight:600;border-radius:7px;padding:6px 4px;cursor:pointer}
-.opt-open{background:transparent;border:1px solid var(--hairline);color:var(--ink)}
+.opt-open{background:transparent;border:1px solid var(--hairline);color:var(--ink);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .opt-open:hover{border-color:var(--ink)}
 .agent-opt .opt-btns .opt-share{flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding:6px 7px;background:transparent;border:1px solid var(--hairline);color:var(--ink)}
 .agent-opt .opt-btns .opt-share:hover{border-color:var(--ink)}
 .lb-share{margin-left:6px}
+.agent-opt .opt-btns .opt-pick{flex:1 0 100%}
 .opt-pick{background:var(--accent);border:0;color:#fff}
 .opt-pick:hover{background:var(--accent-dim)}
 .how-to{font-family:var(--display);font-size:13.5px;line-height:1.55;resize:vertical;margin:0 0 12px}
@@ -265,7 +273,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .idea-group:hover .idea-gsize::after,.idea-gsize.on::after{opacity:.6}
 body.idea-sizing,body.idea-sizing *{cursor:ew-resize!important;user-select:none}
 @media(max-width:520px),(pointer:coarse){.idea-gsize{display:none}}
-.idea-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(var(--idea-w,280px),100%),1fr));gap:14px;align-items:start}
+.idea-groups{display:grid;grid-template-columns:repeat(auto-fit,min(var(--idea-w,280px),100%));justify-content:center;gap:14px;align-items:start}
 .idea-group{position:relative;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:10px 12px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
 .idea-ghead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -330,7 +338,9 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
 .idea-addb:hover{color:var(--ink);border-color:var(--faint)}
 .idea-empty{color:var(--faint);font-size:13px;padding:6px 2px}
 @media(max-width:520px){.idea-groups{grid-template-columns:1fr}}
-body.ideas-mode main{max-width:1600px} /* the board gets the whole window, so bigger boxes still sit side by side */
+/* the header and tabs stay in the usual column; only the board spreads wider, centred under it, so bigger boxes still sit side by side */
+body.ideas-mode #ideasView{width:min(1600px,calc(100vw - 40px));margin-left:calc((100% - min(1600px,calc(100vw - 40px)))/2)}
+body.ideas-mode .ideas-bar{justify-content:center}
 
 /* ── calendar view ── */
 .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
@@ -397,6 +407,9 @@ body.ideas-mode main{max-width:1600px} /* the board gets the whole window, so bi
 .settings-collapse>summary::before{content:'▸';display:inline-block;width:12px;transition:transform .15s}
 .settings-collapse[open]>summary::before{transform:rotate(90deg)}
 .settings-collapse:not([open])>summary{margin-bottom:0}
+/* a group panel holds several settings, each under its own small heading, split by a hairline */
+.settings-subhead{font-family:var(--display);font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
+.settings-sub:not([hidden])~.settings-sub:not([hidden]){border-top:1px solid var(--hairline);margin-top:18px;padding-top:16px}
 .settings-hint{font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.6}
 .settings-hint a{color:var(--accent);text-decoration:none;cursor:pointer}
 .settings-hint a:hover{text-decoration:underline}

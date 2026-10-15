@@ -227,6 +227,7 @@ async function syncOnce(){
     rebuildSnap();
     store.save(currentDoc());
     renderActive();
+    if(spawnMissedRecurs())touch(); // ticked off on a device or by a tool that doesn't make the next one
   }
   if(firstErr)setSyncStatus('sync error: '+firstErr.message,true);
   else setSyncStatus('synced '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));

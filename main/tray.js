@@ -1,7 +1,7 @@
 /* The tray icon: its menu, and a tooltip with overdue / due-today counts. */
 const fs = require('fs');
 
-let ctx = null; // { dataFile, showWindow, quit, rsiUndo, applyRsiChange, agentLog, icon }
+let ctx = null; // { dataFile, showWindow, quit, agentLog, icon }
 function init(c) { ctx = c; }
 
 let tray = null;
@@ -20,9 +20,6 @@ function createTray() {
       enabled: app.isPackaged && process.platform !== 'linux',
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked })
     },
-    { type: 'separator' },
-    // works even when an RSI change has broken the window
-    { label: 'RSI: Undo last change', click: () => { const r = ctx.rsiUndo(); if (r.ok) ctx.applyRsiChange(r.restart); else ctx.agentLog('RSI undo: ' + r.error); } },
     { type: 'separator' },
     { label: 'Quit Tasks', click: () => ctx.quit() }
   ]));

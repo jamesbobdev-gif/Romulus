@@ -9,9 +9,10 @@ const fs = require('fs');
 const os = require('os');
 const providers = require('./providers');
 const usage = require('./usage-limit');
+const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
-const { cloudOrder, cloudReady, PINNED_CLOUDS } = require('./ai-connections');
+const { cloudOrder, cloudReady, runOrder, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardSettings, saidYes } = require('./agent-browser');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, claimAgentTasks } = require('./task-context');
@@ -154,27 +155,30 @@ async function startAgentRun() {
   // notes on the sites these tasks link to
   const notes = siteNotesFor(tasks.flatMap(taskLinks), 4);
   const notePart = notes.length ? '\n\n## Site notes\n' + notes.map(siteNotes.show).join('\n\n') : '';
-  const prompt = rules + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
-    '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief, null, 1) + '\n```\n';
+  // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
+  const promptFor = (want) => rules + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
+    '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n';
 
   // why each newly routed task went to Claude (shown on the task)
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
-  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): the first that answers wins;
-  // one that's out of usage or signed out hands the tasks to the next
-  // (inbox runs: Claude only, the others can't read Gmail and could reach the web)
-  // (tasks he put on Gemini or ChatGPT: that one only, even if it's switched off in the fallback order)
-  const order = pinned ? (cloudReady(pinned) ? [pinned] : [])
-    : cloudOrder().filter((id) => !mailRun || id === 'claude');
-  if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: add its API key in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
-  let result = null, claudeResetAt = null, lastWhy = 'no usable answer';
+  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
+  // (out of usage, signed out, no usable answer, or skipped it) goes to the next, until all are answered
+  // (inbox runs: Claude only; tasks he put on Gemini or ChatGPT: that one first, even if it's switched off in the order)
+  const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
+  if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
+  if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
+  let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
+  const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   agentProc = 'running';
   try {
     for (const id of order) {
+      if (!pending.length) break;
       if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
-      agentLog('asking ' + providers.NAMES[id] + ' (' + ids.length + ' task(s))');
+      agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
+      const prompt = promptFor(pending);
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.some(saidYes)) })
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
@@ -184,29 +188,38 @@ async function startAgentRun() {
       try { fs.writeFileSync(path.join(ctx.userData(), 'agent-last-run.log'), id + '\n' + (r.log || '') + '\n' + (r.text || '')); } catch (e) {}
       let updates = null;
       try { const text = String(r.text || ''); updates = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)).updates; } catch (e) {}
-      if (Array.isArray(updates)) { result = { updates, via: id }; break; }
+      const isLast = order.indexOf(id) === order.length - 1;
+      if (Array.isArray(updates)) {
+        const sawMail = mailRun || mailSeen();
+        const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
+        got.forEach((u) => { u._via = id; u._sawMail = sawMail; });
+        answered.push(...got);
+        pending = pending.filter((x) => !got.some((u) => u.id === x));
+        if (!pending.length) break;
+        lastWhy = 'it skipped this task';
+        agentLog(providers.NAMES[id] + ' skipped ' + pending.length + ' task(s)' + (isLast ? '' : ', trying the next one'));
+        continue;
+      }
       if (id === 'claude' && r.resetAt) claudeResetAt = r.resetAt;
-      lastWhy = r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? providers.NAMES[id] + ' needs signing in again' : (r.why || 'no usable answer');
-      agentLog(providers.NAMES[id] + ': ' + lastWhy + (order.indexOf(id) < order.length - 1 ? ', trying the next one' : ''));
+      lastWhy = r.limit && id === 'gemini' ? 'Gemini’s free daily limit is used up; it resets at ' +
+          new Date(meter.nextPacificMidnight()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Switch this to Claude to do it now'
+        : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again') : (r.why || 'no usable answer');
+      agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
   } finally { agentProc = null; }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
-  if (!result) {
-    if (claudeResetAt) { holdForUsage(ids, claudeResetAt); return; } // not a failure: try again when usage is back
-    failAgentTasks(ids, lastWhy);
-    return;
-  }
-  const valid = result.updates.filter((u) => u && ids.includes(u.id));
-  // a web run that opened his mail in the agent browser is treated like an inbox run from here on
-  const sawMail = mailRun || mailSeen();
-  if (sawMail && !mailRun) agentLog('this run opened his mail in the browser: nothing from it is remembered, and its links are not opened');
+  const valid = answered;
   for (const u of valid) {
+    // a web try that opened his mail in the agent browser is treated like an inbox run from here on
+    const sawMail = u._sawMail, via = u._via;
+    delete u._sawMail; delete u._via;
+    if (sawMail && !mailRun) agentLog(providers.NAMES[via] + ' opened his mail in the browser: nothing from its answer is remembered, and its links are not opened');
     u.status = u.status === 'done' ? 'done' : 'needs-you';
     u.note = u.note ? String(u.note).slice(0, 1500) : null;
     // an inbox run's answer may carry words from an email: nothing from it is remembered for later runs
     // (which can reach the web), and the app doesn't open its links for previews
     u.pref = sawMail ? null : prefLine(u.pref);
-    if (result.via !== 'claude') u.via = result.via; // his conversation shows who answered instead of "Claude"
+    if (via !== 'claude') u.via = via; // his conversation shows who answered instead of "Claude"
     const task = tasks.find((x) => x.id === u.id);
     if (task && !sawMail && typeof u.howto === 'string') learnHowto(task, u.howto, taskLinks(task).concat((Array.isArray(u.options) ? u.options : []).map((o) => o && o.url).filter(Boolean)), 'claude');
     delete u.howto;
@@ -216,11 +229,13 @@ async function startAgentRun() {
         : (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean)) : [];
     u.options = opts.length ? opts : null;
   }
-  const missing = ids.filter((id) => !valid.some((u) => u.id === id));
-  agentLog(providers.NAMES[result.via] + ' answered ' + valid.length + ', missing ' + missing.length);
+  agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);
-  if (missing.length) failAgentTasks(missing, 'it skipped this task');
-  scheduleAgentRun(); // anything queued while this run was going
+  if (pending.length) {
+    if (claudeResetAt) holdForUsage(pending, claudeResetAt); // not a failure: try again when usage is back
+    else failAgentTasks(pending, lastWhy);
+  }
+  if (!claudeResetAt || !pending.length) scheduleAgentRun(); // anything queued while this run was going
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
 function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
@@ -235,7 +250,8 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)'];
       const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent'];
-      const args = ['-p', '--output-format', 'json', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
+      // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
       if (mailRun) {
         args.push('--tools', 'Read');
         allowed.push(...GMAIL_READ_TOOLS);
@@ -268,10 +284,11 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
     proc.on('close', (code) => {
       agentLog('Claude exited (code ' + code + ')' + (code ? ': ' + String(err || out).replace(/\s+/g, ' ').slice(0, 300) : ''));
       let text = '';
-      try { text = String(JSON.parse(out).result || ''); } catch (e) {}
+      text = meter.readClaudeStream(out);
       const log = 'exit ' + code + '\n' + err + '\n' + out;
       if (text.includes('"updates"')) return finish({ text, log });
-      finish({ text, log, resetAt: parseUsageLimit(err + '\n' + out), auth: /log ?in|auth|expired/i.test(err + out) });
+      // only the final answer and stderr: the stream also carries web pages the run read, which may say anything
+      finish({ text, log, resetAt: parseUsageLimit(err + '\n' + text), auth: /log ?in|auth|expired/i.test(err + text) });
     });
   });
 }

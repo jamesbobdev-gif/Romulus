@@ -60,7 +60,8 @@ function staleMarked(history) {
   return history.map((h, i) => (i < lastYou && h.who !== 'you' ? Object.assign({}, h, { stale: true }) : h));
 }
 let localHeardAt = 0; // last time the mini PC streamed part of an answer
-handle('local:status', async () => {
+handle('local:status', () => localStatus());
+async function localStatus() {
   const c = localCfg();
   if (!c) return { configured: false };
   try {
@@ -72,7 +73,7 @@ handle('local:status', async () => {
     if (Date.now() - localHeardAt < 3 * 60 * 1000) return { configured: true, online: true, model: c.model, installed: true, loaded: true };
     return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
   }
-});
+}
 // his latest reply is a yes to submitting what the mini PC last asked about
 function localApproved(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
@@ -325,7 +326,7 @@ async function runLocalTask(c, t) {
       messages[1].content += '\n\nThe mini PC\'s browser right now (live, just looked):\n' + String(now.text || '').slice(0, 4000);
     } catch (e) {}
   }
-  let final = null, blocked = 0, forceAnswer = false, clickTimeouts = 0;
+  let final = null, blocked = 0, forceAnswer = false, clickTimeouts = 0, loadTimeouts = 0;
   let draft = '', wantJson = false; // an answer it gave as plain text, and whether the next reply must be the JSON
   let seen = JSON.stringify(task); // everything it was shown: the task's own links, search results, pages
   const searchedLinks = new Set(), opened = new Set(); // links its searches returned, pages it read
@@ -434,7 +435,7 @@ async function runLocalTask(c, t) {
           show('\n' + label + '\n', true);
           const r = await pageReader.step(browser, name, args, page);
           if (r.locked) show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true);
-          else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (/timeout|timed out/i.test(r.text)) clickTimeouts++; }
+          else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (r.clickTimeout) clickTimeouts++; else if (r.loadTimeout) loadTimeouts++; }
           const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
           result = r.text;
@@ -468,6 +469,8 @@ async function runLocalTask(c, t) {
     stuck = cleanStuck(final.stuck) || stuck;
     if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on the mini PC kept timing out: its screen is probably locked or asleep.',
       fix: 'Unlock the mini PC (or turn off its screen lock and sleep), then reply “try again”.' };
+    else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on the mini PC: the site is slow or the mini PC is busy (low on memory).',
+      fix: 'Reply “try again” in a bit, or switch it to Claude.' };
   }
   if (!stuck && typeof final.howto === 'string') learnHowto(t, final.howto, [...visited].map((h) => 'https://' + h).concat(taskLinks(t)), 'local');
   // a picture of what the browser showed, when it stopped there
@@ -492,4 +495,4 @@ async function runLocalTask(c, t) {
     note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot }]); // room for an essay
 }
 
-module.exports = { init, handlers, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck };
+module.exports = { init, handlers, localStatus, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck };

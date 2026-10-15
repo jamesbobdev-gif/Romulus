@@ -21,7 +21,7 @@ function isAppPage(u) {
   } catch (e) { return false; }
 }
 
-// Every desktop function (tasks, mail, calendars, RSI self-editing…) is an IPC
+// Every desktop function (tasks, mail, calendars…) is an IPC
 // handler. Only answer calls coming from the app's own page in its top frame,
 // so a stray page or iframe can never reach them.
 function trustedSender(event) {
@@ -95,13 +95,7 @@ function sendToRenderer(ch, payload) {
 // a hidden, sandboxed window for reading pages behind a bot check (link preview pictures)
 function newHiddenWindow(opts) { return new BrowserWindow(opts); }
 
-// UI-only changes just reload the window; main-process changes need the whole app restarted
-function applyRsiChange(restart) {
-  if (restart) { isQuitting = true; app.relaunch(); app.exit(0); }
-  else if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.reload(); showWindow(); }
-}
-
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, applyRsiChange, quit, setQuitting };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, quit, setQuitting };
