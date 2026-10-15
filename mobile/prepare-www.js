@@ -1,9 +1,10 @@
-// Copies the desktop renderer into www/ and bakes in the device-sync config
+// Copies the desktop renderer (index.html, styles.css, js/) into www/ and bakes in the device-sync config
 // so the phone app syncs out of the box. Re-run before every APK build.
 const fs = require('fs');
 const path = require('path');
 
-const src = path.join(__dirname, '..', 'renderer', 'index.html');
+const rendererDir = path.join(__dirname, '..', 'renderer');
+const src = path.join(rendererDir, 'index.html');
 const outDir = path.join(__dirname, 'www');
 const syncCfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'sync-config.json'), 'utf8'));
 
@@ -27,8 +28,10 @@ const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.
 html = html.replace('<head>', () => '<head>\n' + seed + '\n' + calPhone);
 
 fs.mkdirSync(outDir, { recursive: true });
+// everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is
+fs.cpSync(rendererDir, outDir, { recursive: true, filter: (p) => path.resolve(p) !== path.resolve(src) });
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
-console.log('www/index.html written with baked sync config');
+console.log('www/index.html written with baked sync config (plus the rest of renderer/)');
 
 // the home-screen widget reads the same config natively from res/raw
 const rawDir = path.join(__dirname, 'android', 'app', 'src', 'main', 'res', 'raw');
