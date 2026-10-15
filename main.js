@@ -268,8 +268,31 @@ function learnHowto(t, text, urls, lane) {
     if (!r) return;
     howtos.save(howtoFile(), r.list);
     agentLog((lane === 'local' ? 'local: ' : '') + 'learned a how-to for "' + String(t.title).slice(0, 50) + '"' + (r.replaced ? ' (replaced ' + r.replaced + ' older)' : ''));
+    if (howtos.groups(r.list).length) setTimeout(() => compactHowtos(false).catch(() => {}), 30 * 1000);
   } catch (e) { agentLog('how-to not saved: ' + e.message); }
 }
+/* overlapping how-tos merged into one (agent/howtos.js compact). Done by the mini PC's model only, so
+   notes from private tasks never leave his machines; on its own it waits until the mini PC is free. */
+let howtoCompacting = false;
+async function compactHowtos(asked) {
+  const c = localCfg();
+  if (!c) return { ok: false, error: 'Compacting uses the mini PC, and it isn’t set up.' };
+  if (howtoCompacting || (!asked && localBusy)) return { ok: false, error: 'Busy, try again in a minute.' };
+  howtoCompacting = true;
+  try {
+    const before = howtos.load(howtoFile());
+    const r = await howtos.compact(before, { ask: (m, s) => localAsk(c, m, s), today: new Date().toISOString().slice(0, 10) });
+    if (r.merged) {
+      // a how-to learned or deleted while the model was writing isn't lost or brought back
+      const had = new Set(before.map((h) => h.id)), now = howtos.load(howtoFile()), still = new Set(now.map((h) => h.id));
+      howtos.save(howtoFile(), r.list.filter((h) => !had.has(h.id) || still.has(h.id)).concat(now.filter((h) => !had.has(h.id))));
+      agentLog('compacted how-tos: ' + r.merged + ' group' + (r.merged > 1 ? 's' : '') + ' merged');
+    }
+    return { ok: true, merged: r.merged };
+  } catch (e) { return { ok: false, error: e.message }; }
+  finally { howtoCompacting = false; }
+}
+ipcMain.handle('howtos:compact', () => compactHowtos(true));
 ipcMain.handle('howtos:list', () => howtos.load(howtoFile()).slice().reverse());
 ipcMain.handle('howtos:delete', (_event, id) => {
   const list = howtos.load(howtoFile()), rest = list.filter((h) => h.id !== id);
