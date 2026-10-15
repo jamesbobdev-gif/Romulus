@@ -74,7 +74,7 @@ function writeGeminiWorkspace(workDir, browserMcpFile, browserDenied) {
   if (browserMcpFile) {
     try {
       const b = JSON.parse(fs.readFileSync(browserMcpFile, 'utf8')).mcpServers.browser;
-      ws.mcpServers.browser = { command: b.command, args: b.args, env: b.env, trust: true, // env: the mail guard (main.js)
+      ws.mcpServers.browser = { command: b.command, args: b.args, env: b.env, trust: true, // env: the mail guard (agent/agent-browser.js)
         excludeTools: browserDenied.map((n) => n.replace(/^mcp__browser__/, '')) };
     } catch (e) {}
   }

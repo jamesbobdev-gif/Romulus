@@ -1,8 +1,8 @@
-// Claude Code PreToolUse hook for the Tasks agent's web runs (main.js passes it with --settings, for
+// Claude Code PreToolUse hook for the Tasks agent's web runs (agent/runner.js passes it with --settings, for
 // WebFetch and WebSearch). Once the agent browser has shown James's mail in this run, browser-proxy.js
 // writes the taint file; from then on this refuses the web tools, so nothing read in his mail can be
 // sent to a server through a fetched address or a search. Exit code 2 = refused (the reason goes to Claude).
-// main.js copies this file next to browser-proxy.js. Usage: node web-guard.js <taint file>
+// agent/agent-browser.js copies this file next to browser-proxy.js. Usage: node web-guard.js <taint file>
 const fs = require('fs');
 const taintFile = process.argv[2];
 let input = '';

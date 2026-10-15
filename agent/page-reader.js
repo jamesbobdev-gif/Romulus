@@ -10,7 +10,7 @@
    - step(browser, name, args, state): one browser tool call; after anything that can change the page
      it looks again by itself (so a step is never spent on browser_snapshot, and refs are never stale),
      and it says when the model repeats itself (a third identical call in a row isn't run)
-   Used by main.js; no Electron here, so it can be tested on its own. */
+   Used by agent/local-lane.js; no Electron here, so it can be tested on its own. */
 
 const REF = /^(?:f\d+)?e\d+$/;
 const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'listbox', 'spinbutton', 'checkbox', 'radio', 'switch', 'slider']);

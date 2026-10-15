@@ -1,7 +1,7 @@
 // Preview pictures through Claude's browser (the agent browser: real Chrome, which gets through the bot
 // checks that block the app's own hidden window, e.g. MakerWorld). Each page opens in a background tab,
 // we read its og:image / twitter:image, and the tab is closed again. Run with the system's Node (it has
-// WebSocket; Electron's built-in Node doesn't); main.js copies this file next to the browser tool.
+// WebSocket; Electron's built-in Node doesn't); agent/previews.js copies this file next to the browser tool.
 // Usage: node browser-preview.js <port> <url>...   → prints {"<url>": "<image url>" | null, …}
 const [port, ...urls] = process.argv.slice(2);
 
