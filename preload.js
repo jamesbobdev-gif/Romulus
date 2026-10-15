@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('desktop', {
   // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)
   howtosList: () => ipcRenderer.invoke('howtos:list'),
   howtosDelete: (id) => ipcRenderer.invoke('howtos:delete', id),
+  howtosCompact: () => ipcRenderer.invoke('howtos:compact'),
   feedsGet: () => ipcRenderer.invoke('feeds:get'),
   feedsSave: (urls) => ipcRenderer.invoke('feeds:save', urls),
   feedsFetch: () => ipcRenderer.invoke('feeds:fetch'),

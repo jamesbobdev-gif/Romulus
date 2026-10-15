@@ -583,6 +583,10 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
       <span class="settings-label">What worked before</span>
       <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
       <div id="howtosList"></div>
+      <div class="settings-row" style="margin-top:10px">
+        <button id="howtosCompactBtn" class="ghost mono">Compact now</button>
+        <span id="howtosStatus" class="mono" style="font-size:11px;color:var(--muted)">Notes that overlap are merged on their own</span>
+      </div>
     </div>
     <div class="settings-panel" id="feedsSection" hidden>
       <span class="settings-label">Course calendars</span>
@@ -3400,7 +3404,7 @@ function drawHowtos(){
       del.addEventListener('click',function(e){ e.stopPropagation(); window.desktop.howtosDelete(h.id).then(drawHowtos); });
       head.appendChild(del);
       body.appendChild(el('div','howto-text',h.text));
-      body.appendChild(el('div','howto-meta',(h.lane==='local'?'mini PC':'Claude')+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
+      body.appendChild(el('div','howto-meta',(h.merged?'merged from '+h.merged+' notes':(h.lane==='local'?'mini PC':'Claude'))+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
       body.hidden=true;
       head.addEventListener('click',function(){ body.hidden=!body.hidden; });
       row.appendChild(head); row.appendChild(body);
@@ -3408,7 +3412,17 @@ function drawHowtos(){
     });
   }).catch(function(){});
 }
-if(window.desktop&&window.desktop.howtosList){ $('howtosSection').hidden=false; drawHowtos(); }
+if(window.desktop&&window.desktop.howtosList){
+  $('howtosSection').hidden=false; drawHowtos();
+  $('howtosCompactBtn').addEventListener('click',async function(){
+    const b=this, say=function(t){ $('howtosStatus').textContent=t; };
+    b.disabled=true; say('merging overlapping notes on the mini PC…');
+    let r; try{ r=await window.desktop.howtosCompact(); }catch(e){ r={ok:false,error:e.message}; }
+    b.disabled=false;
+    say(!r.ok?r.error:r.merged?'merged '+r.merged+' group'+(r.merged>1?'s':'')+' of notes':'nothing overlaps right now');
+    drawHowtos();
+  });
+}
 if(window.desktop&&window.desktop.feedsFetch){
   $('feedsSection').hidden=false;
   window.desktop.feedsGet().then(function(urls){ $('feedsText').value=(urls||[]).join('\n'); }).catch(function(){});
