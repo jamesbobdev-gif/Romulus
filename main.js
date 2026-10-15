@@ -10,6 +10,7 @@ const siteNotes = require('./agent/site-notes');
 const rsiModule = require('./agent/rsi');
 const calendars = require('./agent/calendars');
 const providers = require('./agent/providers');
+const helpers = require('./agent/helpers');
 const supabase = require('./agent/supabase');
 
 let mainWindow = null;
@@ -56,7 +57,7 @@ function configFile() {
    the file is useless if copied off this account. Everything else stays plain so it can still be
    hand-edited; a secret typed in by hand is picked up as-is and encrypted on the next save. */
 const SECRET_KEYS = new Set(['access_token', 'refresh_token', 'id_token', 'clientSecret', 'key', 'syncKey',
-  'geminiKey', 'openrouterKey', 'buyEmailUrl', 'calendarFeeds']);
+  'geminiKey', 'openaiKey', 'openrouterKey', 'buyEmailUrl', 'calendarFeeds']);
 const ENC = 'enc:v1:';
 const { safeStorage } = require('electron');
 function canEncrypt() { try { return safeStorage.isEncryptionAvailable(); } catch (e) { return false; } }
@@ -327,17 +328,18 @@ async function loadRouting() {
 const maskKey = (k) => k ? k.slice(0, 6) + '…' + k.slice(-4) : '';
 function aiStatus() {
   const c = readConfig(), s = providers.settings(c);
-  return { order: s.order, names: providers.NAMES, claudeBlockedUntil: usageBlockedUntil > Date.now() ? usageBlockedUntil : 0,
+  return { order: s.order, names: providers.NAMES, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usageBlockedUntil > Date.now() ? usageBlockedUntil : 0,
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
-    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb } };
+    openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel },
+    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr } };
 }
 ipcMain.handle('ai:status', () => aiStatus());
 ipcMain.handle('ai:save', (_e, change) => {
   const c = readConfig(), ai = Object.assign({}, c.ai);
   change = change || {};
   if (Array.isArray(change.order)) ai.order = change.order.map((p) => ({ id: String(p.id), on: !!p.on }));
-  for (const k of ['geminiKey', 'geminiModel', 'openrouterKey', 'openrouterModel']) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
-  if (typeof change.openrouterWeb === 'boolean') ai.openrouterWeb = change.openrouterWeb;
+  for (const k of ['geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel']) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
+  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers']) if (typeof change[k] === 'boolean') ai[k] = change[k];
   c.ai = ai; writeConfig(c);
   scheduleAgentRun();
   return aiStatus();
@@ -353,14 +355,6 @@ ipcMain.handle('ai:gemini-install', () => {
     p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: out.trim().split('\n').slice(-3).join(' ').slice(0, 300) || 'npm exited ' + code }));
   }).finally(() => { geminiInstall = null; });
   return geminiInstall.then((r) => Object.assign(r, { status: aiStatus() }));
-});
-// Google sign-in happens in the Gemini CLI itself: a console window where he picks "Sign in with Google"
-ipcMain.handle('ai:gemini-signin', () => {
-  const cli = providers.geminiCli(), node = findNode();
-  if (!cli || !node) return { ok: false, error: !cli ? 'Install Gemini first' : 'Node isn’t installed' };
-  require('child_process').spawn('cmd.exe', ['/c', 'start', '"Gemini sign-in"', 'cmd', '/k', '""' + node + '" "' + cli.script + '""'],
-    { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
-  return { ok: true };
 });
 ipcMain.handle('ai:openrouter-check', async () => {
   const s = providers.settings(readConfig());
@@ -800,8 +794,11 @@ async function startAgentRun() {
   // Gmail and the web never share a run: an email (or a page) could tell Claude to send his mail to
   // some server, and a run that can read mail has no way to reach one. Inbox tasks go first, on their
   // own; the rest wait for the next run. agentRunner.gmail=true makes every task an inbox task.
-  const mailRun = all.some((t) => cfg.gmail === true || wantsInbox(t));
-  const queued = all.filter((t) => (cfg.gmail === true || wantsInbox(t)) === mailRun);
+  // Tasks he put on Gemini or ChatGPT (the pill) run on their own too, with that AI only (neither reads his inbox).
+  const kindOf = (t) => PINNED_CLOUDS.includes(t.cloud) ? t.cloud : cfg.gmail === true || wantsInbox(t) ? 'mail' : 'web';
+  const kind = ['mail', 'web', ...PINNED_CLOUDS].find((k) => all.some((t) => kindOf(t) === k));
+  const mailRun = kind === 'mail', pinned = PINNED_CLOUDS.includes(kind) ? kind : null;
+  const queued = all.filter((t) => kindOf(t) === kind);
   // same queue as the last run and nothing moved: that run failed — don't hammer it. Checked before
   // claiming: a claimed task we then skip would sit as "working" on the server with nobody on it
   const queuedKey = queued.map((t) => t.id).sort().join(',');
@@ -887,8 +884,10 @@ async function startAgentRun() {
   // the cloud AIs he connected, in his order (⚙ Settings → AI connections): the first that answers wins;
   // one that's out of usage or signed out hands the tasks to the next
   // (inbox runs: Claude only, the others can't read Gmail and could reach the web)
-  const order = cloudOrder().filter((id) => !mailRun || id === 'claude');
-  if (!order.length) { failAgentTasks(ids, 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
+  // (tasks he put on Gemini or ChatGPT: that one only, even if it's switched off in the fallback order)
+  const order = pinned ? (cloudReady(pinned) ? [pinned] : [])
+    : cloudOrder().filter((id) => !mailRun || id === 'claude');
+  if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: add its API key in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   let result = null, claudeResetAt = null, lastWhy = 'no usable answer';
   agentProc = 'running';
   try {
@@ -900,6 +899,7 @@ async function startAgentRun() {
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.some(saidYes)) })
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
           timeoutMs: AGENT_TIMEOUT_MS, node: findNode(), onProc: (p) => { agentProc = p; } })
+        : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS });
       try { fs.writeFileSync(path.join(app.getPath('userData'), 'agent-last-run.log'), id + '\n' + (r.log || '') + '\n' + (r.text || '')); } catch (e) {}
       let updates = null;
@@ -942,11 +942,15 @@ async function startAgentRun() {
   if (missing.length) failAgentTasks(missing, 'it skipped this task');
   scheduleAgentRun(); // anything queued while this run was going
 }
+// the cloud AIs a task can be pinned to on the pill (t.cloud; its lane stays 'claude' on the server)
+const PINNED_CLOUDS = ['gemini', 'openai'];
+function cloudReady(id) {
+  const c = readConfig(), s = providers.settings(c);
+  return id === 'claude' || (id === 'gemini' ? providers.geminiStatus(c).ready : id === 'openai' ? !!s.openaiKey : !!s.openrouterKey);
+}
 // the connected cloud AIs, in his order, that can run right now
 function cloudOrder() {
-  const c = readConfig(), s = providers.settings(c);
-  return s.order.filter((p) => p.on).map((p) => p.id).filter((id) =>
-    id === 'claude' || (id === 'gemini' ? providers.geminiStatus(c).ready : !!s.openrouterKey));
+  return providers.settings(readConfig()).order.filter((p) => p.on).map((p) => p.id).filter(cloudReady);
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
 function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
@@ -1451,6 +1455,51 @@ const LOCAL_TOOLS = [
   { type: 'function', function: { name: 'read_page', description: 'Read the text of a web page.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
   { type: 'function', function: { name: 'search_my_data', description: 'Search what his Tasks app already knows: all his tasks and their conversations (including what was found on earlier tasks), notes, preferences, locked profile, calendar and skills.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
 ];
+/* ask_helpers: the mini PC's model sends up to 4 sub-questions out to the cloud pool at once (see
+   agent/helpers.js). Offered only when he left it on (Settings → AI connections), something in the pool
+   is connected, and the task isn't private: a private task never leaves his machines, not even in pieces. */
+const ASK_HELPERS_TOOL = { type: 'function', function: { name: 'ask_helpers', description: 'Send research questions to helper AIs in the cloud; they all work at once and each answers with facts and links. Use it for web research that would take you many searches (comparing products, looking up several things). Each question must make sense on its own. Never put his personal details in a question.', parameters: { type: 'object', properties: { questions: { type: 'array', items: { type: 'string' }, description: '1 to 4 questions' } }, required: ['questions'] } } };
+const LOCAL_HELPERS_RULES = `
+
+## Helpers (ask_helpers)
+Helper AIs in the cloud can research for you, several questions at once, much faster than you can.
+Hand them the web research (finding, comparing, checking facts) and do the thinking and writing
+yourself. Each question must stand on its own: they see only the question, not the task. Never put
+his name, contact details, anything from the locked profile, or anything private in a question.`;
+function helpersFor(t) {
+  if ((readConfig().ai || {}).helpers === false || !cloudOrder().length) return false;
+  return !privateMatch(t);
+}
+// one helper answer from one cloud AI → {text} or {why}. Search and page reading only: no browser, files or mail
+function runHelperOn(id, prompt) {
+  const cfg = readConfig(), ms = 4 * 60 * 1000;
+  if (id === 'gemini') return providers.runGeminiApi(cfg, { prompt, timeoutMs: ms, note: '' });
+  if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
+  if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
+  if (Date.now() < usageBlockedUntil) return Promise.resolve({ why: 'out of usage' });
+  const exe = (cfg.agentRunner || {}).command || path.join(require('os').homedir(), '.local', 'bin', 'claude.exe');
+  const dir = path.join(app.getPath('userData'), 'helper-run'); // empty: nothing of his to read
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  return new Promise((resolve) => {
+    let out = '', err = '', p;
+    try {
+      p = require('child_process').spawn(exe, ['-p', '--output-format', 'json', '--max-turns', '12', '--tools', 'WebSearch,WebFetch', '--strict-mcp-config',
+        '--allowedTools', 'WebSearch,WebFetch', '--disallowedTools', 'Bash,PowerShell,Write,Edit,NotebookEdit,Agent,Read'], { cwd: dir, windowsHide: true });
+    } catch (e) { return resolve({ why: 'could not start Claude' }); }
+    const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, ms);
+    p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+    p.on('error', (e) => { clearTimeout(killer); resolve({ why: e.message }); });
+    p.stdin.on('error', () => {}); p.stdin.end(prompt);
+    p.on('close', () => {
+      clearTimeout(killer);
+      let j = null; try { j = JSON.parse(out); } catch (e) {}
+      if (j && !j.is_error && typeof j.result === 'string' && j.result.trim()) return resolve({ text: j.result });
+      const resetAt = parseUsageLimit(err + '\n' + out);
+      if (resetAt) holdForUsage([], resetAt); // the Agent lane waits too, instead of hitting the same wall
+      resolve({ why: resetAt ? 'out of usage' : 'no answer' });
+    });
+  });
+}
 /* When a mini PC run stops for something in its way, James gets why, what to do, and a picture of
    what its browser showed. The screenshot goes to his attachments bucket like the photos he adds. */
 async function miniPcScreenshot() {
@@ -1543,7 +1592,8 @@ async function runLocalTask(c, t) {
     browser = await startBrowserTools(lockFile).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
-  const tools = browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, browser.tools) : LOCAL_TOOLS;
+  const canAsk = helpersFor(t);
+  const tools = (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   const taskNotes = siteNotesFor(taskLinks(t));
   const earlier = howtosFor(t);
@@ -1552,7 +1602,7 @@ async function runLocalTask(c, t) {
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   let maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
-  const system = rules + (browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)') : LOCAL_NO_BROWSER) + calText +
+  const system = rules + (browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)') : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -1651,6 +1701,20 @@ async function runLocalTask(c, t) {
           show('\n🗂 Searching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
+        } else if (canAsk && name === 'ask_helpers') {
+          const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
+          const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.private, locked }) }));
+          const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
+          refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the mini PC (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
+          if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
+          else {
+            show('\n🤝 Sending ' + ok.length + ' question(s) to helpers…\n', true);
+            const res = await helpers.askPool(ok, { order: cloudOrder(), run: runHelperOn,
+              onStart: (q, id) => show('  → ' + providers.NAMES[id] + ': ' + q.slice(0, 80) + '\n', true) });
+            res.forEach((r) => show(r.error ? '  ✗ ' + r.question.slice(0, 60) + ': ' + r.error.slice(0, 100) + '\n' : '  ✓ ' + providers.NAMES[r.via] + ' answered\n', true));
+            agentLog('local: helpers answered ' + res.filter((r) => !r.error).length + '/' + res.length + ' (' + res.map((r) => r.via || 'none').join(', ') + ')');
+            result = helpers.show(res, providers.NAMES) + (ok.length < qs.length ? '\n(' + (qs.length - ok.length) + ' question(s) not sent: see above.)' : '');
+          }
         } else if (browser && name === 'fill_form') {
           maxSteps = Math.max(maxSteps, 120); // a form: long questionnaires get room to finish
           // per page: its address plus its questions, as many multi-page forms keep one address throughout
