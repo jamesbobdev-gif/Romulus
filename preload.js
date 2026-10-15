@@ -32,7 +32,6 @@ contextBridge.exposeInMainWorld('desktop', {
   aiStatus: () => ipcRenderer.invoke('ai:status'),
   aiSave: (change) => ipcRenderer.invoke('ai:save', change),
   aiGeminiInstall: () => ipcRenderer.invoke('ai:gemini-install'),
-  aiGeminiSignin: () => ipcRenderer.invoke('ai:gemini-signin'),
   aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),

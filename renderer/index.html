@@ -46,17 +46,22 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .stuck-note{margin-top:8px;color:var(--muted);font-size:12.5px}
 .stuck-shot{margin-top:8px}
 .stuck-shot img{display:block;max-width:100%;max-height:260px;border:1px solid var(--hairline);border-radius:6px;cursor:zoom-in}
-.howto{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-top:1px solid var(--hairline)}
+.howto{border-top:1px solid var(--hairline)}
 .howto:first-child{border-top:0}
-.howto-task{font-size:13px;color:var(--ink)}
-.howto-meta{font-family:var(--mono);font-size:10px;color:var(--faint);grid-column:1}
-.howto-text{font-size:12.5px;color:var(--muted);line-height:1.5;grid-column:1}
-.howto-del{grid-column:2;grid-row:1/span 3;align-self:start}
-.lane-slider{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;margin:10px 0 12px;padding:3px;border-radius:999px;background:var(--chip);border:1px solid var(--hairline)}
-.lane-slider::before{content:'';position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.4,1),opacity .15s}
-.lane-slider.local::before{transform:translateX(100%)}
+.howto-head{display:flex;align-items:center;gap:10px;padding:5px 0;cursor:pointer}
+.howto-task{flex:1;min-width:0;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.howto-date{font-family:var(--mono);font-size:10px;color:var(--faint);flex-shrink:0}
+.howto-del{flex-shrink:0;padding:0 4px;font-size:14px;line-height:1}
+.howto-body{padding:0 0 8px}
+.howto-meta{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.howto-text{font-size:12.5px;color:var(--muted);line-height:1.5}
+.lane-slider{position:relative;display:inline-grid;grid-template-columns:repeat(4,1fr);margin:10px 0 12px;padding:3px;border-radius:999px;background:var(--chip);border:1px solid var(--hairline)}
+.lane-slider::before{content:'';position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / 4);border-radius:999px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.4,1),opacity .15s}
+.lane-slider.gemini::before{transform:translateX(100%)}
+.lane-slider.openai::before{transform:translateX(200%)}
+.lane-slider.local::before{transform:translateX(300%)}
 .lane-slider.none::before{opacity:0}
-.lane-slider .lane-word{position:relative;z-index:1;border:0;background:none;padding:5px 14px;min-width:84px;border-radius:999px;color:var(--muted);cursor:pointer;font-family:var(--sans,inherit);font-size:12px;font-weight:500;transition:color .15s}
+.lane-slider .lane-word{position:relative;z-index:1;border:0;background:none;padding:5px 10px;min-width:68px;border-radius:999px;color:var(--muted);cursor:pointer;font-family:var(--sans,inherit);font-size:12px;font-weight:500;transition:color .15s}
 .lane-slider .lane-word.on{color:var(--ink);cursor:default}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
@@ -397,6 +402,11 @@ body.ideas-mode main{max-width:1600px} /* the board gets the whole window, so bi
 .settings-btn:hover,.settings-btn.active{color:var(--ink)}
 .settings-panel{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:18px;margin-bottom:20px;box-shadow:0 1px 3px rgba(20,20,20,.04)}
 .settings-label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);display:block;margin-bottom:12px}
+.settings-collapse>summary{cursor:pointer;list-style:none;user-select:none}
+.settings-collapse>summary::-webkit-details-marker{display:none}
+.settings-collapse>summary::before{content:'▸';display:inline-block;width:12px;transition:transform .15s}
+.settings-collapse[open]>summary::before{transform:rotate(90deg)}
+.settings-collapse:not([open])>summary{margin-bottom:0}
 .settings-hint{font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.6}
 .settings-hint a{color:var(--accent);text-decoration:none;cursor:pointer}
 .settings-hint a:hover{text-decoration:underline}
@@ -424,7 +434,8 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .cal-acct{border-top:1px solid var(--hairline);padding:12px 0 4px;margin-top:12px}
 .cal-acct-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .cal-acct-head b{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cal-acct-head .mono{font-size:10.5px;color:var(--muted);flex:1}
+.cal-acct-head>span{flex:1}
+.cal-acct-head .mono{font-size:10.5px;color:var(--muted)}
 .cal-acct-err{font-family:var(--mono);font-size:11px;color:var(--late);margin:2px 0 6px}
 .cal-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 0}
 .cal-name{flex:1;min-width:140px;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -498,20 +509,19 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
       <button id="settingsBack" class="settings-back" aria-label="Back to tasks">← Back</button>
       <h2>Settings</h2>
     </div>
-    <div class="settings-panel">
-      <span class="settings-label">Device sync</span>
+    <details class="settings-panel settings-collapse" id="syncSection">
+      <summary class="settings-label">Device sync</summary>
       <p class="settings-hint">
-        Keep tasks in sync across this computer and your phone via a free <a id="supabaseLink">Supabase</a> project.<br>
-        Enter the same three values on every device. The sync key is your private channel — treat it like a password.
+        Sync with your phone via a free <a id="supabaseLink">Supabase</a> project. Use the same values on every device; keep the sync key private.
       </p>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKey" class="settings-inp" placeholder="Anon public key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
-      <span class="settings-label" style="margin-top:14px">Work list (optional — a second sync channel, e.g. your office app's)</span>
+      <span class="settings-label" style="margin-top:14px">Work list (optional)</span>
       <input id="syncUrlW" class="settings-inp" placeholder="Work project URL" autocomplete="off" spellcheck="false">
       <input id="syncAnonKeyW" class="settings-inp" placeholder="Work anon public key" type="password" autocomplete="off">
       <input id="syncKeyW" class="settings-inp" placeholder="Work sync key" autocomplete="off" spellcheck="false">
-      <span class="settings-label" id="syncAgentLabel" style="margin-top:14px">Agent list (tasks Claude and your mini PC do for you)</span>
+      <span class="settings-label" id="syncAgentLabel" style="margin-top:14px">Agent list</span>
       <input id="syncUrlA" class="settings-inp" placeholder="Agent project URL (blank = same as personal)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKeyA" class="settings-inp" placeholder="Agent anon public key (blank = same as personal)" type="password" autocomplete="off">
       <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key" autocomplete="off" spellcheck="false">
@@ -525,10 +535,10 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
         <button id="syncOffBtn" class="ghost mono danger" hidden>Turn off</button>
         <span id="syncStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
-    </div>
+    </details>
     <div class="settings-panel" id="prefsSection" hidden>
-      <span class="settings-label">What Claude knows about you — everyday</span>
-      <p class="settings-hint">Claude reads this before every Agent task. When it has to ask you something, it adds your answer here so it doesn't ask again. Edit freely — one preference per line. Claude sees everything here, so keep private details (resume, address, phone, IDs) out of it — those go in the mini PC's own profile, which never leaves it.</p>
+      <span class="settings-label">What Romulus knows about you</span>
+      <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
       <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “James”&#10;- Morning appointments work best"></textarea>
       <div class="settings-row">
         <button id="prefsSaveBtn" class="btn-accent">Save</button>
@@ -537,7 +547,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="lockedSection" hidden>
       <span class="settings-label">Locked — only your mini PC sees this</span>
-      <p class="settings-hint">For things Claude should never see: resume, address, phone, school ID, work history — what your own model needs to fill in forms. Claude on this computer, Claude.ai and the weekly memory tidy never read it. Never put passwords, card or bank numbers, or your SSN here.</p>
+      <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. Claude never reads it. No passwords, card numbers or SSN.</p>
       <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
       <div class="settings-row">
         <button id="lockedSaveBtn" class="btn-accent">Save</button>
@@ -547,8 +557,8 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="routingSection" hidden>
       <span class="settings-label">Who does Agent tasks</span>
-      <p class="settings-hint">Your rules decide, no AI involved. They're checked top to bottom against the task's words, and the first match wins. Separate words with commas. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title always wins. Each task shows which rule sent it, and you can switch it any time.</p>
-      <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private: always the mini PC.</b> A new task that mentions any of these words in its title or notes, or something that looks like a card or social security number, goes to your mini PC instead of Claude. Checked before your rules; only a <span class="mono">#claude</span> tag overrides it.</p>
+      <p class="settings-hint">First matching rule wins. Comma-separate words. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title overrides.</p>
+      <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> — tasks mentioning these (or card/SSN numbers) always go to the mini PC.</p>
       <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
       <div id="routingRules"></div>
       <div class="settings-row" style="margin-top:8px">
@@ -562,7 +572,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
           <option value="local">Mini PC</option>
         </select>
       </div>
-      <p class="settings-hint" style="margin-top:14px">Sites your mini PC's browser may open (one per line), besides the links in a task. Log in to them once in the browser on the mini PC's screen.</p>
+      <p class="settings-hint" style="margin-top:14px">Sites the mini PC may open, one per line.</p>
       <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
       <div class="settings-row" style="margin-top:10px">
         <button id="routingSaveBtn" class="btn-accent">Save</button>
@@ -571,12 +581,12 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="howtosSection" hidden>
       <span class="settings-label">What worked before</span>
-      <p class="settings-hint">After an Agent task that didn't get stuck, Claude or your mini PC can note in a couple of lines what worked (which site, which menus). The next similar task starts from that note instead of from scratch. A newer note for the same kind of task replaces the old one. These stay on this computer. Delete any that look wrong.</p>
+      <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
       <div id="howtosList"></div>
     </div>
     <div class="settings-panel" id="feedsSection" hidden>
       <span class="settings-label">Course calendars</span>
-      <p class="settings-hint">Paste your private calendar links (one per line) and every due date shows up on the School list by itself, checked every 3 hours. No login needed. <b>Blackboard:</b> Calendar → ⚙ settings → ⋯ → Share Calendar → Copy. <b>D2L:</b> Calendar → Settings → tick “Enable Calendar Feeds”, then Subscribe → All Calendars. The links work like a password, so they stay on this computer.</p>
+      <p class="settings-hint">Paste calendar links, one per line; due dates land on School. <b>Blackboard:</b> Calendar → ⚙ → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
       <textarea id="feedsText" class="settings-inp" rows="3" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="Blackboard calendar link&#10;D2L calendar link" autocomplete="off" spellcheck="false"></textarea>
       <div class="settings-row" style="margin-top:10px">
         <button id="feedsSaveBtn" class="btn-accent">Save &amp; import</button>
@@ -585,13 +595,13 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="aiSection" hidden>
       <span class="settings-label">AI connections</span>
-      <p class="settings-hint">Which AIs do your cloud Agent tasks, top to bottom: the first one that's on and ready gets the task, and if it's out of usage or signed out, the next one takes over. Private tasks still go to your mini PC. Keys stay on this computer.</p>
+      <p class="settings-hint">Tried top to bottom; if one is out, the next takes over.</p>
       <div id="aiList"></div>
       <span id="aiStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
     </div>
     <div class="settings-panel" id="agentBrowserSection" hidden>
       <span class="settings-label">Claude's browser</span>
-      <p class="settings-hint">When an Agent task needs a website, Claude uses its own Chrome window — separate from your everyday Chrome. Open it to watch, or to log in to sites you want Claude to use. It fills things in but asks you before anything final (buy, submit, send, book).</p>
+      <p class="settings-hint">Claude's own Chrome window. Log in to sites here. It asks before buying or submitting.</p>
       <div class="settings-row">
         <button id="agentBrowserBtn" class="ghost mono">Open Claude's browser</button>
         <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
@@ -599,7 +609,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="rsiSection" hidden>
       <span class="settings-label">RSI — Romulus Self Improvement</span>
-      <p class="settings-hint">Ask for a change to this app and Claude edits its code. Every change is saved as its own commit, so <b>Undo</b> takes it back (the tray menu has Undo too, in case a change breaks this window). Your tasks are never touched. Experimental.</p>
+      <p class="settings-hint">Ask for a change and Romulus edits itself. <b>Undo</b> reverts it. Experimental.</p>
       <label class="switch" style="margin-bottom:14px"><input type="checkbox" id="rsiOn"><span class="track" aria-hidden="true"></span><span>Let RSI change this app</span></label>
       <div id="rsiBody" hidden>
       <div id="rsiLog" class="conv" hidden></div>
@@ -616,7 +626,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="wakeSection" hidden>
       <span class="settings-label">Hey Romulus</span>
-      <p class="settings-hint">Say <b>“Hey Romulus”</b>, wait for the chime, then say a task (“add essay to school Friday”), a tab (“open ideas”), or ask Claude something (“find me a cheap flight to Denver”). It listens only while the screen is on. The wake word is heard on this phone, so nothing is sent anywhere until you speak after the chime. Turning it on downloads a 40 MB speech model once. It uses a little battery.</p>
+      <p class="settings-hint">Say <b>“Hey Romulus”</b>, wait for the chime, then speak. Screen-on only; 40 MB one-time download.</p>
       <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="wakeOn"><span class="track" aria-hidden="true"></span><span>Listen for “Hey Romulus”</span></label>
       <div class="settings-row">
         <button id="wakeOverlayBtn" class="ghost mono" hidden>Let it open the app by itself</button>
@@ -625,7 +635,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel">
       <span class="settings-label">Theme</span>
-      <p class="settings-hint">Paste CSS to restyle the app — the variables below control most of the look. Apply to see it instantly; Reset returns to the default style.</p>
+      <p class="settings-hint">Paste CSS to restyle the app.</p>
       <textarea id="themeCss" class="settings-inp theme-css" rows="9" spellcheck="false" placeholder=":root{
   --bg:#FBFBFA;      /* page background */
   --surface:#FFFFFF; /* cards */
@@ -645,15 +655,15 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
     </div>
     <div class="settings-panel" id="gcalSection">
       <span class="settings-label">Calendars</span>
-      <p class="settings-hint">Sign in to connect your calendars. Then choose, calendar by calendar, whether your tasks go onto it and whether its events show up as to-dos. Nothing goes on or comes off a calendar until you switch it on.</p>
+      <p class="settings-hint">Connect a calendar, then choose what each one does.</p>
       <div class="settings-row">
-        <button id="calGoogleBtn" class="btn-accent">Sign in with Google</button>
-        <button id="calMsBtn" class="btn-accent">Sign in with Microsoft</button>
+        <button id="calGoogleBtn" class="ghost mono">+ Google</button>
+        <button id="calMsBtn" class="ghost mono">+ Microsoft</button>
         <button id="calLinkBtn" class="ghost mono">+ Calendar link</button>
       </div>
       <span id="calErr" class="mono" style="display:block;color:var(--late);font-size:11px;margin-top:6px"></span>
       <div id="calLinkBox" hidden style="margin-top:10px">
-        <p class="settings-hint">Paste a calendar's subscribe link (.ics or webcal://), e.g. from iCloud (Share Calendar → Public), Outlook (Publish calendar) or any app with "subscribe". Read-only: events can become to-dos, but tasks can't be put on it.</p>
+        <p class="settings-hint">Paste a subscribe link (.ics or webcal://). Read-only.</p>
         <input id="calLinkUrl" class="settings-inp" placeholder="https://… or webcal://…" autocomplete="off" spellcheck="false">
         <input id="calLinkName" class="settings-inp" placeholder="Name (optional)" autocomplete="off">
         <div class="settings-row"><button id="calLinkAdd" class="btn-accent">Add</button></div>
@@ -666,14 +676,13 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
         <div class="settings-row"><button id="gcalConnectBtn" class="btn-accent">Connect</button></div>
       </div>
       <div id="calAccounts"></div>
-      <div class="settings-row" id="calSyncRow" hidden style="margin-top:10px">
+      <div id="mailEventsBox" class="cal-acct" hidden>
+        <label class="switch" style="margin-bottom:6px"><input type="checkbox" id="mailOn"><span class="track" aria-hidden="true"></span><span>Turn dates in my Gmail into tasks</span></label>
+        <p class="settings-hint" style="margin:0">Only reads new mail. <span id="mailStatus"></span></p>
+      </div>
+      <div class="settings-row" id="calSyncRow" hidden style="margin-top:12px">
         <button id="gcalSyncBtn" class="ghost mono">Sync now</button>
         <span id="calStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-      <div id="mailEventsBox" hidden style="margin-top:14px">
-        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="mailOn"><span class="track" aria-hidden="true"></span><span>Add dates from my Gmail</span></label>
-        <p class="settings-hint">Every 15 minutes, new mail is checked for appointments, interviews, deadlines and events, which land on your Human list and calendar. A quiet inbox costs nothing; only new mail that mentions a date is sent to Claude, in one short request. Read-only: nothing in Gmail is changed.</p>
-        <span id="mailStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </div>
   </section>
@@ -1572,7 +1581,10 @@ function repeatText(r){
 // model is ignored (the app only applies a result to a task still "working" for it; the connector's
 // finish_task checks who holds the claim).
 // who has the task now: its lane, or for older tasks whoever answered last; null = nobody yet
+// 'gemini' / 'openai' = the cloud lane ('claude' on the server) with that AI only (t.cloud)
+const PINNED_CLOUDS=['gemini','openai'];
 function laneNow(t){
+  if(t.lane==='claude'&&PINNED_CLOUDS.indexOf(t.cloud)!==-1)return t.cloud;
   if(t.lane==='claude'||t.lane==='local')return t.lane;
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
   return last?(last.lane==='local'?'local':'claude'):null;
@@ -1581,12 +1593,13 @@ function setLane(t,to){
   const from=laneNow(t);
   if(from===to)return;
   // switching (not a first pick) asks first
+  const name={claude:'Claude',gemini:'Gemini',openai:'ChatGPT',local:'your mini PC'}[to];
   if(from&&!window.confirm(to==='local'
     ?'Send this task to your mini PC? It takes over with the whole conversation.'
-    :'Send this task to Claude? Claude will see the whole conversation, including anything your mini PC wrote.'))return;
-  t.lane=to; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt;
+    :'Send this task to '+name+'? '+name+' will see the whole conversation, including anything the others wrote.'))return;
+  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1)t.cloud=to; else delete t.cloud; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt;
   t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
-  agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+(to==='local'?'your mini PC':'Claude'));
+  agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
   buzz('tap'); touch();
 }
 function moveTask(t,toWs){
@@ -1772,7 +1785,7 @@ function buildPanel(t){
       hist.forEach(function(h){
         const who=h.who==='you'?'you':h.who==='claude'?'claude':'sys';
         const b=el('div','conv-msg '+who);
-        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':h.via==='gemini'?'Gemini':h.via==='openrouter'?'OpenRouter':'Claude')+' \u00B7 '+fmtWhen(h.at)));
+        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':{gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[h.via]||'Claude')+' \u00B7 '+fmtWhen(h.at)));
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
@@ -1808,14 +1821,14 @@ function buildPanel(t){
       setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
     }
   }
-  // who does it: a pill, Claude | Mini PC, with a highlight that slides across. Switching asks first; a first pick (no rule matched) doesn't.
+  // who does it: a pill, Claude | Gemini | ChatGPT | Mini PC, with a highlight that slides across. Switching asks first; a first pick (no rule matched) doesn't.
   if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
     const now=laneNow(t);
     const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
-    [['claude','Claude'],['local','Mini PC']].forEach(function(o){
+    [['claude','Claude'],['gemini','Gemini'],['openai','ChatGPT'],['local','Mini PC']].forEach(function(o){
       const w=el('button','lane-word'+(now===o[0]?' on':''),o[1]);
       w.setAttribute('role','radio'); w.setAttribute('aria-checked',String(now===o[0]));
-      w.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':'Claude has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
+      w.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':o[1]+' has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
       w.addEventListener('click',function(e){ e.stopPropagation(); if(now!==o[0])setLane(t,o[0]); });
       tg.appendChild(w);
     });
@@ -1825,7 +1838,7 @@ function buildPanel(t){
   const staleFail=agentBusy&&/^Claude couldn’t finish/.test(t.note||'');
   if(taskWs(t)==='agent'&&t.note&&!staleFail){
     const nb=el('div','agent-note');
-    const who=t.lane==='local'?'Mini PC':'Claude';
+    const who=t.lane==='local'?'Mini PC':{gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[t.cloud]||'Claude';
     const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
     if(agentBusy||stuck||t.status!=='needs-you')nb.appendChild(el('b',null,agentBusy?who+'’s last message':stuck?who+' stopped':'From '+who));
     if(stuck){
@@ -3148,7 +3161,7 @@ if(window.desktop&&window.desktop.openAgentBrowser){
     catch(e){ $('agentBrowserStatus').textContent='couldn’t open it'; }
   });
 }
-/* AI connections (desktop only): Claude / Gemini / OpenRouter for the cloud Agent lane, in his order */
+/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter for the cloud Agent lane, in his order */
 if(window.desktop&&window.desktop.aiStatus){
   $('aiSection').hidden=false;
   let ai=null;
@@ -3164,8 +3177,9 @@ if(window.desktop&&window.desktop.aiStatus){
   const statusText=function(id){
     if(id==='claude')return ai.claudeBlockedUntil?'out of usage until '+fmtWhen(ai.claudeBlockedUntil):'Claude Code on this computer';
     if(id==='gemini'){ const g=ai.gemini;
-      if(!g.installed)return 'not installed';
-      return g.signedIn?'signed in with Google':g.hasKey?'API key '+g.key:'installed, not signed in'; }
+      if(!g.hasKey)return 'needs an API key';
+      return 'API key '+g.key+(g.installed?' · CLI (browser)':' · API (search only)'); }
+    if(id==='openai'){ const g=ai.openai; return g.hasKey?'key '+g.key+' · '+g.model:'no key yet'; }
     const o=ai.openrouter; return o.hasKey?'key '+o.key+' · '+o.model:'no key yet';
   };
   function aiDraw(){
@@ -3184,24 +3198,30 @@ if(window.desktop&&window.desktop.aiStatus){
         up.addEventListener('click',function(){ const o=ai.order.slice(); o.splice(i-1,0,o.splice(i,1)[0]); save({order:o}); }); head.appendChild(up); }
       box.appendChild(head);
       if(p.id==='gemini'){
-        const g=ai.gemini, r=el('div','settings-row'); r.style.marginTop='8px';
+        const g=ai.gemini;
+        box.appendChild(keyRow(g.hasKey?'replace Gemini API key':'Gemini API key (aistudio.google.com/apikey)','geminiKey'));
+        // the CLI is optional: it gives Gemini the agent browser and your photos; without it, Google Search only
         if(!g.installed){
-          const b=el('button','ghost mono','Install Gemini CLI');
+          const r=el('div','settings-row'); r.style.marginTop='8px';
+          const b=el('button','ghost mono','Install Gemini CLI (optional: adds the browser)');
           b.addEventListener('click',async function(){ b.disabled=true; b.textContent='installing… (a minute or two)';
-            try{ const res=await window.desktop.aiGeminiInstall(); ai=res.status; aiDraw(); say(res.ok?'installed: now sign in':'install failed: '+res.error); }
+            try{ const res=await window.desktop.aiGeminiInstall(); ai=res.status; aiDraw(); say(res.ok?'installed':'install failed: '+res.error); }
             catch(e){ say('install failed'); b.disabled=false; } });
-          r.appendChild(b);
-        } else {
-          const b=el('button','ghost mono',g.signedIn?'Switch Google account':'Sign in with Google');
-          b.title='Opens Gemini in a window: pick "Sign in with Google", finish in your browser, then close the window';
-          b.addEventListener('click',async function(){ const res=await window.desktop.aiGeminiSignin();
-            say(res.ok?'finish signing in in the Gemini window, then come back here':res.error);
-            setTimeout(async function(){ ai=await window.desktop.aiStatus(); aiDraw(); },20000); });
-          const chk=el('button','ghost mono','Check'); chk.addEventListener('click',async function(){ ai=await window.desktop.aiStatus(); aiDraw(); say(statusText('gemini')); });
-          r.appendChild(b); r.appendChild(chk);
+          r.appendChild(b); box.appendChild(r);
         }
-        box.appendChild(r);
-        if(g.installed&&!g.signedIn)box.appendChild(keyRow(g.hasKey?'replace Gemini API key':'or paste a Gemini API key (aistudio.google.com)','geminiKey'));
+        // Google's terms: free-tier prompts may be used to improve its models and read by people; paid ones aren't
+        const gw=el('p','settings-hint','⚠️ Use a key with billing turned on. On a free key, Google may use your tasks to improve its models and people may read them. On a paid key it doesn’t.');
+        gw.style.margin='8px 0 0'; box.appendChild(gw);
+      }
+      if(p.id==='openai'){
+        const g=ai.openai;
+        box.appendChild(keyRow(g.hasKey?'replace OpenAI API key':'OpenAI API key (platform.openai.com/api-keys)','openaiKey'));
+        const r=el('div','settings-row'); r.style.marginTop='4px';
+        const m=el('input','settings-inp'); m.value=g.model; m.placeholder='model, e.g. gpt-5-mini'; m.style.cssText='flex:1;margin:0';
+        const mb=el('button','ghost mono','Save model'); mb.addEventListener('click',function(){ save({openaiModel:m.value.trim()},'model saved'); });
+        r.appendChild(m); r.appendChild(mb); box.appendChild(r);
+        box.appendChild(el('p','settings-hint','ChatGPT answers with web search but no browser, files or Gmail. The API key is billed separately from a ChatGPT Plus subscription. OpenAI doesn’t train on API data.'));
+        box.lastChild.style.margin='8px 0 0';
       }
       if(p.id==='openrouter'){
         const o=ai.openrouter;
@@ -3219,11 +3239,24 @@ if(window.desktop&&window.desktop.aiStatus){
         ws.appendChild(el('span','','Add web search results (costs a little extra)'));
         wc.addEventListener('change',function(){ save({openrouterWeb:wc.checked}); });
         box.appendChild(ws);
-        box.appendChild(el('p','settings-hint','OpenRouter answers without a browser, files or Gmail, so it’s best as a backup for questions and research.'));
+        const zs=el('label','switch'); zs.style.marginTop='8px'; const zc=document.createElement('input'); zc.type='checkbox'; zc.checked=o.zdr;
+        zs.appendChild(zc); const zt=el('span','track'); zt.setAttribute('aria-hidden','true'); zs.appendChild(zt);
+        zs.appendChild(el('span','','Zero data retention only (fewer models, nothing kept)'));
+        zc.addEventListener('change',function(){ save({openrouterZdr:zc.checked}); });
+        box.appendChild(zs);
+        box.appendChild(el('p','settings-hint','OpenRouter answers without a browser, files or Gmail, so it’s best as a backup for questions and research. It only uses providers that don’t collect or train on what’s sent.'));
         box.lastChild.style.margin='8px 0 0';
       }
       list.appendChild(box);
     });
+    // the mini PC may hand research to these AIs as helpers (never private tasks or his details)
+    const hs=el('label','switch'); hs.style.marginTop='6px'; const hc=document.createElement('input'); hc.type='checkbox'; hc.checked=ai.helpers;
+    hs.appendChild(hc); const ht=el('span','track'); ht.setAttribute('aria-hidden','true'); hs.appendChild(ht);
+    hs.appendChild(el('span','','Mini PC can send research to these as helpers'));
+    hc.addEventListener('change',function(){ save({helpers:hc.checked}); });
+    list.appendChild(hs);
+    list.appendChild(el('p','settings-hint','Up to 4 questions at once, spread across the AIs above. Private tasks and your details never go out.'));
+    list.lastChild.style.margin='6px 0 0';
   }
   window.desktop.aiStatus().then(function(s){ ai=s; aiDraw(); }).catch(function(){ $('aiSection').hidden=true; });
 }
@@ -3358,13 +3391,19 @@ function drawHowtos(){
     box.innerHTML='';
     if(!list.length){ box.appendChild(el('p','settings-hint','Nothing yet. Notes appear here as Agent tasks finish.')); return; }
     list.forEach(function(h){
-      const row=el('div','howto');
-      row.appendChild(el('div','howto-task',h.task));
-      row.appendChild(el('div','howto-meta',h.date+' \u00B7 '+(h.lane==='local'?'mini PC':'Claude')+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
-      row.appendChild(el('div','howto-text',h.text));
-      const del=el('button','ghost mono danger howto-del','Delete');
-      del.addEventListener('click',function(){ window.desktop.howtosDelete(h.id).then(drawHowtos); });
-      row.appendChild(del);
+      // one line each; tap to see the note
+      const row=el('div','howto'), head=el('div','howto-head'), body=el('div','howto-body');
+      const task=el('span','howto-task',h.task); task.title=h.task;
+      head.appendChild(task);
+      head.appendChild(el('span','howto-date',String(h.date||'').slice(5)));
+      const del=el('button','ghost danger howto-del','\u00D7'); del.title='Delete';
+      del.addEventListener('click',function(e){ e.stopPropagation(); window.desktop.howtosDelete(h.id).then(drawHowtos); });
+      head.appendChild(del);
+      body.appendChild(el('div','howto-text',h.text));
+      body.appendChild(el('div','howto-meta',(h.lane==='local'?'mini PC':'Claude')+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
+      body.hidden=true;
+      head.addEventListener('click',function(){ body.hidden=!body.hidden; });
+      row.appendChild(head); row.appendChild(body);
       box.appendChild(row);
     });
   }).catch(function(){});
@@ -3488,6 +3527,7 @@ $('connectBtn').addEventListener('click',function(){
   const field=ws==='agent'?'syncKeyA':ws==='school'?'syncKeyS':'syncUrlW';
   const label=ws==='agent'?'syncAgentLabel':ws==='school'?'syncSchoolLabel':null;
   setSettingsOpen(true);
+  $('syncSection').open=true;
   requestAnimationFrame(function(){
     const f=$(field); (label?$(label):f).scrollIntoView({block:'center'}); f.focus();
     [f,label&&$(label)].filter(Boolean).forEach(function(n){ n.classList.add('flash'); setTimeout(function(){ n.classList.remove('flash'); },1800); });
@@ -3844,7 +3884,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Mini PC asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
-      if(u.via==='gemini'||u.via==='openrouter')extra.via=u.via;
+      if(u.via==='gemini'||u.via==='openai'||u.via==='openrouter')extra.via=u.via;
       if(t.shot)extra.images=[t.shot];
       agentSay(t,'claude',u.note,Object.keys(extra).length?extra:null);
       if(u.pref)prefLines.push(u.pref);
@@ -3943,17 +3983,20 @@ if(calApi){
     const box=$('calAccounts'); box.innerHTML='';
     calData.accounts.forEach(function(a){
       const el=document.createElement('div'); el.className='cal-acct';
-      let h='<div class="cal-acct-head"><b>'+escH(a.label)+'</b><span class="mono">'+PROV[a.provider]+'</span><button class="ghost mono danger" data-remove>Remove</button></div>';
+      // "Google account" already says Google: only tag the provider when the name doesn't
+      const tag=String(a.label||'').toLowerCase().indexOf(PROV[a.provider].toLowerCase())<0?'<span class="mono">'+PROV[a.provider]+'</span>':'<span></span>';
+      let h='<div class="cal-acct-head"><b>'+escH(a.label)+'</b>'+tag+'<button class="ghost mono danger" data-remove>Remove</button></div>';
       if(a.broken||a.error)h+='<div class="cal-acct-err">'+(a.broken?'Signed out — sign in with '+PROV[a.provider]+' again.':escH(a.error))+'</div>';
       a.calendars.forEach(function(c){
-        h+='<div class="cal-row" data-ref="'+escH(c.ref)+'"><span class="cal-name" title="'+escH(c.name)+'">'+escH(c.name)+(c.primary&&a.provider!=='ics'?' <span class="mono" style="font-size:10px;color:var(--faint)">main</span>':'')+'</span>'+
-          (c.canWrite?'<label class="switch"><input type="checkbox" data-push'+(c.push?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Tasks go here</span></label>':'')+
-          '<label class="switch"><input type="checkbox" data-pull'+(c.pull?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Add to to-dos</span></label></div>';
+        h+='<div class="cal-row" data-ref="'+escH(c.ref)+'"><span class="cal-name" title="'+escH(c.name)+'">'+escH(c.name)+'</span>'+
+          (c.canWrite?'<label class="switch"><input type="checkbox" data-push'+(c.push?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Send my tasks here</span></label>':'')+
+          '<label class="switch"><input type="checkbox" data-pull'+(c.pull?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Add its events as to-dos</span></label></div>';
         if(c.pull)h+='<div class="cal-opts" data-ref="'+escH(c.ref)+'"><label class="chk"><input type="checkbox" data-rep'+(c.pull.skipRepeating!==false?' checked':'')+'> Skip repeating events (classes, weekly meetings)</label>'+
           '<input class="settings-inp" data-words placeholder="Also skip events with these words, e.g. lecture, lab, office hours" value="'+escH(c.pull.skipWords||'')+'"></div>';
-        if(c.needsReconnect)h+='<div class="cal-acct-err">Sign in with Google again to see your other calendars.</div>';
+        if(c.needsReconnect)h+='<p class="settings-hint" style="margin:2px 0 6px">Only your main calendar shows. <a href="#" data-reconnect>Sign in again</a> to see the rest.</p>';
       });
       el.innerHTML=h;
+      el.querySelectorAll('[data-reconnect]').forEach(function(x){ x.addEventListener('click',function(e){ e.preventDefault(); $('calGoogleBtn').click(); }); });
       el.querySelector('[data-remove]').addEventListener('click',async function(){
         if(this.dataset.armed!=='1'){ this.dataset.armed='1'; this.textContent='Remove?'; return; }
         await calApi.calRemove(a.id); gcalRefreshFn();
@@ -4017,14 +4060,14 @@ if(calApi){
     if(calData&&!calData.builtIn.google){ $('gcalSetup').hidden=false; const c=await window.desktop.gcalGetCfg(); if(c.clientId)$('gcalClientId').value=c.clientId; if(c.clientSecret)$('gcalClientSecret').value=c.clientSecret; return; }
     const b=this; b.textContent='Opening browser…'; b.disabled=true;
     const r=await calApi.calConnect('google');
-    b.textContent='Sign in with Google'; b.disabled=false;
+    b.textContent='+ Google'; b.disabled=false;
     if(!r.ok)calErr(r.error||'Sign-in failed.'); gcalRefreshFn(true);
   });
   $('calMsBtn').addEventListener('click',async function(){
     calErr('');
     const b=this; b.textContent='Opening browser…'; b.disabled=true;
     const r=await calApi.calConnect('microsoft');
-    b.textContent='Sign in with Microsoft'; b.disabled=false;
+    b.textContent='+ Microsoft'; b.disabled=false;
     if(!r.ok)calErr(r.needsClient?'Microsoft sign-in isn’t set up in this copy of the app yet (oauth-clients.json).':(r.error||'Sign-in failed.')); gcalRefreshFn(true);
   });
   $('calLinkBtn').addEventListener('click',function(){ $('calLinkBox').hidden=!$('calLinkBox').hidden; if(!$('calLinkBox').hidden)$('calLinkUrl').focus(); });
@@ -4068,10 +4111,10 @@ if(calApi){
     const mailSay=function(st,r){
       if(!st.connected)return '';
       if(!st.allowed)return 'Sign in with Google again, and tick Gmail on Google’s screen, to allow this.';
-      if(!st.enabled)return 'off';
+      if(!st.enabled)return '';
       if(r&&r.error)return 'last check failed: '+r.error;
-      if(r&&r.items&&r.items.length)return r.items.length+' date'+(r.items.length>1?'s':'')+' added from email just now';
-      return st.last?'last checked '+new Date(st.last).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'on';
+      if(r&&r.items&&r.items.length)return r.items.length+' date'+(r.items.length>1?'s':'')+' added from email just now.';
+      return st.last?'Last checked '+new Date(st.last).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'.':'';
     };
     const addMailItems=function(items){
       const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
@@ -4096,7 +4139,7 @@ if(calApi){
     window.mailRefresh();
     $('mailOn').addEventListener('change',async function(){
       await window.desktop.mailSetEnabled($('mailOn').checked);
-      if($('mailOn').checked)mailTick(); else $('mailStatus').textContent='off';
+      if($('mailOn').checked)mailTick(); else $('mailStatus').textContent='';
     });
     // a minute after start (sync has loaded the lists by then), then every 15 minutes
     setTimeout(mailTick,60*1000); setInterval(mailTick,15*60*1000);
@@ -4370,7 +4413,7 @@ store.load().then(async function(data){
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
-        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
+        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(PINNED_CLOUDS.indexOf(t.cloud)!==-1&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
         // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
         if(window.desktop&&out.status==='working'&&(out.lane!=='local'||window.desktop.localStatus))out.status='queued'; }
