@@ -7,8 +7,9 @@
      so nothing is ever lost from history)
    - Claude gets Read/Edit/Write in the folder and nothing else: no shell, no web, no connectors, and
      never this file (so RSI can't break its own Undo)
-   - before committing, every changed .js file and index.html's scripts are compiled (not run); a change
-     that doesn't even parse is thrown away instead of committed
+   - before committing, every changed .js file (and any inline script in a changed .html file) is compiled
+     (not run), and so are the page scripts in renderer/js together, as the page loads them; a change that
+     doesn't even parse is thrown away instead of committed
    - off until James switches it on in Settings (Undo still works when it's off)
    The tasks data lives in the user-data folder, outside the repo, so Claude never sees or touches it.
    No Electron here: main.js passes in what it needs. */
@@ -21,8 +22,11 @@ const { execFileSync, spawn } = require('child_process');
 const SELF = 'agent/rsi.js';
 const TIMEOUT_MS = 15 * 60 * 1000;
 const RULES = `You are RSI (Romulus Self Improvement), working inside James's Tasks app: an Electron to-do
-app (main.js = main process, preload.js = the bridge, renderer/index.html = the whole UI in one file,
-agent/ = the Agent-task runners). The same renderer/index.html also builds the Android app.
+app. main.js = the main process entry, wiring together main/ (window, tray, saving, calendars, mail…) and
+agent/ (the Agent-task runners); preload.js = the bridge; renderer/ = the UI: index.html (markup),
+styles.css, and js/*.js, plain scripts that share one global scope and load in the order index.html lists
+them (so a top-level name must be declared only once across them). The same renderer/ also builds the
+Android app.
 James is asking for a change to the app itself, from a chat inside it.
 - Make the change he asks for, as small as it can be. Read the code around it first and write code that
   reads like what's there (same style, naming, comment density).
@@ -48,6 +52,18 @@ function syntaxError(repo, file) {
     }
     return null;
   } catch (e) { return file + ': ' + e.message; }
+}
+
+// the page scripts (renderer/js, in index.html's order) compiled as one: they share one global scope, so
+// a name declared at the top of two of them breaks the page even though each parses on its own
+function pageScriptsError(repo) {
+  const page = path.join(repo, 'renderer', 'index.html');
+  if (!fs.existsSync(page)) return null;
+  const files = [...fs.readFileSync(page, 'utf8').matchAll(/<script\s+src="(js\/[^"]+\.js)"/g)].map((m) => 'renderer/' + m[1]);
+  try {
+    new vm.Script(files.map((f) => fs.existsSync(path.join(repo, f)) ? fs.readFileSync(path.join(repo, f), 'utf8') : '').join('\n;\n'), { filename: 'renderer/js (together)' });
+    return null;
+  } catch (e) { return 'renderer/js (together): ' + e.message; }
 }
 
 function create({ repoDir, isEnabled, exe, log, onEvent, getSession, setSession }) {
@@ -76,7 +92,7 @@ function create({ repoDir, isEnabled, exe, log, onEvent, getSession, setSession 
     } catch (e) { return null; }
   }
 
-  const needsRestart = (files) => files.some((f) => f === 'main.js' || f === 'preload.js' || (/^agent\//.test(f) && /\.js$/.test(f)));
+  const needsRestart = (files) => files.some((f) => f === 'main.js' || f === 'preload.js' || (/^(agent|main)\//.test(f) && /\.js$/.test(f)));
 
   function ask(text) {
     const r = repo();
@@ -142,6 +158,7 @@ function create({ repoDir, isEnabled, exe, log, onEvent, getSession, setSession 
     if (!files.length) return;
     if (failed || code !== 0 || !final) { discard(r, base); say({ who: 'sys', text: 'It didn\'t finish, so its partial edits were thrown away.' }); return; }
     const broken = files.map((f) => syntaxError(r, f)).filter(Boolean);
+    if (!broken.length && files.some((f) => /^renderer\//.test(f))) { const e = pageScriptsError(r); if (e) broken.push(e); }
     if (broken.length) {
       discard(r, base);
       say({ who: 'sys', text: 'Its change didn\'t parse, so it was thrown away (nothing changed):\n' + broken.join('\n').slice(0, 400) + '\nAsk again and it can try another way.' });
@@ -181,4 +198,4 @@ function create({ repoDir, isEnabled, exe, log, onEvent, getSession, setSession 
   return { status, ask, undo, stop, newChat };
 }
 
-module.exports = { create, syntaxError };
+module.exports = { create, syntaxError, pageScriptsError };

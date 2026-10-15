@@ -3,7 +3,7 @@
 // localhost-only debugging port. The agent browser (its own Chrome profile, separate from James's
 // everyday Chrome) is opened only when Claude first actually uses a browser tool, and it stays open
 // after the run, so James can watch, log in to sites, and a half-filled form is still there when he
-// says "yes". main.js copies this file next to the tool (node can't run files from inside app.asar).
+// says "yes". agent/agent-browser.js copies this file next to the tool (node can't run files from inside app.asar).
 // Usage: node browser-proxy.js <playwright cli.js> <chrome.exe> <profile dir> <port>
 const { spawn } = require('child_process');
 const http = require('http');
@@ -69,7 +69,7 @@ const currentUrl = (text) => (text.match(/^- \d+: \(current\) \[.*\]\(([^()\s]+)
      "taint": once a mail page has been seen in this run (opened, or a tab already on it), the run is
        marked in TASKS_BROWSER_TAINT (written before Claude sees the page). From then on: no opening
        other sites, no typing or clicking on a page outside mail, and no Send (or Enter) unless
-       TASKS_BROWSER_APPROVED is set (James's latest reply was a yes). main.js's hook refuses
+       TASKS_BROWSER_APPROVED is set (James's latest reply was a yes). The web-guard hook (agent/web-guard.js) refuses
        WebFetch/WebSearch for the rest of the run, and the app treats its answer like an inbox run's.
      "block": mail is off limits (Gemini, which has its own web tools that no hook can stop). */
 const MAIL_MODE = process.env.TASKS_BROWSER_MAIL || '';
