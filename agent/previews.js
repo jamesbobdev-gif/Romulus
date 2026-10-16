@@ -68,7 +68,7 @@ async function enrichOption(o, lane) {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
       'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(15000) });
     const h = await r.text();
-    if (/validateCaptcha/.test(h)) return Object.assign(base, { url: clean }); // can't check right now; keep the link
+    if (/validateCaptcha/.test(h)) return amazonViaBrowser(base, clean, lane); // bot check: Claude's browser gets through
     if (!r.ok || !/id="productTitle"/.test(h)) return null;                    // not a real product page
     // Amazon keeps the main photo in different spots depending on the page layout; .gif is a blank placeholder
     const img = [/data-old-hires="(https:[^"]+)"/, /"hiRes":"(https:[^"]+)"/, /data-a-dynamic-image="\{&quot;(https:[^&]+)&quot;/,
@@ -80,7 +80,13 @@ async function enrichOption(o, lane) {
     return Object.assign(base, { url: clean,
       image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1'),
       price: price || null, rating: rating ? rating + '★' : null });
-  } catch (e) { return Object.assign(base, { url: clean }); }
+  } catch (e) { return amazonViaBrowser(base, clean, lane); }
+}
+// Amazon showed the app its bot check (or didn't answer): keep the link, and get the photo through
+// Claude's browser (a real Chrome, which Amazon lets through) so the card isn't blank.
+async function amazonViaBrowser(base, url, lane) {
+  const img = await agentBrowserPreview(url, lane).catch(() => null);
+  return Object.assign(base, { url }, img && !/\.gif$/i.test(img) ? { image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1') } : {});
 }
 
 // Preview pictures for option cards through Claude's browser, for sites whose bot check stops the plain
