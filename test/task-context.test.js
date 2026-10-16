@@ -11,6 +11,8 @@ test('prefLine: {section, text} or a plain string', () => {
   assert.strictEqual(ctx.prefLine({ section: 'x' }), null);
   assert.strictEqual(ctx.prefLine('likes\ntea'), 'likes tea');
   assert.strictEqual(ctx.prefLine(null), null);
+  assert.deepStrictEqual(ctx.prefLine([{ section: 'Groceries', text: 'pickup' }, { section: 'x' }, 'store brand']), ['Groceries|pickup', 'store brand']);
+  assert.strictEqual(ctx.prefLine([{ section: 'x' }]), null);
 });
 
 test('wantsCalendar looks at the title, reply and his last message', () => {
@@ -46,4 +48,39 @@ test('saidYes: a yes to something Claude asked to say yes to', () => {
   assert.ok(saidYes({ history: asked.concat({ who: 'you', text: 'go ahead and submit' }) }));
   assert.ok(!saidYes({ reply: 'yes', history: [{ who: 'claude', text: 'Which one?' }] }));
   assert.ok(!saidYes({ reply: 'not yet', history: asked }));
+});
+
+test('cleanAsk: questions with choices; a default must be one of them; empty ones dropped', () => {
+  const a = ctx.cleanAsk([{ q: 'Which store?', choices: ['Walmart', 'Aldi'], default: 'Walmart' },
+    { q: 'Times?', choices: ['Mornings', 'Evenings'], pick: 'many', default: ['Evenings', 'Never'] },
+    { q: 'Usually buy?', choices: [] }, { q: '' }, 'nope']);
+  assert.strictEqual(a.length, 3);
+  assert.deepStrictEqual(a[0], { q: 'Which store?', choices: ['Walmart', 'Aldi'], pick: 'one', default: ['Walmart'], other: true });
+  assert.deepStrictEqual(a[1].default, ['Evenings']);
+  assert.strictEqual(a[2].other, true);
+  assert.strictEqual(ctx.cleanAsk([]), undefined);
+  assert.strictEqual(ctx.cleanAsk('x'), undefined);
+});
+
+test('cleanCart: names kept, https pictures only, quantity over 1 only', () => {
+  const c = ctx.cleanCart([{ name: 'Milk', qty: 2, price: '$3.48', image: 'https://i5.walmartimages.com/a.jpg' },
+    { name: 'Eggs', qty: 1, image: 'http://x/y.jpg' }, { name: '' }]);
+  assert.deepStrictEqual(c, [{ name: 'Milk', qty: 2, price: '$3.48', image: 'https://i5.walmartimages.com/a.jpg' }, { name: 'Eggs' }]);
+  assert.strictEqual(ctx.cleanCart(null), undefined);
+});
+
+test('saidYes: a yes that leaves items out still counts', () => {
+  const t = { reply: 'yes, place it without: Chips; Soda (10 items, about $41.20)',
+    history: [{ who: 'claude', text: 'Cart ready. Reply **yes** to place this order.' }] };
+  assert.strictEqual(saidYes(t), true);
+});
+
+test('cleanCart: an idea for the week keeps its flag and reason', () => {
+  assert.deepStrictEqual(ctx.cleanCart([{ name: 'Teriyaki sauce', price: '$2.12', suggested: true, why: 'with your chicken and rice' }]),
+    [{ name: 'Teriyaki sauce', price: '$2.12', suggested: true, why: 'with your chicken and rice' }]);
+});
+
+test('cleanCart: keeps the product page (https) so the app can find a picture', () => {
+  assert.deepStrictEqual(ctx.cleanCart([{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs', url: 'javascript:x' }]),
+    [{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs' }]);
 });

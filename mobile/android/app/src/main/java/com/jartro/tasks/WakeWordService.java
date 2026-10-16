@@ -189,7 +189,9 @@ public class WakeWordService extends Service {
     private void check(String json, String key) {
         String t;
         try { t = new JSONObject(json).optString(key, ""); } catch (Exception e) { return; }
-        if (!"hey romulus".equals(t.trim())) return; // a lone "romulus" is in the grammar only to soak up near-misses
+        // anywhere in the utterance: any sound before it comes out as "[unk] hey romulus", and words after as
+        // "hey romulus [unk]" (a lone "romulus" is in the grammar only to soak up near-misses)
+        if (!(" " + t.trim() + " ").contains(" hey romulus ")) return;
         main.post(this::heard);
     }
 

@@ -98,11 +98,47 @@ async function agentRow(suffix) { // a doc next to the agent list ({v, text}): '
   return a ? supabase.readText(a, suffix) : '';
 }
 // a preference an agent wants saved: {section, text} → "Section|text" (the renderer files it under that
-// heading); a plain string still works
+// heading); a plain string still works. A list (e.g. a setup's answers) → a list of lines, up to 8
 function prefLine(p) {
   if (!p) return null;
+  if (Array.isArray(p)) { const l = p.slice(0, 8).map(prefLine).filter((x) => typeof x === 'string' && x); return l.length ? l : null; }
   if (typeof p === 'object') return p.text ? String(p.section || 'Other').replace(/[|\n]/g, ' ').slice(0, 40) + '|' + String(p.text).replace(/\n/g, ' ').slice(0, 200) : null;
   return String(p).replace(/\n/g, ' ').slice(0, 200);
+}
+// questions it wants him to tap through, one at a time (renderer/js/agent-ask.js):
+// [{q, choices:[...], pick:'one'|'many', default, other}] → cleaned, or undefined
+function cleanAsk(a) {
+  if (!Array.isArray(a)) return undefined;
+  const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+  const out = a.slice(0, 10).map((x) => {
+    if (!x || typeof x !== 'object') return null;
+    const q = txt(x.q || x.question, 200);
+    const choices = (Array.isArray(x.choices) ? x.choices : []).map((c) => txt(c && typeof c === 'object' ? c.label : c, 80)).filter(Boolean).slice(0, 8);
+    if (!q) return null;
+    const many = x.pick === 'many';
+    let def = (Array.isArray(x.default) ? x.default : x.default != null ? [x.default] : []).map((d) => txt(d, 80)).filter((d) => choices.includes(d));
+    if (!many) def = def.slice(0, 1);
+    return { q, choices, pick: many ? 'many' : 'one', default: def, other: x.other !== false || !choices.length };
+  }).filter(Boolean);
+  return out.length ? out : undefined;
+}
+// the order it built, shown as cards he can deselect (renderer/js/grocery-list.js): [{name, qty, price, image, swap,
+// suggested, why}] — suggested = something new that goes with the rest, in the cart but unselected until he taps it
+function cleanCart(c) {
+  if (!Array.isArray(c)) return undefined;
+  const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+  const out = c.slice(0, 100).map((x) => {
+    if (!x || typeof x !== 'object' || !txt(x.name, 120)) return null;
+    const it = { name: txt(x.name, 120) };
+    const q = Math.round(Number(x.qty)); if (q > 1 && q < 100) it.qty = q;
+    if (txt(x.price, 20)) it.price = txt(x.price, 20);
+    if (/^https:\/\//i.test(String(x.image || ''))) it.image = String(x.image).slice(0, 500);
+    if (/^https:\/\//i.test(String(x.url || ''))) it.url = String(x.url).slice(0, 500); // its product page: where the app finds a picture if it has none
+    if (txt(x.swap, 120)) it.swap = txt(x.swap, 120);
+    if (x.suggested) { it.suggested = true; if (txt(x.why, 100)) it.why = txt(x.why, 100); } // an idea for the week: starts unselected
+    return it;
+  }).filter(Boolean);
+  return out.length ? out : undefined;
 }
 // claim on the server first (atomic: only one worker can win a queued task) → the tasks we may run
 async function claimAgentTasks(tasks, lane = 'claude') {
@@ -129,4 +165,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, wantsInbox, agentRow, prefLine, claimAgentTasks };
+  siteNotesFor, skillText, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks };

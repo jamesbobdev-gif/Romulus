@@ -31,6 +31,7 @@ const runner = require('./agent/runner');
 const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
+const liveView = require('./agent/live-view');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
@@ -57,7 +58,7 @@ const ctx = {
   compactHowtos: (asked) => localLane.compactHowtos(asked),
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane];
+  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView];
 for (const m of modules) {
   m.init(ctx);
   for (const [channel, fn] of Object.entries(m.handlers || {})) ipcMain.handle(channel, fn);

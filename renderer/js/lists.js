@@ -69,6 +69,7 @@ function buildRow(t,canDrag){
   if(isAgentTask&&!t.done){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
+    if(t.status==='working')sc.insertBefore(el('span','spin'),sc.firstChild); // a spinner so you can see it's going
     sc.title=t.status==='needs-you'&&t.parked?'You parked this — Romulus’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'Romulus got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
     // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
     if(t.status==='needs-you'){
@@ -136,7 +137,8 @@ function buildPanel(t){
       hist.forEach(function(h){
         const who=h.who==='you'?'you':h.who==='claude'?'claude':'sys';
         const b=el('div','conv-msg '+who);
-        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':{gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[h.via]||'Claude')+' \u00B7 '+fmtWhen(h.at)));
+        const seen=who==='you'&&(h.heard||(liveHeard[t.id]||[]).indexOf(h.at)!==-1); // Claude took it mid-run
+        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':{gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[h.via]||'Claude')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
@@ -156,19 +158,28 @@ function buildPanel(t){
     const local=t.lane==='local';
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
     const cloudName=cloudNameOf(t);
-    sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':'Waiting for '+cloudName));
+    if(t.status==='working')sb.classList.add('running');
+    const hd=sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':'Waiting for '+cloudName));
+    if(t.status==='working'&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
     sb.appendChild(document.createTextNode(local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
         :'It starts within a few seconds while your computer has Tasks running.')
       :t.status==='working'
-      ?'Usually under a minute. You can still add to your answer below.'
+      ?(cloudName==='Claude'?'Write below to steer it: it reads your message after its next step.':'Usually under a minute. You can still add to your answer below.')
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
       :'It starts within a few seconds while your computer has Tasks running.'));
     if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
+    if(!local&&t.status==='working'&&liveViewAvailable())sb.appendChild(watchButton()); // watch it work in the agent browser
     panel.appendChild(sb);
-    // the mini PC working: what it's searching, reading and writing, live
-    if(local&&t.status==='working'){
+    // Claude's checklist while it works (agent/run-live.js), filled live without a re-render
+    if(!local&&t.status==='working'){
+      const pl=el('ul','agent-plan'); pl.setAttribute('data-id',t.id); pl.setAttribute('aria-label','Plan');
+      fillPlan(pl,livePlan[t.id]);
+      panel.appendChild(pl);
+    }
+    // working: what it's searching, reading and clicking, live (the mini PC always; Claude once it has started)
+    if(t.status==='working'&&(local||liveText[t.id])){
       const lv=el('pre','agent-live',liveText[t.id]||'Starting…');
       lv.setAttribute('data-id',t.id); lv.setAttribute('aria-live','polite');
       panel.appendChild(lv);
@@ -224,8 +235,11 @@ function buildPanel(t){
     const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
     if(lastAns&&lastAns.thoughts&&t.status!=='working')nb.appendChild(thoughtsBox(t,lastAns));
     if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)nb.appendChild(retryButton(t));
+    if(!agentBusy&&!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton()); // e.g. to log in, or check a cart
     panel.appendChild(nb);
   }
+  // questions to tap through, one at a time (agent-ask.js)
+  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&Array.isArray(t.ask)&&t.ask.length)panel.appendChild(askSteps(t));
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose
   if(taskWs(t)==='agent'&&Array.isArray(t.options)&&t.options.length){
     const grid=el('div','agent-opts');
@@ -304,6 +318,7 @@ function buildPanel(t){
     if(Array.isArray(t.replyImages)&&t.replyImages.length)yb.appendChild(photoStrip(t.replyImages));
     panel.appendChild(yb);
   }
+  if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):yesButton(t)); // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
     const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to Romulus');
@@ -387,6 +402,8 @@ function buildPanel(t){
     ht.addEventListener('change',function(){ t.notes=ht.value.trim()||null; touch(); });
     panel.appendChild(hl); panel.appendChild(ht);
   }
+  // grocery tasks: when the next 2-week order opens (grocery-list.js); the order itself shows as picture cards
+  if(isGroceryTask(t)&&!t.done)panel.appendChild(groceryNextLine());
   // repeat: Claude re-runs this task on a schedule (desktop app does the timing)
   if(taskWs(t)==='agent'){
     const rr=el('div','panel-meta repeat-row');
@@ -583,6 +600,9 @@ function render(){
       if(ta&&document.activeElement!==ta){ ta.focus(); try{ ta.setSelectionRange(s,e); }catch(err){} }
     });
   }
+  // a pulsing dot on the Agent tab while any task is running, so you see it from other tabs
+  const anyWorking=state.tasks.some(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='working'; });
+  const ta=$('tabAgent'); if(ta){ ta.classList.toggle('busy',anyWorking); ta.title=anyWorking?'Romulus is working on a task':''; }
   const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work';
   const tab=onAgent?'agent':onSchool?'school':onWork?'work':'list';
   // every tab shows from the start; one whose list isn't connected yet says how to connect it

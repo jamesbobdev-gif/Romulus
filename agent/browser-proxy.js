@@ -4,11 +4,11 @@
 // everyday Chrome) is opened only when Claude first actually uses a browser tool, and it stays open
 // after the run, so James can watch, log in to sites, and a half-filled form is still there when he
 // says "yes". agent/agent-browser.js copies this file next to the tool (node can't run files from inside app.asar).
-// Usage: node browser-proxy.js <playwright cli.js> <chrome.exe> <profile dir> <port>
+// Usage: node browser-proxy.js <playwright cli.js> <chrome.exe> <profile dir> <port> [<chrome flags, JSON>]
 const { spawn } = require('child_process');
 const http = require('http');
 
-const [cli, chrome, profile, port] = process.argv.slice(2);
+const [cli, chrome, profile, port, flagsJson] = process.argv.slice(2);
 const endpoint = 'http://127.0.0.1:' + port;
 
 function browserUp() {
@@ -21,9 +21,10 @@ function browserUp() {
 async function ensureBrowser() {
   if (await browserUp()) return;
   if (chrome === 'remote') return; // the browser lives on another machine (the mini PC): never start one here
-  const p = spawn(chrome, ['--user-data-dir=' + profile, '--remote-debugging-port=' + port, '--remote-debugging-address=127.0.0.1',
+  // the app hands over how to start it (headless, see chromeArgs in agent-browser.js); older configs: as before
+  let flags = null; try { flags = flagsJson ? JSON.parse(flagsJson) : null; } catch (e) {}
+  const p = spawn(chrome, flags || ['--user-data-dir=' + profile, '--remote-debugging-port=' + port, '--remote-debugging-address=127.0.0.1',
     '--no-first-run', '--no-default-browser-check',
-    // keep drawing while covered by other windows, or clicks wait forever for the page to "settle"
     '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore' });
   p.unref(); // outlives this run
   for (let i = 0; i < 40 && !(await browserUp()); i++) await new Promise((r) => setTimeout(r, 250));
@@ -175,6 +176,26 @@ function lockedOut(msg) {
   return null;
 }
 
+/* Buying, for every run. Grocery orders are placed by the agent once James's latest reply is a yes
+   (TASKS_BROWSER_APPROVED, or "approved" in the local lane's lock file), so the order button itself
+   is held back until then, whatever a page says. Card numbers, PINs and security codes are his to
+   type, even after a yes. */
+const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order)|buy now|pay now|purchase)\b/i;
+const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
+function buyRefusal(msg) {
+  if (!msg.params) return null;
+  const name = msg.params.name, a = msg.params.arguments || {};
+  const labelOf = (ref, el) => (refLabels[ref] || '') + ' ' + String(el || '');
+  if (name === 'browser_type' && SECRET.test(labelOf(a.target || a.ref, a.element)))
+    return 'Never type a PIN, card number or security code. Stop here: say in your note that checkout is ready and the last step (entering it) is his.';
+  if (name === 'browser_fill_form' && (Array.isArray(a.fields) ? a.fields : []).some((f) => SECRET.test(labelOf(f.ref || f.target, f.name))))
+    return 'Never fill in a PIN, card number or security code. Stop here: the last step is his.';
+  const approved = MAIL_APPROVED || (lockState() || {}).approved === true;
+  if (name === 'browser_click' && !approved && BUY.test(labelOf(a.target || a.ref, a.element)))
+    return 'Not without a yes: this places the order. List the items, total and time slot in your note and ask James to reply yes.';
+  return null;
+}
+
 // Playwright → Claude: pass everything through except the answers to our own calls
 let outBuf = '';
 child.stdout.on('data', (d) => {
@@ -182,7 +203,7 @@ child.stdout.on('data', (d) => {
   let i;
   while ((i = outBuf.indexOf('\n')) >= 0) {
     const line = outBuf.slice(0, i + 1); outBuf = outBuf.slice(i + 1);
-    if ((LOCK_FILE || MAIL_MODE) && line.includes('[ref=')) { try { learnRefs(resultText(JSON.parse(line))); } catch (e) {} }
+    if (line.includes('[ref=')) { try { learnRefs(resultText(JSON.parse(line))); } catch (e) {} }
     if (line.includes('"proxy-')) {
       let m = null; try { m = JSON.parse(line); } catch (e) {}
       if (m && typeof m.id === 'string' && m.id.startsWith('proxy-')) {
@@ -207,7 +228,7 @@ process.stdin.on('data', (d) => {
         if (!started) { started = true; await ensureBrowser(); }
         let msg = null; try { msg = JSON.parse(line); } catch (e) {}
         const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here));
+        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg));
         if (refused) { // answer it ourselves; Playwright never sees the call
           process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
           return;

@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('desktop', {
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
+  // live view: the agent browser's tabs (each with its localhost socket), and starting it
+  livePages: () => ipcRenderer.invoke('live:pages'),
+  liveStart: () => ipcRenderer.invoke('live:start'),
   // course calendar feeds (Blackboard / D2L iCal links) → School list
   // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)
   howtosList: () => ipcRenderer.invoke('howtos:list'),
