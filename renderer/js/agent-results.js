@@ -12,10 +12,12 @@ if(window.desktop&&window.desktop.onAgentResults){
     ids.forEach(function(id){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){
-        t.status='working';
+        t.status='working'; t.runFrom=Date.now(); // what he writes after this, the run can't see: it goes next
         if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'mini PC':'Claude')+' ('+reasons[id]+')'); }
         changed=true;
       }
+      // the AI the runner is asking now: the pill shows it, and the task stays with it from here on
+      if(t&&p&&p.cloud&&t.lane!=='local'&&t.status==='working'&&t.cloud!==p.cloud){ t.cloud=p.cloud; changed=true; }
     });
     if(changed)touch();
   });
@@ -53,11 +55,20 @@ if(window.desktop&&window.desktop.onAgentResults){
     const prefLines=[];
     updates.forEach(function(u){
       const t=state.tasks.find(function(x){ return x.id===u.id; });
-      // only answer tasks still waiting on this run (not ones James moved, finished or deleted meanwhile)
-      if(!t||taskWs(t)!=='agent'||t.done||t.status!=='working')return;
+      // only answer tasks still waiting on this run (not ones James moved, finished or deleted meanwhile).
+      // Queued counts too: a reply sent mid-run from a device without this fix puts it back in the queue,
+      // and dropping the answer then threw away a whole run (10+ minutes on the mini PC)
+      if(!t||taskWs(t)!=='agent'||t.done||(t.status!=='working'&&!(t.status==='queued'&&t.runFrom)))return; // switching AI clears runFrom
       // an answer only counts from the lane that holds the task (he may have switched it meanwhile)
       if((t.lane==='local')!==(u.lane==='local'))return;
-      delete liveText[t.id];
+      if(u.lane!=='local')t.cloud=u.via||'claude'; // whoever answered: its pill, which it keeps
+      // what he wrote while it worked: the run never saw it, so it goes next, with this answer before it
+      const late=t.runFrom?(t.history||[]).filter(function(h){ return h.who==='you'&&h.at>t.runFrom; }):[];
+      const lateReply=late.length?late.map(function(h){ return h.text; }).join('\n'):(t.status==='queued'?t.reply:null);
+      const lateImages=late.length?[].concat.apply([],late.map(function(h){ return Array.isArray(h.images)?h.images:[]; })):(t.status==='queued'?t.replyImages:null);
+      // what it did on the way (the mini PC's live log), kept to read afterwards
+      const thoughts=String(u.thoughts||liveText[t.id]||'').trim().slice(-6000);
+      delete liveText[t.id]; delete t.runFrom;
       // "done" = finished: the task stays in the Agent tab until James checks it off himself
       t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked; // a fresh answer needs a fresh look
       // it stopped for something in its way: why, what to do, and what its browser showed
@@ -70,7 +81,16 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(u.lane==='local')extra.lane='local';
       if(u.via==='gemini'||u.via==='openai'||u.via==='openrouter')extra.via=u.via;
       if(t.shot)extra.images=[t.shot];
+      if(thoughts){
+        extra.thoughts=thoughts;
+        // only the newest few keep theirs: each is up to 6000 characters, synced with the task
+        let kept=0; for(let i=(t.history||[]).length-1;i>=0;i--){ if(t.history[i].thoughts&&++kept>=3)delete t.history[i].thoughts; }
+      }
       agentSay(t,'claude',u.note,Object.keys(extra).length?extra:null);
+      if(lateReply){
+        t.status='queued'; t.reply=lateReply; t.replyImages=lateImages&&lateImages.length?lateImages:null; t.stuck=null; t.shot=null;
+        agentSay(t,'sys','You wrote while it was working: going again with that');
+      }
       if(u.pref)prefLines.push(u.pref);
     });
     touch();

@@ -492,7 +492,7 @@ async function runLocalTask(c, t) {
   const opts = real.length ? (await Promise.all(real.slice(0, 6).map((o) => enrichOption(o, 'local')))).filter(Boolean) : [];
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
-    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot }]); // room for an essay
+    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live }]); // room for an essay; thoughts = what it did, to read afterwards
 }
 
 module.exports = { init, handlers, localStatus, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck };

@@ -4,6 +4,17 @@
 
 /* ── agent conversation + repeat schedule (agent tasks only) ── */
 const convOpen=new Set(); // tasks whose conversation drop-down is open
+const thoughtsOpen=new Set(); // "task id|time" of answers whose "What it did" is open
+// what the mini PC did on the way to an answer (its live log), folded shut under that answer
+function thoughtsBox(t,h){
+  const key=t.id+'|'+h.at, d=document.createElement('details');
+  d.className='conv-thoughts'; d.open=thoughtsOpen.has(key);
+  d.appendChild(el('summary',null,'What it did'));
+  d.appendChild(el('pre','agent-live',h.thoughts));
+  d.addEventListener('toggle',function(){ if(d.open)thoughtsOpen.add(key); else thoughtsOpen.delete(key); });
+  d.addEventListener('click',function(e){ e.stopPropagation(); });
+  return d;
+}
 const liveText={};        // task id → what the mini PC's model is doing right now (streamed from the desktop app)
 let localStat=null;       // last mini PC status: {configured, online, model, loaded, address}
 function refreshLocalStatus(){
@@ -194,14 +205,22 @@ function repeatText(r){
 // finish_task checks who holds the claim).
 // who has the task now: its lane, or for older tasks whoever answered last; null = nobody yet
 // 'gemini' / 'openai' = the cloud lane ('claude' on the server) with that AI only (t.cloud)
-const PINNED_CLOUDS=['gemini','openai'];
+const PINNED_CLOUDS=['gemini','openai','openrouter'];
 function laneNow(t){
-  if(t.lane==='claude'&&PINNED_CLOUDS.indexOf(t.cloud)!==-1)return t.cloud;
-  if(t.lane==='claude'||t.lane==='local')return t.lane;
+  if(t.lane==='claude'&&(PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude'))return t.cloud;
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
+  // on the cloud lane it stays with whoever answered last (agent/ai-connections.js homeCloud)
+  if(t.lane==='claude'&&last&&last.lane!=='local'&&PINNED_CLOUDS.indexOf(last.via)!==-1)return last.via;
+  if(t.lane==='claude'||t.lane==='local')return t.lane;
   return last?(last.lane==='local'?'local':'claude'):null;
 }
-const LANE_NAMES={claude:'Claude',gemini:'Gemini',openai:'ChatGPT',local:'your mini PC'};
+const LANE_NAMES={claude:'Claude',gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',local:'your mini PC'};
+// the cloud AI a cloud-lane task is on (same rule as agent/ai-connections.js homeCloud), by name
+function cloudNameOf(t){
+  let id=t.cloud;
+  if(!id){ const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'&&h.lane!=='local'; }).slice(-1)[0]; id=last&&last.via; }
+  return {gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[id]||'Claude';
+}
 const laneAsks={}; // task id → the lane a switch is waiting on your OK for (asked in the panel)
 function setLane(t,to,ok){
   const from=laneNow(t);
@@ -211,7 +230,8 @@ function setLane(t,to,ok){
   const name=LANE_NAMES[to];
   if(from&&!ok){ laneAsks[t.id]=to; render(); return; }
   delete laneAsks[t.id];
-  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1)t.cloud=to; else delete t.cloud; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt;
+  // a pick sticks, over whoever answered last
+  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
   t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
   agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
   buzz('tap'); touch();

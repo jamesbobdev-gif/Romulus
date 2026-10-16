@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { runOrder } = require('../agent/ai-connections');
+const { runOrder, homeCloud, outOfUsage } = require('../agent/ai-connections');
 
 const order = ['claude', 'gemini', 'openrouter'];
 const ready = () => true;
@@ -23,4 +23,24 @@ test('a pinned task asks its AI first, then the rest of his order', () => {
 test('a pinned AI that isn’t set up is skipped, the others still try', () => {
   assert.deepStrictEqual(runOrder({ order, pinned: 'openai', ready: (id) => id !== 'openai' }), ['claude', 'gemini', 'openrouter']);
   assert.deepStrictEqual(runOrder({ order: [], pinned: 'openai', ready: () => false }), []);
+});
+
+test('a task stays on the AI that answered it last', () => {
+  assert.strictEqual(homeCloud({ history: [] }), null);
+  assert.strictEqual(homeCloud({ history: [{ who: 'claude', text: 'x' }] }), 'claude');
+  assert.strictEqual(homeCloud({ history: [{ who: 'claude', text: 'x' }, { who: 'claude', via: 'gemini', text: 'y' }] }), 'gemini');
+  assert.strictEqual(homeCloud({ history: [{ who: 'claude', via: 'openrouter', text: 'y' }] }), 'openrouter');
+  assert.strictEqual(homeCloud({ history: [{ who: 'claude', lane: 'local', text: 'y' }] }), null);
+});
+
+test('his pick on the pill beats whoever answered last, Claude included', () => {
+  assert.strictEqual(homeCloud({ cloud: 'openai', history: [{ who: 'claude', via: 'gemini' }] }), 'openai');
+  assert.strictEqual(homeCloud({ cloud: 'claude', history: [{ who: 'claude', via: 'gemini' }] }), 'claude');
+});
+
+test('only running out of usage moves a task on', () => {
+  assert.strictEqual(outOfUsage({ limit: true }), true);
+  assert.strictEqual(outOfUsage({ resetAt: 123 }), true);
+  assert.strictEqual(outOfUsage({ auth: true }), false);
+  assert.strictEqual(outOfUsage({ why: 'no usable answer' }), false);
 });

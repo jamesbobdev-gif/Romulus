@@ -12,7 +12,7 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
-const { cloudOrder, cloudReady, runOrder, PINNED_CLOUDS } = require('./ai-connections');
+const { cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardSettings, saidYes } = require('./agent-browser');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, claimAgentTasks } = require('./task-context');
@@ -76,9 +76,17 @@ async function startAgentRun() {
   // some server, and a run that can read mail has no way to reach one. Inbox tasks go first, on their
   // own; the rest wait for the next run. agentRunner.gmail=true makes every task an inbox task.
   // Tasks he put on Gemini or ChatGPT (the pill) run on their own too, with that AI only (neither reads his inbox).
-  const kindOf = (t) => PINNED_CLOUDS.includes(t.cloud) ? t.cloud : cfg.gmail === true || wantsInbox(t) ? 'mail' : 'web';
-  const kind = ['mail', 'web', ...PINNED_CLOUDS].find((k) => all.some((t) => kindOf(t) === k));
-  const mailRun = kind === 'mail', pinned = PINNED_CLOUDS.includes(kind) ? kind : null;
+  // A task already on an AI (the one that answered it last) runs with that AI too, so a conversation
+  // doesn't hop between them: it only moves on when that AI is out of usage (see the loop below).
+  const on = cloudOrder();
+  const kindOf = (t) => {
+    if (PINNED_CLOUDS.includes(t.cloud)) return t.cloud;
+    if (cfg.gmail === true || wantsInbox(t)) return 'mail';
+    const home = homeCloud(t);
+    return home && on.includes(home) ? home : 'web'; // an AI he has since turned off: his order instead
+  };
+  const kind = ['mail', 'web', 'claude', 'gemini', 'openai', 'openrouter'].find((k) => all.some((t) => kindOf(t) === k));
+  const mailRun = kind === 'mail', pinned = kind === 'mail' || kind === 'web' ? null : kind;
   const queued = all.filter((t) => kindOf(t) === kind);
   // same queue as the last run and nothing moved: that run failed — don't hammer it. Checked before
   // claiming: a claimed task we then skip would sit as "working" on the server with nobody on it
@@ -163,9 +171,10 @@ async function startAgentRun() {
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
-  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
-  // (out of usage, signed out, no usable answer, or skipped it) goes to the next, until all are answered
-  // (inbox runs: Claude only; tasks he put on Gemini or ChatGPT: that one first, even if it's switched off in the order)
+  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a new task one of them fails
+  // (out of usage, signed out, no usable answer, or skipped it) goes to the next, until all are answered.
+  // A task already on an AI (pinned = the pill, or whoever answered it last) tries that one first and only
+  // moves on when it is out of usage; any other failure stays with it. (Inbox runs: Claude only.)
   const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
@@ -177,6 +186,7 @@ async function startAgentRun() {
       if (!pending.length) break;
       if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
       agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
+      sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id }); // its pill moves to this AI, and the task stays on it
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const prompt = promptFor(pending);
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
@@ -197,6 +207,7 @@ async function startAgentRun() {
         pending = pending.filter((x) => !got.some((u) => u.id === x));
         if (!pending.length) break;
         lastWhy = 'it skipped this task';
+        if (id === pinned) { agentLog(providers.NAMES[id] + ' skipped ' + pending.length + ' task(s): they stay with it'); break; }
         agentLog(providers.NAMES[id] + ' skipped ' + pending.length + ' task(s)' + (isLast ? '' : ', trying the next one'));
         continue;
       }
@@ -204,6 +215,7 @@ async function startAgentRun() {
       lastWhy = r.limit && id === 'gemini' ? 'Gemini’s free daily limit is used up; it resets at ' +
           new Date(meter.nextPacificMidnight()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Switch this to Claude to do it now'
         : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again') : (r.why || 'no usable answer');
+      if (id === pinned && !outOfUsage(r)) { agentLog(providers.NAMES[id] + ': ' + lastWhy + ' (it has usage left, so the task stays with it)'); break; }
       agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
   } finally { agentProc = null; }
