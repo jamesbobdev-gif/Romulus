@@ -222,6 +222,21 @@ function cloudNameOf(t){
   return {gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[id]||'Claude';
 }
 const laneAsks={}; // task id → the lane a switch is waiting on your OK for (asked in the panel)
+// Retry: back in the queue now. A run still on it is stopped (Claude/Gemini), so it starts over at once
+function retryAgent(t){
+  delete t.runFrom; delete t.claimedBy; delete t.claimedAt; delete t.parked;
+  t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
+  if(!t.reply)t.reply='Try again.';
+  agentSay(t,'sys','You pressed Retry');
+  buzz('tap'); touch();
+  if(window.desktop&&window.desktop.agentRetry)window.desktop.agentRetry([t.id]);
+}
+function retryButton(t){
+  const b=el('button','btn-ghost agent-retry','↻ Retry');
+  b.title='Start this task over now (if this AI fails, the next one takes it)';
+  b.addEventListener('click',function(e){ e.stopPropagation(); retryAgent(t); });
+  return b;
+}
 function setLane(t,to,ok){
   const from=laneNow(t);
   if(from===to){ delete laneAsks[t.id]; render(); return; }

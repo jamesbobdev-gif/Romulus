@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('desktop', {
   aiCodexLogin: () => ipcRenderer.invoke('ai:codex-login'),
   aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
+  agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // course calendar feeds (Blackboard / D2L iCal links) → School list

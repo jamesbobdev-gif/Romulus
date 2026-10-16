@@ -130,15 +130,15 @@ function cloudOrder() {
 /* who a run asks, in turn, until every task is answered: inbox runs Claude only (the others can't read
    Gmail and could reach the web); a task he put on Gemini or ChatGPT that one first, then the rest of his
    order. order = cloudOrder(), ready = cloudReady */
-/* the cloud AI a task is on: the one he picked (the pill), else whoever answered it last. A task stays
-   there: it only goes to another AI when that one is out of usage (or no longer connected). null = new */
+/* the cloud AI a task is on: the one he picked (the pill), else whoever answered it last. It is asked
+   first; when it fails, the next AI in his order takes over (and the pill moves with it). null = new */
 function homeCloud(t) {
   if (PINNED_CLOUDS.includes(t.cloud) || t.cloud === 'claude') return t.cloud; // 'claude' = he switched it back to Claude
   const last = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
   if (!last || last.lane === 'local') return null;
   return ['gemini', 'openai', 'openrouter'].includes(last.via) ? last.via : 'claude';
 }
-// a try that failed because that AI has no usage left (the only reason a task moves to another AI)
+// a try that failed because that AI has no usage left
 const outOfUsage = (r) => !!(r && (r.limit || r.resetAt));
 function runOrder({ order, pinned, mailRun, ready }) {
   if (mailRun) return order.filter((id) => id === 'claude');

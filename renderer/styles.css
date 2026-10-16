@@ -54,6 +54,8 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .lane-ask span{flex:1 1 220px}
 .lane-ask .btn-accent{margin-left:0}
 .lane-ask .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;padding:7px 13px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
+.agent-retry{display:block;margin-top:10px;background:none;border:1px solid var(--hairline);border-radius:8px;padding:6px 13px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
+.agent-retry:hover{border-color:var(--ink)}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
 
@@ -162,6 +164,20 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 @keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,59,43,.45)}50%{box-shadow:0 0 0 7px rgba(192,59,43,0)}}
 .voice-toast{font-family:var(--mono);font-size:11px;color:var(--muted);padding:2px 10px 6px}
 .voice-toast.err{color:var(--late)}
+/* "Hey Romulus" heard you: a speech bubble at the bottom of the screen */
+.wake-bubble{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));z-index:70;display:flex;align-items:flex-start;gap:11px;width:max-content;max-width:min(420px,calc(100vw - 32px));padding:12px 16px 13px 14px;background:var(--ink);color:var(--surface);border-radius:18px 18px 18px 6px;box-shadow:0 10px 30px rgba(20,20,20,.28);transform:translateX(-50%);animation:wakeIn .22s ease-out}
+.wake-bubble[hidden]{display:none}
+.wake-bubble::after{content:"";position:absolute;left:14px;bottom:-7px;border:8px solid transparent;border-top-color:var(--ink);border-bottom:0;border-left:0}
+.wake-bubble.out{opacity:0;transform:translate(-50%,8px);transition:opacity .25s,transform .25s}
+.wake-dot{flex:none;width:10px;height:10px;margin-top:4px;border-radius:50%;background:var(--late);animation:wakepulse 1.2s ease-in-out infinite}
+.wake-bubble.done .wake-dot{background:#3FA35B;animation:none}
+.wake-bubble.err .wake-dot{background:var(--late);animation:none}
+.wake-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.wake-text b{font-size:14px;font-weight:600}
+.wake-text span{font-size:13px;opacity:.78;overflow-wrap:anywhere}
+.wake-text span:empty{display:none}
+@keyframes wakeIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translateX(-50%)}}
+@keyframes wakepulse{0%,100%{box-shadow:0 0 0 0 rgba(192,59,43,.6)}50%{box-shadow:0 0 0 6px rgba(192,59,43,0)}}
 .att-thumbs{display:flex;gap:6px;flex-wrap:wrap}
 .att-thumb{position:relative;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid var(--hairline);background:#fff}
 .att-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}

@@ -261,6 +261,11 @@ async function startLocalRun() {
         : /timed? ?out/i.test(msg)
         ? { reason: 'The mini PC’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the mini PC, or switch this to Claude.' }
         : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
+      // it failed: the cloud AIs take over, unless he was asleep (that's on this computer) or it's private
+      if (!slept && cloudOrder().length && !privateMatch(t)) {
+        sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
+        return;
+      }
       const shot = await miniPcScreenshot().catch(() => null);
       sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
         note: 'Your mini PC couldn’t finish this one. ' + stuck.reason }]);
