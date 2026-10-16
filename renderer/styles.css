@@ -74,6 +74,14 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .live-msg .btn-accent{margin-top:8px}
 .live-hint{font-size:11.5px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--hairline)}
 @media(max-width:520px){.live-view{inset:0;border-radius:0}}
+.live-view[hidden]{display:none}
+/* in a working task's card: the page at its own shape, no shadow, no hint */
+.live-view.live-embed{position:relative;inset:auto;z-index:auto;margin:10px 0 0;box-shadow:none;border-radius:10px}
+.live-embed .live-stage{flex:none;aspect-ratio:16/10}
+.live-embed .live-hint{display:none}
+.live-embed .live-img{cursor:pointer}
+.live-bar .live-bigger{opacity:1;color:var(--muted);font-size:15px;line-height:1}
+.live-bar .live-bigger:hover{color:var(--ink)}
 /* grocery list (grocery-list.js) and the one-tap yes */
 .agent-yes{display:block;width:100%;margin:10px 0 6px;padding:10px 14px;font-size:14px}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
