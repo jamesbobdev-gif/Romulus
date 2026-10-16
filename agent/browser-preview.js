@@ -17,7 +17,8 @@ async function main() {
     ws.send(JSON.stringify({ id: n, method, params, sessionId }));
     setTimeout(() => { if (pending[n]) { delete pending[n]; resolve({}); } }, 10000);
   });
-  const READ = `(()=>{const m=s=>{const e=document.querySelector(s);return e&&e.content};return m('meta[property="og:image"]')||m('meta[name="og:image"]')||m('meta[property="og:image:url"]')||m('meta[name="twitter:image"]')||m('meta[property="twitter:image"]')||''})()`;
+  // (Amazon product pages often have no og:image: their main photo is #landingImage)
+  const READ = `(()=>{const m=s=>{const e=document.querySelector(s);return e&&e.content};const a=()=>{const e=document.querySelector('#landingImage,#imgBlkFront');return e&&(e.getAttribute('data-old-hires')||e.src)};return m('meta[property="og:image"]')||m('meta[name="og:image"]')||m('meta[property="og:image:url"]')||m('meta[name="twitter:image"]')||m('meta[property="twitter:image"]')||a()||''})()`;
   async function one(url) {
     let targetId = null;
     try {
