@@ -56,6 +56,26 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .lane-ask .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;padding:7px 13px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
 .agent-retry{display:block;margin-top:10px;background:none;border:1px solid var(--hairline);border-radius:8px;padding:6px 13px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
 .agent-retry:hover{border-color:var(--ink)}
+.agent-watch{display:inline-block;margin-top:10px;background:none;border:1px solid var(--accent);border-radius:8px;padding:6px 13px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--accent);cursor:pointer}
+.agent-watch:hover{background:var(--accent);color:#fff}
+/* live view of the agent browser: a big panel over the app */
+.live-view{position:fixed;inset:16px;z-index:200;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.28);overflow:hidden;outline:none}
+.live-view:focus-visible{box-shadow:0 20px 60px rgba(0,0,0,.28),0 0 0 2px var(--accent)}
+.live-bar{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--hairline)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.live-dot.on{background:#C03B2B;animation:tabpulse 1.4s ease-in-out infinite}
+.live-where{flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.live-tabs{max-width:200px;font-size:12px;padding:4px 6px;border:1px solid var(--hairline);border-radius:6px;background:var(--surface);color:var(--ink)}
+.live-bar .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;font-family:var(--display);font-weight:600;color:var(--ink);cursor:pointer;font-size:12px;padding:5px 10px;white-space:nowrap}
+.live-bar .btn-ghost:hover{border-color:var(--ink)}
+.live-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#1b1b1b;overflow:hidden}
+.live-img{max-width:100%;max-height:100%;object-fit:contain;cursor:default;user-select:none}
+.live-msg{color:#ddd;font-size:14px;text-align:center;line-height:1.8;padding:20px}
+.live-msg .btn-accent{margin-top:8px}
+.live-hint{font-size:11.5px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--hairline)}
+@media(max-width:520px){.live-view{inset:0;border-radius:0}}
+/* grocery list (grocery-list.js) and the one-tap yes */
+.agent-yes{display:block;width:100%;margin:10px 0 6px;padding:10px 14px;font-size:14px}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
 
@@ -117,6 +137,14 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .chip.st{border:1px solid var(--hairline);color:var(--muted)}
 .chip.recur{border:1px solid var(--hairline);color:var(--muted)} /* repeating to-do */
 .chip.st.working{border-color:var(--accent);color:var(--accent)}
+/* "it's working" spinner: in the chip, the "is on it" box, and a dot on the Agent tab */
+.spin{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
+.agent-busy.running b{color:var(--accent)}
+.tab.busy::after{content:'';display:inline-block;width:6px;height:6px;margin-left:6px;vertical-align:1px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
+@keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+@media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tab.busy::after{animation:none}}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
 .chip.st.tap{cursor:pointer;user-select:none;transition:filter .15s,transform .1s}
 .chip.st.tap:hover{filter:brightness(.95)}
@@ -376,6 +404,14 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .cal-more{font-family:var(--mono);font-size:9.5px;color:var(--faint);padding:2px 4px;display:block}
 .cal-empty{color:var(--muted);text-align:center;margin:56px 0;font-size:14px}
 .cal-cell.has-tasks{cursor:pointer}
+.agent-plan{list-style:none;margin:10px 0 0;padding:10px 12px;border:1px solid var(--hairline);border-radius:10px;font-size:13px;line-height:1.5} /* Claude's checklist while it works */
+.agent-plan li{display:flex;gap:8px;align-items:baseline;padding:2px 0}
+.agent-plan .plan-mark{flex:none;width:14px;text-align:center;color:var(--faint)}
+.agent-plan .plan-done{color:var(--muted);text-decoration:line-through}
+.agent-plan .plan-now{color:var(--ink);font-weight:600}
+.agent-plan .plan-now .plan-mark{color:var(--accent);animation:plan-pulse 1.2s ease-in-out infinite}
+@keyframes plan-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.agent-plan .plan-now .plan-mark{animation:none}}
 .agent-live{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;background:#16181d;color:#d8dbe2;border-radius:10px;font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere} /* the mini PC's model, live */
 .lane-switch{display:block;margin:8px 0 0;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--hairline);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
 .lane-switch:hover{color:var(--ink);border-color:#CFCFC9}
@@ -508,3 +544,53 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .conv-thoughts{margin-top:8px}
 .conv-thoughts summary{cursor:pointer;font-size:12px;color:var(--muted);user-select:none}
 .conv-thoughts .agent-live{margin-top:6px}
+.live-keys{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.live-bar .live-close{opacity:1;color:var(--muted)}
+.live-bar .live-close:hover{color:var(--ink)}
+/* the order carousel: every item selected; tap to leave one out */
+.cart-box{margin:0 0 12px}
+.cart-head{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+.cart-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;max-height:70vh;overflow-y:auto;padding-bottom:4px}
+.cart-card{position:relative;flex:0 0 150px;scroll-snap-align:start;display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:6px;cursor:pointer;font:inherit;color:var(--ink);transition:opacity .15s,border-color .15s,transform .1s}
+.cart-card:active{transform:scale(.97)}
+.cart-card.off{border-color:var(--hairline);opacity:.45}
+.cart-card.off .cart-name{text-decoration:line-through}
+.cart-pic{height:120px;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:26px;color:var(--faint);overflow:hidden}
+.cart-pic img{max-width:100%;max-height:100%;object-fit:contain}
+.cart-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;line-height:20px;text-align:center}
+.cart-card.off .cart-check{background:var(--chip);color:transparent;border:1px solid var(--hairline)}
+.cart-name{font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.cart-meta{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.cart-swap{font-size:10.5px;color:#8A5A00}
+.cart-foot{display:flex;flex-direction:column;align-items:stretch;margin-top:6px}
+.cart-foot .agent-yes{margin-top:6px}
+.cart-foot .btn-accent:disabled{opacity:.5;cursor:default}
+.cart-all{align-self:flex-start;background:none;border:0;color:var(--accent);font-size:12px;cursor:pointer;padding:0}
+/* questions, one at a time */
+.ask-box{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:12px;margin:0 0 12px}
+.ask-count{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);margin-bottom:4px}
+.ask-q{font-size:15px;font-weight:600;line-height:1.35;margin-bottom:10px;color:var(--ink)}
+.ask-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.ask-chip{border:1px solid var(--hairline);background:var(--bg);color:var(--ink);border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;cursor:pointer;transition:background .12s,border-color .12s}
+.ask-chip:hover{border-color:var(--ink)}
+.ask-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.ask-other{width:100%;box-sizing:border-box;border:1px solid var(--hairline);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;background:var(--bg);color:var(--ink);margin-bottom:10px;resize:vertical}
+textarea.ask-other{min-height:70px}
+.ask-nav{display:flex;align-items:center;gap:12px}
+.ask-nav .btn-accent{margin-left:auto}
+.ask-back,.ask-skip{background:none;border:0;padding:0;font:inherit;font-size:12.5px;color:var(--muted);cursor:pointer}
+.ask-back:disabled{visibility:hidden}
+.ask-skip{color:var(--accent)}
+.ask-dots{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.ask-dot{width:8px;height:8px;border-radius:50%;border:0;padding:0;background:var(--hairline);cursor:pointer}
+.ask-dot.done{background:var(--faint)}
+.ask-dot.on{background:var(--accent);transform:scale(1.25)}
+/* ideas for the week: in the cart but unselected until tapped; dashed, with a + instead of a crossed-out name */
+.cart-card.sugg.off{opacity:1;border:2px dashed var(--faint)}
+.cart-card.sugg.off .cart-name{text-decoration:none}
+.cart-card.sugg.off .cart-check{color:var(--muted);background:var(--surface);border:1px solid var(--faint)}
+.cart-card.sugg.off .cart-check::before{content:'+'}
+.cart-card.sugg.off .cart-check{font-size:0}
+.cart-card.sugg.off .cart-check::before{font-size:14px;line-height:18px}
+.cart-tag{position:absolute;top:6px;left:6px;font-family:var(--mono);font-size:8.5px;text-transform:uppercase;letter-spacing:.08em;background:#FFF3D6;color:#8A5A00;border-radius:4px;padding:1px 5px}
+.cart-why{font-size:10.5px;line-height:1.3;color:var(--muted)}

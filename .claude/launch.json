@@ -4,8 +4,27 @@
     {
       "name": "renderer-preview",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8743", "--directory", "renderer"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8743",
+        "--directory",
+        "renderer"
+      ],
       "port": 8743
+    },
+    {
+      "name": "renderer-preview-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8751",
+        "--directory",
+        "renderer"
+      ],
+      "port": 8751,
+      "autoPort": false
     }
   ]
 }

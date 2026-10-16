@@ -34,12 +34,22 @@ if(window.desktop&&window.desktop.onAgentResults){
     });
     if(changed)touch();
   });
-  // what the mini PC's model is doing right now: shown live in that task's box, without re-rendering
+  // what the mini PC's model (or Claude) is doing right now: shown live in that task's box, without re-rendering.
+  // Claude's also carry its checklist and which of his mid-run messages it has taken
   if(window.desktop.onAgentLive)window.desktop.onAgentLive(function(p){
     if(!p||!p.id)return;
+    const first=!liveText[p.id]&&!!p.text;
     liveText[p.id]=String(p.text||'');
+    let redraw=first; // Claude's step box appears with its first step
+    if(Array.isArray(p.plan)){
+      livePlan[p.id]=p.plan;
+      const pl=document.querySelector('.agent-plan[data-id="'+p.id+'"]');
+      if(pl)fillPlan(pl,p.plan);
+    }
+    if(Array.isArray(p.heard)&&p.heard.length!==(liveHeard[p.id]||[]).length){ liveHeard[p.id]=p.heard; redraw=true; }
     const box=document.querySelector('.agent-live[data-id="'+p.id+'"]');
-    if(box){ const stick=box.scrollTop+box.clientHeight>=box.scrollHeight-8; box.textContent=liveText[p.id]; if(stick)box.scrollTop=box.scrollHeight; }
+    if(box&&!redraw){ const stick=box.scrollTop+box.clientHeight>=box.scrollHeight-8; box.textContent=liveText[p.id]; if(stick)box.scrollTop=box.scrollHeight; }
+    else if(redraw&&typeof render==='function')render();
   });
   // Claude is out of usage: these wait (no failure) until the reset, then run by themselves
   if(window.desktop.onAgentWaiting)window.desktop.onAgentWaiting(function(info){
@@ -69,8 +79,12 @@ if(window.desktop&&window.desktop.onAgentResults){
         return;
       }
       if(u.lane!=='local')t.cloud=u.via||'claude'; // whoever answered: its pill, which it keeps
-      // what he wrote while it worked: the run never saw it, so it goes next, with this answer before it
-      const late=t.runFrom?(t.history||[]).filter(function(h){ return h.who==='you'&&h.at>t.runFrom; }):[];
+      // what he wrote while it worked: the run never saw it, so it goes next, with this answer before it.
+      // Claude takes his messages mid-run (agent/run-live.js): the ones it took (u.heard) are done with
+      const heard=Array.isArray(u.heard)?u.heard:[];
+      (t.history||[]).forEach(function(h){ if(h.who==='you'&&heard.indexOf(h.at)!==-1)h.heard=true; });
+      delete livePlan[t.id]; delete liveHeard[t.id];
+      const late=t.runFrom?(t.history||[]).filter(function(h){ return h.who==='you'&&h.at>t.runFrom&&!h.heard; }):[];
       const lateReply=late.length?late.map(function(h){ return h.text; }).join('\n'):(t.status==='queued'?t.reply:null);
       const lateImages=late.length?[].concat.apply([],late.map(function(h){ return Array.isArray(h.images)?h.images:[]; })):(t.status==='queued'?t.replyImages:null);
       // what it did on the way (the mini PC's live log), kept to read afterwards
@@ -83,6 +97,12 @@ if(window.desktop&&window.desktop.onAgentResults){
       t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;
       t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null;
       if('options' in u)t.options=u.options;
+      // questions to tap through, and an order to deselect from: each answer brings its own (or none)
+      t.ask=Array.isArray(u.ask)&&u.ask.length?u.ask:null; if(typeof askDrafts!=='undefined')delete askDrafts[t.id];
+      t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
+      // suggestions for the week start unselected: he taps the ones he wants
+      if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
+      if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Mini PC asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
@@ -98,7 +118,8 @@ if(window.desktop&&window.desktop.onAgentResults){
         t.status='queued'; t.reply=lateReply; t.replyImages=lateImages&&lateImages.length?lateImages:null; t.stuck=null; t.shot=null;
         agentSay(t,'sys','You wrote while it was working: going again with that');
       }
-      if(u.pref)prefLines.push(u.pref);
+      if(Array.isArray(u.pref))u.pref.forEach(function(l){ if(l)prefLines.push(l); }); // a setup saves several at once
+      else if(u.pref)prefLines.push(u.pref);
     });
     touch();
     if(prefLines.length)appendPrefs(prefLines);

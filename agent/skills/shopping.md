@@ -19,6 +19,7 @@ match: \b(buy|order|purchase|shop|shopping|amazon|cheap(est)?|deal|price|gift|re
   as a `pref`, so he isn't asked again.
 - **The buy step:** you never buy. When only checkout is left, use `needs-you`, say "Ready to buy:
   tap Amazon ↗ and check out", and leave just the chosen item as the option. When he presses
-  "Choose this" on a card, the app emails him the link.
+  "Choose this" on a card, the app emails him the link. Groceries are the exception: there you do
+  place the order after his yes (see the groceries skill).
 - **Already have it?** If his photos or conversation show what he owns, match it (compatible size,
   same brand of refills and so on).

@@ -16,6 +16,19 @@ function thoughtsBox(t,h){
   return d;
 }
 const liveText={};        // task id → what the mini PC's model is doing right now (streamed from the desktop app)
+const livePlan={};        // task id → Claude's checklist while it works: [{text, status}]
+const liveHeard={};       // task id → times of his messages Claude has already taken mid-run
+// Claude's checklist, live: ☑ done, ▸ on it now, ☐ still to do
+function fillPlan(box,items){
+  box.textContent='';
+  (items||[]).forEach(function(p){
+    const li=el('li','plan-'+(p.status==='completed'?'done':p.status==='in_progress'?'now':'todo'));
+    li.appendChild(el('span','plan-mark',p.status==='completed'?'☑':p.status==='in_progress'?'▸':'☐'));
+    li.appendChild(document.createTextNode(p.text));
+    box.appendChild(li);
+  });
+  box.hidden=!(items&&items.length);
+}
 let localStat=null;       // last mini PC status: {configured, online, model, loaded, address}
 function refreshLocalStatus(){
   if(!window.desktop||!window.desktop.localStatus)return;

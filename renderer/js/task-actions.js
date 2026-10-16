@@ -10,6 +10,8 @@ async function addTask(){
   const withPhotos=composerAtts.length>0&&!!attachProfile();
   if(!title&&withPhotos)title=state.activeTab==='agent'?(composerAtts.length===1?'Look at this photo':'Look at these photos'):'Screenshot';
   if(!title){ titleEl.focus(); return; }
+  // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
+  if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')); return; } }
   let photoUrls=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
@@ -101,8 +103,10 @@ function voiceIdeaGroup(dest){
 }
 // where "… to X" points: a tab, an idea group, or nothing we know (then "to X" is part of the task)
 function voiceDest(raw){
-  const d=String(raw||'').toLowerCase().replace(/^(?:the|my)\s+/,'').replace(/\s+(?:tab|list|page|board|group)$/,'').trim();
-  if(VOICE_TABS[d]&&VOICE_TABS[d]!=='calendar')return VOICE_TABS[d]==='ideas'?{kind:'idea',group:''}:{kind:'task',tab:VOICE_TABS[d]};
+  const d=String(raw||'').toLowerCase().replace(/[\s,.;:!?]+$/,'').replace(/^(?:the|my)\s+/,'').replace(/\s+(?:tab|list|page|board|group)$/,'').trim();
+  // the recognizer often writes "the agents tab" / "the agent's tab"
+  const t=VOICE_TABS[d]?d:VOICE_TABS[d.replace(/(?:['’]s|s['’]?)$/,'')]?d.replace(/(?:['’]s|s['’]?)$/,''):null;
+  if(t&&VOICE_TABS[t]!=='calendar')return VOICE_TABS[t]==='ideas'?{kind:'idea',group:''}:{kind:'task',tab:VOICE_TABS[t]};
   const g=voiceIdeaGroup(d);
   return g===undefined?null:{kind:'idea',group:g};
 }
@@ -110,6 +114,8 @@ function parseVoiceCommand(said,curTab,smart){
   let s=String(said||'').trim().replace(/\s+/g,' ')
     .replace(/^(?:(?:hey|hi|ok|okay)\s+)?romulus\b[\s,.!:]*/i,'').replace(/^(?:please|can you|could you)\s+/i,'').replace(/[\s.!?]+$/,'');
   let tab=null, m;
+  // "we're out of eggs" / "add eggs to groceries": onto his grocery list for the next order (grocery-list.js)
+  if(outOfNames(s)&&groceryTask())return {kind:'grocery',text:s};
   // "go to the ideas tab (and …)" — the tab first, then whatever follows
   m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|personal|main|home|agent|claude|school|work|calendar|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
   if(m){ tab=VOICE_TABS[m[1].toLowerCase()]; s=m[2].trim(); if(!s)return {kind:'tab',tab:tab}; }
@@ -125,12 +131,26 @@ function parseVoiceCommand(said,curTab,smart){
   m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?idea$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
   // "add X to Y": try the last "to/in/on/under" first, so "add go to the store to work" files "go to the store" under work
-  const verb=/^(?:add|put|write|save|note|make|create|jot(?:\s+down)?)\s+(?:a\s+(?:task|note)\s+)?/i.exec(s);
+  // ("right"/"rite": how the recognizer often hears "write")
+  const VERB=/^(?:add|put|write|right|rite|save|note|make|create|jot(?:\s+down)?)\s+(?:a\s+(?:task|note)\s+)?/i;
+  const verb=VERB.exec(s);
   const body=verb?s.slice(verb[0].length):s;
+  // the place first: "in the agent tab, write X" / "write to the agent X" / "agent tab: X"
+  m=/^(?:(?:in|on|to|into|onto|under)\s+(.+)|((?:the\s+|my\s+)?\S+\s+(?:tab|list)\b.*))$/i.exec(body);
+  if(m){
+    const words=(m[1]||m[2]).split(' ');
+    for(let n=Math.min(words.length-1,5);n>=1;n--){
+      const dest=voiceDest(words.slice(0,n).join(' ')); if(!dest)continue;
+      if(m[2]&&!/^(?:tab|list)[,.:;]*$/i.test(words[n-1]))continue; // no "in/to": only when it says "… tab"
+      let rest=words.slice(n).join(' ').replace(/^[\s,.:;-]+/,'');
+      const v2=VERB.exec(rest); if(v2)rest=rest.slice(v2[0].length);
+      if(rest)return Object.assign(dest,{text:rest});
+    }
+  }
   const preps=[]; const re=/\s+(?:to|in|into|on|under|onto)\s+/gi; let p;
   while((p=re.exec(body)))preps.push({at:p.index,end:p.index+p[0].length});
   for(let i=preps.length-1;i>=0;i--){
-    const text=body.slice(0,preps[i].at).trim(); if(!text)continue;
+    const text=body.slice(0,preps[i].at).replace(/[\s,;:-]+$/,'').trim(); if(!text)continue;
     // the place can be followed by more of the task: "to work on friday" → work, "… on friday"
     const words=body.slice(preps[i].end).split(' ');
     for(let n=Math.min(words.length,5);n>=1;n--){
@@ -138,17 +158,67 @@ function parseVoiceCommand(said,curTab,smart){
       return Object.assign(dest,{text:(text+' '+words.slice(n).join(' ')).trim()});
     }
   }
+  // no place named: "right" was probably meant ("right turn signal is broken")
+  const plain=verb&&!/^(?:right|rite)\b/i.test(verb[0])?body:s;
+  if(smart&&!tab){
+    // after "Hey Romulus" (smart), with no tab said: the tab your past tasks like it are on, else a
+    // question or an errand goes to Claude word for word, else Human (not whatever tab is open)
+    const guess=voiceGuessTab(plain);
+    if(guess)return {kind:'task',tab:guess,text:plain,learned:guess!=='list'};
+    if(plain===s&&agentConfigured()&&VOICE_ASK.test(s))return {kind:'task',tab:'agent',text:s,raw:true};
+    return {kind:'task',tab:'list',text:plain};
+  }
   const where=tab||curTab;
-  if(where==='ideas')return {kind:'idea',group:'',text:body};
-  // after "Hey Romulus" (smart): a question or an errand that isn't a plain to-do goes to Claude, word for word
-  if(smart&&!tab&&!verb&&agentConfigured()&&VOICE_ASK.test(s))return {kind:'task',tab:'agent',text:s,raw:true};
-  return {kind:'task',tab:where==='calendar'?'list':where,text:verb?body:s};
+  if(where==='ideas')return {kind:'idea',group:'',text:plain};
+  return {kind:'task',tab:where==='calendar'?'list':where,text:plain};
+}
+/* Learning where things go: every task you have (done ones too) is a past request on the tab it ended
+   up on, moves included, so a correction teaches it. The words of a new request vote for the tabs that
+   past tasks sharing them are on, weighted by how rare the word is and scaled by each tab's size (so the
+   big Human list doesn't win by sheer numbers). Only a clear winner counts; otherwise null. */
+const VOICE_STOP=new Set('the a an and or but to of in on at for with from by my me i you it is are be this that these those some any up out about into over after before again then than so just get got do does did have has had can could would will should please need needs want wants make made take go going new add put write right rite save note list tab task tasks today tomorrow tonight morning afternoon evening night week next day monday tuesday wednesday thursday friday saturday sunday'.split(' '));
+function voiceWords(text){
+  return String(text||'').toLowerCase().replace(/['’]s\b/g,'').split(/[^a-z0-9]+/).filter(function(w){ return w.length>2&&!VOICE_STOP.has(w); })
+    .map(function(w){ return w.length>5?w.replace(/(?:ing|ed|es)$/,''):w.length>3?w.replace(/s$/,''):w; });
+}
+const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent'};
+function voiceGuessTab(text){
+  const words=Array.from(new Set(voiceWords(text))); if(!words.length)return null;
+  const size={}, seen={}; let all=0;
+  state.tasks.forEach(function(t){
+    const ws=taskWs(t), tab=VOICE_WS_TAB[ws]; if(!tab||!voiceTabOk(tab))return;
+    size[ws]=(size[ws]||0)+1; all++;
+    new Set(voiceWords(t.title)).forEach(function(w){ if(words.indexOf(w)===-1)return; const c=seen[w]=seen[w]||{}; c[ws]=(c[ws]||0)+1; });
+  });
+  const score={}, hits={}; let total=0;
+  words.forEach(function(w){
+    const c=seen[w]; if(!c)return;
+    const n=Object.keys(c).reduce(function(a,ws){ return a+c[ws]; },0); if(n<2)return; // seen once is luck
+    const idf=Math.log(1+all/n);
+    const rate={}; let rsum=0; Object.keys(c).forEach(function(ws){ rate[ws]=c[ws]/size[ws]; rsum+=rate[ws]; });
+    Object.keys(rate).forEach(function(ws){ const v=idf*rate[ws]/rsum; score[ws]=(score[ws]||0)+v; total+=v; hits[ws]=(hits[ws]||0)+c[ws]; });
+  });
+  let best=null; Object.keys(score).forEach(function(ws){ if(!best||score[ws]>score[best])best=ws; });
+  if(!best||score[best]/total<0.7||hits[best]<2)return null;
+  return VOICE_WS_TAB[best];
 }
 // "what's on Friday", "find me a cheap flight", "email Sam that …": Claude's job, not a to-do of yours
 const VOICE_ASK=/^(?:what|what's|whats|when|where|who|whose|why|how|which|is|are|was|were|do|does|did|can|could|would|will|should|find|look\s+up|look\s+for|search|google|research|book|order|check|email|e-mail|text|message|reply|draft|write\s+(?:me|an?\s+email|a\s+message)|plan|compare|summari[sz]e|figure\s+out|help\s+me|show\s+me|tell\s+me|explain|get\s+me)\b/i;
 let voiceOn=false;
 const MIC_LABEL=I.mic+'<span>Speak</span>';
-function voiceToast(msg,isErr){ const t=$('voiceToast'); if(!t)return; t.textContent=msg; t.className='voice-toast'+(isErr?' err':''); t.hidden=!msg; clearTimeout(voiceToast._t); if(msg)voiceToast._t=setTimeout(function(){ t.hidden=true; },6000); }
+function voiceToast(msg,isErr){ const t=$('voiceToast'); if(!t)return; t.textContent=msg; t.className='voice-toast'+(isErr?' err':''); t.hidden=!msg; clearTimeout(voiceToast._t); if(msg)voiceToast._t=setTimeout(function(){ t.hidden=true; },6000); if(wakeLive&&msg)wakeBubble(isErr?'err':'done',msg); }
+// "Hey Romulus" heard you: a speech bubble at the bottom. 'listen' (live words as you talk), then
+// 'done' / 'err' with what happened, which fades after a few seconds
+let wakeLive=false;
+function wakeBubble(mode,text){
+  const b=$('wakeBubble'); if(!b)return;
+  clearTimeout(wakeBubble._t);
+  if(mode==='hide'){ b.classList.add('out'); wakeBubble._t=setTimeout(function(){ b.hidden=true; b.classList.remove('out'); },260); return; }
+  b.className='wake-bubble'+(mode==='listen'?'':' '+mode); b.hidden=false;
+  if(mode==='listen'){ $('wakeHead').textContent='Listening…'; $('wakeWords').textContent=text||'a task, or ask Romulus something'; return; }
+  $('wakeHead').textContent=mode==='err'?'Hmm…':'Got it'; $('wakeWords').textContent=text||'';
+  wakeBubble._t=setTimeout(function(){ wakeBubble('hide'); },mode==='err'?5000:3500);
+}
 // speech: the phone app's Voice plugin (Android), or Windows dictation through the desktop app
 function voiceEngine(){
   const d=window.desktop;
@@ -174,7 +244,8 @@ async function voiceAdd(smart){
   voiceOn=true; btn.classList.add('listening'); btn.innerHTML=I.stop+'<span>Listening\u2026</span>';
   voiceToast(smart?'Hey! Listening\u2026 a task, or ask Romulus something':'Listening\u2026 say the task (and a day, if it has one)');
   const before=ti.value, prevPh=ti.placeholder; ti.value=''; ti.placeholder='Listening\u2026';
-  let partial=null, heard=''; try{ partial=v.onPartial(function(text){ heard=text; ti.value=text; }); }catch(e){}
+  if(smart){ wakeLive=true; wakeBubble('listen'); }
+  let partial=null, heard=''; try{ partial=v.onPartial(function(text){ heard=text; ti.value=text; if(smart)wakeBubble('listen','“'+text+'”'); }); }catch(e){}
   buzz('tap');
   try{
     const r=await v.listen();
@@ -190,6 +261,12 @@ async function voiceAdd(smart){
     const cmd=parseVoiceCommand(said,state.activeTab,smart);
     if(cmd.tab&&!voiceTabOk(cmd.tab)){ ti.value=before; voiceToast('The '+VOICE_TAB_NAME[cmd.tab]+' list isn\u2019t connected on this device',true); return; }
     if(cmd.kind==='tab'){ ti.value=before; switchTab(cmd.tab); window.scrollTo(0,0); voiceToast('Opened '+VOICE_TAB_NAME[cmd.tab]); return; }
+    if(cmd.kind==='grocery'){
+      ti.value=before;
+      const g=addToGroceries(cmd.text);
+      voiceToast(g?'On the next grocery order: '+g.names.join(', '):'Couldn’t find your grocery list',!g);
+      return;
+    }
     if(cmd.kind==='idea'){
       ti.value=before;
       const text=cmd.text.trim().replace(/^./,function(c){ return c.toUpperCase(); });
@@ -208,11 +285,13 @@ async function voiceAdd(smart){
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
     await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
-    voiceToast(cmd.raw?'Sent to Romulus: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
+    voiceToast(cmd.raw?'Sent to Romulus: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+(cmd.learned?' (like your past ones)':'')+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
   }finally{
     voiceOn=false; btn.classList.remove('listening'); btn.innerHTML=MIC_LABEL; ti.placeholder=prevPh;
+    // still saying "Listening…" (it ended without a message): just let it go
+    if(smart){ wakeLive=false; const b=$('wakeBubble'); if(!b.classList.contains('done')&&!b.classList.contains('err'))wakeBubble('hide'); }
     if(partial&&typeof partial.remove==='function')partial.remove();
     else if(partial&&typeof partial.then==='function')partial.then(function(h){ if(h&&h.remove)h.remove(); }).catch(function(){});
   }
