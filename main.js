@@ -32,13 +32,14 @@ const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
 const liveView = require('./agent/live-view');
+const hub = require('./main/hub');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
 
 win.guardIpc(ipcMain);
 store.init({ userData: () => app.getPath('userData'), safeStorage });
-const { readConfig, writeConfig } = store;
+const { readConfig, writeConfig, agentLog } = store;
 const { showWindow } = win;
 const { refreshTrayStatus } = trayMod;
 
@@ -48,21 +49,42 @@ const ctx = {
   documents: () => app.getPath('documents'),
   isPackaged: app.isPackaged,
   dataFile: store.dataFile, readConfig, writeConfig, agentLog: store.agentLog,
-  sendToRenderer: win.sendToRenderer, showWindow, newHiddenWindow: win.newHiddenWindow,
+  // the hub mini PC's window events reach the laptop's window too (main/hub.js)
+  sendToRenderer: (ch, p) => { win.sendToRenderer(ch, p); hub.broadcast(ch, p); }, showWindow, newHiddenWindow: win.newHiddenWindow,
+  reloadWindow: win.reloadWindow, version: app.getVersion(),
+  relaunch: () => { app.relaunch(); win.quit(); },
+  // false on a hub client (the laptop, when the mini PC does the agent, mail and calendar work): none of that runs here
+  serverWork: () => !hub.isClient(),
   quit: win.quit, icon: win.ICON, refreshTrayStatus,
   openExternal: (u) => shell.openExternal(u),
   powerSaveBlocker, powerMonitor,
-  scheduleAgentRun: (raw) => runner.scheduleAgentRun(raw),
-  scheduleLocalRun: (raw) => localLane.scheduleLocalRun(raw),
+  scheduleAgentRun: (raw) => { if (!hub.isClient()) runner.scheduleAgentRun(raw); },
+  scheduleLocalRun: (raw) => { if (!hub.isClient()) localLane.scheduleLocalRun(raw); },
   memoryTidying: () => memoryTidy.isTidying(),
   compactHowtos: (asked) => localLane.compactHowtos(asked),
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod,
   usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView];
+hub.init(ctx);
+const allHandlers = Object.assign({}, hub.localHandlers);
 for (const m of modules) {
   m.init(ctx);
-  for (const [channel, fn] of Object.entries(m.handlers || {})) ipcMain.handle(channel, fn);
+  Object.assign(allHandlers, m.handlers || {});
 }
+// a hub client: the mini PC answers the agent's, mail's and calendars' calls (main/hub.js REMOTE)
+const ipcHandlers = Object.assign({}, allHandlers);
+if (hub.isClient()) {
+  for (const ch of hub.REMOTE) ipcHandlers[ch] = (_e, ...args) => hub.forward(ch, args);
+  // his rules changed: the mini PC routes, and this computer asks him about unmatched tasks too
+  ipcHandlers['routing:changed'] = async (e, ...args) => { await allHandlers['routing:changed'](e, ...args); return hub.forward('routing:changed', args); };
+  // signing in to a calendar needs his browser, so it happens here; the account then goes to the mini PC
+  ipcHandlers['cal:connect'] = async (e, ...args) => {
+    const r = await allHandlers['cal:connect'](e, ...args);
+    if (r && r.ok) await hub.sendCalAccounts().catch((err) => { r.warning = 'connected here, but the mini PC didn’t get it: ' + err.message; });
+    return r;
+  };
+}
+for (const [channel, fn] of Object.entries(ipcHandlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
 const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
@@ -119,6 +141,16 @@ if (!gotLock) {
     trayMod.createTray();
     refreshTrayStatus();
     setInterval(() => refreshTrayStatus(), 60 * 60 * 1000);
+    if (hub.role() === 'server') hub.startServer(allHandlers);
+    if (hub.isClient()) {
+      // the mini PC does the agent, mail and calendar work; this computer shows it and syncs
+      hub.followEvents();
+      agentLog('hub client: agent work runs on the mini PC');
+      powerMonitor.on('resume', () => { refreshTrayStatus(); showWindow(); });
+      if (process.platform === 'win32') powerMonitor.on('unlock-screen', showWindow);
+      app.on('activate', showWindow);
+      return;
+    }
     // tasks left waiting while the app was closed get picked up shortly after start
     const savedHold = (readConfig().agentRunner || {}).blockedUntil;
     if (savedHold && savedHold > Date.now()) { holdForUsage(queuedAgentTasks().map((t) => t.id), savedHold - 60 * 1000); }

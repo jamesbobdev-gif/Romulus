@@ -43,6 +43,7 @@ function eventFor(t, tz) {
 // one sync at a time: two overlapping runs would both create an event for the same new task
 let gcalSyncing = null, gcalSyncAgain = false;
 function performSync() {
+  if (ctx && ctx.serverWork && !ctx.serverWork()) return Promise.resolve([]); // a hub client: the mini PC puts tasks on the calendar
   if (gcalSyncing) { gcalSyncAgain = true; return gcalSyncing; }
   gcalSyncing = performSyncOnce().finally(() => {
     gcalSyncing = null;

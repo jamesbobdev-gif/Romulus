@@ -6,6 +6,7 @@
    Which cloud AI answers, in what order, is agent/ai-connections.js; the mini PC lane is agent/local-lane.js. */
 const path = require('path');
 const fs = require('fs');
+const { claudeExe } = require('./platform');
 const os = require('os');
 const providers = require('./providers');
 const usage = require('./usage-limit');
@@ -111,7 +112,7 @@ async function startAgentRun() {
   const ids = tasks.map((t) => t.id).sort();
   agentLastKey = ids.join(','); agentLastAt = Date.now();
 
-  const exe = cfg.command || path.join(os.homedir(), '.local', 'bin', 'claude.exe');
+  const exe = claudeExe({ agentRunner: cfg });
   let rules;
   try { rules = fs.readFileSync(path.join(__dirname, 'instant-prompt.md'), 'utf8'); } catch (e) { agentLog('cannot read instructions: ' + e.message); return; }
   const prefs = await agentRow(':prefs');

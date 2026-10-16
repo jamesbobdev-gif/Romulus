@@ -46,7 +46,7 @@ function npmCli(pkgPath, binName) {
   if (npmRoot === undefined) {
     try { npmRoot = execSync('npm root -g', { encoding: 'utf8', windowsHide: true, timeout: 8000 }).trim(); } catch (e) { npmRoot = null; }
   }
-  const roots = [path.join(process.env.APPDATA || '', 'npm', 'node_modules')];
+  const roots = require('./platform').npmGlobalRoots();
   if (npmRoot) roots.unshift(npmRoot);
   for (const root of roots) {
     const dir = path.join(root, ...pkgPath.split('/'));

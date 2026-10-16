@@ -6,6 +6,7 @@ const meter = require('./usage-meter');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const { claudeExe } = require('./platform');
 
 let ctx = null; // { userData, readConfig, writeConfig, agentLog, scheduleAgentRun }
 function init(c) { ctx = c; meter.init(c); }
@@ -90,7 +91,7 @@ let claudeProbe = null;
 function probeClaude() {
   claudeProbe = claudeProbe || new Promise((resolve) => {
     const cfg = readConfig();
-    const exe = (cfg.agentRunner || {}).command || path.join(os.homedir(), '.local', 'bin', 'claude.exe');
+    const exe = claudeExe(cfg);
     const dir = path.join(ctx.userData(), 'helper-run'); // empty: nothing of his to read
     try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
     let out = '', p;

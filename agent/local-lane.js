@@ -8,6 +8,7 @@
    Its tools are agent/local-tools.js, its browser agent/qwen-browser.js. */
 const path = require('path');
 const fs = require('fs');
+const { claudeExe } = require('./platform');
 const os = require('os');
 const pageReader = require('./page-reader');
 const formMode = require('./form-mode');
@@ -184,7 +185,7 @@ function runHelperOn(id, prompt) {
   if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
   if (Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
-  const exe = (cfg.agentRunner || {}).command || path.join(os.homedir(), '.local', 'bin', 'claude.exe');
+  const exe = claudeExe(cfg);
   const dir = path.join(ctx.userData(), 'helper-run'); // empty: nothing of his to read
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
   return new Promise((resolve) => {
