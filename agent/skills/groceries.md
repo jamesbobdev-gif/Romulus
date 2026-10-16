@@ -1,16 +1,25 @@
 ---
 name: groceries
-description: Grocery orders (Walmart with EBT first): his grocery list, the weekly order, checkout up to the order button, placing it after his yes
+description: Grocery orders with EBT (he picks the store each time): his grocery list, the weekly order, checkout up to the order button, placing it after his yes
 match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|whole foods|ebt|snap|milk|eggs|bread|meat|chicken|produce|fruit|veggies|vegetables|snacks|restock|pantry|fridge)\b
 ---
 # Groceries
 
-- **Where:** Walmart first. He pays with EBT (SNAP), and Walmart takes it online. Use Instacart,
-  DoorDash, Uber Eats or Amazon Fresh / Whole Foods only when he names one, or Walmart doesn't have it.
-  His preferences beat this.
+- **Where: he picks, every time.** He pays with EBT (SNAP), and several stores take it online. Unless
+  this task, his latest reply or the conversation so far already names a store for this order, your
+  FIRST answer on a new grocery task is one tap question in `ask` (nothing shopped yet):
+  {"q":"Which store this time?","choices":[the stores that take EBT online and deliver to him, e.g.
+  "Walmart","Amazon Fresh","Aldi (Instacart)"],"pick":"one","default":<the store he used last, from his
+  Groceries preferences or the conversation>}, with a one-line note. A saved store in his preferences
+  is only the default answer, never a reason to skip the question.
+  The 2-week order (`scheduledRun`) is the one exception: build it at the store he used last, and end
+  the note with "Want another store this time? Reply with its name."
 - **Use his account:** shop in the agent browser, logged in to the store. If you hit a sign-in page,
-  stop: `needs-you`, "Log in to Walmart: tap ◉ Watch on this task, sign in there, then reply."
-  Never type a password.
+  stop: `needs-you`, "Log in to <store>: tap ◉ Watch on this task, sign in there, then reply." Never type
+  a password. If he already tried and the store won't let him in (the conversation says so, or this
+  is the second time you've hit its sign-in page), don't just ask again: put the other EBT stores in
+  `ask` ("Walmart won't let you sign in from here. Try another store?") with "Keep trying <store>"
+  as one of the choices.
 
 ## Grocery setup (first time only)
 - Before the first order, check his preferences for a **Groceries** section. If there isn't one
@@ -19,7 +28,8 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   through them one at a time. Check first which stores really take EBT online and deliver to his
   address, and offer only those. The default is the usual answer:
   1. "Which store?" choices: the EBT-online stores that deliver to him (e.g. Walmart, Amazon Fresh,
-     Aldi via Instacart) [Walmart]
+     Aldi via Instacart) [the one he mentioned, else Walmart]. Always include this one, even if he
+     already named a store: the choices are how he sees what else there is.
   2. "Delivery or pickup?" [Delivery]
   3. "EBT can't pay the delivery fee or tip. How should that be paid?" choices: "Debit/credit card
      saved on the store", "I have Walmart+ (no fees)", "Neither: use pickup" [Debit/credit card saved
