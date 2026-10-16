@@ -12,7 +12,7 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
-const { cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, PINNED_CLOUDS } = require('./ai-connections');
+const { cloudOrder, cloudReady, runOrder, homeCloud, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardSettings, saidYes } = require('./agent-browser');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, claimAgentTasks } = require('./task-context');
@@ -30,6 +30,7 @@ const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
 const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
 let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
+let runIds = [], runRetried = false; // the tasks the current run has, and whether he pressed Retry on one
 
 // what a run may do in Gmail when a task asks for an inbox check: look, never touch
 const GMAIL_READ_TOOLS = ['search_threads', 'get_thread', 'get_message', 'list_labels'].map((n) => 'mcp__claude_ai_Gmail__' + n);
@@ -171,19 +172,19 @@ async function startAgentRun() {
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
-  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a new task one of them fails
-  // (out of usage, signed out, no usable answer, or skipped it) goes to the next, until all are answered.
-  // A task already on an AI (pinned = the pill, or whoever answered it last) tries that one first and only
-  // moves on when it is out of usage; any other failure stays with it. (Inbox runs: Claude only.)
+  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
+  // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
+  // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
+  // first; its pill follows whichever AI takes over. (Inbox runs: Claude only.)
   const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
-  agentProc = 'running';
+  agentProc = 'running'; runIds = ids; runRetried = false;
   try {
     for (const id of order) {
-      if (!pending.length) break;
+      if (!pending.length || runRetried) break;
       if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
       agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id }); // its pill moves to this AI, and the task stays on it
@@ -207,7 +208,6 @@ async function startAgentRun() {
         pending = pending.filter((x) => !got.some((u) => u.id === x));
         if (!pending.length) break;
         lastWhy = 'it skipped this task';
-        if (id === pinned) { agentLog(providers.NAMES[id] + ' skipped ' + pending.length + ' task(s): they stay with it'); break; }
         agentLog(providers.NAMES[id] + ' skipped ' + pending.length + ' task(s)' + (isLast ? '' : ', trying the next one'));
         continue;
       }
@@ -215,10 +215,10 @@ async function startAgentRun() {
       lastWhy = r.limit && id === 'gemini' ? 'Gemini’s free daily limit is used up; it resets at ' +
           new Date(meter.nextPacificMidnight()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Switch this to Claude to do it now'
         : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again') : (r.why || 'no usable answer');
-      if (id === pinned && !outOfUsage(r)) { agentLog(providers.NAMES[id] + ': ' + lastWhy + ' (it has usage left, so the task stays with it)'); break; }
+      if (runRetried) { agentLog(providers.NAMES[id] + ' stopped: he pressed Retry'); break; }
       agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
-  } finally { agentProc = null; }
+  } finally { agentProc = null; runIds = []; }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
   const valid = answered;
   for (const u of valid) {
@@ -243,7 +243,7 @@ async function startAgentRun() {
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);
-  if (pending.length) {
+  if (pending.length && !runRetried) { // Retry already put his back in the queue
     if (claudeResetAt) holdForUsage(pending, claudeResetAt); // not a failure: try again when usage is back
     else failAgentTasks(pending, lastWhy);
   }
@@ -305,7 +305,22 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
   });
 }
 
+/* Retry on a task: the app has put it back in the queue. If this run has it, stop the run (the late
+   answer would be ignored anyway) so it starts over now instead of after a 15-minute timeout */
+const handlers = {
+  'agent:retry': (_e, ids) => {
+    ids = Array.isArray(ids) ? ids.map(String) : [];
+    agentLastKey = ''; // never "same queue failed recently" after he asked for it
+    if (ids.some((id) => runIds.includes(id))) {
+      runRetried = true;
+      agentLog('retry: stopping the current run');
+      if (agentProc && typeof agentProc.kill === 'function') { try { agentProc.kill(); } catch (e) {} }
+    }
+    scheduleAgentRun();
+    return true;
+  },
+};
 // a run (or the memory tidy's own check) is going or about to start
 const isBusy = () => !!(agentProc || agentTimer);
 
-module.exports = { init, AGENT_GRACE_MS, queuedAgentTasks, scheduleAgentRun, isBusy };
+module.exports = { init, handlers, AGENT_GRACE_MS, queuedAgentTasks, scheduleAgentRun, isBusy };

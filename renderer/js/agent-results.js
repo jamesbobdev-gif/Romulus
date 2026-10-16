@@ -61,6 +61,13 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(!t||taskWs(t)!=='agent'||t.done||(t.status!=='working'&&!(t.status==='queued'&&t.runFrom)))return; // switching AI clears runFrom
       // an answer only counts from the lane that holds the task (he may have switched it meanwhile)
       if((t.lane==='local')!==(u.lane==='local'))return;
+      // the mini PC failed (not reachable, crashed): the cloud AIs take it from here, with his reply still on it
+      if(u.handoff){
+        t.lane='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
+        t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
+        agentSay(t,'sys','Mini PC couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
+        return;
+      }
       if(u.lane!=='local')t.cloud=u.via||'claude'; // whoever answered: its pill, which it keeps
       // what he wrote while it worked: the run never saw it, so it goes next, with this answer before it
       const late=t.runFrom?(t.history||[]).filter(function(h){ return h.who==='you'&&h.at>t.runFrom; }):[];
