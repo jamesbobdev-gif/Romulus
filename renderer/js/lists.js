@@ -165,6 +165,7 @@ function buildPanel(t){
       ?'Usually under a minute. You can still add to your answer below.'
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
       :'It starts within a few seconds while your computer has Tasks running.'));
+    if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
     panel.appendChild(sb);
     // the mini PC working: what it's searching, reading and writing, live
     if(local&&t.status==='working'){
@@ -203,7 +204,8 @@ function buildPanel(t){
     } else if(ask)delete laneAsks[t.id];
   }
   // a stale failure message isn't worth showing once the task is being retried
-  const staleFail=agentBusy&&/^Claude couldn’t finish/.test(t.note||'');
+  const failed=/couldn’t finish/i.test(t.note||'');
+  const staleFail=agentBusy&&failed;
   if(taskWs(t)==='agent'&&t.note&&!staleFail){
     const nb=el('div','agent-note');
     const who=t.lane==='local'?'Mini PC':cloudNameOf(t);
@@ -221,6 +223,7 @@ function buildPanel(t){
     // the latest answer's "What it did", right under it (older ones are in the conversation)
     const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
     if(lastAns&&lastAns.thoughts&&t.status!=='working')nb.appendChild(thoughtsBox(t,lastAns));
+    if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)nb.appendChild(retryButton(t));
     panel.appendChild(nb);
   }
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose
