@@ -58,6 +58,9 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(!t||taskWs(t)!=='agent'||t.done)return;
       if(t.status!=='queued'||t.waitUntil!==info.until){ t.status='queued'; t.waitUntil=info.until; changed=true; }
+      // the computer slept mid-run: it starts over now (no failure, same AI)
+      if(info.slept){ delete t.runFrom; delete liveText[t.id]; if(typeof livePlan!=='undefined')delete livePlan[t.id];
+        agentSay(t,'sys','Your computer went to sleep while it worked: starting again now it’s awake'); changed=true; }
     });
     if(changed)touch();
   });

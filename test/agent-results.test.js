@@ -9,7 +9,7 @@ function load(tasks) {
   const cb = {};
   const on = (name) => (f) => { cb[name] = f; };
   const ctx = {
-    window: { desktop: { onAgentResults: on('results'), onAgentWorking: on('working'), onAgentLive: on('live') } },
+    window: { desktop: { onAgentResults: on('results'), onAgentWorking: on('working'), onAgentLive: on('live'), onAgentWaiting: on('waiting') } },
     state: { tasks }, liveText: {}, livePlan: {}, liveHeard: {}, fillPlan() {}, taskWs: (t) => t.ws,
     agentSay(t, who, text, extra) { t.history = t.history || []; t.history.push(Object.assign({ who, text, at: Date.now() }, extra || {})); },
     touch() {}, appendPrefs() {}, setInterval() {}, setTimeout() {}, document: { querySelector: () => null },
@@ -113,4 +113,17 @@ test('a mid-run message Claude never took still goes next', () => {
   cb.results([{ id: 'g', status: 'needs-you', note: 'Done the first part.', heard: [t.runFrom + 1] }]);
   assert.strictEqual(t.status, 'queued');
   assert.strictEqual(t.reply, 'and also this');
+});
+
+test('the computer slept mid-run: the task goes back in the queue and says why, with no failure', () => {
+  const t = { id: 's', ws: 'agent', status: 'queued', history: [] };
+  const { cb, ctx } = load([t]);
+  cb.working(['s']);
+  ctx.liveText.s = 'Opening walmart.com';
+  cb.waiting({ ids: ['s'], until: Date.now(), slept: true });
+  assert.strictEqual(t.status, 'queued');
+  assert.ok(!(t.waitUntil > Date.now()), 'not shown as out of usage');
+  assert.strictEqual(t.runFrom, undefined);
+  assert.strictEqual(ctx.liveText.s, undefined);
+  assert.match(t.history.pop().text, /went to sleep/);
 });

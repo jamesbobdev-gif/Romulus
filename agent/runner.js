@@ -31,6 +31,7 @@ const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
 const { groceryBrief, groceryChanges, groceryListFor } = require('./grocery');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
 const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
+const FROZE_MS = 60 * 1000;              // the clock jumped this far between beats: the computer slept and the run froze
 let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
 let runIds = [], runRetried = false; // the tasks the current run has, and whether he pressed Retry on one
 let live = null; // the current run's plan, steps and his mid-run messages (agent/run-live.js)
@@ -196,10 +197,21 @@ async function startAgentRun() {
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   agentProc = 'running'; runIds = ids; runRetried = false;
+  // a run must not be cut off by this computer idling to sleep. A closed lid (or Modern Standby with the screen
+  // off) still freezes it: a beat that comes late tells us, and then the run starts over once it's awake, with
+  // the same AI, instead of each AI in turn "failing" on a dead connection (they used to, after hours asleep)
+  const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
+  let beat = Date.now(), slept = false;
+  const froze = () => {
+    if (slept) return;
+    slept = true; agentLog('this computer went to sleep mid-run: starting it over');
+    if (agentProc && typeof agentProc.kill === 'function') { try { agentProc.kill(); } catch (e) {} }
+  };
+  const beats = setInterval(() => { if (Date.now() - beat > FROZE_MS) froze(); beat = Date.now(); }, 5000);
   live = runLive.start({ dir: path.join(ctx.userData(), 'agent-run'), tasks: brief.map((b) => ({ id: b.id, title: b.title })), send: sendToRenderer, node: findNode() });
   try {
     for (const id of order) {
-      if (!pending.length || runRetried) break;
+      if (!pending.length || runRetried || slept) break;
       if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
       agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id }); // its pill moves to this AI, and the task stays on it
@@ -211,6 +223,8 @@ async function startAgentRun() {
           timeoutMs: AGENT_TIMEOUT_MS, node: findNode(), onProc: (p) => { agentProc = p; } })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS });
+      if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
+      if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
       try { fs.writeFileSync(path.join(ctx.userData(), 'agent-last-run.log'), id + '\n' + (r.log || '') + '\n' + (r.text || '')); } catch (e) {}
       let updates = null;
       try { const text = String(r.text || ''); updates = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)).updates; } catch (e) {}
@@ -233,7 +247,10 @@ async function startAgentRun() {
       if (runRetried) { agentLog(providers.NAMES[id] + ' stopped: he pressed Retry'); break; }
       agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
-  } finally { agentProc = null; runIds = []; if (live) live.stop(); live = null; }
+  } finally {
+    agentProc = null; runIds = []; if (live) live.stop(); live = null;
+    clearInterval(beats); ctx.powerSaveBlocker.stop(awake);
+  }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
   const valid = answered;
   for (const u of valid) {
@@ -265,7 +282,8 @@ async function startAgentRun() {
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);
-  if (pending.length && !runRetried) { // Retry already put his back in the queue
+  if (pending.length && slept) sendToRenderer('agent:waiting', { ids: pending, until: Date.now(), slept: true }); // back in the queue: runs again now it's awake
+  else if (pending.length && !runRetried) { // Retry already put his back in the queue
     if (claudeResetAt) holdForUsage(pending, claudeResetAt); // not a failure: try again when usage is back
     else failAgentTasks(pending, lastWhy);
   }
