@@ -170,13 +170,17 @@ function buildPanel(t){
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
       :'It starts within a few seconds while your computer has Tasks running.'));
     if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
-    if(!local&&t.status==='working'&&liveViewAvailable())sb.appendChild(watchButton()); // watch it work in the agent browser
     panel.appendChild(sb);
     // Claude's checklist while it works (agent/run-live.js), filled live without a re-render
     if(!local&&t.status==='working'){
       const pl=el('ul','agent-plan'); pl.setAttribute('data-id',t.id); pl.setAttribute('aria-label','Plan');
       fillPlan(pl,livePlan[t.id]);
       panel.appendChild(pl);
+    }
+    // the agent browser, live, right in the card (agent-live-view.js): shows once it has a page up
+    if(!local&&t.status==='working'&&liveViewAvailable()){
+      const slot=el('div','live-slot'); panel.appendChild(slot);
+      liveEmbed(slot,t.id);
     }
     // working: what it's searching, reading and clicking, live (the mini PC always; Claude once it has started)
     if(t.status==='working'&&(local||liveText[t.id])){
