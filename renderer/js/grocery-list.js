@@ -100,7 +100,7 @@ function groceryNextLine(){
   const at=nextGroceryAt();
   const d=el('div','panel-meta grocery-next');
   d.appendChild(el('span','lbl','Next order'));
-  d.appendChild(el('span','next',at?new Date(at).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · asking for groceries starts the 2 weeks over':'2 weeks after you ask for groceries'));
+  d.appendChild(el('span','next',at&&at<=Date.now()?'Opening now (once the computer is on)':at?new Date(at).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · asking for groceries starts the 2 weeks over':'2 weeks after you ask for groceries'));
   return d;
 }
 

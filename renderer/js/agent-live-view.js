@@ -2,8 +2,11 @@
    Watch Claude work in the agent browser and click / scroll / type to take over (log in, fix a field).
    It talks to the agent browser's localhost debugging port (the main process lists its tabs):
    Page.startScreencast sends pictures of the page, Input.dispatch* sends his mouse and keys back.
-   It follows the agent: when a new tab opens, the view switches to it. Desktop only. */
-let liveView=null; // { box, img, ws, page, pages, meta, nextId, timer, touchedAt }
+   It follows the agent: when a new tab opens, the view switches to it. Desktop only.
+   While Claude works on a task the view sits in that task's card by itself (embedded), and shows only
+   once the browser has a real page up; ⤢ makes it big. */
+let liveView=null; // { box, img, ws, page, pages, meta, nextId, timer, touchedAt, host, forId, big }
+const liveHidden={}; // task id → he closed its embedded view: a button brings it back
 
 function liveViewAvailable(){ return !!(window.desktop&&window.desktop.livePages); }
 function watchButton(){
@@ -13,13 +16,28 @@ function watchButton(){
   return b;
 }
 
-function openLiveView(){
-  if(liveView){ liveView.keys.focus(); return; }
-  const box=el('div','live-view'); box.tabIndex=0; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Agent browser, live');
+// a working task's card: the live view goes in its slot (one view at a time: the task that has it keeps it)
+function liveEmbed(slot,id){
+  if(liveHidden[id]){
+    const b=el('button','btn-ghost agent-watch','◉ Show the browser');
+    b.addEventListener('click',function(e){ e.stopPropagation(); delete liveHidden[id]; render(); });
+    slot.appendChild(b); return;
+  }
+  if(liveView&&liveView.forId&&liveView.forId!==id&&state.tasks.some(function(t){ return t.id===liveView.forId&&t.status==='working'; }))return;
+  openLiveView(slot,id);
+}
+function openLiveView(host,forId){
+  if(liveView){
+    if(host){ liveView.host=host; liveView.forId=forId; if(!liveView.big)host.appendChild(liveView.box); }
+    else liveBig(true);
+    return;
+  }
+  const box=el('div','live-view'+(host?' live-embed':'')); box.tabIndex=0; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Agent browser, live');
   const bar=el('div','live-bar');
   const dot=el('span','live-dot'); bar.appendChild(dot);
   const where=el('div','live-where','Connecting…'); bar.appendChild(where);
   const tabs=el('select','live-tabs'); tabs.title='Which tab to watch'; tabs.hidden=true; bar.appendChild(tabs);
+  const big=el('button','icon live-bigger','⤢'); big.title='Make it bigger'; big.setAttribute('aria-label','Make the live view bigger'); big.hidden=!host; bar.appendChild(big);
   const close=el('button','icon live-close'); close.innerHTML=I.x; close.setAttribute('aria-label','Close the live view'); bar.appendChild(close);
   box.appendChild(bar);
   const stage=el('div','live-stage');
@@ -30,18 +48,33 @@ function openLiveView(){
   // what has keyboard focus: a hidden box, so text that comes without key presses (emoji picker,
   // voice typing, IME) arrives as input and is typed into the page too
   const keys=el('textarea','live-keys'); keys.setAttribute('aria-label','Type into the agent browser'); keys.tabIndex=-1; box.appendChild(keys);
-  document.body.appendChild(box);
-  liveView={box:box,keys:keys,img:img,msg:msg,where:where,tabs:tabs,dot:dot,ws:null,page:null,pages:[],meta:null,nextId:1,timer:null,touchedAt:0,seen:{}};
+  (host||document.body).appendChild(box);
+  liveView={box:box,keys:keys,img:img,msg:msg,where:where,tabs:tabs,dot:dot,bigBtn:big,ws:null,page:null,pages:[],meta:null,nextId:1,timer:null,touchedAt:0,seen:{},
+    host:host||null,forId:forId||null,big:!host};
+  if(host)box.hidden=true; // until the browser shows a real page
 
-  close.addEventListener('click',closeLiveView);
+  // closing the embedded view hides it for that task; closing the big one puts it back in the card
+  close.addEventListener('click',function(e){ e.stopPropagation(); if(liveView.big&&liveView.host&&liveView.host.isConnected)liveBig(false); else { if(liveView.forId)liveHidden[liveView.forId]=true; closeLiveView(); if(liveView===null)render(); } });
+  big.addEventListener('click',function(e){ e.stopPropagation(); liveBig(!liveView.big); });
+  box.addEventListener('click',function(e){ e.stopPropagation(); }); // using it doesn't fold the card
   tabs.addEventListener('change',function(){ const p=liveView.pages.find(function(x){ return x.id===tabs.value; }); if(p){ liveView.touchedAt=Date.now(); liveConnect(p,true); } });
   box.addEventListener('keydown',liveKey); box.addEventListener('keyup',liveKey);
   box.addEventListener('focus',function(){ keys.focus(); });
   keys.addEventListener('input',function(){ if(keys.value){ liveSend('Input.insertText',{text:keys.value}); keys.value=''; } });
   box.addEventListener('paste',function(e){ const t=e.clipboardData&&e.clipboardData.getData('text'); if(t){ e.preventDefault(); liveSend('Input.insertText',{text:t}); } });
   liveMouse(img);
-  keys.focus();
+  if(!host)keys.focus(); // embedded: his typing stays in the reply box until he clicks the page
   livePoll(); liveView.timer=setInterval(livePoll,2000);
+}
+// big (over the app) or back in the task's card
+function liveBig(on){
+  const v=liveView; if(!v)return;
+  v.big=on; v.box.classList.toggle('live-embed',!on);
+  v.bigBtn.textContent=on?'⤡':'⤢'; v.bigBtn.title=on?'Put it back in the task':'Make it bigger';
+  v.bigBtn.hidden=on&&!(v.host&&v.host.isConnected);
+  if(on){ v.box.hidden=false; document.body.appendChild(v.box); v.keys.focus(); }
+  else if(v.host&&v.host.isConnected)v.host.appendChild(v.box);
+  else closeLiveView();
 }
 function closeLiveView(){
   if(!liveView)return;
@@ -65,6 +98,10 @@ async function livePoll(){
   const v=liveView; if(!v)return;
   let r; try{ r=await window.desktop.livePages(); }catch(e){ r={up:false,pages:[]}; }
   if(liveView!==v)return;
+  // its task finished: the card went (checked after the wait: a card being drawn isn't on the page yet)
+  if(!v.big&&!v.box.isConnected){ closeLiveView(); return; }
+  // in a card: only once the browser has a real page up (a run that only searches never shows it)
+  if(!v.big)v.box.hidden=!r.up||!r.pages.some(function(p){ return p.url&&!/^(about:|chrome:|devtools:)/.test(p.url); });
   if(!r.up){ v.dot.className='live-dot'; v.where.textContent='Agent browser isn’t open'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
     liveShow('Romulus’s browser isn’t running. It starts by itself when Romulus needs the web.',true); return; }
   const first=Object.keys(v.seen).length===0;
@@ -148,7 +185,7 @@ function liveMouse(img){
 // his keys → the page. Escape (with nothing held) closes the view instead
 function liveKey(e){
   if(!liveView)return;
-  if(e.type==='keydown'&&e.key==='Escape'&&!liveMods(e)){ e.preventDefault(); closeLiveView(); return; }
+  if(e.type==='keydown'&&e.key==='Escape'&&!liveMods(e)){ e.preventDefault(); if(!liveView.big)liveView.keys.blur(); else if(liveView.host&&liveView.host.isConnected)liveBig(false); else closeLiveView(); return; }
   if(e.target.closest&&e.target.closest('.live-bar'))return; // the tab picker and buttons keep their keys
   if(e.ctrlKey&&!e.altKey&&(e.key==='v'||e.key==='V'))return; // paste: the paste event sends the text
   if(e.isComposing||e.key==='Process'||e.key==='Unidentified')return; // IME: the text arrives as input
