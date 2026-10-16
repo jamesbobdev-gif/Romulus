@@ -140,6 +140,7 @@ function buildPanel(t){
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
+        if(h.thoughts)b.appendChild(thoughtsBox(t,h));
         th.appendChild(b);
       });
       panel.appendChild(th);
@@ -154,7 +155,7 @@ function buildPanel(t){
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
     const local=t.lane==='local';
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
-    const cloudName={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[t.cloud]||'Claude';
+    const cloudName=cloudNameOf(t);
     sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':'Waiting for '+cloudName));
     sb.appendChild(document.createTextNode(local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
@@ -177,7 +178,10 @@ function buildPanel(t){
   if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
     const now=laneNow(t);
     const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
-    [['claude','Claude'],['gemini','Gemini'],['openai','ChatGPT'],['local','Mini PC']].forEach(function(o){
+    const lanes=[['claude','Claude'],['gemini','Gemini'],['openai','ChatGPT'],['openrouter','OpenRouter'],['local','Mini PC']];
+    // the highlight slides to the one it's on (--i of --n)
+    tg.style.setProperty('--n',lanes.length); tg.style.setProperty('--i',Math.max(0,lanes.map(function(o){ return o[0]; }).indexOf(now)));
+    lanes.forEach(function(o){
       const w=el('button','lane-word'+(now===o[0]?' on':''),o[1]);
       w.setAttribute('role','radio'); w.setAttribute('aria-checked',String(now===o[0]));
       w.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':o[1]+' has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
@@ -202,7 +206,7 @@ function buildPanel(t){
   const staleFail=agentBusy&&/^Claude couldn’t finish/.test(t.note||'');
   if(taskWs(t)==='agent'&&t.note&&!staleFail){
     const nb=el('div','agent-note');
-    const who=t.lane==='local'?'Mini PC':{gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[t.cloud]||'Claude';
+    const who=t.lane==='local'?'Mini PC':cloudNameOf(t);
     const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
     if(agentBusy||stuck||t.status!=='needs-you')nb.appendChild(el('b',null,agentBusy?who+'’s last message':stuck?who+' stopped':'From '+who));
     if(stuck){
@@ -214,6 +218,9 @@ function buildPanel(t){
       if(t.note&&t.note.indexOf(t.stuck.reason)===-1)nb.appendChild(el('div','stuck-note',t.note));
       if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What the browser showed when it stopped. Click to enlarge'; } nb.appendChild(ps); }
     } else nb.appendChild(document.createTextNode(t.note));
+    // the latest answer's "What it did", right under it (older ones are in the conversation)
+    const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
+    if(lastAns&&lastAns.thoughts&&t.status!=='working')nb.appendChild(thoughtsBox(t,lastAns));
     panel.appendChild(nb);
   }
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose
@@ -242,7 +249,7 @@ function buildPanel(t){
         const kind=optionKind(o.url);
         const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':'Choose this');
         pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':'Picks this option';
-        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label; t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
+        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label; t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
           // if the option has a link, stage an email with it — the desktop sends it (never orders anything)
           if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'📧 Emailing you the model to print.':kind==='link'?'📧 Emailing you the link.':'📧 Emailing you the link to buy this.'); }
           touch(); });
@@ -353,7 +360,7 @@ function buildPanel(t){
       lt.reply=(busy&&lt.reply)?lt.reply+'\n'+text:text; // mid-run additions stack onto what you already sent
       if(urls.length)lt.replyImages=((busy&&Array.isArray(lt.replyImages))?lt.replyImages:[]).concat(urls);
       agentSay(lt,'you',text,urls.length?{images:urls}:null);
-      buzz('send'); lt.status='queued'; touch();
+      buzz('send'); if(lt.status!=='working')lt.status='queued'; touch(); // mid-run: it goes next, after this run answers (agent-results.js)
     }
     send.addEventListener('click',doSend);
     ta.addEventListener('keydown',function(e){ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); doSend(); } });

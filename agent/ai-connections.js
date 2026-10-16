@@ -117,7 +117,7 @@ handle('ai:usage', async (_e, refresh) => {
   return meter.snapshot();
 });
 // the cloud AIs a task can be pinned to on the pill (t.cloud; its lane stays 'claude' on the server)
-const PINNED_CLOUDS = ['gemini', 'openai'];
+const PINNED_CLOUDS = ['gemini', 'openai', 'openrouter'];
 function cloudReady(id) {
   const c = readConfig(), s = providers.settings(c);
   return id === 'claude' || (id === 'gemini' ? providers.geminiStatus(c).ready : id === 'openai' ? (s.openaiVia === 'chatgpt' ? providers.codexStatus().signedIn : !!s.openaiKey) : !!s.openrouterKey);
@@ -130,10 +130,20 @@ function cloudOrder() {
 /* who a run asks, in turn, until every task is answered: inbox runs Claude only (the others can't read
    Gmail and could reach the web); a task he put on Gemini or ChatGPT that one first, then the rest of his
    order. order = cloudOrder(), ready = cloudReady */
+/* the cloud AI a task is on: the one he picked (the pill), else whoever answered it last. A task stays
+   there: it only goes to another AI when that one is out of usage (or no longer connected). null = new */
+function homeCloud(t) {
+  if (PINNED_CLOUDS.includes(t.cloud) || t.cloud === 'claude') return t.cloud; // 'claude' = he switched it back to Claude
+  const last = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
+  if (!last || last.lane === 'local') return null;
+  return ['gemini', 'openai', 'openrouter'].includes(last.via) ? last.via : 'claude';
+}
+// a try that failed because that AI has no usage left (the only reason a task moves to another AI)
+const outOfUsage = (r) => !!(r && (r.limit || r.resetAt));
 function runOrder({ order, pinned, mailRun, ready }) {
   if (mailRun) return order.filter((id) => id === 'claude');
   if (!pinned) return order.slice();
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }
 
-module.exports = { init, handlers, aiStatus, cloudOrder, cloudReady, runOrder, PINNED_CLOUDS };
+module.exports = { init, handlers, aiStatus, cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, PINNED_CLOUDS };

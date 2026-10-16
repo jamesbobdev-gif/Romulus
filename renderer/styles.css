@@ -45,13 +45,10 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .howto-body{padding:0 0 8px}
 .howto-meta{font-family:var(--mono);font-size:10px;color:var(--faint)}
 .howto-text{font-size:12.5px;color:var(--muted);line-height:1.5}
-.lane-slider{position:relative;display:inline-grid;grid-template-columns:repeat(4,1fr);margin:10px 0 12px;padding:3px;border-radius:999px;background:var(--chip);border:1px solid var(--hairline)}
-.lane-slider::before{content:'';position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / 4);border-radius:999px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.4,1),opacity .15s}
-.lane-slider.gemini::before{transform:translateX(100%)}
-.lane-slider.openai::before{transform:translateX(200%)}
-.lane-slider.local::before{transform:translateX(300%)}
+.lane-slider{position:relative;display:inline-grid;grid-template-columns:repeat(var(--n,5),1fr);max-width:100%;margin:10px 0 12px;padding:3px;border-radius:999px;background:var(--chip);border:1px solid var(--hairline)}
+.lane-slider::before{content:'';position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / var(--n,5));transform:translateX(calc(var(--i,0) * 100%));border-radius:999px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.4,1),opacity .15s}
 .lane-slider.none::before{opacity:0}
-.lane-slider .lane-word{position:relative;z-index:1;border:0;background:none;padding:5px 10px;min-width:68px;border-radius:999px;color:var(--muted);cursor:pointer;font-family:var(--sans,inherit);font-size:12px;font-weight:500;transition:color .15s}
+.lane-slider .lane-word{position:relative;z-index:1;border:0;background:none;padding:5px 8px;min-width:0;white-space:nowrap;border-radius:999px;color:var(--muted);cursor:pointer;font-family:var(--sans,inherit);font-size:12px;font-weight:500;transition:color .15s}
 .lane-slider .lane-word.on{color:var(--ink);cursor:default}
 .lane-ask{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 12px;padding:9px 12px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);font-size:12.5px;line-height:1.4}
 .lane-ask span{flex:1 1 220px}
@@ -491,3 +488,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .swipe-done .big{font-size:22px;font-weight:700}
 .swipe-done .btn-accent{margin:8px auto 0;align-self:center;padding:12px 22px;font-size:15px}
 .swipe-hint{color:var(--faint);margin-top:10px;text-align:center}
+/* what the mini PC did on the way to an answer, folded shut (agent-chat.js thoughtsBox) */
+.conv-thoughts{margin-top:8px}
+.conv-thoughts summary{cursor:pointer;font-size:12px;color:var(--muted);user-select:none}
+.conv-thoughts .agent-live{margin-top:6px}
