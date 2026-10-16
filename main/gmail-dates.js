@@ -4,6 +4,7 @@
    agent uses, with no tools, no connectors and a bare system prompt, so a call is ~1-2k tokens. */
 const path = require('path');
 const os = require('os');
+const { claudeExe } = require('../agent/platform');
 const calendars = require('../agent/calendars');
 const mailEvents = require('../agent/mail-events');
 
@@ -20,7 +21,7 @@ const mailAllowed = () => !!calendars.gmailAccount();
 // (opts: {model, effort} — the look-ahead thinks a bit harder than the date check)
 function claudeJson(messages, schema, opts = {}) {
   const cfg = readConfig();
-  const exe = (cfg.agentRunner && cfg.agentRunner.command) || path.join(os.homedir(), '.local', 'bin', 'claude.exe');
+  const exe = claudeExe(cfg);
   const model = opts.model || (cfg.mailEvents && cfg.mailEvents.model) || 'claude-opus-5-5';
   const args = ['-p', '--output-format', 'json', '--model', model, '--effort', opts.effort || 'low', '--tools', '', '--strict-mcp-config',
     '--max-turns', '3', '--system-prompt', messages[0].content, '--json-schema', JSON.stringify(schema)];

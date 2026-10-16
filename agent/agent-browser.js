@@ -3,6 +3,8 @@
    decides by itself when a task needs it — and it opens only on first use, then stays open. */
 const path = require('path');
 const fs = require('fs');
+const platform = require('./platform');
+const { findChrome, findNode } = platform;
 
 let ctx = null; // { userData, readConfig, agentLog }
 function init(c) { ctx = c; }
@@ -16,33 +18,17 @@ const PLAYWRIGHT_MCP = '@playwright/mcp@0.0.83';
 const BROWSER_DENIED = ['browser_run_code_unsafe', 'browser_evaluate', 'browser_file_upload', 'browser_drop', 'browser_close',
   'browser_network_request'].map((n) => 'mcp__browser__' + n);
 function agentBrowserDir() { return path.join(ctx.userData(), 'agent-browser'); }
-function findChrome() {
-  const env = process.env;
-  return [path.join(env['ProgramFiles'] || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe')]
-    .find((p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }) || null;
-}
 // how the agent browser is started (here, and by browser-proxy.js, which gets these as an argument). It has
 // no window of its own: it runs headless and James watches or takes over inside Tasks (◉ Watch). Headless
 // Chrome calls itself "HeadlessChrome" in its user agent; it says plain Chrome instead, so shops treat
 // it like his normal browser.
-function chromeUA(chrome) {
-  let major = '140';
-  try { const v = fs.readdirSync(path.dirname(chrome)).find((d) => /^\d+\.\d+\.\d+\.\d+$/.test(d)); if (v) major = v.split('.')[0]; } catch (e) {}
-  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + major + '.0.0.0 Safari/537.36';
-}
+const chromeUA = (chrome) => platform.chromeUA(platform.chromeMajor(chrome));
 function chromeArgs(chrome) {
   return ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), '--remote-debugging-port=' + AGENT_BROWSER_PORT,
     '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check',
     '--headless=new', '--window-size=1280,900', '--user-agent=' + chromeUA(chrome),
     // keep drawing in the background, or clicks wait forever for the page to "settle"
     '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
-}
-function findNode() {
-  try { return require('child_process').execFileSync('where', ['node'], { encoding: 'utf8', windowsHide: true }).split(/\r?\n/)[0].trim() || null; }
-  catch (e) { return null; }
 }
 let browserToolInstall = null;
 // → path of the MCP config to hand Claude, or null (no Chrome/Node, or the install failed: the run goes on without a browser)

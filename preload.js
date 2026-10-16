@@ -41,6 +41,12 @@ contextBridge.exposeInMainWorld('desktop', {
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
   livePages: () => ipcRenderer.invoke('live:pages'),
+  // the hub mini PC (main/hub.js): this computer as its client, over Tailscale
+  hubGet: () => ipcRenderer.invoke('hub:get'),
+  hubTest: (url, token) => ipcRenderer.invoke('hub:test', url, token),
+  hubSave: (change) => ipcRenderer.invoke('hub:save', change),
+  hubSendSettings: () => ipcRenderer.invoke('hub:send-settings'),
+  hubRestart: () => ipcRenderer.invoke('hub:restart'),
   liveStart: () => ipcRenderer.invoke('live:start'),
   // course calendar feeds (Blackboard / D2L iCal links) → School list
   // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)

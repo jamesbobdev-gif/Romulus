@@ -30,6 +30,7 @@ handle('tasks:save', async (_event, raw) => {
     ctx.refreshTrayStatus(raw);
     ctx.scheduleAgentRun(raw);
     ctx.scheduleLocalRun(raw);
+    if (ctx.serverWork && !ctx.serverWork()) return true; // a hub client: the mini PC does the rest when the edit syncs there
     askForRoutes(raw);
     processBuyEmails(raw).catch((e) => console.error('buy email error:', e.message));
     clearTimeout(syncDebounce);

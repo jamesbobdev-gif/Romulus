@@ -95,7 +95,10 @@ function sendToRenderer(ch, payload) {
 // a hidden, sandboxed window for reading pages behind a bot check (link preview pictures)
 function newHiddenWindow(opts) { return new BrowserWindow(opts); }
 
+// the page loads again (after the laptop handed its settings to the hub mini PC)
+function reloadWindow() { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload(); }
+
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, quit, setQuitting };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting };

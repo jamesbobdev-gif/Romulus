@@ -31,6 +31,19 @@
     <div id="aiUsage" hidden></div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Romulus &amp; AI</summary>
+      <div class="settings-sub" id="hubSection" hidden>
+        <h3 class="settings-subhead">Mini PC server</h3>
+        <p class="settings-hint">When it's on, the agent, its browser, mail dates and calendar sync run on your mini PC. This computer only shows them and syncs, over Tailscale.</p>
+        <input id="hubUrl" class="settings-inp mono" placeholder="https://tasks-hub.your-tailnet.ts.net" autocomplete="off" spellcheck="false">
+        <input id="hubToken" class="settings-inp mono" type="password" placeholder="hub token (from hub-token.txt on the mini PC)" autocomplete="off" style="margin-top:6px">
+        <div class="settings-row" style="margin-top:8px">
+          <button id="hubTestBtn" class="ghost mono">Test</button>
+          <button id="hubOnBtn" class="ghost mono">Use the mini PC</button>
+          <button id="hubSendBtn" class="ghost mono" hidden>Send my settings to it</button>
+          <button id="hubOffBtn" class="ghost mono" hidden>Run everything here again</button>
+        </div>
+        <span id="hubStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      </div>
       <div class="settings-sub" id="aiSection" hidden>
         <h3 class="settings-subhead">AI connections</h3>
         <p class="settings-hint">Tried top to bottom; if one is out, the next takes over.</p>
@@ -310,6 +323,7 @@
 <script src="js/popups.js"></script>
 <script src="js/wiring.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/hub.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/look-ahead.js"></script>
