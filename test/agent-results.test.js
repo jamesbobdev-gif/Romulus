@@ -10,7 +10,7 @@ function load(tasks) {
   const on = (name) => (f) => { cb[name] = f; };
   const ctx = {
     window: { desktop: { onAgentResults: on('results'), onAgentWorking: on('working'), onAgentLive: on('live') } },
-    state: { tasks }, liveText: {}, taskWs: (t) => t.ws,
+    state: { tasks }, liveText: {}, livePlan: {}, liveHeard: {}, fillPlan() {}, taskWs: (t) => t.ws,
     agentSay(t, who, text, extra) { t.history = t.history || []; t.history.push(Object.assign({ who, text, at: Date.now() }, extra || {})); },
     touch() {}, appendPrefs() {}, setInterval() {}, setTimeout() {}, document: { querySelector: () => null },
   };
@@ -91,4 +91,26 @@ test('answered by Claude: its pill is Claude', () => {
   cb.working(['g']);
   cb.results([{ id: 'g', status: 'done', note: 'Done.' }]);
   assert.strictEqual(t.cloud, 'claude');
+});
+
+test('a message Claude took mid-run counts as heard: no second run for it', () => {
+  const t = { id: 'h', ws: 'agent', status: 'queued', history: [] };
+  const { cb } = load([t]);
+  cb.working(['h']);
+  const at = t.runFrom + 5;
+  t.history.push({ who: 'you', text: 'make it blue', at });
+  cb.results([{ id: 'h', status: 'needs-you', note: 'Found a blue one.', heard: [at] }]);
+  assert.strictEqual(t.status, 'needs-you');
+  assert.strictEqual(t.reply, null);
+  assert.strictEqual(t.history.find((h) => h.at === at).heard, true);
+});
+
+test('a mid-run message Claude never took still goes next', () => {
+  const t = { id: 'g', ws: 'agent', status: 'queued', history: [] };
+  const { cb } = load([t]);
+  cb.working(['g']);
+  t.history.push({ who: 'you', text: 'first', at: t.runFrom + 1 }, { who: 'you', text: 'and also this', at: t.runFrom + 2 });
+  cb.results([{ id: 'g', status: 'needs-you', note: 'Done the first part.', heard: [t.runFrom + 1] }]);
+  assert.strictEqual(t.status, 'queued');
+  assert.strictEqual(t.reply, 'and also this');
 });

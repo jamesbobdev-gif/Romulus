@@ -13,11 +13,12 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardSettings, saidYes } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes } = require('./agent-browser');
+const runLive = require('./run-live');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
-  wantsInbox, agentRow, prefLine, claimAgentTasks } = require('./task-context');
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
 const siteNotes = require('./site-notes');
-const { enrichOption } = require('./previews');
+const { enrichOption, pagePreviewImage } = require('./previews');
 
 let ctx = null; // { userData, documents, readConfig, dataFile, agentLog, sendToRenderer, memoryTidying }
 function init(c) { ctx = c; }
@@ -27,10 +28,12 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
+const { groceryBrief, groceryChanges, groceryListFor } = require('./grocery');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
 const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
 let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
 let runIds = [], runRetried = false; // the tasks the current run has, and whether he pressed Retry on one
+let live = null; // the current run's plan, steps and his mid-run messages (agent/run-live.js)
 
 // what a run may do in Gmail when a task asks for an inbox check: look, never touch
 const GMAIL_READ_TOOLS = ['search_threads', 'get_thread', 'get_message', 'list_labels'].map((n) => 'mcp__claude_ai_Gmail__' + n);
@@ -38,6 +41,8 @@ const GMAIL_WRITE_TOOLS = ['send_message', 'reply', 'forward', 'create_draft', '
   'trash_message', 'trash_thread', 'untrash_message', 'untrash_thread', 'mark_message_spam', 'mark_thread_spam', 'unmark_message_spam',
   'unmark_thread_spam', 'label_message', 'label_thread', 'unlabel_message', 'unlabel_thread', 'update_message_labels', 'create_label',
   'update_label', 'delete_label', 'apply_sensitive_message_label', 'apply_sensitive_thread_label'].map((n) => 'mcp__claude_ai_Gmail__' + n);
+// its own checklist: the plan shown on the task while it works (agent/run-live.js)
+const PLAN_TOOLS = 'TaskCreate,TaskUpdate';
 const OTHER_CONNECTORS = ['Claude_Docs', 'Tasks', 'Microsoft_365', 'Gamma', 'Figma', 'Excalidraw', 'Zapier', 'Supabase', 'Slack',
   'Interactive_Brokers_IBKR', 'Canva', 'Notion', 'Google_Drive', 'Google_Calendar'].map((n) => 'mcp__claude_ai_' + n);
 function queuedAgentTasks(raw) {
@@ -47,6 +52,7 @@ function queuedAgentTasks(raw) {
     .filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isClaudeLane(t));
 }
 function scheduleAgentRun(raw) {
+  if (live && raw != null) live.forward(raw); // he wrote on a task Claude is working on: it hears it now
   if ((readConfig().agentRunner || {}).enabled === false) return;
   const queued = queuedAgentTasks(raw);
   const n = queued.length;
@@ -88,7 +94,11 @@ async function startAgentRun() {
   };
   const kind = ['mail', 'web', 'claude', 'gemini', 'openai', 'openrouter'].find((k) => all.some((t) => kindOf(t) === k));
   const mailRun = kind === 'mail', pinned = kind === 'mail' || kind === 'web' ? null : kind;
-  const queued = all.filter((t) => kindOf(t) === kind);
+  let queued = all.filter((t) => kindOf(t) === kind);
+  // a yes unlocks final clicks (placing an order) for the whole run, so a task he said yes to runs on
+  // its own: his yes on one task never lets the browser buy or send for another. The rest go next run.
+  const yesTask = queued.find(saidYes);
+  if (yesTask && queued.length > 1) queued = [yesTask];
   // same queue as the last run and nothing moved: that run failed — don't hammer it. Checked before
   // claiming: a claimed task we then skip would sit as "working" on the server with nobody on it
   const queuedKey = queued.map((t) => t.id).sort().join(',');
@@ -134,11 +144,14 @@ async function startAgentRun() {
   if (Object.keys(photos).length) agentLog('photos for Claude: ' + Object.values(photos).reduce((n, f) => n + f.length, 0));
   const calendar = tasks.some(wantsCalendar) ? await calendarForAgent() : null;
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
-  const brief = tasks.map((t) => ({ id: t.id, title: t.title, due: t.due, dueTime: t.dueTime, tag: t.tag,
+  let allTasks = [];
+  try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  const brief = tasks.map((t, i) => ({ id: t.id, n: tasks.length > 1 ? i + 1 : undefined, title: t.title, due: t.due, dueTime: t.dueTime, tag: t.tag,
     photos: photos[t.id] || undefined, // files to open with the Read tool (paths relative to your working folder)
     note: t.note || null, reply: t.reply || null,
     instructions: t.notes || null, // e.g. a school assignment's rules, carried over when it was handed to Claude
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
+    groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who, text: String(h.text || '').slice(0, 600),
       shown: Array.isArray(h.options) ? h.options : undefined,
@@ -165,7 +178,8 @@ async function startAgentRun() {
   const notes = siteNotesFor(tasks.flatMap(taskLinks), 4);
   const notePart = notes.length ? '\n\n## Site notes\n' + notes.map(siteNotes.show).join('\n\n') : '';
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
-  const promptFor = (want) => rules + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
+  // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
+  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n';
 
   // why each newly routed task went to Claude (shown on the task)
@@ -182,6 +196,7 @@ async function startAgentRun() {
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   agentProc = 'running'; runIds = ids; runRetried = false;
+  live = runLive.start({ dir: path.join(ctx.userData(), 'agent-run'), tasks: brief.map((b) => ({ id: b.id, title: b.title })), send: sendToRenderer, node: findNode() });
   try {
     for (const id of order) {
       if (!pending.length || runRetried) break;
@@ -189,9 +204,9 @@ async function startAgentRun() {
       agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id }); // its pill moves to this AI, and the task stays on it
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
-      const prompt = promptFor(pending);
+      const prompt = promptFor(pending, id);
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
-          browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.some(saidYes)) })
+          browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0])) }).finally(() => live.close())
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
           timeoutMs: AGENT_TIMEOUT_MS, node: findNode(), onProc: (p) => { agentProc = p; } })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS })
@@ -203,7 +218,7 @@ async function startAgentRun() {
       if (Array.isArray(updates)) {
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
-        got.forEach((u) => { u._via = id; u._sawMail = sawMail; });
+        got.forEach((u) => { u._via = id; u._sawMail = sawMail; if (id === 'claude') { u.heard = live.heard(u.id); u.thoughts = live.thoughts(u.id); } });
         answered.push(...got);
         pending = pending.filter((x) => !got.some((u) => u.id === x));
         if (!pending.length) break;
@@ -218,7 +233,7 @@ async function startAgentRun() {
       if (runRetried) { agentLog(providers.NAMES[id] + ' stopped: he pressed Retry'); break; }
       agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
-  } finally { agentProc = null; runIds = []; }
+  } finally { agentProc = null; runIds = []; if (live) live.stop(); live = null; }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
   const valid = answered;
   for (const u of valid) {
@@ -235,11 +250,18 @@ async function startAgentRun() {
     const task = tasks.find((x) => x.id === u.id);
     if (task && !sawMail && typeof u.howto === 'string') learnHowto(task, u.howto, taskLinks(task).concat((Array.isArray(u.options) ? u.options : []).map((o) => o && o.url).filter(Boolean)), 'claude');
     delete u.howto;
+    // changes to his grocery list: short plain names only, and never from a run that saw his mail
+    u.list = sawMail ? undefined : groceryChanges(u.list);
+    u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
+    u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     const opts = Array.isArray(u.options) && u.options.length
       ? (sawMail ? u.options.slice(0, 10).filter((o) => o && /^https:\/\//i.test(String(o.url || '')))
         .map((o) => ({ label: String(o.label || '').slice(0, 80), desc: String(o.desc || '').slice(0, 200), url: String(o.url) }))
         : (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean)) : [];
     u.options = opts.length ? opts : null;
+    // every card in the order gets a real product photo: one it didn't send comes from the item's page
+    if (u.cart) await Promise.all(u.cart.filter((it) => !it.image && it.url).slice(0, 40).map(async (it) => {
+      const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);
@@ -260,24 +282,31 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // is blocked outright, and in -p mode anything not on the allowed list is refused anyway. --tools
       // takes the web tools out entirely, whatever his Claude settings allow.
       // Web run: search, page reading and the agent browser, but no connectors at all.
-      const allowed = ['Read(./attachments/**)', 'Read(./skills/**)'];
+      const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
       const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
+      let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
       if (mailRun) {
-        args.push('--tools', 'Read');
+        args.push('--tools', 'Read,' + PLAN_TOOLS);
         allowed.push(...GMAIL_READ_TOOLS);
         denied.push('WebSearch', 'WebFetch', ...GMAIL_WRITE_TOOLS, ...OTHER_CONNECTORS);
       } else {
-        args.push('--tools', 'Read,WebSearch,WebFetch', '--strict-mcp-config'); // no claude.ai connectors (only the agent browser, if any)
+        args.push('--tools', 'Read,WebSearch,WebFetch,' + PLAN_TOOLS, '--strict-mcp-config'); // no claude.ai connectors (only the agent browser, if any)
         allowed.push('WebSearch', 'WebFetch');
         if (browserCfg) { // the agent browser; Claude uses it only when a task needs it
           args.push('--mcp-config', browserCfg);
           allowed.push('mcp__browser');
           denied.push(...BROWSER_DENIED);
-          const guard = webGuardSettings(); // no web tools once the browser has shown his mail
-          if (guard) args.push('--settings', guard);
+          guard = webGuardHooks(); // no web tools once the browser has shown his mail
         }
+      }
+      // the hooks: the web guard's, and his mid-run messages (agent/run-live.js)
+      const hooks = live ? live.open(guard) : guard;
+      if (hooks) {
+        const f = path.join(ctx.userData(), 'agent-run', 'settings.json');
+        try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify({ hooks })); args.push('--settings', f); }
+        catch (e) { agentLog('hooks: ' + e.message); }
       }
       args.push('--allowedTools', allowed.join(','), '--disallowedTools', denied.join(','));
       proc = require('child_process').spawn(exe, args, { cwd: workDir, windowsHide: true });
@@ -285,7 +314,7 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
     } catch (e) { agentLog('spawn failed: ' + e.message); return resolve({ why: 'could not start Claude' }); }
     agentLog('started Claude (pid ' + proc.pid + ')');
     killer = setTimeout(() => { try { proc.kill(); } catch (e) {} }, AGENT_TIMEOUT_MS);
-    proc.stdout.on('data', (d) => { out += d; });
+    proc.stdout.on('data', (d) => { out += d; if (live) live.feed(String(d)); }); // its plan and steps, live on the task
     proc.stderr.on('data', (d) => { err += d; });
     proc.on('error', (e) => {
       err += String(e.message); agentLog('Claude process error: ' + e.message);

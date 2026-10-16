@@ -6,11 +6,8 @@
 $('addBtn').addEventListener('click',addTask);
 if(window.desktop&&window.desktop.openAgentBrowser){
   $('agentBrowserSection').hidden=false;
-  $('agentBrowserBtn').addEventListener('click',async function(){
-    $('agentBrowserStatus').textContent='opening…';
-    try{ const r=await window.desktop.openAgentBrowser(); $('agentBrowserStatus').textContent=r&&r.ok?'':(r&&r.error)||'couldn’t open it'; }
-    catch(e){ $('agentBrowserStatus').textContent='couldn’t open it'; }
-  });
+  // it has no window of its own (headless): open it in the live view, which starts it if needed
+  $('agentBrowserBtn').addEventListener('click',function(){ $('agentBrowserStatus').textContent=''; openLiveView(); });
 }
 /* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter for the cloud Agent lane, in his order */
 if(window.desktop&&window.desktop.aiStatus){

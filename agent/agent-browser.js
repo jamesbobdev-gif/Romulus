@@ -24,6 +24,22 @@ function findChrome() {
     path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe')]
     .find((p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }) || null;
 }
+// how the agent browser is started (here, and by browser-proxy.js, which gets these as an argument). It has
+// no window of its own: it runs headless and James watches or takes over inside Tasks (◉ Watch). Headless
+// Chrome calls itself "HeadlessChrome" in its user agent; it says plain Chrome instead, so shops treat
+// it like his normal browser.
+function chromeUA(chrome) {
+  let major = '140';
+  try { const v = fs.readdirSync(path.dirname(chrome)).find((d) => /^\d+\.\d+\.\d+\.\d+$/.test(d)); if (v) major = v.split('.')[0]; } catch (e) {}
+  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + major + '.0.0.0 Safari/537.36';
+}
+function chromeArgs(chrome) {
+  return ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), '--remote-debugging-port=' + AGENT_BROWSER_PORT,
+    '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check',
+    '--headless=new', '--window-size=1280,900', '--user-agent=' + chromeUA(chrome),
+    // keep drawing in the background, or clicks wait forever for the page to "settle"
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
+}
 function findNode() {
   try { return require('child_process').execFileSync('where', ['node'], { encoding: 'utf8', windowsHide: true }).split(/\r?\n/)[0].trim() || null; }
   catch (e) { return null; }
@@ -54,7 +70,7 @@ async function prepareAgentBrowser() {
   try { if (fs.readFileSync(guard, 'utf8') !== guardSrc) fs.writeFileSync(guard, guardSrc); } catch (e) { fs.writeFileSync(guard, guardSrc); }
   const cfgFile = path.join(dir, 'mcp.json');
   fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { browser: { command: node,
-    args: [proxy, cli, chrome, path.join(dir, 'profile'), String(AGENT_BROWSER_PORT)] } } }));
+    args: [proxy, cli, chrome, path.join(dir, 'profile'), String(AGENT_BROWSER_PORT), JSON.stringify(chromeArgs(chrome))] } } }));
   return cfgFile;
 }
 /* His mail is open in the agent browser, and web runs read pages anyone can write: see the mail
@@ -70,14 +86,12 @@ function browserCfgFor(baseCfg, mode, approved) { // → this run's MCP config
   fs.writeFileSync(f, JSON.stringify(j));
   return f;
 }
-function webGuardSettings() { // → a --settings file with the hook, or null
+const hookArg = (x) => '"' + String(x).replace(/\\/g, '/') + '"'; // forward slashes: fine for node, and for whichever shell runs hooks
+function webGuardHooks() { // → the hook, for a run's --settings (agent/runner.js), or null
   const node = findNode();
   if (!node) return null;
-  const q = (x) => '"' + String(x).replace(/\\/g, '/') + '"'; // forward slashes: fine for node, and for whichever shell runs hooks
-  const f = path.join(agentBrowserDir(), 'web-guard-settings.json');
-  fs.writeFileSync(f, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'WebFetch|WebSearch',
-    hooks: [{ type: 'command', command: q(node) + ' ' + q(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + q(mailSeenFile()), timeout: 15 }] }] } }));
-  return f;
+  return { PreToolUse: [{ matcher: 'WebFetch|WebSearch',
+    hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()), timeout: 15 }] }] };
 }
 // his latest reply is a yes to something Claude asked him to say yes to
 function saidYes(t) {
@@ -86,18 +100,10 @@ function saidYes(t) {
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
   return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply)( it)?\b/i.test(lastYou) && /reply\s*\**\s*yes/i.test(asked);
 }
-// ⚙ "Open agent browser": so James can watch it or log in to sites he wants Claude to use
+// ⚙ "Open Romulus's browser": make sure it's running; the page then shows it in the live view
 async function openAgentBrowser() {
-  const chrome = findChrome();
-  if (!chrome) return { ok: false, error: 'Chrome isn’t installed' };
-  const up = await fetch('http://127.0.0.1:' + AGENT_BROWSER_PORT + '/json/version', { signal: AbortSignal.timeout(1000) }).then((r) => r.ok).catch(() => false);
-  const args = up ? ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), 'about:blank'] // already open: new tab in it
-    : ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), '--remote-debugging-port=' + AGENT_BROWSER_PORT,
-      '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', // same as agent/browser-proxy.js
-      '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
-  fs.mkdirSync(path.join(agentBrowserDir(), 'profile'), { recursive: true });
-  require('child_process').spawn(chrome, args, { detached: true, stdio: 'ignore' }).unref();
-  return { ok: true };
+  if (!findChrome()) return { ok: false, error: 'Chrome isn’t installed' };
+  return { ok: await ensureAgentBrowser() };
 }
 handle('agent:open-browser', () => openAgentBrowser());
 
@@ -109,13 +115,17 @@ async function ensureAgentBrowser() {
   const chrome = findChrome();
   if (!chrome) return false;
   fs.mkdirSync(path.join(agentBrowserDir(), 'profile'), { recursive: true });
-  require('child_process').spawn(chrome, ['--user-data-dir=' + path.join(agentBrowserDir(), 'profile'), '--remote-debugging-port=' + AGENT_BROWSER_PORT,
-    '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--start-minimized',
-    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'],
-  { detached: true, stdio: 'ignore' }).unref();
+  require('child_process').spawn(chrome, chromeArgs(chrome), { detached: true, stdio: 'ignore' }).unref();
   for (let i = 0; i < 40; i++) { if (await agentBrowserUp()) return true; await new Promise((r) => setTimeout(r, 250)); }
   return false;
 }
+// an agent browser left open from before (with a window): close it, so the next one starts without
+async function closeWindowedAgentBrowser() {
+  if (process.platform !== 'win32') return;
+  const prof = path.join(agentBrowserDir(), 'profile').replace(/'/g, "''");
+  const ps = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' OR Name='msedge.exe'\" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('" + prof + "') -and -not $_.CommandLine.Contains('--headless') -and -not $_.CommandLine.Contains('--type=') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }";
+  await new Promise((r) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000 }, () => r()));
+}
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, agentBrowserDir, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardSettings, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, chromeArgs, closeWindowedAgentBrowser };

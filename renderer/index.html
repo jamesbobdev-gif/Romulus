@@ -65,7 +65,7 @@
       </div>
       <div class="settings-sub" id="agentBrowserSection" hidden>
         <h3 class="settings-subhead">Romulus's browser</h3>
-        <p class="settings-hint">Romulus's own Chrome window. Log in to sites here. It asks before buying or submitting.</p>
+        <p class="settings-hint">Romulus's own Chrome. It has no window: it runs out of sight and shows up here, so you can watch it or log in to sites. It asks before buying or submitting.</p>
         <div class="settings-row">
           <button id="agentBrowserBtn" class="ghost mono">Open Romulus's browser</button>
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
@@ -245,6 +245,11 @@
   </section>
   <!-- outside the add box, so a spoken command's result shows on Ideas (no add box there) too -->
   <div id="voiceToast" class="voice-toast" hidden></div>
+  <!-- "Hey Romulus": a speech bubble at the bottom, so you can see it heard you (task-actions.js wakeBubble) -->
+  <div id="wakeBubble" class="wake-bubble" role="status" aria-live="polite" hidden>
+    <span class="wake-dot" aria-hidden="true"></span>
+    <div class="wake-text"><b id="wakeHead">Listening…</b><span id="wakeWords"></span></div>
+  </div>
 
   <!-- List view -->
   <div id="listView">
@@ -296,6 +301,9 @@
 <script src="js/recur.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
+<script src="js/agent-live-view.js"></script>
+<script src="js/agent-ask.js"></script>
+<script src="js/grocery-list.js"></script>
 <script src="js/lists.js"></script>
 <script src="js/calendar-view.js"></script>
 <script src="js/ideas.js"></script>
