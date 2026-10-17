@@ -65,6 +65,18 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   from the last time he asked for groceries; or he asks for "the usual"): don't ask what to get. Put every due
   item in the cart, plus anything in his latest reply. No `groceryList` yet? Ask once what he
   usually buys, and `list.add` his answer.
+- **Best deal for one person:** he shops for one. For every item, compare the store's options (sizes,
+  store brand vs name brand, sale/rollback prices, multi-packs) by **unit price** (per oz, lb, ct), then
+  pick the cheapest one he'll actually finish before it goes bad:
+  - Perishables (fresh produce, eggs, fresh meat): the amount one person uses up before the next
+    order (a dozen eggs, not five dozen; a 2 lb bag of apples, not a 10 lb box), and meat he can freeze
+    in portions.
+  - Frozen, canned and shelf-stable food (frozen veggies and fruit, canned beans and tomatoes, nuts):
+    the bigger size is fine when its unit price is clearly lower and it still fits his EBT balance.
+  - A bigger pack that costs less in total than a smaller one: take the bigger one.
+  In `cart`, give each item's unit price (`unit`, e.g. "$0.12/oz") and, where you picked it over another
+  option, a few words on why in `why` ("cheapest per oz", "smaller: you'd waste the gallon"). End the
+  note with what you saved compared with the default picks, if anything.
 - **EBT-eligible only:** with EBT as his only payment, keep the cart to SNAP-eligible food (Walmart
   marks it "EBT eligible"). Leave out non-eligible items (hot food, household, paper goods) and tell
   him which ones you left out.

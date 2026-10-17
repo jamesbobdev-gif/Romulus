@@ -122,8 +122,8 @@ function cleanAsk(a) {
   }).filter(Boolean);
   return out.length ? out : undefined;
 }
-// the order it built, shown as cards he can deselect (renderer/js/grocery-list.js): [{name, qty, price, image, swap,
-// suggested, why}] — suggested = something new that goes with the rest, in the cart but unselected until he taps it
+// the order it built, shown as cards he can deselect (renderer/js/grocery-list.js): [{name, qty, price, unit, image,
+// swap, suggested, why}] — suggested = something new that goes with the rest, in the cart but unselected until he taps it
 function cleanCart(c) {
   if (!Array.isArray(c)) return undefined;
   const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
@@ -134,8 +134,10 @@ function cleanCart(c) {
     if (txt(x.price, 20)) it.price = txt(x.price, 20);
     if (/^https:\/\//i.test(String(x.image || ''))) it.image = String(x.image).slice(0, 500);
     if (/^https:\/\//i.test(String(x.url || ''))) it.url = String(x.url).slice(0, 500); // its product page: where the app finds a picture if it has none
+    if (txt(x.unit, 20)) it.unit = txt(x.unit, 20); // unit price ("$0.12/oz"), so he sees it's the best deal
     if (txt(x.swap, 120)) it.swap = txt(x.swap, 120);
-    if (x.suggested) { it.suggested = true; if (txt(x.why, 100)) it.why = txt(x.why, 100); } // an idea for the week: starts unselected
+    if (x.suggested) it.suggested = true; // an idea for the week: starts unselected
+    if (txt(x.why, 100)) it.why = txt(x.why, 100); // what an idea goes with, or why this size/brand was picked
     return it;
   }).filter(Boolean);
   return out.length ? out : undefined;
