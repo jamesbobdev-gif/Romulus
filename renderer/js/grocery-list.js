@@ -132,12 +132,19 @@ function yesButton(t){
    what to take out, so Romulus removes those and places it (groceries skill). What he left out is kept
    on the task (t.cartOff, by name) so it survives a re-render or a sync. When Romulus is waiting on
    something else first ("add a payment method, then reply done"), the button answers "done" with the
-   same picks instead, so it fixes the cart before asking for the yes. */
+   same picks instead, so it fixes the cart before asking for the yes. An item with other sizes/brands
+   (it.options) has a menu on its card: what he switches to goes along as "swap: A → B". */
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }
 function cartStrip(t){
   const box=el('div','cart-box');
   const items=t.cart.slice(0,100).filter(function(it){ return !it.suggested; }).concat(t.cart.slice(0,100).filter(function(it){ return it.suggested; })); // ideas for the week go last
   const off=function(){ return Array.isArray(liveTask(t).cartOff)?liveTask(t).cartOff:[]; };
+  // his switches to another size/brand Romulus found (t.cartPick: item name → option name)
+  const picks=function(){ const p=liveTask(t).cartPick; return p&&typeof p==='object'?p:{}; };
+  const shown=function(it){ // what this card stands for now: Romulus's pick, or the option he switched to
+    const n=picks()[it.name], op=n&&Array.isArray(it.options)&&it.options.find(function(x){ return x.name===n; });
+    return op?Object.assign({},it,{name:op.name,qty:op.qty||1,price:op.price,unit:op.unit,image:op.image,url:op.url,swap:null,picked:true}):it;
+  };
   const head=el('div','cart-head'); box.appendChild(head);
   const strip=el('div','cart-strip'); box.appendChild(strip);
   const foot=el('div','cart-foot'); box.appendChild(foot);
@@ -146,44 +153,75 @@ function cartStrip(t){
   const sync=function(){
     const o=off();
     const kept=items.filter(function(it){ return o.indexOf(it.name)===-1; });
-    const total=kept.reduce(function(s,it){ return s+cartPrice(it.price); },0);
+    const total=kept.reduce(function(s,it){ return s+cartPrice(shown(it).price); },0);
     const base=items.filter(function(it){ return !it.suggested; }).length, ideas=items.length-base, picked=kept.filter(function(it){ return it.suggested; }).length;
     head.textContent='Your order · '+kept.length+' items'+(ideas?' ('+picked+' of '+ideas+' ideas added)':'')+(total?' · about $'+total.toFixed(2):'');
-    all.hidden=o.slice().sort().join('|')===startOff().sort().join('|'); // as Romulus set it: nothing to reset
+    all.hidden=o.slice().sort().join('|')===startOff().sort().join('|')&&!Object.keys(picks()).length; // as Romulus set it: nothing to reset
     go.disabled=!kept.length;
     go.textContent=!kept.length?'Nothing selected':!asksYes(t)?'Done, use these '+kept.length+' items':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';
     go.title=asksYes(t)?'':'Tell Romulus you did what it asked, and which items to keep';
     strip.querySelectorAll('.cart-card').forEach(function(c){ const on=o.indexOf(c.dataset.name)===-1; c.classList.toggle('off',!on); c.setAttribute('aria-pressed',String(on)); });
   };
-  items.forEach(function(it){
-    const c=el('button','cart-card'+(it.suggested?' sugg':'')); c.dataset.name=it.name;
-    c.title=it.suggested?'Suggested for this week'+(it.why?': '+it.why:'')+'. Tap to add it to the order':'Tap to leave this out of the order (tap again to put it back)';
+  // a card is a div (it holds the options menu, which can't sit inside a button); tap or Enter toggles it
+  const draw=function(c,it){
+    const s=shown(it); c.innerHTML='';
     if(it.suggested)c.appendChild(el('span','cart-tag','idea'));
     const pic=el('div','cart-pic');
-    if(it.image&&/^https:\/\//i.test(String(it.image))){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer'; im.addEventListener('error',function(){ im.remove(); pic.textContent=it.name.charAt(0); }); pic.appendChild(im); }
-    else pic.textContent=it.name.charAt(0);
+    if(s.image&&/^https:\/\//i.test(String(s.image))){ const im=document.createElement('img'); im.src=s.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer'; im.addEventListener('error',function(){ im.remove(); pic.textContent=s.name.charAt(0); }); pic.appendChild(im); }
+    else pic.textContent=s.name.charAt(0);
     c.appendChild(pic);
     c.appendChild(el('span','cart-check','✓'));
-    c.appendChild(el('div','cart-name',it.name));
-    const bits=[(it.qty&&it.qty>1)?'×'+it.qty:'',it.price||'',it.unit||''].filter(Boolean);
+    c.appendChild(el('div','cart-name',s.name));
+    const bits=[(s.qty&&s.qty>1)?'×'+s.qty:'',s.price||'',s.unit||''].filter(Boolean);
     if(bits.length)c.appendChild(el('div','cart-meta',bits.join(' · ')));
-    if(it.swap)c.appendChild(el('div','cart-swap','swap for '+it.swap));
-    if(it.why)c.appendChild(el('div','cart-why',it.why));
-    c.addEventListener('click',function(e){
+    if(s.swap)c.appendChild(el('div','cart-swap','swap for '+s.swap));
+    if(s.picked)c.appendChild(el('div','cart-swap','your pick (Romulus picked '+it.name+')'));
+    else if(s.why)c.appendChild(el('div','cart-why',s.why));
+    if(Array.isArray(it.options)&&it.options.length){
+      const sel=el('select','cart-opt'); sel.title='Other sizes and brands Romulus found';
+      sel.setAttribute('aria-label','Options for '+it.name);
+      [it].concat(it.options).forEach(function(op,i){
+        const o=el('option',null,(i?'':'★ ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
+        o.value=i?op.name:''; sel.appendChild(o);
+      });
+      sel.value=s.picked?s.name:'';
+      const stop=function(e){ e.stopPropagation(); };
+      sel.addEventListener('click',stop); sel.addEventListener('keydown',stop);
+      sel.addEventListener('change',function(e){
+        e.stopPropagation();
+        const lt=liveTask(t), p=Object.assign({},picks());
+        if(sel.value)p[it.name]=sel.value; else delete p[it.name];
+        lt.cartPick=p; buzz('tap'); draw(c,it); sync(); touch();
+      });
+      c.appendChild(el('div','cart-opt-n',it.options.length+' other option'+(it.options.length>1?'s':'')));
+      c.appendChild(sel);
+    }
+  };
+  items.forEach(function(it){
+    const c=el('div','cart-card'+(it.suggested?' sugg':'')); c.dataset.name=it.name;
+    c.setAttribute('role','button'); c.tabIndex=0;
+    c.title=it.suggested?'Suggested for this week'+(it.why?': '+it.why:'')+'. Tap to add it to the order':'Tap to leave this out of the order (tap again to put it back)';
+    draw(c,it);
+    const toggle=function(e){
       e.stopPropagation();
       const lt=liveTask(t), o=off().slice(), i=o.indexOf(it.name);
       if(i===-1)o.push(it.name); else o.splice(i,1);
       lt.cartOff=o; buzz('tap'); sync(); touch();
-    });
+    };
+    c.addEventListener('click',toggle);
+    c.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(e); } });
     strip.appendChild(c);
   });
   const startOff=function(){ return items.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); };
-  all.addEventListener('click',function(e){ e.stopPropagation(); liveTask(t).cartOff=startOff(); sync(); touch(); });
+  all.addEventListener('click',function(e){ e.stopPropagation(); const lt=liveTask(t); lt.cartOff=startOff(); delete lt.cartPick;
+    strip.querySelectorAll('.cart-card').forEach(function(c){ const it=items.find(function(x){ return x.name===c.dataset.name; }); if(it)draw(c,it); });
+    sync(); touch(); });
   go.addEventListener('click',function(e){
     e.stopPropagation();
     const lt=liveTask(t), o=off().filter(function(n){ return items.some(function(it){ return it.name===n; }); });
     const kept=items.length-o.length;
-    const total=items.filter(function(it){ return o.indexOf(it.name)===-1; }).reduce(function(s,it){ return s+cartPrice(it.price); },0);
+    const total=items.filter(function(it){ return o.indexOf(it.name)===-1; }).reduce(function(s,it){ return s+cartPrice(shown(it).price); },0);
+    const swaps=items.filter(function(it){ return o.indexOf(it.name)===-1&&shown(it).picked; }).map(function(it){ const s=shown(it); return it.name+' → '+(s.qty>1?s.qty+'× ':'')+s.name; });
     const dropped=o.filter(function(n){ return items.some(function(it){ return it.name===n&&!it.suggested; }); });
     const skipped=o.filter(function(n){ return dropped.indexOf(n)===-1; });
     const added=items.filter(function(it){ return it.suggested&&o.indexOf(it.name)===-1; }).map(function(it){ return it.name; });
@@ -191,9 +229,11 @@ function cartStrip(t){
     if(dropped.length)parts.push('without: '+dropped.join('; '));
     if(skipped.length)parts.push('and take out the ideas I didn’t pick: '+skipped.join('; '));
     if(added.length)parts.push('keeping the ideas: '+added.join('; '));
+    if(swaps.length)parts.push('swap: '+swaps.join('; '));
+    const changed=o.length||added.length||swaps.length;
     const count=' ('+kept+' items'+(total?', about $'+total.toFixed(2):'')+')';
-    const msg=!asksYes(t)?'done, '+(o.length||added.length?'and update the cart, '+parts.join(', '):'keep the cart as it is')+count
-      :o.length||added.length?'yes, place it '+parts.join(', ')+count:'yes';
+    const msg=!asksYes(t)?'done, '+(changed?'and update the cart, '+parts.join(', '):'keep the cart as it is')+count
+      :changed?'yes, place it '+parts.join(', ')+count:'yes';
     lt.reply=msg; agentSay(lt,'you',msg); lt.status='queued';
     buzz('send'); touch();
   });
