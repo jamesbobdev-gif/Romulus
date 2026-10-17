@@ -118,6 +118,11 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   items it names to take out: remove them, check nothing else changed (same slot, address and
   payment, and the total is the "about $X" he saw, give or take a few cents), then place it. If
   anything else changed, don't place it: show the new cart and ask again.
+- **"done" with picks:** when you asked him to do something first (add a payment method, sign in),
+  his answer may be "done, and update the cart, without: A, and take out the ideas I didn't pick: C,
+  keeping the ideas: D (N items, about $X)" or "done, keep the cart as it is". That is not a yes to
+  place it: check what he did, change the cart to exactly his picks, then stop at the review page with
+  the updated `cart` and ask for the yes as usual.
 - **After his yes:** if the order button works without typing anything secret, place the order,
   put the order number and delivery time in the note, and send `list.bought`. If anything changed
   since he said yes (total, items, slot), don't place it. Ask again.
