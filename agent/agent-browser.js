@@ -153,6 +153,31 @@ async function freshTabs() {
   if (!made) return; // never close the last tab: that would quit the browser
   for (const p of pages) await fetch(base + '/json/close/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {});
 }
+// a grocery order he checked off: its store pages (and the store checkers' tabs) are closed. Logins and
+// the store's own cart stay, they're in the profile and on the store's side
+const STORE_PAGE = /^https?:\/\/([^/]+\.)?(instacart|walmart|amazon|aldi|kroger|gianteagle|marcs|wholefoodsmarket|target|costco|doordash|ubereats)\.[a-z.]+(\/|$)/i;
+async function closeStoreTabs() { // → how many it closed
+  if (!(await agentBrowserUp())) return 0;
+  const base = 'http://127.0.0.1:' + AGENT_BROWSER_PORT;
+  const list = await fetch(base + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
+  const pages = list.filter((p) => p.type === 'page' && !/^(devtools|chrome-extension):/.test(p.url));
+  const shut = pages.filter((p) => STORE_PAGE.test(p.url));
+  if (!shut.length) return 0;
+  if (shut.length === pages.length) { // never close the last tab: that would quit the browser
+    const made = await fetch(base + '/json/new?about:blank', { method: 'PUT', signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
+    if (!made) return 0;
+  }
+  for (const p of shut) await fetch(base + '/json/close/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {});
+  return shut.length;
+}
+// the page the run ended on (Chrome lists the most recently used tab first): Watch reopens it for that
+// task later, since the next run's freshTabs() closes it
+async function lastPage() {
+  if (!(await agentBrowserUp())) return null;
+  const list = await fetch('http://127.0.0.1:' + AGENT_BROWSER_PORT + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
+  const p = list.find((x) => x.type === 'page' && /^https:\/\//i.test(x.url));
+  return p ? String(p.url).slice(0, 2000) : null;
+}
 // an agent browser left open from before (with a window): close it, so the next one starts without
 async function closeWindowedAgentBrowser() {
   if (process.platform !== 'win32') return;
@@ -162,4 +187,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, freshTabs, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, freshTabs, closeStoreTabs, STORE_PAGE, lastPage, chromeArgs, closeWindowedAgentBrowser };
