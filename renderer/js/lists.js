@@ -81,7 +81,7 @@ function buildRow(t,canDrag){
     }
     meta.appendChild(sc);
     // which worker it's assigned to (Claude on this computer, or your own model on the mini PC)
-    if(t.lane==='local'){ const lc=el('span','chip st','mini PC'); lc.title='Your own model on the mini PC handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
+    if(t.lane==='local'){ const lc=el('span','chip st','Lupa'); lc.title='Your own model on Lupa Au Palatine handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
   }
   // snooze: overdue → today, due today → tomorrow
   if(!t.done&&dueDiff!==null&&dueDiff<=0){
@@ -138,7 +138,7 @@ function buildPanel(t){
         const who=h.who==='you'?'you':h.who==='claude'?'claude':'sys';
         const b=el('div','conv-msg '+who);
         const seen=who==='you'&&(h.heard||(liveHeard[t.id]||[]).indexOf(h.at)!==-1); // Claude took it mid-run
-        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Mini PC':{gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[h.via]||'Claude')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
+        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Lupa Au Palatine':CLOUD_NAMES[h.via]||'Claude')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
@@ -159,8 +159,10 @@ function buildPanel(t){
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
     const cloudName=cloudNameOf(t);
     if(t.status==='working')sb.classList.add('running');
-    const hd=sb.appendChild(el('b',null,local?(offline?'Your mini PC isn’t reachable':t.status==='working'?'Your mini PC is on it':'Waiting for your mini PC'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':'Waiting for '+cloudName));
-    if(t.status==='working'&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
+    // queued: it's being handed to a model (no lane yet = routing hasn't picked one)
+    const routing=t.status==='queued'&&!outOfUsage&&!offline;
+    const hd=sb.appendChild(el('b',null,local?(offline?'Lupa Au Palatine isn’t reachable':t.status==='working'?'Lupa Au Palatine is on it':'Routing to Lupa Au Palatine'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
+    if((t.status==='working'||routing)&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
     sb.appendChild(document.createTextNode(local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
@@ -190,26 +192,37 @@ function buildPanel(t){
       setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
     }
   }
-  // who does it: a pill, Claude | Gemini | ChatGPT | Mini PC, with a highlight that slides across. Switching asks first; a first pick (no rule matched) doesn't.
+  // who does it: a two-part pill, [cloud AI ▾ | mini PC model], with a highlight that slides between them.
+  // The cloud half is a menu of every cloud AI, so the pill stays the same size however many there are.
+  // Switching asks first; a first pick (no rule matched) doesn't.
   if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
-    const now=laneNow(t);
+    const now=laneNow(t), onCloud=!!now&&now!=='local';
     const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
-    const lanes=[['claude','Claude'],['gemini','Gemini'],['openai','ChatGPT'],['openrouter','OpenRouter'],['local','Mini PC']];
-    // the highlight slides to the one it's on (--i of --n)
-    tg.style.setProperty('--n',lanes.length); tg.style.setProperty('--i',Math.max(0,lanes.map(function(o){ return o[0]; }).indexOf(now)));
-    lanes.forEach(function(o){
-      const w=el('button','lane-word'+(now===o[0]?' on':''),o[1]);
-      w.setAttribute('role','radio'); w.setAttribute('aria-checked',String(now===o[0]));
-      w.title=now===o[0]?(o[0]==='local'?'Your mini PC has this task':o[1]+' has this task'):(now?'Switch this task to '+o[1]+' (asks first)':'Send this task to '+o[1]);
-      w.addEventListener('click',function(e){ e.stopPropagation(); if(now!==o[0])setLane(t,o[0]); });
-      tg.appendChild(w);
+    tg.style.setProperty('--n',2); tg.style.setProperty('--i',now==='local'?1:0);
+    const cw=el('label','lane-word lane-cloud'+(onCloud?' on':''));
+    const pick=document.createElement('select'); pick.className='lane-pick';
+    pick.setAttribute('aria-label','Cloud AI');
+    if(!onCloud){ const ph=el('option',null,'Cloud AI'); ph.value=''; ph.disabled=true; ph.hidden=true; pick.appendChild(ph); }
+    Object.keys(LANE_NAMES).filter(function(id){ return id!=='local'; }).forEach(function(id){
+      const op=el('option',null,LANE_NAMES[id]); op.value=id; pick.appendChild(op);
     });
+    pick.value=onCloud?now:'';
+    cw.title=onCloud?LANE_NAMES[now]+' has this task. Pick another cloud AI to switch (asks first)':(now?'Switch this task to a cloud AI (asks first)':'Send this task to a cloud AI');
+    pick.addEventListener('click',function(e){ e.stopPropagation(); });
+    pick.addEventListener('change',function(e){ e.stopPropagation(); if(pick.value&&pick.value!==now)setLane(t,pick.value); });
+    cw.appendChild(pick); cw.appendChild(el('span','lane-caret','▾'));
+    tg.appendChild(cw);
+    const lw=el('button','lane-word'+(now==='local'?' on':''),localModelName());
+    lw.setAttribute('role','radio'); lw.setAttribute('aria-checked',String(now==='local'));
+    lw.title=now==='local'?'Lupa Au Palatine ('+localModelName()+') has this task':(now?'Switch this task to Lupa Au Palatine (asks first)':'Send this task to Lupa Au Palatine');
+    lw.addEventListener('click',function(e){ e.stopPropagation(); if(now!=='local')setLane(t,'local'); });
+    tg.appendChild(lw);
     panel.appendChild(tg);
     const ask=laneAsks[t.id];
     if(ask&&ask!==now){
       const name=LANE_NAMES[ask];
       const ar=el('div','lane-ask');
-      ar.appendChild(el('span',null,ask==='local'?'Send this task to your mini PC? It takes over with the whole conversation.'
+      ar.appendChild(el('span',null,ask==='local'?'Send this task to Lupa Au Palatine? It takes over with the whole conversation.'
         :'Send this task to '+name+'? '+name+' will see the whole conversation, including anything the others wrote.'));
       const yes=el('button','btn-accent','Switch'), no=el('button','btn-ghost','Cancel');
       yes.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,ask,true); });
@@ -223,7 +236,7 @@ function buildPanel(t){
   const staleFail=agentBusy&&failed;
   if(taskWs(t)==='agent'&&t.note&&!staleFail){
     const nb=el('div','agent-note');
-    const who=t.lane==='local'?'Mini PC':cloudNameOf(t);
+    const who=t.lane==='local'?'Lupa Au Palatine':cloudNameOf(t);
     const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
     if(agentBusy||stuck||t.status!=='needs-you')nb.appendChild(el('b',null,agentBusy?who+'’s last message':stuck?who+' stopped':'From '+who));
     if(stuck){
@@ -234,12 +247,13 @@ function buildPanel(t){
       // the model's own note, when it says more than the reason above
       if(t.note&&t.note.indexOf(t.stuck.reason)===-1)nb.appendChild(el('div','stuck-note',t.note));
       if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What the browser showed when it stopped. Click to enlarge'; } nb.appendChild(ps); }
-    } else nb.appendChild(document.createTextNode(t.note));
+    } else if(wantsYes(t)&&Array.isArray(t.cart)&&t.cart.length)nb.appendChild(noteFold(t)); // the cards do the talking: just its first line, the rest on a tap
+    else nb.appendChild(document.createTextNode(t.note));
     // the latest answer's "What it did", right under it (older ones are in the conversation)
     const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
     if(lastAns&&lastAns.thoughts&&t.status!=='working')nb.appendChild(thoughtsBox(t,lastAns));
     if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)nb.appendChild(retryButton(t));
-    if(!agentBusy&&!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton()); // e.g. to log in, or check a cart
+    if(!agentBusy&&!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t.page)); // e.g. to log in, or check a cart
     panel.appendChild(nb);
   }
   // questions to tap through, one at a time (agent-ask.js)
@@ -267,12 +281,14 @@ function buildPanel(t){
       if(o.url){ const ob=el('button','opt-open',siteName(o.url)+' ↗'); ob.addEventListener('click',function(){ openExternal(String(o.url)); }); btns.appendChild(ob);
         const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb); }
       if(canPick){
-        const kind=optionKind(o.url);
-        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':'Choose this');
-        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':'Picks this option';
-        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label; t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
-          // if the option has a link, stage an email with it — the desktop sends it (never orders anything)
-          if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'📧 Emailing you the model to print.':kind==='link'?'📧 Emailing you the link.':'📧 Emailing you the link to buy this.'); }
+        const kind=isAmazon(o.url)?'amazon':optionKind(o.url);
+        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':kind==='amazon'?'Buy this':'Choose this');
+        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'Romulus gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':'Picks this option';
+        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='amazon'?'. Buy it on Amazon.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
+          // Amazon: Romulus builds the order and asks for a yes before placing it
+          if(kind==='amazon')agentSay(t,'sys','🛒 Getting the Amazon order ready. You’ll see it before anything is bought.');
+          // other links: stage an email with it — the desktop sends it (never orders anything)
+          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'📧 Emailing you the model to print.':kind==='link'?'📧 Emailing you the link.':'📧 Emailing you the link to buy this.'); }
           touch(); });
         btns.appendChild(pb);
       }
@@ -322,6 +338,9 @@ function buildPanel(t){
     if(Array.isArray(t.replyImages)&&t.replyImages.length)yb.appendChild(photoStrip(t.replyImages));
     panel.appendChild(yb);
   }
+  if(taskWs(t)==='agent'&&Array.isArray(t.cards)&&t.cards.length)panel.appendChild(cardsStrip(t)); // grocery-list.js: his list, as small pictures
+  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.seats&&Array.isArray(t.seats.rows))panel.appendChild(seatMap(t)); // seat-map.js: its pick, tap others
+  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.showtimes&&Array.isArray(t.showtimes.days))panel.appendChild(showtimesCard(t)); // seat-map.js: tap a day, then a time
   if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):yesButton(t)); // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
@@ -615,7 +634,7 @@ function render(){
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
-    const what=onAgent?['Agent','agent','Hand tasks to Romulus — on this computer or your mini PC: they work on them and come back when they need you.']
+    const what=onAgent?['Agent','agent','Hand tasks to Romulus — on this computer or Lupa Au Palatine: they work on them and come back when they need you.']
       :onSchool?['School','school','Your assignments, with due dates pulled in from your course calendars.']
       :['Work','work','A second list that syncs with your work project.'];
     $('connectTitle').textContent='Connect your '+what[0]+' list';

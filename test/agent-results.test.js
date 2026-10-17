@@ -85,12 +85,17 @@ test('the pill is set by itself: to the AI being asked, then to whoever answered
   assert.strictEqual(t.cloud, 'openrouter');
 });
 
-test('answered by Claude: its pill is Claude', () => {
-  const t = { id: 'g', ws: 'agent', lane: 'claude', status: 'queued', history: [] };
+test('answered by Claude: not pinned to Claude (Save Claude for last); his pick on the pill stays', () => {
+  const t = { id: 'g', ws: 'agent', lane: 'claude', cloud: 'gemini', status: 'queued', history: [] };
   const { cb } = load([t]);
   cb.working(['g']);
   cb.results([{ id: 'g', status: 'done', note: 'Done.' }]);
-  assert.strictEqual(t.cloud, 'claude');
+  assert.strictEqual(t.cloud, undefined);
+  const p = { id: 'p', ws: 'agent', lane: 'claude', cloud: 'claude', status: 'queued', history: [] };
+  const two = load([p]);
+  two.cb.working({ ids: ['p'], lane: 'claude', cloud: 'claude' });
+  two.cb.results([{ id: 'p', status: 'done', note: 'Done.', via: 'claude' }]);
+  assert.strictEqual(p.cloud, 'claude');
 });
 
 test('a message Claude took mid-run counts as heard: no second run for it', () => {

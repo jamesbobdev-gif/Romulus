@@ -73,6 +73,12 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   order as picture cards and changes it there, or by telling you ("we're out of eggs", "stop getting kiwis").
   `due: true` means it goes on this order: he ran out (`ranOut`), it's new, or its weeks are up
   (`every`). Items that aren't due stay off the cart unless he asks for them.
+- **He asks what's on his list** (or what he usually gets / got last time): answer with `cards`, the
+  items from `lastOrder` exactly as given (name, qty, price, image, url), so he sees the pictures. No
+  `lastOrder` yet: `cards` = his list items by name only. The note is one or two lines (how many items,
+  what's due, "notPlacedYet" = that order isn't placed yet), never the item list itself. Don't shop.
+  Every later answer in that conversation ("add hummus", "stop getting kiwis") sends `cards` again,
+  updated: added items by name (with a picture and url only if you looked one up), removed ones gone.
 - After an order, send `list.bought` with the names of the list items in it (exactly as the list has
   them). New things he wants regularly → `list.add` (name with brand and size, e.g.
   "Eggs, Great Value large, 18 ct", and `every` = weeks between orders). Remove items only when he
@@ -115,9 +121,18 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
 - **Delivery:** he wants it delivered to his door. EBT usually can't pay the delivery fee or tip:
   if delivery needs a payment he doesn't have on file, say so and offer pickup instead of guessing.
   Check the store's minimum order and say if the cart is under it.
+- **He checks his items first, before any ideas.** Once his items are in the store cart (no ideas yet,
+  no checkout), stop: `needs-you`, with the whole `cart` (every item with its `url`, `options`, `unit`,
+  `why`, as in Checkout below; nothing `suggested`). The note: one line with the store and about what
+  it costs, then "Tap any to leave out or switch sizes, then tap Done. Next I'll add a few ideas for
+  the week and go to checkout." Never "Reply yes" here. His answer is "done, keep the cart as it is" or
+  "done, and update the cart, without: A, swap: B → C": change the store cart to exactly that, then
+  add the ideas (below) and go on to checkout and the final review. Skip this stop only when the
+  conversation shows he already went through it for this order.
 
 ## Ideas for the week (once he has a list)
-- When his grocery list has items, add **3–6 ideas** to each order: foods he doesn't usually buy that
+- When his grocery list has items, add **3–6 ideas** to each order, after he's checked his items
+  (the stop above): foods he doesn't usually buy that
   go with what's on his list, so the week's food fits together. Think in meals: chicken + rice +
   frozen broccoli → teriyaki sauce; bread + eggs → shredded cheese for breakfast sandwiches; pasta →
   sauce and ground turkey; tortillas → salsa and beans. Prefer things that use up what's already in the
@@ -127,7 +142,8 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   whole cart, ideas included, inside his EBT balance.
 - Put them in the store cart too, and in `cart` (with their picture and page, like every item) with `"suggested": true` and `why` = a few words on
   what it goes with ("with your chicken and rice"). The app shows them last, unselected: he taps the
-  ones he wants. The note gives the total without the ideas.
+  ones he wants. The note gives the total without the ideas. Ideas only come with the final review,
+  never with the first stop where he checks his items.
 - His yes names what he kept ("keeping the ideas: …") and what to take out ("take out the ideas I
   didn't pick: …"). Remove the ones he didn't pick before placing. An idea he keeps two orders in a row
   → `list.add` it (he can drop it from his list any time).

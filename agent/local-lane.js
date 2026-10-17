@@ -101,7 +101,8 @@ current value. Every button, link and field has a ref in brackets, like [f1e15]:
   right suggestion.
 - Long pages are cut short: use browser_find with a word to reach the rest.
 - Multi-page forms: "Next"/"Continue" are fine to click; the last button (Submit/Apply…) is locked.
-- Allowed sites only (others are refused): the links in the task, plus: SITES
+- Allowed sites only (others are refused): the links in the task, plus: SITES. A link shown on one of
+  those sites' pages can be opened too (one step out: not links found on that second site).
 - **Filling forms and applications:** use the Locked profile and his preferences for his details.
   If a field needs something you don't have, or a password, SSN, bank or card number, or anything you
   would have to make up, leave it empty and list it in your note. Never invent experience or answers.
@@ -184,6 +185,7 @@ function runHelperOn(id, prompt) {
   if (id === 'gemini') return providers.runGeminiApi(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
+  if (providers.COMPAT[id]) return providers.runCompat(id, cfg, { prompt, timeoutMs: ms, note: '' });
   if (Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
   const exe = claudeExe(cfg);
   const dir = path.join(ctx.userData(), 'helper-run'); // empty: nothing of his to read
@@ -213,7 +215,7 @@ function runHelperOn(id, prompt) {
 let howtoCompacting = false;
 async function compactHowtos(asked) {
   const c = localCfg();
-  if (!c) return { ok: false, error: 'Compacting uses the mini PC, and it isn’t set up.' };
+  if (!c) return { ok: false, error: 'Compacting uses Lupa Au Palatine, and it isn’t set up.' };
   if (howtoCompacting || (!asked && localBusy)) return { ok: false, error: 'Busy, try again in a minute.' };
   howtoCompacting = true;
   try {
@@ -256,11 +258,11 @@ async function startLocalRun() {
       agentLog('local task failed: ' + msg + (slept ? ' (after this computer slept)' : ''));
       const where = c.url.replace(/^https?:\/\//, '');
       const stuck = slept
-        ? { reason: 'This computer went to sleep while the mini PC worked, which cut the connection.', fix: 'Keep the lid open (or set closing the lid to do nothing when plugged in), then reply “try again”.' }
+        ? { reason: 'This computer went to sleep while Lupa Au Palatine worked, which cut the connection.', fix: 'Keep the lid open (or set closing the lid to do nothing when plugged in), then reply “try again”.' }
         : /fetch failed|ECONNREFUSED|abort/i.test(msg)
-        ? { reason: 'The mini PC isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
+        ? { reason: 'Lupa Au Palatine isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
         : /timed? ?out/i.test(msg)
-        ? { reason: 'The mini PC’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the mini PC, or switch this to Claude.' }
+        ? { reason: 'Lupa Au Palatine’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on Lupa Au Palatine, or switch this to Claude.' }
         : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
       // it failed: the cloud AIs take over, unless he was asleep (that's on this computer) or it's private
       if (!slept && cloudOrder().length && !privateMatch(t)) {
@@ -269,7 +271,7 @@ async function startLocalRun() {
       }
       const shot = await miniPcScreenshot().catch(() => null);
       sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
-        note: 'Your mini PC couldn’t finish this one. ' + stuck.reason }]);
+        note: 'Lupa Au Palatine couldn’t finish this one. ' + stuck.reason }]);
     });
   } finally {
     localBusy = false;
@@ -411,7 +413,7 @@ async function runLocalTask(c, t) {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
           const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
-          refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the mini PC (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
+          refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on Lupa Au Palatine (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
           else {
             show('\n🤝 Sending ' + ok.length + ' question(s) to helpers…\n', true);
@@ -473,9 +475,9 @@ async function runLocalTask(c, t) {
   if (browser && final.status === 'done') await tidyAgentTabs();
   if (final.status !== 'done') {
     stuck = cleanStuck(final.stuck) || stuck;
-    if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on the mini PC kept timing out: its screen is probably locked or asleep.',
-      fix: 'Unlock the mini PC (or turn off its screen lock and sleep), then reply “try again”.' };
-    else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on the mini PC: the site is slow or the mini PC is busy (low on memory).',
+    if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on Lupa Au Palatine kept timing out: its screen is probably locked or asleep.',
+      fix: 'Unlock Lupa Au Palatine (or turn off its screen lock and sleep), then reply “try again”.' };
+    else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on Lupa Au Palatine: the site is slow or Lupa Au Palatine is busy (low on memory).',
       fix: 'Reply “try again” in a bit, or switch it to Claude.' };
   }
   if (!stuck && typeof final.howto === 'string') learnHowto(t, final.howto, [...visited].map((h) => 'https://' + h).concat(taskLinks(t)), 'local');

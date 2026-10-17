@@ -35,6 +35,18 @@ async function pages() {
     .map((p) => ({ id: p.id, title: p.title || '', url: p.url || '', ws: p.webSocketDebuggerUrl })) };
 }
 handle('live:pages', () => pages());
+// ◉ Watch on a task that needs him: the page its run ended on. The tab if it's still open, or a new one
+// (a later run closed it; his logins and cart are in the profile) → its id, for the view to show
+async function openPage(url) {
+  url = String(url || '');
+  if (!/^https:\/\//i.test(url) || !(await ensureAgentBrowser())) return null;
+  const same = (a) => { try { const x = new URL(a), y = new URL(url); return x.host === y.host && x.pathname === y.pathname; } catch (e) { return false; } };
+  const open = (await pages()).pages.find((p) => same(p.url));
+  if (open) { await fetch(BASE + '/json/activate/' + open.id, { signal: AbortSignal.timeout(1500) }).catch(() => {}); return open.id; }
+  const made = await fetch(BASE + '/json/new?' + url, { method: 'PUT', signal: AbortSignal.timeout(3000) }).then((r) => r.json()).catch(() => null);
+  return made && made.id ? made.id : null;
+}
+handle('live:open', (_e, url) => openPage(url));
 // "Start it": it starts headless (no window); the view shows it
 handle('live:start', async () => ({ ok: await ensureAgentBrowser() }));
 

@@ -44,4 +44,21 @@ function groceryListFor(t, tasks) {
   return keep ? keep.list : undefined;
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor };
+// his most recent order, with its pictures: the newest one he bought (lastOrder, kept when it went through),
+// else the cart waiting on an open order (what he kept on it). For "what's on my list?" answered as cards
+function lastOrderFor(tasks) {
+  // grocery orders only: an Amazon order (a cart too) isn't his last grocery run
+  const ag = (Array.isArray(tasks) ? tasks : []).filter((x) => x && x.ws === 'agent'
+    && ((Array.isArray(x.list) && x.list.length) || GROCERY_WORDS.test(String(x.title || ''))));
+  const items = (list) => list.slice(0, 40).map((it) => ({ name: it.name, qty: it.qty, price: it.price, image: it.image, url: it.url }));
+  const bought = ag.filter((x) => x.lastOrder && Array.isArray(x.lastOrder.items) && x.lastOrder.items.length)
+    .sort((a, b) => (b.lastOrder.at || 0) - (a.lastOrder.at || 0))[0];
+  if (bought) return { on: new Date(bought.lastOrder.at || Date.now()).toISOString().slice(0, 10), items: items(bought.lastOrder.items) };
+  const open = ag.filter((x) => !x.done && Array.isArray(x.cart) && x.cart.length).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+  if (!open) return undefined;
+  const off = Array.isArray(open.cartOff) ? open.cartOff : [];
+  const kept = open.cart.filter((it) => !it.suggested && !off.includes(it.name));
+  return kept.length ? { notPlacedYet: true, items: items(kept) } : undefined;
+}
+
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, lastOrderFor };

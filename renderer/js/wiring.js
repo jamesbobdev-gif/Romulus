@@ -9,18 +9,56 @@ if(window.desktop&&window.desktop.openAgentBrowser){
   // it has no window of its own (headless): open it in the live view, which starts it if needed
   $('agentBrowserBtn').addEventListener('click',function(){ $('agentBrowserStatus').textContent=''; openLiveView(); });
 }
-/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter for the cloud Agent lane, in his order */
+/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter / Grok / Groq / Cerebras for the cloud Agent lane, in his order */
+// where each free-tier AI's key comes from, and what it does with what's sent (their terms, Oct 2026)
+const COMPAT_INFO={
+  xai:{where:'console.x.ai',url:'https://console.x.ai',note:'xAI doesn’t train on API data unless you join its data-sharing program for extra free credits.'},
+  groq:{where:'console.groq.com/keys',url:'https://console.groq.com/keys',note:'Very fast, but the free tier caps tokens per minute, so a big task can be too large for it. Groq doesn’t train on what’s sent.'},
+  cerebras:{where:'cloud.cerebras.ai',url:'https://cloud.cerebras.ai',note:'Very fast; the free tier has a smaller context, so a big task can be too large for it. Cerebras doesn’t train on what’s sent.'},
+};
 if(window.desktop&&window.desktop.aiStatus){
   $('aiSection').hidden=false; $('aiUsage').hidden=false;
   let ai=null;
   const say=function(t){ $('aiStatusLine').textContent=t||''; if(t)setTimeout(function(){ if($('aiStatusLine').textContent===t)$('aiStatusLine').textContent=''; },4000); };
-  const save=async function(change,msg){ try{ ai=await window.desktop.aiSave(change); aiDraw(); say(msg||'saved'); }catch(e){ say('save failed'); } };
+  const save=async function(change,msg){
+    Object.keys(change).forEach(function(k){ if(/Key$/.test(k))delete modelLists[k.slice(0,-3)]; }); // a new key: ask for its models again
+    try{ ai=await window.desktop.aiSave(change); aiDraw(); say(msg||'saved'); }catch(e){ say('save failed'); } };
   const keyRow=function(ph,saveAs,label){
     const r=el('div','settings-row'); r.style.marginTop='8px';
     const k=el('input','settings-inp'); k.type='password'; k.placeholder=ph; k.style.flex='1'; k.style.margin='0'; k.autocomplete='off';
     const b=el('button','ghost mono',label||'Save key');
     b.addEventListener('click',function(){ const v=k.value.trim(); if(!v)return; const c={}; c[saveAs]=v; save(c,'key saved'); });
     r.appendChild(k); r.appendChild(b); return r;
+  };
+  /* a model menu: Auto (the best one that AI has right now, falling back when it's busy or used up), its models
+     best first, or Other… to type one. listId: whose models to ask for; saveAs: the setting it saves to */
+  const modelLists={}; // listId → its models, asked once per Settings visit (again after a new key)
+  const OTHER='\u0000other';
+  const modelRow=function(listId,saveAs,current,autoValue){
+    const r=el('div','settings-row'); r.style.marginTop='4px';
+    const sel=document.createElement('select'); sel.className='settings-inp'; sel.style.cssText='flex:1;margin:0;min-width:0';
+    const used=ai.used&&ai.used[listId==='codex'?'codex':listId];
+    const add=function(v,t){ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.appendChild(o); };
+    const fill=function(list){
+      sel.innerHTML='';
+      add('','Auto: best available'+(used?' (last used '+used+')':''));
+      (list||[]).forEach(function(m){ if(m!==autoValue)add(m,m); });
+      if(current&&current!==autoValue&&(list||[]).indexOf(current)<0)add(current,current);
+      add(OTHER,'Other…');
+      sel.value=current&&current!==autoValue?current:'';
+    };
+    fill(modelLists[listId]);
+    const other=el('input','settings-inp'); other.placeholder='model name'; other.style.cssText='flex:1;margin:0'; other.hidden=true;
+    const ob=el('button','ghost mono','Save'); ob.hidden=true;
+    ob.addEventListener('click',function(){ const v=other.value.trim(); if(!v)return; const c={}; c[saveAs]=v; save(c,'model saved'); });
+    sel.addEventListener('change',function(){
+      if(sel.value===OTHER){ other.hidden=false; ob.hidden=false; other.focus(); return; }
+      const c={}; c[saveAs]=sel.value||(autoValue||''); save(c,sel.value?'model saved':'model: Auto');
+    });
+    r.appendChild(sel); r.appendChild(other); r.appendChild(ob);
+    if(!modelLists[listId]){ modelLists[listId]=[];
+      window.desktop.aiModels(listId).then(function(res){ modelLists[listId]=(res&&res.models)||[]; if(sel.isConnected&&sel.value!==OTHER)fill(modelLists[listId]); }).catch(function(){}); }
+    return r;
   };
   const statusText=function(id){
     if(id==='claude')return ai.claudeBlockedUntil?'out of usage until '+fmtWhen(ai.claudeBlockedUntil):'Claude Code on this computer';
@@ -29,8 +67,8 @@ if(window.desktop&&window.desktop.aiStatus){
       return 'API key '+g.key+(g.installed?' · CLI (browser)':' · API (search only)'); }
     if(id==='openai'){ const g=ai.openai;
       if(g.via==='chatgpt')return g.codex.signedIn?'your ChatGPT plan (via Codex)':'not signed in';
-      return g.hasKey?'key '+g.key+' · '+g.model:'no key yet'; }
-    const o=ai.openrouter; return o.hasKey?'key '+o.key+' · '+o.model:'no key yet';
+      return g.hasKey?'key '+g.key+' · '+(g.model||'Auto'):'no key yet'; }
+    const o=ai[id]; return o.hasKey?'key '+o.key+' · '+(o.model&&o.model!=='openrouter/auto'?o.model:'Auto'):'no key yet';
   };
   function aiDraw(){
     usageDraw();
@@ -48,6 +86,7 @@ if(window.desktop&&window.desktop.aiStatus){
       if(i>0){ const up=el('button','ghost mono','↑'); up.title='Try this one earlier';
         up.addEventListener('click',function(){ const o=ai.order.slice(); o.splice(i-1,0,o.splice(i,1)[0]); save({order:o}); }); head.appendChild(up); }
       box.appendChild(head);
+      if(p.id==='claude')box.appendChild(modelRow('claude','claudeModel',ai.claudeModel));
       if(p.id==='gemini'){
         const g=ai.gemini;
         // unlike Claude, Gemini can't use a Google sign-in any more (Google ended that for personal accounts), so walk him through the key
@@ -67,6 +106,7 @@ if(window.desktop&&window.desktop.aiStatus){
           box.appendChild(how);
         }
         box.appendChild(keyRow(g.hasKey?'replace Gemini API key':'Gemini API key (aistudio.google.com/apikey)','geminiKey'));
+        if(g.hasKey)box.appendChild(modelRow('gemini','geminiModel',g.model));
         // the CLI is optional: it gives Gemini the agent browser and your photos; without it, Google Search only
         if(!g.installed){
           const r=el('div','settings-row'); r.style.marginTop='8px';
@@ -101,27 +141,37 @@ if(window.desktop&&window.desktop.aiStatus){
             r.appendChild(b);
           }
           box.appendChild(r);
+          if(cx.signedIn)box.appendChild(modelRow('codex','codexModel',g.codexModel));
           const r2=el('div','settings-row'); r2.style.marginTop='4px'; r2.appendChild(swap('Use an API key instead','key')); box.appendChild(r2);
           box.appendChild(el('p','settings-hint','Runs on your ChatGPT plan through OpenAI’s Codex app, so it counts against your plan’s Codex limits, not a paid API key. It gets web search only: no browser, files, Gmail or shell.'));
           box.lastChild.style.margin='8px 0 0';
         } else {
           box.appendChild(keyRow(g.hasKey?'replace OpenAI API key':'OpenAI API key (platform.openai.com/api-keys)','openaiKey'));
-          const r=el('div','settings-row'); r.style.marginTop='4px';
-          const m=el('input','settings-inp'); m.value=g.model; m.placeholder='model, e.g. gpt-5-mini'; m.style.cssText='flex:1;margin:0';
-          const mb=el('button','ghost mono','Save model'); mb.addEventListener('click',function(){ save({openaiModel:m.value.trim()},'model saved'); });
-          r.appendChild(m); r.appendChild(mb); box.appendChild(r);
+          if(g.hasKey)box.appendChild(modelRow('openai','openaiModel',g.model));
           const r2=el('div','settings-row'); r2.style.marginTop='4px'; r2.appendChild(swap('Use my ChatGPT plan instead','chatgpt')); box.appendChild(r2);
           box.appendChild(el('p','settings-hint','ChatGPT answers with web search but no browser, files or Gmail. The API key is billed separately from a ChatGPT Plus subscription. OpenAI doesn’t train on API data.'));
           box.lastChild.style.margin='8px 0 0';
         }
       }
+      if(ai[p.id]&&ai[p.id].compat){
+        // Grok, Groq, Cerebras: a free API key and a model
+        const o=ai[p.id], info=COMPAT_INFO[p.id], name=ai.names[p.id];
+        box.appendChild(keyRow(o.hasKey?'replace '+name+' API key':name+' API key ('+info.where+')',p.id+'Key'));
+        if(o.hasKey)box.appendChild(modelRow(p.id,p.id+'Model',o.model));
+        const r=el('div','settings-row'); r.style.marginTop='4px';
+        if(o.hasKey){ const t=el('button','ghost mono','Test key'); t.addEventListener('click',async function(){ say('checking…');
+          const res=await window.desktop.aiCompatCheck(p.id);
+          say(!res.ok?'key failed: '+res.error:res.hasModel?'key works · '+res.count+' models':'key works, but '+o.model+' isn’t one of its models'+(res.suggest?': try '+res.suggest:'')); }); r.appendChild(t); }
+        else { const g=el('button','ghost mono','Get a free key ↗'); g.addEventListener('click',function(){ openExternal(info.url); }); r.appendChild(g); }
+        box.appendChild(r);
+        box.appendChild(el('p','settings-hint',name+' has a free tier. It answers without a browser, web search, files or Gmail, so it’s a backup for questions and writing. '+info.note));
+        box.lastChild.style.margin='8px 0 0';
+      }
       if(p.id==='openrouter'){
         const o=ai.openrouter;
         box.appendChild(keyRow(o.hasKey?'replace OpenRouter key':'OpenRouter API key (openrouter.ai/keys)','openrouterKey'));
+        if(o.hasKey)box.appendChild(modelRow('openrouter','openrouterModel',o.model,'openrouter/auto'));
         const r=el('div','settings-row'); r.style.marginTop='4px';
-        const m=el('input','settings-inp'); m.value=o.model; m.placeholder='model, e.g. openrouter/auto'; m.style.cssText='flex:1;margin:0';
-        const mb=el('button','ghost mono','Save model'); mb.addEventListener('click',function(){ save({openrouterModel:m.value.trim()},'model saved'); });
-        r.appendChild(m); r.appendChild(mb);
         if(o.hasKey){ const t=el('button','ghost mono','Test key'); t.addEventListener('click',async function(){ say('checking…');
           const res=await window.desktop.aiOpenRouterCheck();
           say(res.ok?'key works'+(res.usage!=null?' · $'+Number(res.usage).toFixed(2)+' used'+(res.limit!=null?' of $'+res.limit:''):''):'key failed: '+res.error); }); r.appendChild(t); }
@@ -141,17 +191,26 @@ if(window.desktop&&window.desktop.aiStatus){
       }
       list.appendChild(box);
     });
+    // Claude after the others, so his Claude usage is kept for building the app
+    const cs=el('label','switch'); cs.style.marginTop='6px'; const cc=document.createElement('input'); cc.type='checkbox'; cc.checked=ai.claudeLast;
+    cs.appendChild(cc); const ct=el('span','track'); ct.setAttribute('aria-hidden','true'); cs.appendChild(ct);
+    cs.appendChild(el('span','','Save Claude for last: the other AIs go first'));
+    cc.addEventListener('change',function(){ save({claudeLast:cc.checked}); });
+    list.appendChild(cs);
+    list.appendChild(el('p','settings-hint','Claude only gets a task when the others can’t do it (it needs the browser, your inbox or a photo) or they’re out of usage. Inbox tasks always need Claude. Pick Claude on a task’s pill to send it straight there.'));
+    list.lastChild.style.margin='6px 0 0';
     // the mini PC may hand research to these AIs as helpers (never private tasks or his details)
     const hs=el('label','switch'); hs.style.marginTop='6px'; const hc=document.createElement('input'); hc.type='checkbox'; hc.checked=ai.helpers;
     hs.appendChild(hc); const ht=el('span','track'); ht.setAttribute('aria-hidden','true'); hs.appendChild(ht);
-    hs.appendChild(el('span','','Mini PC can send research to these as helpers'));
+    hs.appendChild(el('span','','Lupa Au Palatine can send research to these as helpers'));
     hc.addEventListener('change',function(){ save({helpers:hc.checked}); });
     list.appendChild(hs);
     list.appendChild(el('p','settings-hint','Up to 4 questions at once, spread across the AIs above. Private tasks and your details never go out.'));
     list.lastChild.style.margin='6px 0 0';
   }
   /* the usage pool: one bar per AI that's on. Claude's are its real 5-hour and weekly limits; Gemini counts
-     today's calls against the daily limit Google named (once it has); ChatGPT is pay as you go, so no bar */
+     today's calls against the daily limit Google named (once it has); ChatGPT on his plan shows the plan's own
+     Codex limit windows; with an API key it's pay as you go, so no bar */
   let use=null, useBusy=false;
   const pctTxt=function(x){ return Math.round((x||0)*100)+'%'; };
   const atTime=function(ms){ return new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); };
@@ -195,9 +254,22 @@ if(window.desktop&&window.desktop.aiStatus){
         const o=u.openai;
         if(ai.openai.via==='chatgpt'){
           if(!ai.openai.codex.signedIn){ row('ChatGPT',null,'not signed in'); return; }
-          row('ChatGPT',null,o?o.calls+' runs · '+o.tokensText+' tokens this month (on your ChatGPT plan)':'…'); return; }
+          if(!o){ row('ChatGPT',null,'…'); return; }
+          const pl=o.plan, runs=o.calls+' run'+(o.calls===1?'':'s')+' · '+o.tokensText+' tokens this month';
+          if(!pl||!pl.windows.length){ row('ChatGPT',null,runs+(pl?'':' · limit not read yet')); return; }
+          if(pl.out){ row('ChatGPT',1,'out until '+(pl.out===true?'it resets':fmtWhen(pl.out)),true); return; }
+          // Codex names each window by its length: 5 hours, a week, 30 days on the free plan
+          const span=function(m){ return !m?'':m<=1440?' · '+Math.round(m/60)+'h':m<=10080?' · week':' · month'; };
+          pl.windows.forEach(function(w,i){
+            row('ChatGPT'+span(w.mins),w.used,pctTxt(w.used)+' used'+(w.resetsAt?' · resets '+fmtWhen(w.resetsAt):'')+(i===pl.windows.length-1?' · '+runs:''));
+          });
+          return; }
         if(!ai.openai.hasKey){ row('ChatGPT',null,'no key yet'); return; }
         row('ChatGPT',null,o?o.calls+' calls · '+o.tokensText+' tokens this month (pay as you go)':'…');
+      } else if(ai[id]&&ai[id].compat){
+        const o=u[id];
+        if(!ai[id].hasKey){ row(ai.names[id],null,'no key yet'); return; }
+        row(ai.names[id],null,o?o.calls+' calls · '+o.tokensText+' tokens this month (free tier)':'0 calls this month (free tier)');
       } else if(id==='openrouter'){
         const o=u.openrouter;
         if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
@@ -358,7 +430,7 @@ function drawHowtos(){
       del.addEventListener('click',function(e){ e.stopPropagation(); window.desktop.howtosDelete(h.id).then(drawHowtos); });
       head.appendChild(del);
       body.appendChild(el('div','howto-text',h.text));
-      body.appendChild(el('div','howto-meta',(h.merged?'merged from '+h.merged+' notes':(h.lane==='local'?'mini PC':'Claude'))+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
+      body.appendChild(el('div','howto-meta',(h.merged?'merged from '+h.merged+' notes':(h.lane==='local'?'Lupa Au Palatine':'Claude'))+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
       body.hidden=true;
       head.addEventListener('click',function(){ body.hidden=!body.hidden; });
       row.appendChild(head); row.appendChild(body);
@@ -370,7 +442,7 @@ if(window.desktop&&window.desktop.howtosList){
   $('howtosSection').hidden=false; drawHowtos();
   $('howtosCompactBtn').addEventListener('click',async function(){
     const b=this, say=function(t){ $('howtosStatus').textContent=t; };
-    b.disabled=true; say('merging overlapping notes on the mini PC…');
+    b.disabled=true; say('merging overlapping notes on Lupa Au Palatine…');
     let r; try{ r=await window.desktop.howtosCompact(); }catch(e){ r={ok:false,error:e.message}; }
     b.disabled=false;
     say(!r.ok?r.error:r.merged?'merged '+r.merged+' group'+(r.merged>1?'s':'')+' of notes':'nothing overlaps right now');
@@ -457,6 +529,7 @@ $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
 $('tabWork').addEventListener('click',function(){ switchTab('work'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
+$('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
@@ -475,7 +548,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -487,7 +560,7 @@ $('searchBox').addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar'||state.activeTab==='ideas')switchTab('list');
+    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='finance')switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -498,7 +571,7 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas')return;
+  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='finance')return;
   const a=document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){

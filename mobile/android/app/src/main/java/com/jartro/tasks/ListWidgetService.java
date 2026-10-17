@@ -223,7 +223,7 @@ public class ListWidgetService extends RemoteViewsService {
         }
 
         private static String workerName(JSONObject t) {
-            return "local".equals(t.optString("lane")) ? "Mini PC" : "Claude";
+            return "local".equals(t.optString("lane")) ? "Lupa Au Palatine" : "Claude";
         }
 
         /** "2:14pm", or "Tue 2:14pm" when it isn't today. */
