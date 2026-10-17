@@ -56,15 +56,17 @@ function switchTab(tab){
   if(tab!==state.activeTab)state.selectedId=null;
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas']].forEach(function(p){
+  if(tab!=='finance')financeLeave();
+  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabFinance','finance']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
-  $('listView').hidden=tab==='calendar'||tab==='ideas';
+  $('listView').hidden=tab==='calendar'||tab==='ideas'||tab==='finance';
   $('calView').hidden=tab!=='calendar';
   $('ideasView').hidden=tab!=='ideas';
-  document.querySelector('.composer').hidden=tab==='ideas';
+  $('financeView').hidden=tab!=='finance';
+  document.querySelector('.composer').hidden=tab==='ideas'||tab==='finance';
   document.body.classList.toggle('ideas-mode',tab==='ideas');
   if(tab==='calendar')$('newTitle').placeholder='Add a task…'; // render() sets it on the list tabs; don't keep the last one's
-  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else render();
+  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else if(tab==='finance') renderFinance(); else render();
 }

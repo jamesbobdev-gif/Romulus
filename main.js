@@ -33,6 +33,7 @@ const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
 const liveView = require('./agent/live-view');
 const hub = require('./main/hub');
+const finance = require('./main/finance');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
@@ -62,9 +63,11 @@ const ctx = {
   scheduleLocalRun: (raw) => { if (!hub.isClient()) localLane.scheduleLocalRun(raw); },
   memoryTidying: () => memoryTidy.isTidying(),
   compactHowtos: (asked) => localLane.compactHowtos(asked),
+  // Windows' own encryption for a whole file's text (main/finance.js wraps its vault in it)
+  seal: store.sealValue, unseal: store.openValue,
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView];
+  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance];
 hub.init(ctx);
 const allHandlers = Object.assign({}, hub.localHandlers);
 for (const m of modules) {

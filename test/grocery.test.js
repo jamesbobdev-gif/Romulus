@@ -39,3 +39,11 @@ test('a new grocery task with no list uses the list on the newest grocery task t
   assert.strictEqual(groceryListFor({ ws: 'agent', title: 'Book a flight', created: 4 }, [old]), undefined);
   assert.strictEqual(groceryListFor({ ws: 'personal', title: 'groceries', created: 4 }, [old]), undefined);
 });
+
+test('an Amazon order is not his last grocery order', () => {
+  const { lastOrderFor } = require('../agent/grocery');
+  const last = lastOrderFor([
+    { ws: 'agent', title: 'Find me a water bottle', lastOrder: { at: 2, items: [{ name: 'Owala bottle' }] } },
+    { ws: 'agent', title: 'Groceries', lastOrder: { at: 1, items: [{ name: 'Eggs' }] } }]);
+  assert.equal(last.items[0].name, 'Eggs');
+});

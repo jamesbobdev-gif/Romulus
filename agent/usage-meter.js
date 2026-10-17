@@ -1,7 +1,7 @@
 /* How much of each cloud AI is used up, for the usage bars in Settings → AI connections.
    Claude: the real 5-hour and weekly percentages Claude Code reports (rate_limit_event in stream-json).
    Gemini: calls per Google day (midnight Pacific); its daily limit is learned from the 429 that says so.
-   ChatGPT and OpenRouter: calls and tokens this month (OpenRouter's credit comes from its /key check).
+   ChatGPT, OpenRouter, Grok, Groq, Cerebras: calls and tokens this month (OpenRouter's credit comes from its /key check).
    Kept in userData/ai-usage.json on this computer only. No Electron here, so it can be tested on its own. */
 const fs = require('fs');
 const path = require('path');
@@ -69,12 +69,20 @@ function noteCall(id, r, now) {
     if (r.perDay) { g.perDay = r.perDay; g.out = nextPacificMidnight(now); } // out for the day: back at midnight Pacific
     else if (r.limited) g.out = now + 60 * 1000; // a per-minute limit: back shortly
     m.gemini = g;
-  } else if (id === 'openai' || id === 'openrouter') {
+  } else if (id && id !== 'claude') {
     const mo = month(now);
     const o = m[id] && m[id].month === mo ? m[id] : { month: mo, calls: 0, tokens: 0, credit: m[id] && m[id].credit };
     if (!r.limited) { o.calls++; o.tokens += r.tokens || 0; }
     m[id] = o;
   } else return;
+  save();
+}
+/* ChatGPT plan's Codex limits (see providers.codexLimits): each window {used 0..1, mins, resetsAt ms} */
+function noteCodex(r, now) {
+  if (!r) return;
+  const win = (w) => w && typeof w.usedPercent === 'number' ? { used: w.usedPercent / 100, mins: w.windowDurationMins || null, resetsAt: w.resetsAt ? w.resetsAt * 1000 : null } : null;
+  const m = load();
+  m.codex = { at: now || Date.now(), primary: win(r.primary), secondary: win(r.secondary), reached: !!r.reached, plan: r.plan || null };
   save();
 }
 function noteCredit(usage, limit, now) { // OpenRouter's /key: dollars used, and the key's limit if it has one
@@ -98,7 +106,7 @@ function snapshot(now) {
   const g = m.gemini && m.gemini.day === pacificDay(now) ? m.gemini : { calls: 0, tokens: 0, perDay: m.gemini && m.gemini.perDay };
   res.gemini = { calls: g.calls, tokens: g.tokens, perDay: g.perDay || null, pct: g.perDay ? Math.min(1, g.calls / g.perDay) : null,
     out: g.out && g.out > now ? g.out : false };
-  for (const id of ['openai', 'openrouter']) {
+  for (const id of [...new Set(['openai', 'openrouter', ...Object.keys(m).filter((k) => k !== 'claude' && k !== 'gemini')])]) {
     const o = m[id] && m[id].month === month(now) ? m[id] : { calls: 0, tokens: 0, credit: m[id] && m[id].credit };
     res[id] = { calls: o.calls, tokens: o.tokens, tokensText: fmtT(o.tokens), pct: null };
     if (id === 'openrouter' && o.credit) {
@@ -106,9 +114,17 @@ function snapshot(now) {
       if (o.credit.limit) res[id].pct = Math.min(1, (o.credit.usage || 0) / o.credit.limit);
     }
   }
+  if (m.codex) { // his ChatGPT plan's real limit windows; one that's reset since reads as empty
+    const live = (w) => w && (!w.resetsAt || w.resetsAt > now) ? w : (w ? Object.assign({}, w, { used: 0, resetsAt: null }) : null);
+    const wins = [live(m.codex.primary), live(m.codex.secondary)].filter(Boolean);
+    const full = wins.find((w) => w.used >= 1);
+    res.openai.plan = { windows: wins, name: m.codex.plan, at: m.codex.at,
+      out: m.codex.reached || full ? (full && full.resetsAt) || true : false };
+  }
   res.gemini.tokensText = fmtT(res.gemini.tokens);
   return res;
 }
 const claudeCheckedAt = () => (load().claude || {}).at || 0;
+const codexCheckedAt = () => (load().codex || {}).at || 0;
 
-module.exports = { init, noteClaude, readClaudeStream, geminiDailyLimit, noteCall, noteCredit, snapshot, claudeCheckedAt, pacificDay, nextPacificMidnight };
+module.exports = { init, noteClaude, readClaudeStream, geminiDailyLimit, noteCall, noteCredit, noteCodex, snapshot, claudeCheckedAt, codexCheckedAt, pacificDay, nextPacificMidnight };

@@ -9,10 +9,19 @@ let liveView=null; // { box, img, ws, page, pages, meta, nextId, timer, touchedA
 const liveHidden={}; // task id → he closed its embedded view: a button brings it back
 
 function liveViewAvailable(){ return !!(window.desktop&&window.desktop.livePages); }
-function watchButton(){
+// page: where the task's run ended (its cart, a login): shown first, reopened if a later run closed it
+function watchButton(page){
   const b=el('button','btn-ghost agent-watch','◉ Watch');
   b.title='Watch the agent browser here, and click or type to take over';
-  b.addEventListener('click',function(e){ e.stopPropagation(); openLiveView(); });
+  b.addEventListener('click',async function(e){
+    e.stopPropagation();
+    let id=null;
+    if(page&&window.desktop.liveOpen){ b.disabled=true; try{ id=await window.desktop.liveOpen(page); }catch(err){} b.disabled=false; }
+    const had=!!liveView;
+    if(had){ liveView.want=id; liveView.touchedAt=Date.now(); }
+    openLiveView(null,null,id);
+    if(had&&id)livePoll();
+  });
   return b;
 }
 
@@ -26,7 +35,7 @@ function liveEmbed(slot,id){
   if(liveView&&liveView.forId&&liveView.forId!==id&&state.tasks.some(function(t){ return t.id===liveView.forId&&t.status==='working'; }))return;
   openLiveView(slot,id);
 }
-function openLiveView(host,forId){
+function openLiveView(host,forId,want){
   if(liveView){
     if(host){ liveView.host=host; liveView.forId=forId; if(!liveView.big)host.appendChild(liveView.box); }
     else liveBig(true);
@@ -49,7 +58,7 @@ function openLiveView(host,forId){
   // voice typing, IME) arrives as input and is typed into the page too
   const keys=el('textarea','live-keys'); keys.setAttribute('aria-label','Type into the agent browser'); keys.tabIndex=-1; box.appendChild(keys);
   (host||document.body).appendChild(box);
-  liveView={box:box,keys:keys,img:img,msg:msg,where:where,tabs:tabs,dot:dot,bigBtn:big,ws:null,page:null,pages:[],meta:null,nextId:1,timer:null,touchedAt:0,seen:{},
+  liveView={box:box,keys:keys,img:img,msg:msg,where:where,tabs:tabs,dot:dot,bigBtn:big,ws:null,page:null,pages:[],meta:null,nextId:1,timer:null,touchedAt:0,seen:{},want:want||null,
     host:host||null,forId:forId||null,big:!host};
   if(host)box.hidden=true; // until the browser shows a real page
 
@@ -112,6 +121,9 @@ async function livePoll(){
   r.pages.forEach(function(p){ const o=el('option',null,(p.title||p.url||'New tab').slice(0,60)); o.value=p.id; v.tabs.appendChild(o); });
   v.tabs.hidden=r.pages.length<2;
   if(!r.pages.length){ liveShow('No tabs open in the agent browser.'); return; }
+  // the tab Watch opened for a task: straight to it, once it's listed
+  const want=v.want&&r.pages.find(function(p){ return p.id===v.want; });
+  if(want){ v.want=null; liveConnect(want,true); return; }
   const cur=v.page&&r.pages.find(function(p){ return p.id===v.page.id; });
   if(cur){ v.page.title=cur.title; v.page.url=cur.url; liveWhere(); }
   const follow=!first&&fresh.length&&Date.now()-v.touchedAt>5000;

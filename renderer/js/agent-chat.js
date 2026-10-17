@@ -6,6 +6,19 @@
 const convOpen=new Set(); // tasks whose conversation drop-down is open
 const thoughtsOpen=new Set(); // "task id|time" of answers whose "What it did" is open
 // what the mini PC did on the way to an answer (its live log), folded shut under that answer
+// a long note over order cards: its first sentence, and the rest folded under it
+const noteOpen=new Set(); // task ids whose note he opened (kept across re-renders)
+function noteFold(t){
+  const text=String(t.note||'').trim(), m=text.match(/^[^\n]*?[.!?](?=\s|$)/), first=m?m[0]:text.split('\n')[0];
+  const rest=text.slice(first.length).trim();
+  if(!rest)return document.createTextNode(text);
+  const d=document.createElement('details'); d.className='note-fold'; d.open=noteOpen.has(t.id);
+  d.appendChild(el('summary',null,first));
+  d.appendChild(el('div','note-rest',rest));
+  d.addEventListener('toggle',function(){ if(d.open)noteOpen.add(t.id); else noteOpen.delete(t.id); });
+  d.addEventListener('click',function(e){ e.stopPropagation(); });
+  return d;
+}
 function thoughtsBox(t,h){
   const key=t.id+'|'+h.at, d=document.createElement('details');
   d.className='conv-thoughts'; d.open=thoughtsOpen.has(key);
@@ -18,6 +31,7 @@ function thoughtsBox(t,h){
 const liveText={};        // task id → what the mini PC's model is doing right now (streamed from the desktop app)
 const livePlan={};        // task id → Claude's checklist while it works: [{text, status}]
 const liveHeard={};       // task id → times of his messages Claude has already taken mid-run
+const runLimit={};        // task id → when the desktop runner kills its current try (the stuck-run watchdog waits till then)
 // Claude's checklist, live: ☑ done, ▸ on it now, ☐ still to do
 function fillPlan(box,items){
   box.textContent='';
@@ -36,6 +50,15 @@ function refreshLocalStatus(){
     const changed=JSON.stringify(s)!==JSON.stringify(localStat); localStat=s;
     if(changed&&state.activeTab==='agent')render();
   }).catch(function(){});
+}
+// the model running on the mini PC, short: hf.co/Hcompany/Holo4-35B-A3B-GGUF:Q4_K_M → Holo4-35B-A3B ('Lupa' until it's known)
+function localModelName(){
+  const m=localStat&&localStat.model;
+  if(!m)return 'Lupa';
+  const p=String(m).split('/').pop().split(':'), tag=p[1]||'';
+  const name=p[0].replace(/[-_.]?gguf$/i,'');
+  // the quantization (Q4_K_M) and "latest" tags are dropped; a size tag (qwen3:8b) stays
+  return (name+(tag&&!/^(latest|i?q\d.*|b?f(p)?(16|32))$/i.test(tag)?' '+tag:''))||'Lupa';
 }
 function agentSay(t,who,text,extra){
   if(!text)return;
@@ -84,7 +107,7 @@ document.addEventListener('paste',function(e){
   const go=function(map,id){ e.preventDefault(); map[id].add(imgs); };
   // 1) typing directly in a reply box → that task
   const ae=document.activeElement, focusedReply=ae&&ae.dataset&&ae.dataset.replyFor;
-  const listy=state.activeTab!=='ideas'&&state.activeTab!=='calendar';
+  const listy=state.activeTab!=='ideas'&&state.activeTab!=='calendar'&&state.activeTab!=='finance';
   if(ae&&ae.id==='newTitle'&&listy&&attachProfile()){ e.preventDefault(); addComposerFiles(imgs); return; }
   if(focusedReply&&replies.indexOf(focusedReply)!==-1)return go(attachTargets,focusedReply);
   // 2) the task you're in (focus inside its panel / last clicked / selected / the only open one)
@@ -129,7 +152,7 @@ async function addComposerFiles(list){
 }
 function drawComposerAtts(){
   const box=document.getElementById('newAtts'); if(!box)return;
-  box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='calendar';
+  box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='calendar'||state.activeTab==='finance';
   composerAtts.forEach(function(a,i){
     const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for Romulus';
     im.addEventListener('click',function(){ openLightbox(composerAtts.map(function(x,j){ return {image:x.preview,label:'Photo '+(j+1)}; }),i); });
@@ -218,7 +241,9 @@ function repeatText(r){
 // finish_task checks who holds the claim).
 // who has the task now: its lane, or for older tasks whoever answered last; null = nobody yet
 // 'gemini' / 'openai' = the cloud lane ('claude' on the server) with that AI only (t.cloud)
-const PINNED_CLOUDS=['gemini','openai','openrouter'];
+// the cloud AIs besides Claude, by name (agent/providers.js NAMES); all of them are in the pill's cloud menu
+const CLOUD_NAMES={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',xai:'Grok',groq:'Groq',cerebras:'Cerebras'};
+const PINNED_CLOUDS=Object.keys(CLOUD_NAMES);
 function laneNow(t){
   if(t.lane==='claude'&&(PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude'))return t.cloud;
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
@@ -227,12 +252,12 @@ function laneNow(t){
   if(t.lane==='claude'||t.lane==='local')return t.lane;
   return last?(last.lane==='local'?'local':'claude'):null;
 }
-const LANE_NAMES={claude:'Claude',gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',local:'your mini PC'};
+const LANE_NAMES=Object.assign({claude:'Claude'},CLOUD_NAMES,{local:'Lupa Au Palatine'});
 // the cloud AI a cloud-lane task is on (same rule as agent/ai-connections.js homeCloud), by name
 function cloudNameOf(t){
   let id=t.cloud;
   if(!id){ const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'&&h.lane!=='local'; }).slice(-1)[0]; id=last&&last.via; }
-  return {gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter'}[id]||'Claude';
+  return CLOUD_NAMES[id]||'Claude';
 }
 const laneAsks={}; // task id → the lane a switch is waiting on your OK for (asked in the panel)
 // Retry: back in the queue now. A run still on it is stopped (Claude/Gemini), so it starts over at once
@@ -288,7 +313,7 @@ function setDone(t,v){
   if(taskWs(t)==='agent'){
     // re-opening an agent task hands it back to Claude; ticking one off closes it
     if(!v&&t.status==='done')t.status='queued';
-    if(v){ t.status='done'; delete t.cart; delete t.cartOff; delete t.cartPick; } // a finished order: its cards go
+    if(v){ t.status='done'; keepLastOrder(t); delete t.cart; delete t.cartOff; delete t.cartPick; } // a finished order: its cards go
   }
   else if(v)spawnRecur(t); // a repeating to-do: the next one appears
   else unspawnRecur(t);

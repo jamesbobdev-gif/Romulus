@@ -488,7 +488,7 @@ async function callTool(name: string, a: any): Promise<string> {
         const t = pick(d, String(a.id || ""));
         if (t.done || (t.status || "queued") !== "queued") throw new UserError(`only a queued task can be assigned (this one is ${t.done ? "done" : t.status})`);
         t.lane = lane;
-        if (a.reason) addHistory(t, { who: "sys", text: `Routed → ${lane === "local" ? "mini PC" : "Claude"}: ${String(a.reason).slice(0, 200)}` });
+        if (a.reason) addHistory(t, { who: "sys", text: `Routed → ${lane === "local" ? "Lupa Au Palatine" : "Claude"}: ${String(a.reason).slice(0, 200)}` });
         t.updatedAt = Date.now();
         return t;
       });

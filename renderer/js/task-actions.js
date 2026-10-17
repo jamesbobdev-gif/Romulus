@@ -306,6 +306,11 @@ function optionKind(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return 'link'; }
   return /(^|\.)(amazon\.[a-z.]+|amzn\.(to|com)|bestbuy\.com|walmart\.com|target\.com|newegg\.com|ebay\.com|etsy\.com|homedepot\.com|lowes\.com|costco\.com|bhphotovideo\.com|microcenter\.com|bambulab\.com|aliexpress\.com|temu\.com|adorama\.com|rei\.com|ikea\.com)$/.test(h)?'buy':'link';
 }
+// an Amazon product page: Romulus orders it (after a yes) instead of emailing the link
+function isAmazon(url){
+  let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
+  return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
+}
 function isModelSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(makerworld|printables|thingiverse|thangs|cults3d|myminifactory|prusaprinters)\.com$/.test(h);

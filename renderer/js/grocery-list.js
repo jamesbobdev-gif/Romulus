@@ -134,6 +134,44 @@ function yesButton(t){
    something else first ("add a payment method, then reply done"), the button answers "done" with the
    same picks instead, so it fixes the cart before asking for the yes. An item with other sizes/brands
    (it.options) has a menu on its card: what he switches to goes along as "swap: A → B". */
+// an order that went through (or he checked off): what he kept on it, with pictures, is his last order.
+// Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor)
+function keepLastOrder(t){
+  if(!Array.isArray(t.cart)||!t.cart.length)return;
+  const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
+  const items=t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).slice(0,40).map(function(it){
+    const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; }); // the size he switched to
+    const s=op||it;
+    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined};
+  });
+  if(items.length)t.lastOrder={at:Date.now(),items:items};
+}
+// the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
+function listCardsChanged(cards,ch){
+  const gone=Array.isArray(ch.remove)?ch.remove:[];
+  const has=function(n){ return function(c){ return sameItem(c.name,n)||sameItem(c.name.split(',')[0],n)||sameItem(c.name,String(n).split(',')[0]); }; };
+  const out=cards.filter(function(c){ return !gone.some(function(n){ return has(n)(c); }); });
+  (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const n=String(a&&a.name||a||'').trim(); if(n&&!out.some(has(n)))out.push({name:n.slice(0,120)}); });
+  return out.length?out:null;
+}
+// things to look at, not pick (his grocery list): small picture cards, each opening its product page
+function cardsStrip(t){
+  const box=el('div','mini-cards');
+  t.cards.slice(0,40).forEach(function(it){
+    const c=el(it.url?'a':'div','mini-card');
+    if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
+    c.addEventListener('click',function(e){ e.stopPropagation(); });
+    const ph=el('div','mini-pic');
+    if(it.image){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+      im.onerror=function(){ ph.textContent=it.name.charAt(0); im.remove(); }; ph.appendChild(im); }
+    else ph.textContent=it.name.charAt(0);
+    c.appendChild(ph);
+    c.appendChild(el('div','mini-name',it.name));
+    if(it.price||it.qty>1)c.appendChild(el('div','mini-price',(it.qty>1?'×'+it.qty+' · ':'')+(it.price||'')));
+    box.appendChild(c);
+  });
+  return box;
+}
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }
 function cartStrip(t){
   const box=el('div','cart-box');

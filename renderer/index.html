@@ -53,7 +53,7 @@
       <div class="settings-sub" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
         <p class="settings-hint">First matching rule wins. Comma-separate words. <span class="mono">#local</span> or <span class="mono">#claude</span> in a title overrides.</p>
-        <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> — tasks mentioning these (or card/SSN numbers) always go to the mini PC.</p>
+        <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> — tasks mentioning these (or card/SSN numbers) always go to Lupa Au Palatine.</p>
         <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
         <div id="routingRules"></div>
         <div class="settings-row" style="margin-top:8px">
@@ -65,11 +65,11 @@
             <option value="auto">Auto (picks for you)</option>
             <option value="ask">Ask me</option>
             <option value="claude">Claude</option>
-            <option value="local">Mini PC</option>
+            <option value="local">Lupa Au Palatine</option>
           </select>
         </div>
-        <p class="settings-hint" style="margin-top:6px">Auto sends inbox, web and shopping tasks to the cloud and writing and forms to the mini PC. If one side is offline or Claude is near its limit, it uses the other side. You can still switch any task yourself.</p>
-        <p class="settings-hint" style="margin-top:14px">Sites the mini PC may open, one per line.</p>
+        <p class="settings-hint" style="margin-top:6px">Auto sends inbox, web and shopping tasks to the cloud and writing and forms to Lupa Au Palatine. If one side is offline or Claude is near its limit, it uses the other side. You can still switch any task yourself.</p>
+        <p class="settings-hint" style="margin-top:14px">Sites Lupa Au Palatine may open, one per line.</p>
         <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="routingSaveBtn" class="btn-accent">Save</button>
@@ -106,7 +106,7 @@
         </div>
       </div>
       <div class="settings-sub" id="lockedSection" hidden>
-        <h3 class="settings-subhead">Locked — only your mini PC sees this</h3>
+        <h3 class="settings-subhead">Locked — only Lupa Au Palatine sees this</h3>
         <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. Romulus's cloud AIs never read it. No passwords, card numbers or SSN.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
@@ -240,6 +240,7 @@
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Ideas</button>
+    <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
   </div>
 
   <section class="composer" aria-label="Add a task">
@@ -307,6 +308,9 @@
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
   </div>
+
+  <!-- Finance (desktop only, hidden by default; js/finance.js draws it) -->
+  <div id="financeView" hidden></div>
 </main>
 
 <script src="js/sync.js"></script>
@@ -317,9 +321,11 @@
 <script src="js/agent-live-view.js"></script>
 <script src="js/agent-ask.js"></script>
 <script src="js/grocery-list.js"></script>
+<script src="js/seat-map.js"></script>
 <script src="js/lists.js"></script>
 <script src="js/calendar-view.js"></script>
 <script src="js/ideas.js"></script>
+<script src="js/finance.js"></script>
 <script src="js/popups.js"></script>
 <script src="js/wiring.js"></script>
 <script src="js/settings.js"></script>

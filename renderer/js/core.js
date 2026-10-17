@@ -33,7 +33,7 @@ function persist(){
   saveTimer=setTimeout(function(){ stampChanges(); store.save(currentDoc()); schedulePush(); },200);
 }
 function touch(){ persist(); renderActive(); }
-function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else render(); }
+function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else if(state.activeTab==='finance') return; else render(); }
 function uid(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
 /* ── dates ── */

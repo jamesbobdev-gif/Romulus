@@ -13,11 +13,13 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){
         t.status='working'; t.runFrom=Date.now(); // what he writes after this, the run can't see: it goes next
-        if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'mini PC':'Claude')+' ('+reasons[id]+')'); }
+        if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'Lupa Au Palatine':'Claude')+' ('+reasons[id]+')'); }
         changed=true;
       }
       // the AI the runner is asking now: the pill shows it, and the task stays with it from here on
-      if(t&&p&&p.cloud&&t.lane!=='local'&&t.status==='working'&&t.cloud!==p.cloud){ t.cloud=p.cloud; changed=true; }
+      // Claude taking over doesn't pin the task to Claude (only his pick on the pill does), so with "Save Claude for last" his next reply tries the others first
+      if(t&&p&&p.cloud&&t.lane!=='local'&&t.status==='working'&&t.cloud!==p.cloud){ if(p.cloud!=='claude')t.cloud=p.cloud; else delete t.cloud; changed=true; }
+      if(t&&p&&p.limitMs)runLimit[id]=Date.now()+p.limitMs; // a grocery run gets 40 min, not 15: the watchdog waits for it
     });
     if(changed)touch();
   });
@@ -28,10 +30,25 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'&&!t.lane){
         t.status='needs-you'; t.routeAsk=true; t.note='Who should do this one? No routing rule matched.';
-        agentSay(t,'sys','No routing rule matched: waiting for you to pick Claude or your mini PC');
+        agentSay(t,'sys','No routing rule matched: waiting for you to pick Claude or Lupa Au Palatine');
         changed=true;
       }
     });
+    if(changed)touch();
+  });
+  // an AI's key expired or its sign-in ran out: a to-do on his Human list says to reconnect it (one per AI)
+  if(window.desktop.onAgentReconnect)window.desktop.onAgentReconnect(function(p){
+    const title=String((p&&p.title)||''); if(!title)return;
+    const prefix=title.slice(0,title.indexOf(':')+1);
+    if(state.tasks.some(function(t){ return !t.done&&taskWs(t)==='personal'&&t.title.startsWith(prefix); }))return;
+    state.tasks.push({id:uid(),title:title,done:false,due:null,dueTime:null,tag:null,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
+    voiceToast(title,true); touch();
+  });
+  // it answered again: that to-do is done
+  if(window.desktop.onAgentReconnected)window.desktop.onAgentReconnected(function(p){
+    const prefix=String((p&&p.prefix)||''); if(!prefix)return;
+    let changed=false;
+    state.tasks.forEach(function(t){ if(!t.done&&taskWs(t)==='personal'&&t.title.startsWith(prefix)){ t.done=true; changed=true; } });
     if(changed)touch();
   });
   // what the mini PC's model (or Claude) is doing right now: shown live in that task's box, without re-rendering.
@@ -78,10 +95,10 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(u.handoff){
         t.lane='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
         t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
-        agentSay(t,'sys','Mini PC couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
+        agentSay(t,'sys','Lupa Au Palatine couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
         return;
       }
-      if(u.lane!=='local')t.cloud=u.via||'claude'; // whoever answered: its pill, which it keeps
+      if(u.lane!=='local'){ const via=u.via||'claude'; if(via!=='claude')t.cloud=via; else if(t.cloud!=='claude')delete t.cloud; } // whoever answered: its pill, which it keeps (Claude only when he picked it)
       // what he wrote while it worked: the run never saw it, so it goes next, with this answer before it.
       // Claude takes his messages mid-run (agent/run-live.js): the ones it took (u.heard) are done with
       const heard=Array.isArray(u.heard)?u.heard:[];
@@ -98,18 +115,27 @@ if(window.desktop&&window.desktop.onAgentResults){
       // it stopped for something in its way: why, what to do, and what its browser showed
       t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
       t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;
+      t.page=u.page&&/^https:\/\//i.test(String(u.page))?String(u.page):null; // ◉ Watch opens it
       t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null;
       if('options' in u)t.options=u.options;
       // questions to tap through, and an order to deselect from: each answer brings its own (or none)
       t.ask=Array.isArray(u.ask)&&u.ask.length?u.ask:null; if(typeof askDrafts!=='undefined')delete askDrafts[t.id];
+      // the order went through (it marked what was bought): its cards are his last order, pictures and all
+      if(u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)keepLastOrder(t);
       t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
+      t.seats=u.seats&&Array.isArray(u.seats.rows)?u.seats:null; if(typeof seatDrafts!=='undefined')delete seatDrafts[t.id]; // seat-map.js: its pick, fresh each answer
+      t.showtimes=u.showtimes&&Array.isArray(u.showtimes.days)?u.showtimes:null; if(typeof showDay!=='undefined')delete showDay[t.id]; // seat-map.js: days and times to tap
+      // just to look at (his grocery list): small cards. They stay up when an answer brings none ("add hummus"),
+      // with what it added or removed on the list
+      if(Array.isArray(u.cards)&&u.cards.length)t.cards=u.cards;
+      else if(Array.isArray(t.cards)&&t.cards.length&&!t.cart&&u.list)t.cards=listCardsChanged(t.cards,u.list);
       // suggestions for the week start unselected: he taps the ones he wants
       if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
       if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
-      (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Mini PC asked Claude: '+q); });
+      (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Lupa Au Palatine asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
-      if(u.via==='gemini'||u.via==='openai'||u.via==='openrouter')extra.via=u.via;
+      if(['gemini','openai','openrouter','xai','groq','cerebras'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS
       if(t.shot)extra.images=[t.shot];
       if(thoughts){
         extra.thoughts=thoughts;
@@ -157,12 +183,13 @@ function runDueRepeats(){
 if(window.desktop&&window.desktop.onAgentResults)setInterval(runDueRepeats,30*1000);
 // is the mini PC reachable? (shown on its tasks; checked now and then while the app is open)
 if(window.desktop&&window.desktop.localStatus){ setTimeout(refreshLocalStatus,3000); setInterval(refreshLocalStatus,60*1000); }
-// watchdog: a run is killed after 15 min, so "working" for 17+ min means it was cut off — queue it again
+// watchdog: a run is killed after 15 min (40 for groceries), so "working" 2 min past that means it was cut off — queue it again
 if(window.desktop&&window.desktop.onAgentResults){
   setInterval(function(){
     let changed=false; const cutoff=Date.now()-17*60*1000;
     state.tasks.forEach(function(t){
       const cut=t.lane==='local'?Date.now()-45*60*1000:cutoff; // the mini PC is slow: give it longer
+      if(runLimit[t.id]&&Date.now()<runLimit[t.id]+2*60*1000)return; // its run still has time (the runner said how long)
       if(taskWs(t)==='agent'&&!t.done&&t.status==='working'&&(t.lane!=='local'||window.desktop.localStatus)&&(t.updatedAt||0)<cut){ t.status='queued'; changed=true; }
     });
     if(changed)touch();

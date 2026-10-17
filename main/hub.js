@@ -16,8 +16,8 @@ const crypto = require('crypto');
 const DEFAULT_PORT = 8790;
 const CDP_PORT = 9334; // agent/agent-browser.js AGENT_BROWSER_PORT
 // the app's IPC calls that belong to the hub: what the agent, mail, calendars and the agent browser do
-const REMOTE = ['ai:status', 'ai:save', 'ai:gemini-install', 'ai:codex-install', 'ai:codex-login', 'ai:openrouter-check', 'ai:usage',
-  'agent:retry', 'agent:open-browser', 'live:pages', 'live:start', 'local:status', 'routing:changed',
+const REMOTE = ['ai:status', 'ai:save', 'ai:gemini-install', 'ai:codex-install', 'ai:codex-login', 'ai:openrouter-check', 'ai:compat-check', 'ai:usage',
+  'agent:retry', 'agent:open-browser', 'live:pages', 'live:open', 'live:start', 'local:status', 'routing:changed',
   'howtos:list', 'howtos:delete', 'howtos:compact', 'feeds:get', 'feeds:save', 'feeds:fetch',
   'mail:status', 'mail:set-enabled', 'mail:check', 'lookahead:status', 'lookahead:set-enabled', 'lookahead:tick',
   'cal:overview', 'cal:add-link', 'cal:remove', 'cal:set-prefs', 'cal:pull', 'gcal:sync-now', 'gcal:delete-event'];

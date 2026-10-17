@@ -4,14 +4,16 @@ const providers = require('../agent/providers');
 
 test('settings defaults: Claude on, the rest off', () => {
   const s = providers.settings({});
-  assert.deepStrictEqual(s.order, [{ id: 'claude', on: true }, { id: 'gemini', on: false }, { id: 'openai', on: false }, { id: 'openrouter', on: false }]);
+  assert.deepStrictEqual(s.order, [{ id: 'claude', on: true }, { id: 'gemini', on: false }, { id: 'openai', on: false }, { id: 'openrouter', on: false },
+    ...providers.COMPAT_IDS.map((id) => ({ id, on: false }))]);
   assert.strictEqual(s.openrouterModel, providers.OPENROUTER_DEFAULT_MODEL);
   assert.strictEqual(s.openrouterWeb, true);
 });
 
 test('settings keeps the saved order, drops unknown and duplicate ids', () => {
   const s = providers.settings({ ai: { order: [{ id: 'gemini' }, { id: 'bogus' }, { id: 'gemini', on: false }, { id: 'claude', on: false }] } });
-  assert.deepStrictEqual(s.order, [{ id: 'gemini', on: true }, { id: 'claude', on: false }, { id: 'openai', on: false }, { id: 'openrouter', on: false }]);
+  assert.deepStrictEqual(s.order, [{ id: 'gemini', on: true }, { id: 'claude', on: false }, { id: 'openai', on: false }, { id: 'openrouter', on: false },
+    ...providers.COMPAT_IDS.map((id) => ({ id, on: false }))]);
 });
 
 test('Gemini without the CLI: the API with Google Search, the key in a header', async () => {
@@ -105,8 +107,10 @@ test('ChatGPT: the plan (Codex) unless he saved a key; his choice wins either wa
 
 test('Codex runs get web search only: shell, apps, browser and its own config off, read-only', () => {
   const a = providers.codexArgs('codex.js', 'out.txt');
-  for (const f of ['shell_tool', 'unified_exec', 'code_mode_host', 'apps', 'plugins', 'browser_use', 'computer_use', 'multi_agent'])
+  for (const f of ['shell_tool', 'unified_exec', 'apps', 'plugins', 'browser_use', 'computer_use', 'multi_agent'])
     assert.ok(a.some((x, i) => x === f && a[i - 1] === '--disable'), f);
+  // web search runs through code mode on newer Codex: switching it off left ChatGPT with no search at all
+  assert.ok(!a.includes('code_mode_host'));
   assert.ok(a.includes('--ignore-user-config') && a.includes('--ephemeral'));
   assert.strictEqual(a[a.indexOf('--sandbox') + 1], 'read-only');
   assert.strictEqual(a[a.length - 1], '-');

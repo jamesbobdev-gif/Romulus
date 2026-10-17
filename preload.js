@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('desktop', {
   onAgentWaiting: (cb) => ipcRenderer.on('agent:waiting', (_event, info) => cb(info)),
   // the mini PC lane: what his own model is doing right now on a task, and whether it's reachable
   onAgentLive: (cb) => ipcRenderer.on('agent:live', (_event, info) => cb(info)),
+  // an AI's key expired / sign-in ran out (and when it works again)
+  onAgentReconnect: (cb) => ipcRenderer.on('agent:reconnect', (_event, info) => cb(info)),
+  onAgentReconnected: (cb) => ipcRenderer.on('agent:reconnected', (_event, info) => cb(info)),
   localStatus: () => ipcRenderer.invoke('local:status'),
   // routing: James's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
@@ -35,12 +38,15 @@ contextBridge.exposeInMainWorld('desktop', {
   aiCodexInstall: () => ipcRenderer.invoke('ai:codex-install'),
   aiCodexLogin: () => ipcRenderer.invoke('ai:codex-login'),
   aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
+  aiCompatCheck: (id) => ipcRenderer.invoke('ai:compat-check', id),
+  aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
   livePages: () => ipcRenderer.invoke('live:pages'),
+  liveOpen: (url) => ipcRenderer.invoke('live:open', url),
   // the hub mini PC (main/hub.js): this computer as its client, over Tailscale
   hubGet: () => ipcRenderer.invoke('hub:get'),
   hubTest: (url, token) => ipcRenderer.invoke('hub:test', url, token),
@@ -64,6 +70,15 @@ contextBridge.exposeInMainWorld('desktop', {
   lookAheadStatus: () => ipcRenderer.invoke('lookahead:status'),
   lookAheadSetEnabled: (on) => ipcRenderer.invoke('lookahead:set-enabled', on),
   lookAheadTick: (force) => ipcRenderer.invoke('lookahead:tick', force),
+  // Finance tab (main/finance.js): his bank data through SimpleFIN, read-only, locked behind his passphrase
+  financeStatus: () => ipcRenderer.invoke('finance:status'),
+  financeSetup: (token, passphrase) => ipcRenderer.invoke('finance:setup', token, passphrase),
+  financeUnlock: (passphrase) => ipcRenderer.invoke('finance:unlock', passphrase),
+  financeLock: () => ipcRenderer.invoke('finance:lock'),
+  financeData: () => ipcRenderer.invoke('finance:data'),
+  financeRefresh: () => ipcRenderer.invoke('finance:refresh'),
+  financeForget: () => ipcRenderer.invoke('finance:forget'),
+  onFinanceLocked: (cb) => ipcRenderer.on('finance:locked', (_event, why) => cb(why)),
   // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
   voiceStop: () => ipcRenderer.invoke('voice:stop'),
