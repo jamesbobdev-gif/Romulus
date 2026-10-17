@@ -80,6 +80,11 @@ test('cleanCart: an idea for the week keeps its flag and reason', () => {
     [{ name: 'Teriyaki sauce', price: '$2.12', suggested: true, why: 'with your chicken and rice' }]);
 });
 
+test('cleanCart: an item keeps its unit price and why that size was picked', () => {
+  assert.deepStrictEqual(ctx.cleanCart([{ name: 'Eggs, 12 ct', price: '$2.98', unit: '$0.25/ct', why: 'a dozen: 5 dozen would spoil' }]),
+    [{ name: 'Eggs, 12 ct', price: '$2.98', unit: '$0.25/ct', why: 'a dozen: 5 dozen would spoil' }]);
+});
+
 test('cleanCart: keeps the product page (https) so the app can find a picture', () => {
   assert.deepStrictEqual(ctx.cleanCart([{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs', url: 'javascript:x' }]),
     [{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs' }]);
