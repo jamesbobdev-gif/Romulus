@@ -31,6 +31,8 @@ const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
 const { groceryBrief, groceryChanges, groceryListFor } = require('./grocery');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
+const GROCERY_TIMEOUT_MS = 40 * 60 * 1000; // a grocery order fills a whole cart and compares sizes: it gets longer
+let runTimeoutMs = AGENT_TIMEOUT_MS; // this run's limit
 const AGENT_RETRY_MS = 30 * 60 * 1000;  // same queue failing again → back off
 const FROZE_MS = 60 * 1000;              // the clock jumped this far between beats: the computer slept and the run froze
 let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
@@ -207,6 +209,8 @@ async function startAgentRun() {
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
   if (browserCfg) await freshTabs().catch(() => {});
+  const grocer = loadSkills().find((s) => s.name === 'groceries');
+  runTimeoutMs = grocer && grocer.match && tasks.some((t) => grocer.match.test(skillText(t))) ? GROCERY_TIMEOUT_MS : AGENT_TIMEOUT_MS;
   // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
@@ -240,9 +244,9 @@ async function startAgentRun() {
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0])) }).finally(() => live.close())
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
-          timeoutMs: AGENT_TIMEOUT_MS, node: findNode(), onProc: (p) => { agentProc = p; } })
-        : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS })
-        : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: AGENT_TIMEOUT_MS });
+          timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; } })
+        : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs })
+        : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs });
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
       if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
       try { fs.writeFileSync(path.join(ctx.userData(), 'agent-last-run.log'), id + '\n' + (r.log || '') + '\n' + (r.text || '')); } catch (e) {}
@@ -299,7 +303,8 @@ async function startAgentRun() {
         : (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean)) : [];
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
-    if (u.cart) await Promise.all(u.cart.filter((it) => !it.image && it.url).slice(0, 40).map(async (it) => {
+    // (and so does each other size/brand on its menu)
+    if (u.cart) await Promise.all(u.cart.concat(...u.cart.map((it) => it.options || [])).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
       const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
@@ -361,7 +366,7 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       agentProc = proc;
     } catch (e) { agentLog('spawn failed: ' + e.message); return resolve({ why: 'could not start Claude' }); }
     agentLog('started Claude (pid ' + proc.pid + ')');
-    killer = setTimeout(() => { try { proc.kill(); } catch (e) {} }, AGENT_TIMEOUT_MS);
+    killer = setTimeout(() => { try { proc.kill(); } catch (e) {} }, runTimeoutMs);
     proc.stdout.on('data', (d) => { out += d; if (live) live.feed(String(d)); }); // its plan and steps, live on the task
     proc.stderr.on('data', (d) => { err += d; });
     proc.on('error', (e) => {

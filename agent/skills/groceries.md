@@ -135,13 +135,19 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
 ## Checkout and his yes
 - **The cart always comes with you.** Whenever you stop with items in the store cart, for any reason
   (no payment method, a sign-in, an item question, the final review), send the whole `cart` exactly
-  as below, `options` and pictures included. Even items an earlier run added: open each one's page
-  and collect its options too. Without `cart` the app shows him only words, no order cards.
+  as below, `options` included. Without `cart` the app shows him only words, no order cards.
+- **Read the cart in one look, don't click through it.** Never open item pages one by one to collect
+  details: that runs out of time before you answer, and then he gets nothing. Take each item's name,
+  count, price and product link (`url`) from ONE snapshot of the cart or checkout page; the app gets
+  every picture from `url` itself, so `image` is optional. For `options`, use what the store checkers
+  reported, or one search per item at most (the search results show sizes, prices and links). If the
+  cart came from an earlier run, read it the same way. Running long? Send the `cart` you have rather
+  than nothing.
 - Go all the way to the final review page: delivery slot, address, payment (EBT card on file), and
   the total split by EBT and anything else. Then stop: `needs-you`. Put every item in `cart`
   ({name, qty, price for that line, image = the product photo's https address as the store shows
   it (on Walmart, the i5.walmartimages.com picture of that item), url = the item's product page,
-  swap = what it replaced, unit, why, options = the other choices above}). Every item needs its picture: he picks by looking at them, so the app shows them as cards he can deselect. The note is short (the
+  swap = what it replaced, unit, why, options = the other choices above}). Every item needs its `url` (and `image` when the cart page shows it): he picks by looking at the pictures, so the app shows them as cards he can deselect. The note is short (the
   pictures do the talking): one or two lines with the slot, the total, how it's paid, the EBT balance
   left and any swaps (never the item list), ending with "Reply **yes** to place this order."
 - **Deselected items:** his answer may be "yes, place it without: A; B, and take out the ideas I didn't

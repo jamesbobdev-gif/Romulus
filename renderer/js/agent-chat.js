@@ -288,7 +288,7 @@ function setDone(t,v){
   if(taskWs(t)==='agent'){
     // re-opening an agent task hands it back to Claude; ticking one off closes it
     if(!v&&t.status==='done')t.status='queued';
-    if(v)t.status='done';
+    if(v){ t.status='done'; delete t.cart; delete t.cartOff; delete t.cartPick; } // a finished order: its cards go
   }
   else if(v)spawnRecur(t); // a repeating to-do: the next one appears
   else unspawnRecur(t);
