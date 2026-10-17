@@ -85,7 +85,7 @@ function runGroceryTimer(){
   if(!at||at>Date.now())return;
   const open=state.tasks.filter(function(t){ return isGroceryTask(t)&&!t.done; });
   if(open.some(function(t){ return t.status==='queued'||t.status==='working'; }))return; // one is already going
-  open.forEach(function(t){ t.done=true; agentSay(t,'sys','Replaced by the next 2-week order'); }); // a stale cart
+  open.forEach(function(t){ t.done=true; delete t.cart; delete t.cartOff; delete t.cartPick; agentSay(t,'sys','Replaced by the next 2-week order'); }); // a stale cart
   const keep=groceryTask();
   const t={id:uid(),title:'Groceries',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
     created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],repeatDue:true};
