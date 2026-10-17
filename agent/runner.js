@@ -13,13 +13,20 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
-const { cloudOrder, cloudReady, runOrder, homeCloud, PINNED_CLOUDS } = require('./ai-connections');
+const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, closeStoreTabs, lastPage, SHOPS, SHOPS_DENIED, shopAgents } = require('./agent-browser');
 const runLive = require('./run-live');
+const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
+const { cleanSeats, cleanShowtimes } = require('./seats');
 const siteNotes = require('./site-notes');
 const { enrichOption, pagePreviewImage } = require('./previews');
+
+// Claude comes after the AI being asked: what it can't do goes to Claude, rather than back to him as needs-you
+const CLAUDE_AFTER_NOTE = '\n\n## Handing over\nClaude (with a full browser, his inbox and his photos) comes after you in this run. If a ' +
+  'task needs a tool you don\'t have here (a browser to shop, order or check live prices, his inbox, a photo), leave that task out of ' +
+  '`updates` entirely and Claude will take it. This replaces the needs-you advice below for those tasks; everything you can do, do.\n';
 
 let ctx = null; // { userData, documents, readConfig, dataFile, agentLog, sendToRenderer, memoryTidying }
 function init(c) { ctx = c; }
@@ -29,7 +36,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor } = require('./grocery');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
 const GROCERY_TIMEOUT_MS = 40 * 60 * 1000; // a grocery order fills a whole cart and compares sizes: it gets longer
 let runTimeoutMs = AGENT_TIMEOUT_MS; // this run's limit
@@ -107,14 +114,14 @@ async function startAgentRun() {
   // Tasks he put on Gemini or ChatGPT (the pill) run on their own too, with that AI only (neither reads his inbox).
   // A task already on an AI (the one that answered it last) runs with that AI too, so a conversation
   // doesn't hop between them: it only moves on when that AI is out of usage (see the loop below).
-  const on = cloudOrder();
+  const on = cloudOrder(), saveClaude = claudeLast();
   const kindOf = (t) => {
     if (PINNED_CLOUDS.includes(t.cloud)) return t.cloud;
     if (cfg.gmail === true || wantsInbox(t)) return 'mail';
-    const home = homeCloud(t);
+    const home = homeCloud(t, saveClaude);
     return home && on.includes(home) ? home : 'web'; // an AI he has since turned off: his order instead
   };
-  const kind = ['mail', 'web', 'claude', 'gemini', 'openai', 'openrouter'].find((k) => all.some((t) => kindOf(t) === k));
+  const kind = ['mail', 'web', 'claude', ...PINNED_CLOUDS].find((k) => all.some((t) => kindOf(t) === k));
   const mailRun = kind === 'mail', pinned = kind === 'mail' || kind === 'web' ? null : kind;
   let queued = all.filter((t) => kindOf(t) === kind);
   // a yes unlocks final clicks (placing an order) for the whole run, so a task he said yes to runs on
@@ -174,6 +181,7 @@ async function startAgentRun() {
     instructions: t.notes || null, // e.g. a school assignment's rules, carried over when it was handed to Claude
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
+    lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who, text: String(h.text || '').slice(0, 600),
       shown: Array.isArray(h.options) ? h.options : undefined,
@@ -202,7 +210,8 @@ async function startAgentRun() {
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
   const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
-    '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n';
+    '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
+    (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? CLAUDE_AFTER_NOTE : '');
 
   // why each newly routed task went to Claude (shown on the task)
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
@@ -238,7 +247,8 @@ async function startAgentRun() {
       if (!pending.length || runRetried || slept) break;
       if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
       agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
-      sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id }); // its pill moves to this AI, and the task stays on it
+      // its pill moves to this AI, and the task stays on it; limitMs = when this try gets killed (the app's watchdog waits that long)
+      sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id, limitMs: runTimeoutMs });
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const prompt = promptFor(pending, id);
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
@@ -246,6 +256,7 @@ async function startAgentRun() {
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; } })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs })
+        : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs });
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
       if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
@@ -253,6 +264,10 @@ async function startAgentRun() {
       let updates = null;
       try { const text = String(r.text || ''); updates = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)).updates; } catch (e) {}
       const isLast = order.indexOf(id) === order.length - 1;
+      // its key expired or its sign-in ran out: a to-do on his Human list says to reconnect it
+      // (and once it answers again, that to-do gets checked off)
+      if (Array.isArray(updates)) sendToRenderer('agent:reconnected', { id, prefix: 'Reconnect ' + providers.NAMES[id] + ':' });
+      else if (r.auth && !r.limit) sendToRenderer('agent:reconnect', { id, title: reconnectTitle(id, r.why) });
       if (Array.isArray(updates)) {
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
@@ -297,6 +312,11 @@ async function startAgentRun() {
     u.list = sawMail ? undefined : groceryChanges(u.list);
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
+    u.seats = sawMail ? null : (cleanSeats(u.seats) || null); // a seat map with its pick, he can tap other seats
+    u.showtimes = sawMail ? null : (cleanShowtimes(u.showtimes) || null); // days and times he taps to pick one
+    // things to look at, as small picture cards (e.g. his grocery list): nothing to pick, no order
+    u.cards = sawMail ? null : ((cleanCart(u.cards) || []).map((it) => ({ name: it.name, qty: it.qty, price: it.price, image: it.image, url: it.url })).slice(0, 40));
+    if (!u.cards || !u.cards.length) u.cards = null;
     const opts = Array.isArray(u.options) && u.options.length
       ? (sawMail ? u.options.slice(0, 10).filter((o) => o && /^https:\/\//i.test(String(o.url || '')))
         .map((o) => ({ label: String(o.label || '').slice(0, 80), desc: String(o.desc || '').slice(0, 200), url: String(o.url) }))
@@ -304,7 +324,7 @@ async function startAgentRun() {
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
     // (and so does each other size/brand on its menu)
-    if (u.cart) await Promise.all(u.cart.concat(...u.cart.map((it) => it.options || [])).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
+    if (u.cart || u.cards) await Promise.all((u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
       const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
@@ -332,6 +352,8 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
+      const claudeModel = providers.settings(readConfig()).claudeModel; // none: Claude Code's own default for his plan
+      if (claudeModel) args.push('--model', claudeModel);
       if (mailRun) {
         args.push('--tools', 'Read,' + PLAN_TOOLS);
         allowed.push(...GMAIL_READ_TOOLS);
@@ -382,7 +404,7 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       const log = 'exit ' + code + '\n' + err + '\n' + out;
       if (text.includes('"updates"')) return finish({ text, log });
       // only the final answer and stderr: the stream also carries web pages the run read, which may say anything
-      finish({ text, log, resetAt: parseUsageLimit(err + '\n' + text), auth: /log ?in|auth|expired/i.test(err + text) });
+      finish({ text, log, resetAt: parseUsageLimit(err + '\n' + text), auth: CLAUDE_AUTH_RE.test(err + text) });
     });
   });
 }

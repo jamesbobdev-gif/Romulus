@@ -1,0 +1,85 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const providers = require('../agent/providers');
+
+const reply = (status, j) => ({ ok: status < 400, status, json: async () => j });
+
+test('Grok, Groq, Cerebras join the pool, off until he turns them on', () => {
+  for (const id of ['xai', 'groq', 'cerebras']) assert.ok(providers.PROVIDERS.includes(id), id);
+  assert.ok(!providers.PROVIDERS.includes('mistral')); // no free API tier any more
+  assert.strictEqual(providers.NAMES.xai, 'Grok');
+  const s = providers.settings({ ai: { xaiKey: ' k ', groqModel: 'llama-3.3-70b-versatile' } });
+  assert.strictEqual(s.xaiKey, 'k');
+  assert.strictEqual(s.xaiModel, ''); // blank: Auto
+  assert.strictEqual(s.groqModel, 'llama-3.3-70b-versatile');
+  assert.ok(s.order.filter((p) => providers.COMPAT[p.id]).every((p) => !p.on));
+});
+
+test('a free-tier AI answers through its chat completions with its key and model', async () => {
+  const real = global.fetch; let url, init;
+  global.fetch = async (u, i) => { url = u; init = i; return reply(200, { model: 'grok-x', choices: [{ message: { content: '{"updates":[]}' } }], usage: { total_tokens: 5 } }); };
+  try {
+    const r = await providers.runCompat('xai', { ai: { xaiKey: 'k' } }, { prompt: 'p' });
+    assert.strictEqual(url, 'https://api.x.ai/v1/chat/completions');
+    assert.strictEqual(init.headers.Authorization, 'Bearer k');
+    const body = JSON.parse(init.body);
+    assert.strictEqual(body.model, providers.COMPAT.xai.model);
+    assert.match(body.messages[0].content, /running as Grok/);
+    assert.deepStrictEqual(r, { text: '{"updates":[]}', model: 'grok-x' });
+  } finally { global.fetch = real; }
+});
+
+test('no key, a full quota, and a prompt too big for the free tier each say so', async () => {
+  const real = global.fetch;
+  try {
+    assert.strictEqual((await providers.runCompat('groq', {}, { prompt: 'p' })).auth, true);
+    global.fetch = async () => reply(429, { error: { message: 'Rate limit reached for requests per day' } });
+    assert.strictEqual((await providers.runCompat('groq', { ai: { groqKey: 'k' } }, { prompt: 'p' })).limit, true);
+    global.fetch = async () => reply(413, { error: { message: 'Request too large for model' } });
+    const big = await providers.runCompat('groq', { ai: { groqKey: 'k' } }, { prompt: 'p' });
+    assert.ok(!big.limit);
+    assert.match(big.why, /too big for Groq/);
+    global.fetch = async () => reply(401, { message: 'Unauthorized' });
+    assert.strictEqual((await providers.runCompat('xai', { ai: { xaiKey: 'k' } }, { prompt: 'p' })).auth, true);
+  } finally { global.fetch = real; }
+});
+
+test('a chosen model that is gone: it picks another from the key’s model list and tries once more', async () => {
+  const real = global.fetch, models = [];
+  global.fetch = async (u, i) => {
+    if (u.endsWith('/models')) return reply(200, { data: [{ id: 'text-embedding' }, { id: 'llama-3.1-8b' }, { id: 'gpt-oss-120b-new' }] });
+    const m = JSON.parse(i.body).model; models.push(m);
+    return m === 'gpt-oss-120b-new' ? reply(200, { choices: [{ message: { content: 'ok' } }] }) : reply(404, { error: { message: 'model not found' } });
+  };
+  try {
+    const r = await providers.runCompat('cerebras', { ai: { cerebrasKey: 'k', cerebrasModel: 'gpt-oss-120b' } }, { prompt: 'p', note: '' });
+    assert.deepStrictEqual(models, ['gpt-oss-120b', 'gpt-oss-120b-new']);
+    assert.strictEqual(r.text, 'ok');
+  } finally { global.fetch = real; }
+});
+
+test('Auto ranks a key’s models best first, newest within a kind, and skips non-chat ones', () => {
+  assert.deepStrictEqual(providers.rankModels('openai', ['gpt-5-mini', 'gpt-5.2', 'gpt-5', 'text-embedding-3', 'gpt-5.2-2026-01-01', 'gpt-realtime', 'gpt-5.2-nano']),
+    ['gpt-5.2', 'gpt-5', 'gpt-5-mini', 'gpt-5.2-nano']);
+  assert.deepStrictEqual(providers.autoModels('gemini', ['gemini-3.5-flash', 'gemini-4-argon', 'gemini-3.5-flash-lite', 'gemini-embedding-001', 'gemini-3-pro']),
+    ['gemini-4-argon', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']);
+});
+
+test('Auto: the best model on the key first; one over its quota hands over to the next', async () => {
+  providers.clearModelCache();
+  const real = global.fetch, models = [];
+  global.fetch = async (u, i) => {
+    if (u.endsWith('/models')) return reply(200, { data: [{ id: 'llama-3.3-70b-versatile' }, { id: 'openai/gpt-oss-120b' }, { id: 'whisper-large-v3' }] });
+    const m = JSON.parse(i.body).model; models.push(m);
+    return m === 'openai/gpt-oss-120b' ? reply(429, { error: { message: 'Rate limit reached for requests per day' } }) : reply(200, { choices: [{ message: { content: 'ok' } }] });
+  };
+  try {
+    const r = await providers.runCompat('groq', { ai: { groqKey: 'k2' } }, { prompt: 'p', note: '' });
+    assert.deepStrictEqual(models, ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile']);
+    assert.strictEqual(r.text, 'ok');
+    assert.strictEqual(providers.usedModels().groq, 'llama-3.3-70b-versatile');
+    const menu = await providers.modelChoices('groq', { ai: { groqKey: 'k2' } });
+    assert.deepStrictEqual(menu.models, ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile']);
+    assert.strictEqual(menu.auto, 'openai/gpt-oss-120b');
+  } finally { global.fetch = real; providers.clearModelCache(); }
+});

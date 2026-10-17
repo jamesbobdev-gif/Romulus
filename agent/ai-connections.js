@@ -20,10 +20,12 @@ const handle = (ch, fn) => { handlers[ch] = fn; };
 const maskKey = (k) => k ? k.slice(0, 6) + '…' + k.slice(-4) : '';
 function aiStatus() {
   const c = readConfig(), s = providers.settings(c);
-  return { order: s.order, names: providers.NAMES, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usage.blockedUntil() > Date.now() ? usage.blockedUntil() : 0,
+  return { order: s.order, names: providers.NAMES, used: providers.usedModels(), claudeModel: s.claudeModel, claudeLast: s.claudeLast, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usage.blockedUntil() > Date.now() ? usage.blockedUntil() : 0,
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
-    openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel, via: s.openaiVia, codex: providers.codexStatus() },
-    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr } };
+    openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel, codexModel: s.codexModel, via: s.openaiVia, codex: providers.codexStatus() },
+    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr },
+    // Grok, Groq, Cerebras: one key and a model each
+    ...Object.fromEntries(providers.COMPAT_IDS.map((id) => [id, { compat: true, hasKey: !!s[id + 'Key'], key: maskKey(s[id + 'Key']), model: s[id + 'Model'], defaultModel: providers.COMPAT[id].model }])) };
 }
 handle('ai:status', () => aiStatus());
 handle('ai:save', (_e, change) => {
@@ -31,8 +33,8 @@ handle('ai:save', (_e, change) => {
   change = change || {};
   if (Array.isArray(change.order)) ai.order = change.order.map((p) => ({ id: String(p.id), on: !!p.on }));
   if (change.openaiVia === 'chatgpt' || change.openaiVia === 'key') ai.openaiVia = change.openaiVia;
-  for (const k of ['geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel']) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
-  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers']) if (typeof change[k] === 'boolean') ai[k] = change[k];
+  for (const k of ['claudeModel', 'codexModel', 'geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel', ...providers.COMPAT_IDS.flatMap((id) => [id + 'Key', id + 'Model'])]) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
+  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers', 'claudeLast']) if (typeof change[k] === 'boolean') ai[k] = change[k];
   c.ai = ai; writeConfig(c);
   scheduleAgentRun();
   return aiStatus();
@@ -81,12 +83,22 @@ handle('ai:codex-login', () => {
     return Object.assign(r, { status: aiStatus() });
   });
 });
+handle('ai:compat-check', async (_e, id) => { // Test key: the key's model list, and whether the saved model is on it
+  if (!providers.COMPAT[id]) return { ok: false, error: 'unknown AI' };
+  const s = providers.settings(readConfig());
+  if (!s[id + 'Key']) return { ok: false, error: 'no key saved' };
+  const r = await providers.compatModels(id, s[id + 'Key']);
+  return r.ok ? { ok: true, count: r.models.length, hasModel: !s[id + 'Model'] || r.models.includes(s[id + 'Model']), suggest: providers.pickModel(id, r.models) } : r;
+});
+// Settings' model menus: that AI's models, best first
+handle('ai:models', (_e, id) => providers.modelChoices(String(id), readConfig()));
 handle('ai:openrouter-check', async () => {
   const s = providers.settings(readConfig());
   return s.openrouterKey ? providers.openRouterCheck(s.openrouterKey) : { ok: false, error: 'no key saved' };
 });
 /* The usage bars: what each AI has used. Claude's numbers only come with a Claude run, so when they're
-   stale (or he presses refresh) a one-word Haiku run fetches them; OpenRouter's credit comes from its /key. */
+   stale (or he presses refresh) a one-word Haiku run fetches them; OpenRouter's credit comes from its /key; ChatGPT's plan limits
+   from the Codex app-server (no run). */
 let claudeProbe = null;
 function probeClaude() {
   claudeProbe = claudeProbe || new Promise((resolve) => {
@@ -114,30 +126,37 @@ handle('ai:usage', async (_e, refresh) => {
   const waits = [];
   if (on('claude') && (refresh || Date.now() - meter.claudeCheckedAt() > 20 * 60 * 1000)) waits.push(probeClaude());
   if (s.openrouterKey && (refresh || Date.now() - creditAt > 10 * 60 * 1000)) { creditAt = Date.now(); waits.push(providers.openRouterCheck(s.openrouterKey)); }
+  if (on('openai') && s.openaiVia === 'chatgpt' && (refresh || Date.now() - meter.codexCheckedAt() > 10 * 60 * 1000))
+    waits.push(providers.codexLimits().then((r) => meter.noteCodex(r)));
   await Promise.all(waits);
   return meter.snapshot();
 });
 // the cloud AIs a task can be pinned to on the pill (t.cloud; its lane stays 'claude' on the server)
-const PINNED_CLOUDS = ['gemini', 'openai', 'openrouter'];
+const PINNED_CLOUDS = ['gemini', 'openai', 'openrouter', ...providers.COMPAT_IDS];
 function cloudReady(id) {
   const c = readConfig(), s = providers.settings(c);
+  if (providers.COMPAT[id]) return !!s[id + 'Key'];
   return id === 'claude' || (id === 'gemini' ? providers.geminiStatus(c).ready : id === 'openai' ? (s.openaiVia === 'chatgpt' ? providers.codexStatus().signedIn : !!s.openaiKey) : !!s.openrouterKey);
 }
-// the connected cloud AIs, in his order, that can run right now
+// the connected cloud AIs, in his order, that can run right now; with "Save Claude for last" on, Claude goes after all the others
 function cloudOrder() {
-  return providers.settings(readConfig()).order.filter((p) => p.on).map((p) => p.id).filter(cloudReady);
+  const s = providers.settings(readConfig());
+  const ids = s.order.filter((p) => p.on).map((p) => p.id).filter(cloudReady);
+  return s.claudeLast ? ids.filter((id) => id !== 'claude').concat(ids.filter((id) => id === 'claude')) : ids;
 }
+const claudeLast = () => providers.settings(readConfig()).claudeLast;
 
 /* who a run asks, in turn, until every task is answered: inbox runs Claude only (the others can't read
    Gmail and could reach the web); a task he put on Gemini or ChatGPT that one first, then the rest of his
    order. order = cloudOrder(), ready = cloudReady */
 /* the cloud AI a task is on: the one he picked (the pill), else whoever answered it last. It is asked
-   first; when it fails, the next AI in his order takes over (and the pill moves with it). null = new */
-function homeCloud(t) {
+   first; when it fails, the next AI in his order takes over (and the pill moves with it). null = new.
+   saveClaude ("Save Claude for last"): Claude having answered last doesn't keep the task on Claude; only his pick on the pill does */
+function homeCloud(t, saveClaude) {
   if (PINNED_CLOUDS.includes(t.cloud) || t.cloud === 'claude') return t.cloud; // 'claude' = he switched it back to Claude
   const last = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
   if (!last || last.lane === 'local') return null;
-  return ['gemini', 'openai', 'openrouter'].includes(last.via) ? last.via : 'claude';
+  return PINNED_CLOUDS.includes(last.via) ? last.via : saveClaude ? null : 'claude';
 }
 // a try that failed because that AI has no usage left
 const outOfUsage = (r) => !!(r && (r.limit || r.resetAt));
@@ -147,4 +166,4 @@ function runOrder({ order, pinned, mailRun, ready }) {
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }
 
-module.exports = { init, handlers, aiStatus, cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, PINNED_CLOUDS };
+module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, PINNED_CLOUDS };

@@ -33,6 +33,12 @@ test('a task stays on the AI that answered it last', () => {
   assert.strictEqual(homeCloud({ history: [{ who: 'claude', lane: 'local', text: 'y' }] }), null);
 });
 
+test('Save Claude for last: Claude having answered doesn’t keep a task on Claude, his pick does', () => {
+  assert.strictEqual(homeCloud({ history: [{ who: 'claude', text: 'x' }] }, true), null);
+  assert.strictEqual(homeCloud({ history: [{ who: 'claude', via: 'gemini', text: 'y' }] }, true), 'gemini');
+  assert.strictEqual(homeCloud({ cloud: 'claude', history: [{ who: 'claude', text: 'x' }] }, true), 'claude');
+});
+
 test('his pick on the pill beats whoever answered last, Claude included', () => {
   assert.strictEqual(homeCloud({ cloud: 'openai', history: [{ who: 'claude', via: 'gemini' }] }), 'openai');
   assert.strictEqual(homeCloud({ cloud: 'claude', history: [{ who: 'claude', via: 'gemini' }] }), 'claude');

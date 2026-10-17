@@ -26,6 +26,9 @@ async function pagePreviewImage(url, lane) {
         || h.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${p}["']`, 'i')) || [])[1];
       const img = meta('og:image') || meta('og:image:url') || meta('twitter:image') || meta('twitter:image:src');
       if (img) return absHttps(img, url);
+      // Instacart publishes no og:image, but its product photo is in the page (the first one is the item's)
+      const ic = /instacart\.com\//i.test(url) && h.match(/https:\/\/[a-z0-9.]+\/(?:assets\/domains\/)?product-image\/file\/large_[^"'\\\s]+/i); // cloudfront, or instacart.com/assets/domains/…
+      if (ic) return ic[0];
     }
   } catch (e) {}
   // blocked (bot check, e.g. MakerWorld): Claude's browser is a real Chrome and gets through; the app's

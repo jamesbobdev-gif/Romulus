@@ -47,18 +47,18 @@ const LOCAL_WORDS = ['write', 'rewrite', 'draft', 'essay', 'letter', 'cover lett
   'summarise', 'outline', 'brainstorm', 'notes', 'fill', 'form', 'forms', 'apply', 'application', 'questionnaire', 'survey'];
 // → {lane, reason} picked by the app
 function autoRoute(text) {
-  if (!up('local')) return { lane: 'claude', reason: 'auto: the mini PC isn’t answering' };
+  if (!up('local')) return { lane: 'claude', reason: 'auto: Lupa Au Palatine isn’t answering' };
   if (!up('claude')) return { lane: 'local', reason: 'auto: no cloud AI is connected' };
   const cloudHit = wordHit(text, CLOUD_WORDS), localHit = !cloudHit && wordHit(text, LOCAL_WORDS);
   if (cloudHit) return { lane: 'claude', reason: 'auto: needs the web or inbox (' + cloudHit + ')' };
-  if (localHit) return { lane: 'local', reason: 'auto: writing/forms suit the mini PC (' + localHit + ')' };
+  if (localHit) return { lane: 'local', reason: 'auto: writing/forms suit Lupa Au Palatine (' + localHit + ')' };
   if (situation.claudeTight) return { lane: 'local', reason: 'auto: Claude is near its limit' };
   return { lane: 'claude', reason: 'auto: quickest for everyday tasks' };
 }
 // with auto on, a lane that's down hands over to the other one (only if that one is up)
 function fallBack(r) {
   if (routing.default !== 'auto' || up(r.lane) || !up(other(r.lane))) return r;
-  return { lane: other(r.lane), reason: r.reason + ', but ' + (r.lane === 'local' ? 'the mini PC isn’t answering' : 'no cloud AI is connected') };
+  return { lane: other(r.lane), reason: r.reason + ', but ' + (r.lane === 'local' ? 'Lupa Au Palatine isn’t answering' : 'no cloud AI is connected') };
 }
 async function loadRouting() {
   const a = supabase.channel(readConfig());

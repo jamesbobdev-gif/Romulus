@@ -8,6 +8,8 @@
         "-m",
         "http.server",
         "8743",
+        "--bind",
+        "127.0.0.1",
         "--directory",
         "renderer"
       ],
@@ -20,6 +22,8 @@
         "-m",
         "http.server",
         "8751",
+        "--bind",
+        "127.0.0.1",
         "--directory",
         "renderer"
       ],

@@ -130,8 +130,8 @@ function mailFilter(line) {
 /* Locked mode, for the mini PC's local lane (James's own model, which also holds his private profile).
    Off unless TASKS_BROWSER_LOCK names a JSON file the dispatcher writes for the task being worked:
      { "allow": ["https://…links from the note…"], "approved": false }
-   - only pages on the hosts of those links can be opened (typed addresses; links clicked inside a
-     site can still lead elsewhere, so the model is also told to stay put)
+   - only pages on the hosts of those links can be opened (typed addresses), plus links shown on
+     those sites' pages (one hop; links clicked inside a site can still lead elsewhere)
    - "final" clicks (submit, send, buy, pay, book, apply, delete…) and pressing Enter are refused
      until "approved" is true, which the dispatcher sets only when James's latest reply is a yes */
 const LOCK_FILE = process.env.TASKS_BROWSER_LOCK || '';
@@ -150,6 +150,18 @@ function lockState() {
 const hostAllowed = (url, hosts) => {
   try { const h = new URL(url).hostname.toLowerCase(); return hosts.some((a) => h === a || h.endsWith('.' + a)); } catch (e) { return false; }
 };
+// secondary links: a link shown on a page of an allowed site can be opened too (e.g. a reading Blackboard
+// links to on another site). One hop only: links on those pages don't open further sites.
+const linkedHosts = new Set();
+function learnLinks(text) {
+  const lock = lockState();
+  if (!lock) return;
+  const page = (text.match(/^- Page URL: (\S+)/m) || [])[1];
+  if (!page || !hostAllowed(page, lock.hosts)) return;
+  for (const m of text.matchAll(/\/url: (\S+)/g)) {
+    try { const u = new URL(m[1], page); if (/^https?:$/.test(u.protocol)) linkedHosts.add(u.hostname.toLowerCase()); } catch (e) {}
+  }
+}
 const refLabels = {}; // ref → accessible name, learned from every page snapshot Playwright sends back
 function learnRefs(text) {
   for (const m of text.matchAll(/- (\w+) "([^"\n]*)"[^\n]*\[ref=(\w+)\]/g)) refLabels[m[3]] = m[1] + ' ' + m[2];
@@ -161,7 +173,8 @@ function lockedOut(msg) {
   if (!lock || !msg.params) return null;
   const name = msg.params.name, a = msg.params.arguments || {};
   if (name === 'browser_navigate' || (name === 'browser_tabs' && a.url)) {
-    if (!hostAllowed(String(a.url || ''), lock.hosts)) return 'This browser is locked to the links in the task (' + (lock.hosts.join(', ') || 'none') + '). ' + a.url + ' is not one of them.';
+    const exact = (() => { try { return linkedHosts.has(new URL(String(a.url || '')).hostname.toLowerCase()); } catch (e) { return false; } })();
+    if (!exact && !hostAllowed(String(a.url || ''), lock.hosts)) return 'This browser is locked to the links in the task (' + (lock.hosts.join(', ') || 'none') + ') and links shown on their pages. ' + a.url + ' is not one of them.';
     if (SIGN_OUT.test(String(a.url || ''))) return 'Locked: never sign out. James stays logged in to his sites on this browser.';
   }
   const label = name === 'browser_click' ? (refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '') : '';
@@ -182,7 +195,7 @@ function lockedOut(msg) {
    type, even after a yes. */
 const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order)|buy now|pay now|purchase)\b/i;
 const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
-function buyRefusal(msg) {
+function buyRefusal(msg, here) {
   if (!msg.params) return null;
   const name = msg.params.name, a = msg.params.arguments || {};
   const labelOf = (ref, el) => (refLabels[ref] || '') + ' ' + String(el || '');
@@ -190,6 +203,9 @@ function buyRefusal(msg) {
     return 'Never type a PIN, card number or security code. Stop here: say in your note that checkout is ready and the last step (entering it) is his.';
   if (name === 'browser_fill_form' && (Array.isArray(a.fields) ? a.fields : []).some((f) => SECRET.test(labelOf(f.ref || f.target, f.name))))
     return 'Never fill in a PIN, card number or security code. Stop here: the last step is his.';
+  // Amazon's "Buy Now" can order in one tap, skipping the review page he said yes to: never, yes or not
+  if (name === 'browser_click' && /\bbuy now\b/i.test(labelOf(a.target || a.ref, a.element)) && /amazon\./i.test(here || ''))
+    return 'Not "Buy Now": it skips the review page. Tap Add to Cart, then go through checkout.';
   const approved = MAIL_APPROVED || (lockState() || {}).approved === true;
   if (name === 'browser_click' && !approved && BUY.test(labelOf(a.target || a.ref, a.element)))
     return 'Not without a yes: this places the order. List the items, total and time slot in your note and ask James to reply yes.';
@@ -220,7 +236,7 @@ child.stdout.on('data', (d) => {
   let i;
   while ((i = outBuf.indexOf('\n')) >= 0) {
     const line = outBuf.slice(0, i + 1); outBuf = outBuf.slice(i + 1);
-    if (line.includes('[ref=')) { try { learnRefs(resultText(JSON.parse(line))); } catch (e) {} }
+    if (line.includes('[ref=')) { try { const t = resultText(JSON.parse(line)); learnRefs(t); learnLinks(t); } catch (e) {} }
     if (line.includes('"proxy-')) {
       let m = null; try { m = JSON.parse(line); } catch (e) {}
       if (m && typeof m.id === 'string' && m.id.startsWith('proxy-')) {
@@ -245,7 +261,7 @@ process.stdin.on('data', (d) => {
         if (!started) { started = true; await ensureBrowser(); }
         let msg = null; try { msg = JSON.parse(line); } catch (e) {}
         const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg) || await shopTabs(msg));
+        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || await shopTabs(msg));
         if (refused) { // answer it ourselves; Playwright never sees the call
           process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
           return;
