@@ -158,7 +158,7 @@ function cartStrip(t){
     c.appendChild(pic);
     c.appendChild(el('span','cart-check','✓'));
     c.appendChild(el('div','cart-name',it.name));
-    const bits=[(it.qty&&it.qty>1)?'×'+it.qty:'',it.price||''].filter(Boolean);
+    const bits=[(it.qty&&it.qty>1)?'×'+it.qty:'',it.price||'',it.unit||''].filter(Boolean);
     if(bits.length)c.appendChild(el('div','cart-meta',bits.join(' · ')));
     if(it.swap)c.appendChild(el('div','cart-swap','swap for '+it.swap));
     if(it.why)c.appendChild(el('div','cart-why',it.why));
