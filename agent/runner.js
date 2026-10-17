@@ -14,7 +14,7 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, SHOPS, SHOPS_DENIED, shopAgents } = require('./agent-browser');
 const runLive = require('./run-live');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
@@ -318,6 +318,14 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
           args.push('--mcp-config', browserCfg);
           allowed.push('mcp__browser');
           denied.push(...BROWSER_DENIED);
+          // three store checkers, for comparing stores at the same time (agent/agent-browser.js)
+          if (/"shop1"/.test(fs.readFileSync(browserCfg, 'utf8'))) {
+            denied.splice(denied.indexOf('Agent'), 1);
+            allowed.push('Agent', ...SHOPS.map((s) => 'mcp__' + s));
+            denied.push(...SHOPS_DENIED);
+            args.push('--agents', JSON.stringify(shopAgents()));
+            const ti = args.indexOf('--tools'); args[ti + 1] += ',Agent';
+          }
           guard = webGuardHooks(); // no web tools once the browser has shown his mail
         }
       }

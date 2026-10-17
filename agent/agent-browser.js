@@ -15,8 +15,41 @@ const handle = (ch, fn) => { handlers[ch] = fn; };
 const AGENT_BROWSER_PORT = 9334;
 const PLAYWRIGHT_MCP = '@playwright/mcp@0.0.83';
 // things a page could abuse: running its own code, sending his files, closing the window under him
-const BROWSER_DENIED = ['browser_run_code_unsafe', 'browser_evaluate', 'browser_file_upload', 'browser_drop', 'browser_close',
-  'browser_network_request'].map((n) => 'mcp__browser__' + n);
+const RISKY = ['browser_run_code_unsafe', 'browser_evaluate', 'browser_file_upload', 'browser_drop', 'browser_close', 'browser_network_request'];
+const BROWSER_DENIED = RISKY.map((n) => 'mcp__browser__' + n);
+
+/* Store checkers: Claude's runs can hand the store comparison (prices, fees, deals) to three helpers
+   that work at the same time. Each gets its own connection to the agent browser ("shop1".."shop3": the
+   same launcher and guards as "browser", so the same logins), works in a tab of its own, and closes it
+   when done. They only look: no orders, no account changes, nothing secret typed. */
+const SHOPS = ['shop1', 'shop2', 'shop3'];
+const SHOP_TOOLS = ['browser_navigate', 'browser_navigate_back', 'browser_snapshot', 'browser_find', 'browser_click', 'browser_type',
+  'browser_select_option', 'browser_press_key', 'browser_hover', 'browser_wait_for', 'browser_tabs', 'browser_take_screenshot', 'browser_handle_dialog'];
+const SHOPS_DENIED = SHOPS.flatMap((s) => RISKY.map((n) => 'mcp__' + s + '__' + n));
+function shopAgents() { // → the --agents definitions for a Claude run
+  const agents = {};
+  SHOPS.forEach((s, i) => {
+    agents['store-checker-' + (i + 1)] = {
+      description: 'Checks grocery stores in James\'s agent browser (prices, sizes, delivery and service fees, minimum order, '
+        + 'membership deals) and reports back. Give it the stores to check and the items with sizes. Three exist; send them at '
+        + 'the same time, each with different stores.',
+      tools: SHOP_TOOLS.map((n) => 'mcp__' + s + '__' + n),
+      prompt: 'You check grocery stores for James: he lives alone near 44109 (Cleveland) and pays with EBT/SNAP, which cannot pay '
+        + 'fees or tips. You have your own connection to his agent browser, signed in where he is.\n'
+        + '- First open a NEW tab (browser_tabs, action "new") and work only in it. Never touch, select or close any other tab. '
+        + 'When you are done, close your tab (browser_tabs, action "close"): that always closes your own tab.\n'
+        + '- Only look. Never place an order, start a trial or membership, change his account, address or payment, or type a card '
+        + 'number, PIN or security code. If a fee only shows in the cart, you may add the items, read the fees, then remove '
+        + 'everything you added so the cart is as you found it.\n'
+        + '- For each store you were given: is it open to EBT online for delivery to 44109; delivery fee, service fee, minimum '
+        + 'order, any free-delivery or member deal shown while signed in (say if "free" is really a paid trial and its price); and '
+        + 'for each item, the best-value option for one person with its size, price and unit price, plus up to 3 other options. '
+        + 'If you hit a sign-in page or a captcha, say so and move on.\n'
+        + '- Answer in plain lines, one block per store, with the product page link for each item. Say what you could not check.',
+    };
+  });
+  return agents;
+}
 function agentBrowserDir() { return path.join(ctx.userData(), 'agent-browser'); }
 // how the agent browser is started (here, and by browser-proxy.js, which gets these as an argument). It has
 // no window of its own: it runs headless and James watches or takes over inside Tasks (◉ Watch). Headless
@@ -68,6 +101,9 @@ const mailSeen = () => fs.existsSync(mailSeenFile());
 function browserCfgFor(baseCfg, mode, approved) { // → this run's MCP config
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0' };
+  // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
+  // never a yes (they only look)
+  if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1' }) });
   const f = path.join(agentBrowserDir(), 'mcp-' + mode + '.json');
   fs.writeFileSync(f, JSON.stringify(j));
   return f;
@@ -125,5 +161,5 @@ async function closeWindowedAgentBrowser() {
   await new Promise((r) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000 }, () => r()));
 }
 
-module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, agentBrowserDir, findChrome, findNode, prepareAgentBrowser,
+module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, findChrome, findNode, prepareAgentBrowser,
   mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, freshTabs, chromeArgs, closeWindowedAgentBrowser };
