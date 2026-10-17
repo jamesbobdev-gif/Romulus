@@ -14,7 +14,7 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, SHOPS, SHOPS_DENIED, shopAgents } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, closeStoreTabs, lastPage, SHOPS, SHOPS_DENIED, shopAgents } = require('./agent-browser');
 const runLive = require('./run-live');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
@@ -53,7 +53,25 @@ function queuedAgentTasks(raw) {
   return (Array.isArray(data.tasks) ? data.tasks : [])
     .filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isClaudeLane(t));
 }
+// a grocery task newly checked off (by him, or done after the order went through): this save already holds
+// its notes (how-to, preferences, list.bought), so its store tabs close now, or when the run going ends
+let doneSeen = null, closeTabsAfterRun = false;
+function groceryDone(raw) {
+  let list; try { list = JSON.parse(raw).tasks || []; } catch (e) { return; }
+  const done = new Set(list.filter((t) => t.done || t.status === 'done').map((t) => t.id));
+  const seen = doneSeen; doneSeen = done;
+  if (!seen) return; // the first save since the app opened: nothing to compare with
+  const fresh = list.filter((t) => t.ws === 'agent' && done.has(t.id) && !seen.has(t.id));
+  if (!fresh.length) return;
+  const g = loadSkills().find((s) => s.name === 'groceries');
+  if (g && g.match && fresh.some((t) => g.match.test(skillText(t)))) closeTabsAfterRun = true;
+}
 function scheduleAgentRun(raw) {
+  if (raw != null) groceryDone(raw);
+  if (closeTabsAfterRun && !isBusy()) {
+    closeTabsAfterRun = false;
+    closeStoreTabs().then((n) => { if (n) agentLog('grocery order done: closed ' + n + ' store tab(s)'); }).catch(() => {});
+  }
   if (live && raw != null) live.forward(raw); // he wrote on a task Claude is working on: it hears it now
   if ((readConfig().agentRunner || {}).enabled === false) return;
   const queued = queuedAgentTasks(raw);
@@ -255,13 +273,15 @@ async function startAgentRun() {
   }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
   const valid = answered;
+  const endPage = browserCfg ? await lastPage().catch(() => null) : null;
   for (const u of valid) {
     // a web try that opened his mail in the agent browser is treated like an inbox run from here on
     const sawMail = u._sawMail, via = u._via;
     delete u._sawMail; delete u._via;
     if (sawMail && !mailRun) agentLog(providers.NAMES[via] + ' opened his mail in the browser: nothing from its answer is remembered, and its links are not opened');
     u.status = u.status === 'done' ? 'done' : 'needs-you';
-    u.note = u.note ? String(u.note).slice(0, 1500) : null;
+    u.page = !sawMail && u.status === 'needs-you' ? endPage : null; // ◉ Watch opens this page for him
+    u.note =u.note ? String(u.note).slice(0, 1500) : null;
     // an inbox run's answer may carry words from an email: nothing from it is remembered for later runs
     // (which can reach the web), and the app doesn't open its links for previews
     u.pref = sawMail ? null : prefLine(u.pref);
