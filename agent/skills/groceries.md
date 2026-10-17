@@ -8,13 +8,14 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
 - **Where: he picks, every time.** He pays with EBT (SNAP), and several stores take it online. Unless
   this task, his latest reply or the conversation so far already names a store for this order, your
   FIRST answer on a new grocery task is one tap question in `ask` (nothing shopped yet):
-  {"q":"Which store this time?","choices":[the stores that take EBT online and deliver to him, e.g.
-  "Walmart","Amazon Fresh","Aldi (Instacart)","Giant Eagle (Instacart)"],"pick":"one","default":<the
-  store he used last, from his Groceries preferences or the conversation>}, with a one-line note. A
-  saved store in his preferences is only the default answer, never a reason to skip the question.
+  {"q":"Which store this time?","choices":["Walmart","Amazon Fresh", then one "<Store> (Instacart)" for
+  every Instacart store you found],"pick":"one","default":<your recommendation, below>}, with a short
+  note. A saved store in his preferences is never a reason to skip the question.
 - **Instacart is many stores, not one.** It delivers from lots of grocers, and many of them take EBT
-  there. Check Instacart for his address (stores marked as taking EBT/SNAP) and offer each one as its
-  own choice, "<Store> (Instacart)". Never offer just "Instacart" or assume it means Aldi.
+  there. Before asking, open Instacart for his address and read its store list: every store marked as
+  taking EBT/SNAP is its own choice, "<Store> (Instacart)". Never offer just one Instacart store, never
+  just "Instacart", and never assume Instacart means Aldi. Up to 8 choices in all: if there are more,
+  keep the cheapest ones to get delivered.
 - **Comparing stores: three helpers at once.** Whenever you check prices, fees or deals at more than
   one store, don't visit them one by one: split the stores into up to three groups and send
   store-checker-1, -2 and -3 in ONE message (several Agent calls together), each with its stores and
@@ -22,6 +23,15 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   their own tabs of the agent browser, signed in where he is, and only look. Use their reports for
   the store question, its recommendation and each item's `options`; open a store yourself only to
   build the actual cart. If a helper couldn't check something (sign-in, captcha), say so in the note.
+- **Recommend one.** Before asking, check what this order would cost him outside EBT at each store,
+  since EBT can't pay fees or tips: delivery fee, service fee, minimum order, and any deal his own
+  accounts get. Look at what each site shows when he's signed in: Amazon Fresh (Prime or the
+  discounted EBT Prime, free Fresh delivery over a set amount), Instacart+ or a store's free-delivery
+  offer ("$0 delivery"), Walmart+. Also note any deal from his Groceries preferences ("Deals: …").
+  Watch for free delivery that is really a paid trial and count its price. Make the cheapest choice
+  overall the `default` (fees plus roughly what his list costs there), and give the reason in one line
+  of the note: "Amazon Fresh is cheapest: $0 delivery with your Prime over $35, about $4 less than
+  Walmart." Name a store's deal only if you saw it; if you couldn't check one, say so.
   The 2-week order (`scheduledRun`) is the one exception: build it at the store he used last, and end
   the note with "Want another store this time? Reply with its name."
 - **Use his account:** shop in the agent browser, logged in to the store. If you hit a sign-in page,
@@ -37,9 +47,12 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   note ("A few quick questions before your first order") and send the questions in `ask`, so he taps
   through them one at a time. Check first which stores really take EBT online and deliver to his
   address, and offer only those. The default is the usual answer:
-  1. "Which store?" choices: the EBT-online stores that deliver to him (e.g. Walmart, Amazon Fresh,
-     and each EBT store on Instacart, like Aldi or Giant Eagle) [the one he mentioned, else Walmart]. Always include this one, even if he
-     already named a store: the choices are how he sees what else there is.
+  1. "Which store?" choices: the EBT-online stores that deliver to him (Walmart, Amazon Fresh, and
+     every EBT store on Instacart at his address) [the one he mentioned, else your recommendation].
+     Always include this one, even if he already named a store: the choices are how he sees what
+     else there is.
+  1b. "Any grocery deals or memberships?" pick many: "Amazon Prime (or EBT Prime)", "Instacart+",
+     "Walmart+", "None" [None]. Save it as "Deals: …" under Groceries: it decides which store you recommend.
   2. "Delivery or pickup?" [Delivery]
   3. "EBT can't pay the delivery fee or tip. How should that be paid?" choices: "Debit/credit card
      saved on the store", "I have Walmart+ (no fees)", "Neither: use pickup" [Debit/credit card saved
@@ -120,6 +133,10 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   → `list.add` it (he can drop it from his list any time).
 
 ## Checkout and his yes
+- **The cart always comes with you.** Whenever you stop with items in the store cart, for any reason
+  (no payment method, a sign-in, an item question, the final review), send the whole `cart` exactly
+  as below, `options` and pictures included. Even items an earlier run added: open each one's page
+  and collect its options too. Without `cart` the app shows him only words, no order cards.
 - Go all the way to the final review page: delivery slot, address, payment (EBT card on file), and
   the total split by EBT and anything else. Then stop: `needs-you`. Put every item in `cart`
   ({name, qty, price for that line, image = the product photo's https address as the store shows
