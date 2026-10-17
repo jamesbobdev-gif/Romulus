@@ -104,11 +104,15 @@ function groceryNextLine(){
   return d;
 }
 
-// the agent asked for a yes ("Reply yes to place this order"): one tap answers it
-function wantsYes(t){
-  if(taskWs(t)!=='agent'||t.done||t.status!=='needs-you')return false;
+// the agent asked for a yes ("Reply yes to place this order"): one tap answers it. An order it's waiting
+// on (even for something else first, like "add your EBT card, then reply done") always shows its items
+function asksYes(t){
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
   return !!last&&/reply\s*\**\s*yes/i.test(String(last.text||''));
+}
+function wantsYes(t){
+  if(taskWs(t)!=='agent'||t.done||t.status!=='needs-you')return false;
+  return asksYes(t)||(Array.isArray(t.cart)&&t.cart.length>0);
 }
 function yesButton(t){
   const b=el('button','btn-accent agent-yes',/order/i.test(t.note||'')?'Yes, place the order':'Yes');
@@ -126,7 +130,9 @@ function yesButton(t){
    When Romulus has a cart ready (t.cart, sent with "Reply yes to place this order"), every item shows as
    a card, all selected. Tap a card to leave it out; the total follows. "Place order" answers yes, naming
    what to take out, so Romulus removes those and places it (groceries skill). What he left out is kept
-   on the task (t.cartOff, by name) so it survives a re-render or a sync. */
+   on the task (t.cartOff, by name) so it survives a re-render or a sync. When Romulus is waiting on
+   something else first ("add a payment method, then reply done"), the button answers "done" with the
+   same picks instead, so it fixes the cart before asking for the yes. */
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }
 function cartStrip(t){
   const box=el('div','cart-box');
@@ -145,7 +151,8 @@ function cartStrip(t){
     head.textContent='Your order · '+kept.length+' items'+(ideas?' ('+picked+' of '+ideas+' ideas added)':'')+(total?' · about $'+total.toFixed(2):'');
     all.hidden=o.slice().sort().join('|')===startOff().sort().join('|'); // as Romulus set it: nothing to reset
     go.disabled=!kept.length;
-    go.textContent=!kept.length?'Nothing selected':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';
+    go.textContent=!kept.length?'Nothing selected':!asksYes(t)?'Done, use these '+kept.length+' items':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';
+    go.title=asksYes(t)?'':'Tell Romulus you did what it asked, and which items to keep';
     strip.querySelectorAll('.cart-card').forEach(function(c){ const on=o.indexOf(c.dataset.name)===-1; c.classList.toggle('off',!on); c.setAttribute('aria-pressed',String(on)); });
   };
   items.forEach(function(it){
@@ -184,7 +191,9 @@ function cartStrip(t){
     if(dropped.length)parts.push('without: '+dropped.join('; '));
     if(skipped.length)parts.push('and take out the ideas I didn’t pick: '+skipped.join('; '));
     if(added.length)parts.push('keeping the ideas: '+added.join('; '));
-    const msg=o.length||added.length?'yes, place it '+parts.join(', ')+' ('+kept+' items'+(total?', about $'+total.toFixed(2):'')+')':'yes';
+    const count=' ('+kept+' items'+(total?', about $'+total.toFixed(2):'')+')';
+    const msg=!asksYes(t)?'done, '+(o.length||added.length?'and update the cart, '+parts.join(', '):'keep the cart as it is')+count
+      :o.length||added.length?'yes, place it '+parts.join(', ')+count:'yes';
     lt.reply=msg; agentSay(lt,'you',msg); lt.status='queued';
     buzz('send'); touch();
   });
