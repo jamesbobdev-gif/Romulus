@@ -85,6 +85,16 @@ test('cleanCart: an item keeps its unit price and why that size was picked', () 
     [{ name: 'Eggs, 12 ct', price: '$2.98', unit: '$0.25/ct', why: 'a dozen: 5 dozen would spoil' }]);
 });
 
+test('cleanCart: an item keeps its other options (not itself, https links only, at most 6)', () => {
+  const opts = [{ name: 'Eggs, 18 ct', qty: 1, price: '$4.10', unit: '$0.23/ct', image: 'https://x/a.jpg', url: 'javascript:x' },
+    { name: 'Eggs, 12 ct' }, { price: '$1' }].concat(Array.from({ length: 8 }, (_, i) => ({ name: 'Eggs ' + i })));
+  const [it] = ctx.cleanCart([{ name: 'Eggs, 12 ct', price: '$2.98', options: opts }]);
+  assert.deepStrictEqual(it.options[0], { name: 'Eggs, 18 ct', price: '$4.10', unit: '$0.23/ct', image: 'https://x/a.jpg' });
+  assert.deepStrictEqual(it.options.map((o) => o.name), ['Eggs, 18 ct', 'Eggs 0', 'Eggs 1', 'Eggs 2']);
+  assert.strictEqual(ctx.cleanCart([{ name: 'Milk', options: 'none' }])[0].options, undefined);
+  assert.strictEqual(ctx.cleanCart([{ name: 'Eggs, 12 ct', qty: 2, options: [{ name: 'Eggs, 18 ct', qty: 3 }] }])[0].options[0].qty, 3);
+});
+
 test('cleanCart: keeps the product page (https) so the app can find a picture', () => {
   assert.deepStrictEqual(ctx.cleanCart([{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs', url: 'javascript:x' }]),
     [{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs' }]);

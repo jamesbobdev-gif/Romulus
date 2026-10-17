@@ -123,7 +123,7 @@ function cleanAsk(a) {
   return out.length ? out : undefined;
 }
 // the order it built, shown as cards he can deselect (renderer/js/grocery-list.js): [{name, qty, price, unit, image,
-// swap, suggested, why}] — suggested = something new that goes with the rest, in the cart but unselected until he taps it
+// swap, suggested, why, options: [{name, qty, price, unit, image, url}]}] — suggested = something new that goes with the rest, in the cart but unselected until he taps it
 function cleanCart(c) {
   if (!Array.isArray(c)) return undefined;
   const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
@@ -138,6 +138,18 @@ function cleanCart(c) {
     if (txt(x.swap, 120)) it.swap = txt(x.swap, 120);
     if (x.suggested) it.suggested = true; // an idea for the week: starts unselected
     if (txt(x.why, 100)) it.why = txt(x.why, 100); // what an idea goes with, or why this size/brand was picked
+    // the other sizes/brands it found for this item: he can switch to one on the card before checkout
+    const opts = (Array.isArray(x.options) ? x.options : []).slice(0, 6).map((o) => {
+      if (!o || typeof o !== 'object' || !txt(o.name, 120) || txt(o.name, 120) === it.name) return null;
+      const op = { name: txt(o.name, 120) };
+      const oq = Math.round(Number(o.qty)); if (oq > 1 && oq < 100) op.qty = oq; // its own count (one 18 ct vs two dozen)
+      if (txt(o.price, 20)) op.price = txt(o.price, 20);
+      if (txt(o.unit, 20)) op.unit = txt(o.unit, 20);
+      if (/^https:\/\//i.test(String(o.image || ''))) op.image = String(o.image).slice(0, 500);
+      if (/^https:\/\//i.test(String(o.url || ''))) op.url = String(o.url).slice(0, 500);
+      return op;
+    }).filter(Boolean);
+    if (opts.length) it.options = opts;
     return it;
   }).filter(Boolean);
   return out.length ? out : undefined;

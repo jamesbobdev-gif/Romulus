@@ -77,6 +77,13 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   In `cart`, give each item's unit price (`unit`, e.g. "$0.12/oz") and, where you picked it over another
   option, a few words on why in `why` ("cheapest per oz", "smaller: you'd waste the gallon"). End the
   note with what you saved compared with the default picks, if anything.
+- **He sees every option.** For each item, keep the other real choices you compared (other sizes,
+  brands, store brand vs name brand, sale items): up to 4, best value first, each one EBT-eligible and
+  in stock. Put them in that item's `options` ([{name with brand and size, qty = how many of it to
+  cover about the same amount (one 18 ct instead of two dozen), price for that line, unit, image,
+  url}], with pictures like the item itself). The item is your pick; the app shows the
+  rest in a menu on its card so he can switch before checkout. Skip `options` only when the store has
+  nothing else close (one kind of limes).
 - **EBT-eligible only:** with EBT as his only payment, keep the cart to SNAP-eligible food (Walmart
   marks it "EBT eligible"). Leave out non-eligible items (hot food, household, paper goods) and tell
   him which ones you left out.
@@ -110,7 +117,7 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   the total split by EBT and anything else. Then stop: `needs-you`. Put every item in `cart`
   ({name, qty, price for that line, image = the product photo's https address as the store shows
   it (on Walmart, the i5.walmartimages.com picture of that item), url = the item's product page,
-  swap = what it replaced}). Every item needs its picture: he picks by looking at them, so the app shows them as cards he can deselect. The note is short (the
+  swap = what it replaced, unit, why, options = the other choices above}). Every item needs its picture: he picks by looking at them, so the app shows them as cards he can deselect. The note is short (the
   pictures do the talking): one or two lines with the slot, the total, how it's paid, the EBT balance
   left and any swaps (never the item list), ending with "Reply **yes** to place this order."
 - **Deselected items:** his answer may be "yes, place it without: A; B, and take out the ideas I didn't
@@ -118,6 +125,11 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   items it names to take out: remove them, check nothing else changed (same slot, address and
   payment, and the total is the "about $X" he saw, give or take a few cents), then place it. If
   anything else changed, don't place it: show the new cart and ask again.
+- **Swaps he picked:** either answer can end with "swap: A → B; C → D": he chose option B instead of
+  your pick A ("2× B" = two of them). Take A out of the store cart and add B in that quantity (one if
+  no count is given). With a yes, place it only if
+  the total is still the "about $X" he saw, give or take a few cents; otherwise show the new cart and
+  ask again.
 - **"done" with picks:** when you asked him to do something first (add a payment method, sign in),
   his answer may be "done, and update the cart, without: A, and take out the ideas I didn't pick: C,
   keeping the ideas: D (N items, about $X)" or "done, keep the cart as it is". That is not a yes to
