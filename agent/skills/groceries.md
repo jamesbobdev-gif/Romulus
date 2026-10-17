@@ -9,9 +9,12 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   this task, his latest reply or the conversation so far already names a store for this order, your
   FIRST answer on a new grocery task is one tap question in `ask` (nothing shopped yet):
   {"q":"Which store this time?","choices":[the stores that take EBT online and deliver to him, e.g.
-  "Walmart","Amazon Fresh","Aldi (Instacart)"],"pick":"one","default":<the store he used last, from his
-  Groceries preferences or the conversation>}, with a one-line note. A saved store in his preferences
-  is only the default answer, never a reason to skip the question.
+  "Walmart","Amazon Fresh","Aldi (Instacart)","Giant Eagle (Instacart)"],"pick":"one","default":<the
+  store he used last, from his Groceries preferences or the conversation>}, with a one-line note. A
+  saved store in his preferences is only the default answer, never a reason to skip the question.
+- **Instacart is many stores, not one.** It delivers from lots of grocers, and many of them take EBT
+  there. Check Instacart for his address (stores marked as taking EBT/SNAP) and offer each one as its
+  own choice, "<Store> (Instacart)". Never offer just "Instacart" or assume it means Aldi.
   The 2-week order (`scheduledRun`) is the one exception: build it at the store he used last, and end
   the note with "Want another store this time? Reply with its name."
 - **Use his account:** shop in the agent browser, logged in to the store. If you hit a sign-in page,
@@ -28,7 +31,7 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   through them one at a time. Check first which stores really take EBT online and deliver to his
   address, and offer only those. The default is the usual answer:
   1. "Which store?" choices: the EBT-online stores that deliver to him (e.g. Walmart, Amazon Fresh,
-     Aldi via Instacart) [the one he mentioned, else Walmart]. Always include this one, even if he
+     and each EBT store on Instacart, like Aldi or Giant Eagle) [the one he mentioned, else Walmart]. Always include this one, even if he
      already named a store: the choices are how he sees what else there is.
   2. "Delivery or pickup?" [Delivery]
   3. "EBT can't pay the delivery fee or tip. How should that be paid?" choices: "Debit/credit card
