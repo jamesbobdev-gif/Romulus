@@ -15,6 +15,13 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
 - **Instacart is many stores, not one.** It delivers from lots of grocers, and many of them take EBT
   there. Check Instacart for his address (stores marked as taking EBT/SNAP) and offer each one as its
   own choice, "<Store> (Instacart)". Never offer just "Instacart" or assume it means Aldi.
+- **Comparing stores: three helpers at once.** Whenever you check prices, fees or deals at more than
+  one store, don't visit them one by one: split the stores into up to three groups and send
+  store-checker-1, -2 and -3 in ONE message (several Agent calls together), each with its stores and
+  his items with sizes (his grocery list, or what this order needs). They work at the same time in
+  their own tabs of the agent browser, signed in where he is, and only look. Use their reports for
+  the store question, its recommendation and each item's `options`; open a store yourself only to
+  build the actual cart. If a helper couldn't check something (sign-in, captcha), say so in the note.
   The 2-week order (`scheduledRun`) is the one exception: build it at the store he used last, and end
   the note with "Want another store this time? Reply with its name."
 - **Use his account:** shop in the agent browser, logged in to the store. If you hit a sign-in page,

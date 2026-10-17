@@ -196,6 +196,23 @@ function buyRefusal(msg) {
   return null;
 }
 
+/* Store checkers (TASKS_BROWSER_SHOP, set for "shop1".."shop3" in agent/agent-browser.js) share this
+   browser with the main run and each other, so tab numbers shift under them. A checker may only close
+   its own tab: whatever number it gives, "close" closes the tab this connection is on. It can't switch
+   to another tab either. */
+const SHOP = process.env.TASKS_BROWSER_SHOP === '1';
+async function shopTabs(msg) { // → a refusal, or null (msg may be changed to close its own tab)
+  if (!SHOP || !msg.params || msg.params.name !== 'browser_tabs') return null;
+  const a = msg.params.arguments || {};
+  if (a.action === 'select') return 'Stay in your own tab: the others belong to other work.';
+  if (a.action !== 'close') return null;
+  const list = resultText(await ownCall('browser_tabs', { action: 'list' }));
+  const idx = (list.match(/- (\d+): \(current\)/) || [])[1];
+  if (idx == null) return 'Could not find your tab to close; leave it, it is closed before the next run.';
+  msg.params.arguments = Object.assign({}, a, { index: Number(idx) });
+  return null;
+}
+
 // Playwright → Claude: pass everything through except the answers to our own calls
 let outBuf = '';
 child.stdout.on('data', (d) => {
@@ -228,11 +245,12 @@ process.stdin.on('data', (d) => {
         if (!started) { started = true; await ensureBrowser(); }
         let msg = null; try { msg = JSON.parse(line); } catch (e) {}
         const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg));
+        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg) || await shopTabs(msg));
         if (refused) { // answer it ourselves; Playwright never sees the call
           process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
           return;
         }
+        if (SHOP && msg && msg.params && msg.params.name === 'browser_tabs') { child.stdin.write(JSON.stringify(msg) + '\n'); return; } // its own tab's number
       }
       child.stdin.write(line);
     });
