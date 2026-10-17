@@ -602,3 +602,8 @@ textarea.ask-other{min-height:70px}
 .cart-card.sugg.off .cart-check::before{font-size:14px;line-height:18px}
 .cart-tag{position:absolute;top:6px;left:6px;font-family:var(--mono);font-size:8.5px;text-transform:uppercase;letter-spacing:.08em;background:#FFF3D6;color:#8A5A00;border-radius:4px;padding:1px 5px}
 .cart-why{font-size:10.5px;line-height:1.3;color:var(--muted)}
+/* other sizes/brands for an item: a menu at the bottom of its card */
+.cart-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cart-opt-n{margin-top:auto;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
+.cart-opt{width:100%;box-sizing:border-box;border:1px solid var(--hairline);border-radius:6px;padding:4px 6px;font:inherit;font-size:11px;background:var(--bg);color:var(--ink);cursor:pointer}
+.cart-card.off .cart-opt{pointer-events:none}
