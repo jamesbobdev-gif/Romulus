@@ -14,7 +14,7 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs } = require('./agent-browser');
 const runLive = require('./run-live');
 const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
@@ -188,6 +188,7 @@ async function startAgentRun() {
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
+  if (browserCfg) await freshTabs().catch(() => {});
   // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one

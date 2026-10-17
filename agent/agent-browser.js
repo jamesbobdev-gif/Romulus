@@ -105,6 +105,18 @@ async function ensureAgentBrowser() {
   for (let i = 0; i < 40; i++) { if (await agentBrowserUp()) return true; await new Promise((r) => setTimeout(r, 250)); }
   return false;
 }
+// a new run starts on one blank tab: pages left from earlier tasks are closed (logins stay, they're in
+// the profile), so the agent and the live view (Watch) both use the tab the run opens, not an old one
+async function freshTabs() {
+  if (!(await agentBrowserUp())) return;
+  const base = 'http://127.0.0.1:' + AGENT_BROWSER_PORT;
+  const list = await fetch(base + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
+  const pages = list.filter((p) => p.type === 'page' && !/^(devtools|chrome-extension):/.test(p.url));
+  if (pages.length === 1 && /^about:blank/.test(pages[0].url)) return;
+  const made = await fetch(base + '/json/new?about:blank', { method: 'PUT', signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
+  if (!made) return; // never close the last tab: that would quit the browser
+  for (const p of pages) await fetch(base + '/json/close/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {});
+}
 // an agent browser left open from before (with a window): close it, so the next one starts without
 async function closeWindowedAgentBrowser() {
   if (process.platform !== 'win32') return;
@@ -114,4 +126,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, agentBrowserDir, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, freshTabs, chromeArgs, closeWindowedAgentBrowser };
