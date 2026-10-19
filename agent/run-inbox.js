@@ -1,4 +1,4 @@
-// Claude Code hook for the Tasks agent's Claude runs (agent/runner.js passes it with --settings): what James
+// Claude Code hook for the Tasks agent's Claude runs (agent/runner.js passes it with --settings): what the user
 // writes on a task while Claude works on it. The runner drops each message in <inbox> as a file; after every
 // tool call (PostToolUse) this hands the waiting ones to Claude, and when Claude is about to finish (Stop) it
 // keeps it going with them. Taking a message = moving its file to <heard>, which is how the runner knows
@@ -19,7 +19,7 @@ process.stdin.on('end', () => {
     try { got.push(JSON.parse(fs.readFileSync(to, 'utf8'))); } catch (e) {}
   }
   if (!got.length) process.exit(0);
-  const text = 'James just wrote on his task while you were working (his own words, same as a reply in the app):\n' +
+  const text = 'The user just wrote on his task while you were working (his own words, same as a reply in the app):\n' +
     got.map((m) => '- task ' + m.id + (m.title ? ' ("' + m.title + '")' : '') + ': ' + m.text +
       (m.photos ? ' [+' + m.photos + ' photo(s): you get them next round]' : '')).join('\n') +
     '\nTake it into account now: change course, drop or add steps, and update your plan (TaskUpdate/TaskCreate) to match. ' +

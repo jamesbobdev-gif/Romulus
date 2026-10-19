@@ -24,8 +24,8 @@ function aiStatus() {
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
     openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel, codexModel: s.codexModel, via: s.openaiVia, codex: providers.codexStatus() },
     openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr },
-    // Grok, Groq, Cerebras: one key and a model each
-    ...Object.fromEntries(providers.COMPAT_IDS.map((id) => [id, { compat: true, hasKey: !!s[id + 'Key'], key: maskKey(s[id + 'Key']), model: s[id + 'Model'], defaultModel: providers.COMPAT[id].model }])) };
+    // Grok, Groq: one key and a model each
+    ...Object.fromEntries(providers.COMPAT_IDS.map((id) => [id, { compat: true, browser: s.compatBrowser, hasKey: !!s[id + 'Key'], key: maskKey(s[id + 'Key']), model: s[id + 'Model'], defaultModel: providers.COMPAT[id].model }])) };
 }
 handle('ai:status', () => aiStatus());
 handle('ai:save', (_e, change) => {
@@ -34,7 +34,7 @@ handle('ai:save', (_e, change) => {
   if (Array.isArray(change.order)) ai.order = change.order.map((p) => ({ id: String(p.id), on: !!p.on }));
   if (change.openaiVia === 'chatgpt' || change.openaiVia === 'key') ai.openaiVia = change.openaiVia;
   for (const k of ['claudeModel', 'codexModel', 'geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel', ...providers.COMPAT_IDS.flatMap((id) => [id + 'Key', id + 'Model'])]) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
-  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers', 'claudeLast']) if (typeof change[k] === 'boolean') ai[k] = change[k];
+  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers', 'claudeLast', 'compatBrowser']) if (typeof change[k] === 'boolean') ai[k] = change[k];
   c.ai = ai; writeConfig(c);
   scheduleAgentRun();
   return aiStatus();
@@ -160,10 +160,23 @@ function homeCloud(t, saveClaude) {
 }
 // a try that failed because that AI has no usage left
 const outOfUsage = (r) => !!(r && (r.limit || r.resetAt));
+/* an answer that says it couldn't do the task ("I couldn't verify any showtimes…"): the next AI gets a go
+   at it instead of it coming back to him. Asking him something, offering picks or waiting on his yes
+   isn't that. `cant` = the AI said so itself */
+const CANT = /\b(i )?(couldn['’]t|could not|can['’]t|cannot|wasn['’]t able|was not able|unable to|didn['’]t find|did not find|no way to)\b/i;
+// "handing over to Claude", "needs browser access": it passed the task on in its note instead of leaving it out
+const HANDOFF = /\b(hand(s|ing|ed)?|pass(es|ing|ed)?)\b[^.]{0,20}\b(over|off|on|it)\b[^.]{0,20}\bclaude\b|\bneeds? (browser access|a browser)\b/i;
+function couldntDo(u) {
+  if (!u || u.status === 'done') return false;
+  const some = (x) => Array.isArray(x) ? x.length > 0 : !!(x && typeof x === 'object');
+  if (some(u.ask) || some(u.cart) || some(u.cards) || some(u.options) || some(u.seats) || some(u.showtimes) || some(u.theaters)) return false;
+  if (typeof u.cant === 'string' && u.cant.trim()) return true;
+  return CANT.test(String(u.note || '')) || HANDOFF.test(String(u.note || ''));
+}
 function runOrder({ order, pinned, mailRun, ready }) {
   if (mailRun) return order.filter((id) => id === 'claude');
   if (!pinned) return order.slice();
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }
 
-module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, PINNED_CLOUDS };
+module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, couldntDo, PINNED_CLOUDS };

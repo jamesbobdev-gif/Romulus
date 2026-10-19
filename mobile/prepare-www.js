@@ -25,7 +25,9 @@ ${addChannel('school', schoolCfg)}
 </script>`;
 // calendar accounts on the phone (window.phoneCal, read by the Settings → Calendars panel)
 const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.js'), 'utf8') + '</script>';
-html = html.replace('<head>', () => '<head>\n' + seed + '\n' + calPhone);
+// Finance on the phone (window.phoneFinance: fingerprint-locked, paired from the computer's Finance tab)
+const financePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'finance-phone.js'), 'utf8') + '</script>';
+html = html.replace('<head>', () => '<head>\n' + seed + '\n' + calPhone + '\n' + financePhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 // everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is

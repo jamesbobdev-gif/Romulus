@@ -55,4 +55,45 @@ function cleanShowtimes(s) {
   return out;
 }
 
-module.exports = { cleanSeats, cleanShowtimes };
+/* The theaters showing a movie on the days he's free, drawn on the task as a map with a pin each (seat-map.js):
+   {movie, days: ["Sat Oct 17"], theaters: [{name, address, lat, lng, dist, days: ["Sat Oct 17"], url}]}
+   `here` (where he is) is added by the runner, never taken from the AI. */
+const coord = (x, lim) => { const n = Number(x); return isFinite(n) && Math.abs(n) <= lim && n !== 0 ? Math.round(n * 1e5) / 1e5 : undefined; };
+function cleanTheaters(s) {
+  if (!s || typeof s !== 'object' || !Array.isArray(s.theaters)) return undefined;
+  const theaters = s.theaters.slice(0, 10).map((th) => {
+    if (!th || typeof th !== 'object' || !txt(th.name, 80)) return null;
+    const out = { name: txt(th.name, 80) };
+    if (txt(th.address, 160)) out.address = txt(th.address, 160);
+    const lat = coord(th.lat, 90), lng = coord(th.lng, 180);
+    if (lat !== undefined && lng !== undefined) { out.lat = lat; out.lng = lng; }
+    if (txt(th.dist, 20)) out.dist = txt(th.dist, 20);
+    const days = (Array.isArray(th.days) ? th.days : []).map((d) => txt(d, 30)).filter(Boolean).slice(0, 10);
+    if (days.length) out.days = days;
+    if (link(th.url)) out.url = link(th.url);
+    return out;
+  }).filter(Boolean);
+  if (!theaters.length) return undefined;
+  const out = { theaters };
+  if (txt(s.movie, 80)) out.movie = txt(s.movie, 80);
+  const days = (Array.isArray(s.days) ? s.days : []).map((d) => txt(d, 30)).filter(Boolean).slice(0, 10);
+  if (days.length) out.days = days;
+  return out;
+}
+
+/* Pins where OpenStreetMap puts each address (an AI's own coordinates are often off), his distance to each,
+   and the list closest first. */
+async function placeTheaters(s, here, { geocode, miles }) {
+  for (const th of s.theaters) {
+    const p = th.address ? await geocode(th.address) : null;
+    if (p) { th.lat = Math.round(p.lat * 1e5) / 1e5; th.lng = Math.round(p.lng * 1e5) / 1e5; }
+  }
+  if (here) {
+    s.here = { lat: here.lat, lng: here.lng };
+    for (const th of s.theaters) if (th.lat !== undefined) th.dist = miles(here, th).toFixed(1) + ' mi';
+    s.theaters.sort((a, b) => (a.lat === undefined) - (b.lat === undefined) || (parseFloat(a.dist) || 0) - (parseFloat(b.dist) || 0));
+  }
+  return s;
+}
+
+module.exports = { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters };

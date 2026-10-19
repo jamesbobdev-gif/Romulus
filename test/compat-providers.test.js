@@ -4,9 +4,10 @@ const providers = require('../agent/providers');
 
 const reply = (status, j) => ({ ok: status < 400, status, json: async () => j });
 
-test('Grok, Groq, Cerebras join the pool, off until he turns them on', () => {
-  for (const id of ['xai', 'groq', 'cerebras']) assert.ok(providers.PROVIDERS.includes(id), id);
-  assert.ok(!providers.PROVIDERS.includes('mistral')); // no free API tier any more
+test('Grok and Groq join the pool, off until he turns them on', () => {
+  for (const id of ['xai', 'groq']) assert.ok(providers.PROVIDERS.includes(id), id);
+  // no free API tier without a card
+  for (const id of ['mistral', 'cerebras']) assert.ok(!providers.PROVIDERS.includes(id), id);
   assert.strictEqual(providers.NAMES.xai, 'Grok');
   const s = providers.settings({ ai: { xaiKey: ' k ', groqModel: 'llama-3.3-70b-versatile' } });
   assert.strictEqual(s.xaiKey, 'k');
@@ -52,7 +53,7 @@ test('a chosen model that is gone: it picks another from the key’s model list 
     return m === 'gpt-oss-120b-new' ? reply(200, { choices: [{ message: { content: 'ok' } }] }) : reply(404, { error: { message: 'model not found' } });
   };
   try {
-    const r = await providers.runCompat('cerebras', { ai: { cerebrasKey: 'k', cerebrasModel: 'gpt-oss-120b' } }, { prompt: 'p', note: '' });
+    const r = await providers.runCompat('groq', { ai: { groqKey: 'k', groqModel: 'gpt-oss-120b' } }, { prompt: 'p', note: '' });
     assert.deepStrictEqual(models, ['gpt-oss-120b', 'gpt-oss-120b-new']);
     assert.strictEqual(r.text, 'ok');
   } finally { global.fetch = real; }
@@ -82,4 +83,37 @@ test('Auto: the best model on the key first; one over its quota hands over to th
     assert.deepStrictEqual(menu.models, ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile']);
     assert.strictEqual(menu.auto, 'openai/gpt-oss-120b');
   } finally { global.fetch = real; providers.clearModelCache(); }
+});
+
+test('Cloudflare: account ID and token pasted together, its own model list, then its chat address', async () => {
+  const real = global.fetch; const calls = [];
+  const acct = 'a'.repeat(32), token = 'tok_' + 'x'.repeat(36);
+  global.fetch = async (u, i) => {
+    calls.push({ u, auth: i.headers.Authorization, body: i.body && JSON.parse(i.body) });
+    if (/models\/search/.test(u)) return reply(200, { result: [{ name: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' }, { name: '@cf/openai/gpt-oss-120b' }] });
+    return reply(200, { model: '@cf/openai/gpt-oss-120b', choices: [{ message: { content: '{"updates":[]}' } }] });
+  };
+  try {
+    providers.clearModelCache();
+    const r = await providers.runCompat('cloudflare', { ai: { cloudflareKey: token + ' ' + acct } }, { prompt: 'p' });
+    assert.strictEqual(calls[0].u, 'https://api.cloudflare.com/client/v4/accounts/' + acct + '/ai/models/search?task=Text%20Generation&per_page=200');
+    assert.strictEqual(calls[1].u, 'https://api.cloudflare.com/client/v4/accounts/' + acct + '/ai/v1/chat/completions');
+    assert.strictEqual(calls[1].auth, 'Bearer ' + token);
+    assert.strictEqual(calls[1].body.model, '@cf/openai/gpt-oss-120b'); // Auto: the best it has
+    assert.strictEqual(r.text, '{"updates":[]}');
+  } finally { global.fetch = real; providers.clearModelCache(); }
+});
+
+test('Cloudflare: just the token looks up its account; the daily neuron cap counts as out of usage', async () => {
+  const real = global.fetch; const urls = [];
+  global.fetch = async (u) => {
+    urls.push(u);
+    if (u.endsWith('/accounts')) return reply(200, { result: [{ id: 'b'.repeat(32) }] });
+    return reply(429, { errors: [{ code: 4006, message: 'you have used up your daily free allocation of 10,000 neurons' }] });
+  };
+  try {
+    const r = await providers.runCompat('cloudflare', { ai: { cloudflareKey: 'tok_only', cloudflareModel: '@cf/openai/gpt-oss-120b' } }, { prompt: 'p' });
+    assert.ok(urls[1].includes('/accounts/' + 'b'.repeat(32) + '/ai/v1/'));
+    assert.strictEqual(r.limit, true);
+  } finally { global.fetch = real; }
 });

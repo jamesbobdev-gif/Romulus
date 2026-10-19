@@ -66,7 +66,7 @@ function myDataSources(known) {
     out.push({ label: head, text: [t.title, t.notes, t.note, t.tag].filter(Boolean).join('\n') });
     for (const h of (Array.isArray(t.history) ? t.history : []).slice(-15)) {
       if (h.who === 'sys' || !h.text) continue;
-      out.push({ label: head + ' (' + (h.who === 'you' ? 'James said' : h.lane === 'local' ? 'mini PC said' : 'Claude said') + ')', text: String(h.text) });
+      out.push({ label: head + ' (' + (h.who === 'you' ? 'The user said' : h.lane === 'local' ? 'mini PC said' : 'Claude said') + ')', text: String(h.text) });
     }
     for (const o of Array.isArray(t.options) ? t.options : []) out.push({ label: head + ' (option shown)', text: [o.label, o.desc, o.url].filter(Boolean).join(' · ') });
   }

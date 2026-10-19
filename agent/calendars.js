@@ -307,7 +307,9 @@ function connect(provider, opts = {}) {
     server.listen(0, '127.0.0.1', () => {
       port = server.address().port;
       const url = p.authUrl + '?' + new URLSearchParams(Object.assign({ client_id: c.clientId, redirect_uri: `http://${host}:${port}/oauth2callback`,
-        response_type: 'code', scope: p.scope, state, code_challenge: challenge, code_challenge_method: 'S256' }, p.authExtra));
+        response_type: 'code', scope: p.scope, state, code_challenge: challenge, code_challenge_method: 'S256' }, p.authExtra,
+        // renewing an account: the sign-in page opens on that address instead of asking which one
+        opts.loginHint ? { login_hint: String(opts.loginHint) } : {}));
       io.openExternal(url).catch((e) => finish({ ok: false, error: 'Could not open the browser: ' + e.message }));
     });
     server.on('error', (e) => finish({ ok: false, error: 'Could not start sign-in listener: ' + e.message }));
@@ -355,7 +357,7 @@ async function overview(fresh) {
   const out = [];
   for (const a of accounts(cfg)) {
     const row = { id: a.id, provider: a.provider, label: a.email || a.name || (a.provider === 'google' ? 'Google account' : a.provider), broken: !!a.broken, calendars: [], error: null,
-      gmail: a.provider === 'google' && /gmail\.readonly/.test(a.scope || '') };
+      gmail: a.provider === 'google' && /gmail\.readonly/.test(a.scope || ''), receipts: a.receipts !== false };
     try {
       const cals = await calendarsOf(a, fresh);
       row.calendars = cals.map((c) => { const ref = a.id + '|' + c.id; return Object.assign({}, c, { ref, push: p.push === ref, pull: p.pull[ref] || null }); });
@@ -434,7 +436,7 @@ async function pull(ownEventIds) {
   }
   return { items, errors };
 }
-// "james@gmail.com" / "Work Calendar" → "work"; a calendar named after the address gets no tag of its own
+// "alex@gmail.com" / "Work Calendar" → "work"; a calendar named after the address gets no tag of its own
 function tagFor(name) {
   const s = String(name || '').replace(/\bcalendar\b/gi, '').trim();
   if (!s || /@/.test(s)) return 'calendar';
@@ -461,8 +463,21 @@ async function upcoming(from, to) {
 }
 
 // a Google account that let the app read Gmail (for agent/mail-events.js)
+const canReadMail = (a) => a.provider === 'google' && /gmail\.readonly/.test(a.scope || '') && a.tokens && a.tokens.refresh_token;
 function gmailAccount() {
-  return accounts(io.readConfig()).find((a) => a.provider === 'google' && /gmail\.readonly/.test(a.scope || '') && a.tokens && a.tokens.refresh_token) || null;
+  return accounts(io.readConfig()).find(canReadMail) || null;
+}
+// every one Finance reads purchase emails from (main/finance.js): each Gmail account unless he switched it off
+function receiptAccounts() {
+  return accounts(io.readConfig()).filter((a) => canReadMail(a) && a.receipts !== false);
+}
+function setReceipts(acctId, on) {
+  const cfg = io.readConfig();
+  const a = accounts(cfg).find((x) => x.id === acctId);
+  if (!a) return false;
+  if (on) delete a.receipts; else a.receipts = false;
+  io.writeConfig(cfg);
+  return true;
 }
 
-module.exports = { init, connect, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, tokenFor, parseIcs, tagFor };
+module.exports = { init, connect, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor };

@@ -1,8 +1,8 @@
 /* "Buy this" emails.
-   When James chooses one of Claude's product options, the renderer stamps the
+   When the user chooses one of Claude's product options, the renderer stamps the
    task with `buyEmail` {label,url,price,rating,image,at}. Here we hand that to
    the `buy-email` Supabase edge function, which sends it through Resend (from a
-   neutral address, to James's inbox). No Google/Gmail permission is involved,
+   neutral address, to the user's inbox). No Google/Gmail permission is involved,
    and the Resend key lives only on the server. It emails the link; never buys.
    Dedup is by task+url+click-time, remembered in config.buyEmailsSent, so a
    given choice is emailed exactly once even across restarts and re-saves. */

@@ -58,8 +58,17 @@ function loadSkills() {
     const meta = {};
     if (m) m[1].split('\n').forEach((l) => { const i = l.indexOf(':'); if (i > 0) meta[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
     let match = null; try { if (meta.match) match = new RegExp(meta.match, 'i'); } catch (e) { agentLog('skill ' + f + ': bad match pattern'); }
-    return { name: meta.name || f.replace(/\.md$/, ''), description: meta.description || '', match, body: m ? m[2] : raw, raw };
+    return { name: meta.name || f.replace(/\.md$/, ''), description: meta.description || '', match, nearby: /^(yes|true)$/i.test(meta.nearby || ''),
+      browser: /^(yes|true)$/i.test(meta.browser || ''), // real browsing (seat maps, carts, forms): too much for the weakest models
+      body: m ? m[2] : raw, raw };
   });
+}
+/* Tasks that get where he is now: a `nearby: yes` skill matches (movies, places, groceries), or his
+   words ask for somewhere close ("closest Target", "in stock near me", "pick up today"). */
+const NEAR_WORDS = /\b(near(by| me| here)?|nearest|closest|close by|around here|local|in[- ]store|in stock|pick ?up|walking distance|how far|directions)\b/i;
+function wantsNearby(t, skills = loadSkills()) {
+  const text = skillText(t);
+  return NEAR_WORDS.test(text) || skills.some((s) => s.nearby && s.match && s.match.test(text));
 }
 /* Site notes (agent/site-notes.js): hand-written ones in agent/sites/, tips the mini PC learned in
    <userData>/site-notes/ (the app's own folder can't be written to once it's packaged). */
@@ -178,5 +187,5 @@ async function claimAgentTasks(tasks, lane = 'claude') {
   return won;
 }
 
-module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
+module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
   siteNotesFor, skillText, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks };

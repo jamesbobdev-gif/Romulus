@@ -1,4 +1,4 @@
-/* Live view: the agent browser shown inside Tasks, so James can watch Claude work and click or type to
+/* Live view: the agent browser shown inside Tasks, so the user can watch Claude work and click or type to
    take over (log in, fix a field). The app's page streams it straight over the agent browser's
    localhost-only debugging port (Page.startScreencast + Input.dispatch*). Here we only list its tabs
    and let the page's socket through: Chrome refuses debugging sockets that carry a web page's Origin,

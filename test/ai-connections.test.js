@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { runOrder, homeCloud, outOfUsage } = require('../agent/ai-connections');
+const { runOrder, homeCloud, outOfUsage, couldntDo } = require('../agent/ai-connections');
 
 const order = ['claude', 'gemini', 'openrouter'];
 const ready = () => true;
@@ -49,4 +49,20 @@ test('only running out of usage moves a task on', () => {
   assert.strictEqual(outOfUsage({ resetAt: 123 }), true);
   assert.strictEqual(outOfUsage({ auth: true }), false);
   assert.strictEqual(outOfUsage({ why: 'no usable answer' }), false);
+});
+
+test('an answer that couldn’t do the task goes to the next AI', () => {
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'I couldn’t verify any Springfield-area showtimes for Tuesday.' }), true);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Nothing on Fandango.', cant: 'no showtimes listed' }), true);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: "I can't open a browser here." }), true);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Searching for shampoos under $25 needs browser access to Amazon — handing over to Claude.' }), true);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Passing this on to Claude.' }), true);
+});
+
+test('asking him, offering picks, or done is not "couldn’t"', () => {
+  assert.strictEqual(couldntDo({ status: 'done', note: 'I couldn’t find a cheaper one, so I kept this.' }), false);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Ready to buy — reply yes.' }), false);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'I couldn’t find the 32 oz, here are others', options: [{ url: 'https://x' }] }), false);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Which theater?', ask: [{ q: 'Which?' }], cant: 'x' }), false);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Pick a time', showtimes: { days: [] } }), false);
 });

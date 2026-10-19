@@ -66,3 +66,26 @@ test('recentMail reads metadata only and keeps one line per email', async () => 
   assert.deepStrictEqual(out, [{ date: '2026-10-14', from: 'ComEd', subject: 'Bill ready', snippet: 'Amount due & more' }]);
   assert.ok(calls[1].includes('format=metadata'));
 });
+
+test('nextGroceryDay counts 2 weeks from his latest grocery ask', () => {
+  const at = new Date(2026, 9, 18, 9, 0).getTime(); // Sun Oct 18
+  assert.strictEqual(la.nextGroceryDay([]), null);
+  assert.strictEqual(la.nextGroceryDay([
+    { ws: 'agent', title: 'Groceries', created: new Date(2026, 9, 4).getTime(), history: [] },
+    { ws: 'agent', title: 'Weekend', created: 0, history: [{ who: 'you', text: 'can I get groceries', at }] },
+    { ws: 'personal', title: 'groceries', created: new Date(2026, 9, 30).getTime() }, // not an Agent ask
+  ]), '2026-11-01');
+});
+
+test('clean holds meals and grocery suggestions until the next grocery order is close', () => {
+  const sun = new Date(2026, 9, 18, 8, 0);
+  const props = [
+    { key: 'meals-2026-10-18', kind: 'meals', title: 'Meal plan for the week', note: 'Plan meals?', due: '' },
+    { key: 'cart', kind: 'other', title: 'Walmart grocery list', note: 'Build a cart?', due: '' },
+    { key: 'gift', kind: 'gift', title: 'Gift', note: 'Party Sat.', due: '' },
+  ];
+  assert.deepStrictEqual(la.clean(props, { now: sun, groceryNext: '2026-11-01' }).map((p) => p.key), ['gift']);
+  assert.strictEqual(la.clean(props, { now: sun, groceryNext: '2026-10-20' }).length, 3);
+  assert.strictEqual(la.clean(props, { now: sun }).length, 3);
+  assert.ok(la.buildInput({ calendar: null, mails: [], prefs: '', tasks: [], recent: [], groceryNext: '2026-11-01' }).includes('opens on its own on 2026-11-01'));
+});

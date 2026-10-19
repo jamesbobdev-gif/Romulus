@@ -1,6 +1,6 @@
 /* Weekly memory tidy: once a week, when the runner is idle, a no-tools Claude run reorganizes
    "What Claude knows about you" — merges duplicates, files lines under the right heading — and
-   adds only things James actually said in his agent-task replies from the last two weeks.
+   adds only things the user actually said in his agent-task replies from the last two weeks.
    It never guesses from task titles, and if he edited the list while it ran, his version wins. */
 const path = require('path');
 const fs = require('fs');
@@ -27,7 +27,7 @@ async function agentPrefsRow() {
   const row = await supabase.readRow(a, ':prefs', { select: 'doc,updated_at' });
   return { a, text: (row && row.doc && row.doc.text) || '', updated_at: row ? row.updated_at : null };
 }
-function recentReplies() { // James's own words to Claude in the last 14 days, with the question each one answered
+function recentReplies() { // the user's own words to Claude in the last 14 days, with the question each one answered
   let data;
   try { data = JSON.parse(fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
   const since = Date.now() - 14 * 24 * 60 * 60 * 1000, out = [];
@@ -37,7 +37,7 @@ function recentReplies() { // James's own words to Claude in the last 14 days, w
       if (h.who !== 'you' || !(h.at > since) || !String(h.text || '').trim()) return;
       const asked = t.history.slice(0, i).reverse().find((x) => x.who !== 'you');
       out.push({ task: String(t.title || '').slice(0, 120), claudeAsked: asked ? String(asked.text || '').slice(0, 400) : null,
-        jamesSaid: String(h.text).slice(0, 600) });
+        userSaid: String(h.text).slice(0, 600) });
     });
   }
   return out.slice(-60);
@@ -55,12 +55,12 @@ async function maybeTidyMemory() {
     const replies = recentReplies();
     if (!before.text.trim() && !replies.length) { markDone(); return; }
     const prompt = [
-      'You keep the short memory file the Tasks app\'s Claude reads about James before every task. Tidy it up. You have no tools; just answer.',
+      'You keep the short memory file the Tasks app\'s Claude reads about the user before every task. Tidy it up. You have no tools; just answer.',
       '',
       'Rules:',
       '- Keep the format: "## Section" headings, each followed by "- one line" items. Sections in use: Career, Shopping, Services, Hobbies & gear, How he likes answers, About him (add another short heading only if nothing fits).',
       '- Merge duplicates and near-duplicates into one line; move lines that sit under the wrong heading; tighten wording. Keep every distinct fact — never drop one because it seems minor, and keep his own wording where he wrote a line himself.',
-      '- You may ADD a line only for a lasting preference or fact James clearly stated himself in "Recent replies" below (e.g. "I only want stuff on Amazon", "I\'m in Springfield"). A one-off choice for a single purchase is not a lasting preference unless he said it generally.',
+      '- You may ADD a line only for a lasting preference or fact the user clearly stated himself in "Recent replies" below (e.g. "I only want stuff on Amazon", "I\'m in Denver"). A one-off choice for a single purchase is not a lasting preference unless he said it generally.',
       '- Never infer anything about him from task titles or from what Claude asked. If unsure, leave it out.',
       '- If nothing needs changing, return null.',
       '',

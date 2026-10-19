@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ShareLinkPlugin.class); // send an option's link to people
         registerPlugin(WakeWordPlugin.class); // "Hey Romulus"
         registerPlugin(CalAccountsPlugin.class); // Google / Microsoft calendar sign-in
+        registerPlugin(FinanceVaultPlugin.class); // Finance: fingerprint lock, pairing scan, bank/price requests
         super.onCreate(savedInstanceState);
         handle(getIntent());
     }

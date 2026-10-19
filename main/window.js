@@ -101,4 +101,11 @@ function reloadWindow() { if (mainWindow && !mainWindow.isDestroyed()) mainWindo
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting };
+// the main window's handle as a number (Windows Hello attaches its prompt to it), or null
+function windowHandle() {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const b = mainWindow.getNativeWindowHandle();
+  return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
+}
+
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle };

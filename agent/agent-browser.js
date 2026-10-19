@@ -1,5 +1,5 @@
 /* Agent browser: the Tasks app's own Chrome window (own profile in %APPDATA%\Tasks\agent-browser,
-   separate from James's everyday Chrome). Claude drives it through Playwright's MCP server — it
+   separate from the user's everyday Chrome). Claude drives it through Playwright's MCP server — it
    decides by itself when a task needs it — and it opens only on first use, then stays open. */
 const path = require('path');
 const fs = require('fs');
@@ -30,18 +30,18 @@ function shopAgents() { // → the --agents definitions for a Claude run
   const agents = {};
   SHOPS.forEach((s, i) => {
     agents['store-checker-' + (i + 1)] = {
-      description: 'Checks grocery stores in James\'s agent browser (prices, sizes, delivery and service fees, minimum order, '
-        + 'membership deals) and reports back. Give it the stores to check and the items with sizes. Three exist; send them at '
+      description: 'Checks grocery stores in the user\'s agent browser (prices, sizes, delivery and service fees, minimum order, '
+        + 'membership deals) and reports back. Give it the stores to check, his ZIP code, how he pays (e.g. EBT) and the items with sizes. Three exist; send them at '
         + 'the same time, each with different stores.',
       tools: SHOP_TOOLS.map((n) => 'mcp__' + s + '__' + n),
-      prompt: 'You check grocery stores for James: he may pay with EBT/SNAP, which cannot pay'
-        + 'fees or tips. You have your own connection to his agent browser, signed in where he is.\n'
+      prompt: 'You check grocery stores for the user. The message you get says where he lives (ZIP code) and how he pays; '
+        + 'EBT/SNAP, if he uses it, cannot pay fees or tips. You have your own connection to his agent browser, signed in where he is.\n'
         + '- First open a NEW tab (browser_tabs, action "new") and work only in it. Never touch, select or close any other tab. '
         + 'When you are done, close your tab (browser_tabs, action "close"): that always closes your own tab.\n'
         + '- Only look. Never place an order, start a trial or membership, change his account, address or payment, or type a card '
         + 'number, PIN or security code. If a fee only shows in the cart, you may add the items, read the fees, then remove '
         + 'everything you added so the cart is as you found it.\n'
-        + '- For each store you were given: is it open to EBT online for delivery to his address; delivery fee, service fee, minimum '
+        + '- For each store you were given: does it deliver to his ZIP code (and take EBT online, if he pays with it); delivery fee, service fee, minimum '
         + 'order, any free-delivery or member deal shown while signed in (say if "free" is really a paid trial and its price); and '
         + 'for each item, the best-value option for one person with its size, price and unit price, plus up to 3 other options. '
         + 'If you hit a sign-in page or a captcha, say so and move on.\n'
@@ -52,7 +52,7 @@ function shopAgents() { // → the --agents definitions for a Claude run
 }
 function agentBrowserDir() { return path.join(ctx.userData(), 'agent-browser'); }
 // how the agent browser is started (here, and by browser-proxy.js, which gets these as an argument). It has
-// no window of its own: it runs headless and James watches or takes over inside Tasks (◉ Watch). Headless
+// no window of its own: it runs headless and the user watches or takes over inside Tasks (◉ Watch). Headless
 // Chrome calls itself "HeadlessChrome" in its user agent; it says plain Chrome instead, so shops treat
 // it like his normal browser.
 const chromeUA = (chrome) => platform.chromeUA(platform.chromeMajor(chrome));

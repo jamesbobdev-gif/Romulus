@@ -24,6 +24,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.ServiceCompat;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.vosk.LibVosk;
 import org.vosk.LogLevel;
@@ -47,8 +48,15 @@ public class WakeWordService extends Service {
     private static final String TAG = "WakeWord";
     private static final String CH_ON = "wake_on", CH_HEARD = "wake_heard";
     private static final int ID_ON = 4101, ID_HEARD = 4102;
-    // the grammar: only these can be "heard", so ordinary talk comes out as [unk]
-    private static final String GRAMMAR = "[\"hey romulus\", \"romulus\", \"[unk]\"]";
+    /* the grammar: only these can be "heard", so ordinary talk comes out as [unk]. The sound-alikes are decoys:
+       with nothing but "hey romulus" to choose from, near-misses ("hey, Rome is…", "romance") were squeezed into
+       it; now they land on a decoy and only the real thing scores high (2026-10-18: it woke up too often) */
+    private static final String GRAMMAR = "[\"hey romulus\", \"romulus\", \"hey\", \"hey there\", \"hey you\", \"hey google\", "
+            + "\"hey siri\", \"hello\", \"hi\", \"okay\", \"yeah\", \"romeo\", \"remus\", \"rome\", \"ramos\", \"romance\", "
+            + "\"room\", \"remove\", \"remember\", \"ridiculous\", \"famous\", \"hey ramon\", \"hey rosa\", "
+            + "\"run\", \"run to\", \"rumor\", \"roman\", \"remote\", \"rory\", \"rummage\", \"[unk]\"]";
+    private static final double MIN_CONF = 0.90;   // Vosk's confidence for each word (with a grammar it's nearly always 1: the decoys do most of the work)
+    private static final double MIN_ROMULUS_S = 0.40; // "romulus" takes at least ~0.45 s to say; look-alikes ("run to the") were shorter
     private static final long HOLD_MAX_MS = 30_000; // the page should hand the mic back long before this
 
     private static WakeWordService running;
@@ -166,11 +174,12 @@ public class WakeWordService extends Service {
     private void micOn() {
         try {
             recognizer = new Recognizer(model, 16000f, GRAMMAR);
+            recognizer.setWords(true); // each word with its confidence and timing, in final results
             speech = new SpeechService(recognizer, 16000f);
             speech.startListening(new RecognitionListener() {
-                // partials, so it reacts as soon as you've said it rather than after a pause
-                @Override public void onPartialResult(String json) { check(json, "partial"); }
-                @Override public void onResult(String json) { check(json, "text"); }
+                // finished phrases only: the in-progress guesses (partials) jump around and set it off by mistake
+                @Override public void onPartialResult(String json) {}
+                @Override public void onResult(String json) { check(json); }
                 @Override public void onFinalResult(String json) {}
                 @Override public void onError(Exception e) { Log.w(TAG, "mic: " + e); micOff(); main.postDelayed(WakeWordService.this::update, 5000); }
                 @Override public void onTimeout() {}
@@ -186,13 +195,19 @@ public class WakeWordService extends Service {
         if (recognizer != null) { try { recognizer.close(); } catch (Exception ignored) {} recognizer = null; }
     }
 
-    private void check(String json, String key) {
-        String t;
-        try { t = new JSONObject(json).optString(key, ""); } catch (Exception e) { return; }
-        // anywhere in the utterance: any sound before it comes out as "[unk] hey romulus", and words after as
-        // "hey romulus [unk]" (a lone "romulus" is in the grammar only to soak up near-misses)
-        if (!(" " + t.trim() + " ").contains(" hey romulus ")) return;
-        main.post(this::heard);
+    /* "hey" then "romulus", next to each other anywhere in the phrase (sounds around it come out as [unk]),
+       each said clearly enough (confidence) and "romulus" long enough to be the word, not a blip */
+    private void check(String json) {
+        JSONArray words;
+        try { words = new JSONObject(json).optJSONArray("result"); } catch (Exception e) { return; }
+        if (words == null) return;
+        for (int i = 0; i + 1 < words.length(); i++) {
+            JSONObject a = words.optJSONObject(i), b = words.optJSONObject(i + 1);
+            if (a == null || b == null || !"hey".equals(a.optString("word")) || !"romulus".equals(b.optString("word"))) continue;
+            double ca = a.optDouble("conf", 0), cb = b.optDouble("conf", 0), len = b.optDouble("end", 0) - b.optDouble("start", 0);
+            if (ca >= MIN_CONF && cb >= MIN_CONF && len >= MIN_ROMULUS_S) { main.post(this::heard); return; }
+            Log.d(TAG, "not sure enough: hey " + ca + ", romulus " + cb + ", " + len + " s");
+        }
     }
 
     private void heard() {
