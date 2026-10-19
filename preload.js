@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('desktop', {
   saveDoc: (title, text) => ipcRenderer.invoke('doc:save', title, text),
   lupaFiles: () => ipcRenderer.invoke('lupa:files'),
   lupaFetch: (name) => ipcRenderer.invoke('lupa:fetch', name),
+  lupaRemove: (names) => ipcRenderer.invoke('lupa:remove', names),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
