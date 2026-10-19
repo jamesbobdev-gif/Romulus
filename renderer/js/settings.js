@@ -37,6 +37,31 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
   fit();
   new MutationObserver(fit).observe($('settingsPanel'),{subtree:true,attributes:true,attributeFilter:['hidden']});
 })();
+/* Anything disconnected (each script marks its own with data-disconnected="what's wrong") is listed at the
+   top of Settings; clicking one opens its panel, scrolls down to where it is and flashes it */
+(function(){
+  const box=$('settingsAlerts'); let queued=false;
+  const draw=function(){
+    queued=false;
+    const items=[].slice.call(document.querySelectorAll('#settingsPanel [data-disconnected]')).filter(function(x){
+      return !box.contains(x)&&!x.closest('[hidden]:not(details)'); });
+    const sig=items.map(function(x){ return x.dataset.disconnected; }).join('|');
+    if(box.dataset.sig===sig)return;
+    box.dataset.sig=sig; box.innerHTML=''; box.hidden=!items.length;
+    items.forEach(function(x){
+      const b=document.createElement('button'); b.className='settings-alert';
+      b.textContent='⚠ '+x.dataset.disconnected; b.appendChild(document.createElement('span')).textContent='Fix ↓';
+      b.addEventListener('click',function(){
+        for(let d=x.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true;
+        x.scrollIntoView({behavior:'smooth',block:'center'});
+        x.classList.remove('settings-flash'); void x.offsetWidth; x.classList.add('settings-flash');
+      });
+      box.appendChild(b);
+    });
+  };
+  new MutationObserver(function(){ if(!queued){ queued=true; requestAnimationFrame(draw); } })
+    .observe($('settingsPanel'),{subtree:true,childList:true,attributes:true,attributeFilter:['hidden','data-disconnected']});
+})();
 // Settings is its own page: ⚙ opens it in place of the lists; ⚙ again, ← Back or Esc returns
 function setSettingsOpen(open){
   const p=$('settingsPanel'); if(p.hidden===!open)return;

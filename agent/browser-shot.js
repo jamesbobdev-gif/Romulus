@@ -1,4 +1,4 @@
-// A screenshot of the tab the agent browser was working in, for a task that stopped and needs James:
+// A screenshot of the tab the agent browser was working in, for a task that stopped and needs the user:
 // he sees what the browser saw (a login page, a popup, a locked screen…). Run with the system's Node
 // (it has WebSocket; Electron's built-in Node doesn't); agent/qwen-browser.js copies this file next to the browser tool.
 // Usage: node browser-shot.js <port>   → prints {"jpeg": "<base64>", "url": "<page address>"} or {}

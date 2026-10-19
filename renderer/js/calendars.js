@@ -20,15 +20,32 @@ if(calApi){
   const escH=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
   const PROV={google:'Google',microsoft:'Microsoft',ics:'Calendar link'};
   let calData=null;
+  // sign in again with this account (Google opens on its address); the account keeps its calendars and switches
+  const calRenew=async function(a,btn){
+    if(a.provider!=='google'&&a.provider!=='microsoft')return;
+    calErr('');
+    const was=btn&&btn.textContent; if(btn){ btn.textContent='Opening browser…'; btn.disabled=true; }
+    const r=await calApi.calConnect(a.provider,a.label&&a.label.indexOf('@')>0?{loginHint:a.label}:undefined);
+    if(btn){ btn.textContent=was; btn.disabled=false; }
+    if(!r.ok)calErr(r.error||'Sign-in failed.');
+    await gcalRefreshFn(true);
+    if(r.ok&&window.mailRefresh)window.mailRefresh();
+  };
+  window.calRenewGmail=function(email,btn){ calRenew({provider:'google',label:email||''},btn); };
   gcalRefreshFn=async function(fresh){
     try{ calData=await calApi.calOverview(!!fresh); }catch(e){ calErr('Couldn’t load calendars: '+e.message); return; }
     const box=$('calAccounts'); box.innerHTML='';
     calData.accounts.forEach(function(a){
       const el=document.createElement('div'); el.className='cal-acct';
+      if(a.broken)el.dataset.disconnected=a.label+': signed out';
       // "Google account" already says Google: only tag the provider when the name doesn't
       const tag=String(a.label||'').toLowerCase().indexOf(PROV[a.provider].toLowerCase())<0?'<span class="mono">'+PROV[a.provider]+'</span>':'<span></span>';
       let h='<div class="cal-acct-head"><b>'+escH(a.label)+'</b>'+tag+'<button class="ghost mono danger" data-remove>Remove</button></div>';
-      if(a.broken||a.error)h+='<div class="cal-acct-err">'+(a.broken?'Signed out — sign in with '+PROV[a.provider]+' again.':escH(a.error))+'</div>';
+      // Google stopped taking its sign-in (it expires now and then): one click renews it, on the same address
+      if(a.broken)h+='<div class="cal-acct-err">Its sign-in ran out. <button class="mono" data-renew>Renew sign-in</button></div>';
+      else if(a.error)h+='<div class="cal-acct-err">'+escH(a.error)+'</div>';
+      // its Gmail's receipts go to Finance (desktop only: purchase emails stay on the computer)
+      if(a.gmail&&calApi.calSetReceipts)h+='<div class="cal-row"><span class="cal-name">Gmail</span><label class="switch"><input type="checkbox" data-receipts'+(a.receipts!==false?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Read receipts for Finance</span></label></div>';
       a.calendars.forEach(function(c){
         h+='<div class="cal-row" data-ref="'+escH(c.ref)+'"><span class="cal-name" title="'+escH(c.name)+'">'+escH(c.name)+'</span>'+
           (c.canWrite?'<label class="switch"><input type="checkbox" data-push'+(c.push?' checked':'')+'><span class="track" aria-hidden="true"></span><span>Send my tasks here</span></label>':'')+
@@ -38,7 +55,9 @@ if(calApi){
         if(c.needsReconnect)h+='<p class="settings-hint" style="margin:2px 0 6px">Only your main calendar shows. <a href="#" data-reconnect>Sign in again</a> to see the rest.</p>';
       });
       el.innerHTML=h;
-      el.querySelectorAll('[data-reconnect]').forEach(function(x){ x.addEventListener('click',function(e){ e.preventDefault(); $('calGoogleBtn').click(); }); });
+      el.querySelectorAll('[data-reconnect]').forEach(function(x){ x.addEventListener('click',function(e){ e.preventDefault(); calRenew(a,x); }); });
+      el.querySelectorAll('[data-receipts]').forEach(function(inp){ inp.addEventListener('change',async function(){ await calApi.calSetReceipts(a.id,inp.checked); }); });
+      el.querySelectorAll('[data-renew]').forEach(function(x){ x.addEventListener('click',function(){ calRenew(a,x); }); });
       el.querySelector('[data-remove]').addEventListener('click',async function(){
         if(this.dataset.armed!=='1'){ this.dataset.armed='1'; this.textContent='Remove?'; return; }
         await calApi.calRemove(a.id); gcalRefreshFn();
@@ -153,6 +172,7 @@ if(calApi){
     const mailSay=function(st,r){
       if(!st.connected)return '';
       if(!st.allowed)return 'Sign in with Google again, and tick Gmail on Google’s screen, to allow this.';
+      if(st.expired)return 'Your Gmail sign-in ran out.';
       if(!st.enabled)return '';
       if(r&&r.error)return 'last check failed: '+r.error;
       if(r&&r.items&&r.items.length)return r.items.length+' date'+(r.items.length>1?'s':'')+' added from email just now.';
@@ -174,10 +194,27 @@ if(calApi){
       try{
         const r=await window.desktop.mailCheck();
         if(r&&r.items)addMailItems(r.items);
-        $('mailStatus').textContent=mailSay(await window.desktop.mailStatus(),r);
+        mailShow(await window.desktop.mailStatus(),r,true);
       }catch(e){}
     };
-    window.mailRefresh=function(){ window.desktop.mailStatus().then(function(st){ $('mailOn').checked=st.enabled; $('mailStatus').textContent=mailSay(st); }).catch(function(){}); };
+    // the status line, plus a Renew button when Google stopped taking the sign-in
+    const MAIL_RENEW='Renew your Gmail sign-in:';
+    const mailShow=function(st,r,tick){
+      $('mailStatus').textContent=mailSay(st,r);
+      const b=$('mailRenew'); b.hidden=!(st.connected&&st.expired);
+      if(b.hidden)delete $('mailEventsBox').dataset.disconnected; else $('mailEventsBox').dataset.disconnected='Gmail: sign-in ran out';
+      b.onclick=function(){ window.calRenewGmail(st.email,b); };
+      // and a to-do on his list while it's out (one at a time), checked off once it's renewed; only from the
+      // regular check, which runs after the lists have loaded
+      if(!tick)return;
+      const open=state.tasks.filter(function(t){ return !t.done&&taskWs(t)==='personal'&&t.title.startsWith(MAIL_RENEW); });
+      if(st.connected&&st.expired&&!open.length){
+        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendars';
+        state.tasks.push({id:uid(),title:title,done:false,due:null,dueTime:null,tag:null,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
+        voiceToast(title,true); touch();
+      } else if(!st.expired&&open.length){ open.forEach(function(t){ t.done=true; }); touch(); }
+    };
+    window.mailRefresh=function(){ window.desktop.mailStatus().then(function(st){ $('mailOn').checked=st.enabled; mailShow(st); }).catch(function(){}); };
     window.mailRefresh();
     $('mailOn').addEventListener('change',async function(){
       await window.desktop.mailSetEnabled($('mailOn').checked);

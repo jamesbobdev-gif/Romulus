@@ -8,7 +8,7 @@
 
 const MAX_QUESTIONS = 4;
 
-const HELPER_PROMPT = 'You are a helper for James\'s own assistant, a smaller model on his mini PC. It sent you ' +
+const HELPER_PROMPT = 'You are a helper for the user\'s own assistant, a smaller model on his mini PC. It sent you ' +
   'one question it wants researched. Use web search when it helps. Answer in plain text, under 250 words: the ' +
   'facts, then the links you used, copied exactly (a product or model page, not a search page). Say plainly ' +
   'if you couldn\'t find something; never make up links, prices or dates. You can\'t click, buy, send or log ' +

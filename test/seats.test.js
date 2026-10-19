@@ -27,3 +27,27 @@ test('showtimes keep real days, theaters and times, and only https links', () =>
   assert.strictEqual(cleanShowtimes({ days: [{ day: 'Sat', theaters: [] }] }), undefined);
   assert.strictEqual(cleanShowtimes(null), undefined);
 });
+
+test('theaters keep names, addresses, days and real coordinates only', () => {
+  const { cleanTheaters } = require('../agent/seats');
+  const s = cleanTheaters({ movie: 'You Can See Everything', days: ['Sat Oct 17', ''], here: { lat: 1, lng: 1 }, theaters: [
+    { name: 'Cinemark Valley View', address: '6001 Canal Rd, Valley View, OH', lat: 41.39, lng: -81.62, days: ['Sat Oct 17'], url: 'https://cinemark.com/x' },
+    { name: 'Bogus spot', lat: 'x', lng: 500, url: 'javascript:1' }, { address: 'no name' }, null] });
+  assert.deepStrictEqual(s, { movie: 'You Can See Everything', days: ['Sat Oct 17'], theaters: [
+    { name: 'Cinemark Valley View', address: '6001 Canal Rd, Valley View, OH', lat: 41.39, lng: -81.62, days: ['Sat Oct 17'], url: 'https://cinemark.com/x' },
+    { name: 'Bogus spot' }] });
+  assert.strictEqual(cleanTheaters({ theaters: [] }), undefined);
+  assert.strictEqual(cleanTheaters(null), undefined);
+});
+
+test('theaters get pinned from their address and sorted by his distance', async () => {
+  const { placeTheaters } = require('../agent/seats');
+  const { miles } = require('../agent/where');
+  const spots = { 'far st': { lat: 41.6, lng: -81.4 }, 'near st': { lat: 41.41, lng: -81.61 } };
+  const s = { theaters: [{ name: 'Far', address: 'far st' }, { name: 'Unknown', address: 'nowhere' }, { name: 'Near', address: 'near st', lat: 10, lng: 10 }] };
+  await placeTheaters(s, { lat: 41.4, lng: -81.6, accuracyM: 100 }, { geocode: async (a) => spots[a] || null, miles });
+  assert.deepStrictEqual(s.here, { lat: 41.4, lng: -81.6 });
+  assert.deepStrictEqual(s.theaters.map((t) => t.name), ['Near', 'Far', 'Unknown']);
+  assert.deepStrictEqual([s.theaters[0].lat, s.theaters[0].lng, s.theaters[0].dist], [41.41, -81.61, '0.9 mi']);
+  assert.strictEqual(s.theaters[2].lat, undefined);
+});

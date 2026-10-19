@@ -36,7 +36,7 @@ handle('voice:listen', (event) => new Promise((resolve) => {
     ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(VOICE_PS, 'utf16le').toString('base64')],
     { windowsHide: true });
   // constant background sound (a video, people talking) never gives it the pause it waits for: give up
-  // after 20 s and let James check what it heard instead of adding it
+  // after 20 s and let the user check what it heard instead of adding it
   let timedOut = false;
   const killer = setTimeout(() => { timedOut = true; try { p.kill(); } catch (e) {} }, 20 * 1000);
   p.stdout.on('data', (d) => {

@@ -1,5 +1,5 @@
 /* Option cards: a picture for each link Claude or the mini PC suggests, and Amazon links checked
-   against the real product page (price, rating, photo) so a made-up link never reaches James. */
+   against the real product page (price, rating, photo) so a made-up link never reaches the user. */
 const path = require('path');
 const fs = require('fs');
 const { AGENT_BROWSER_PORT, agentBrowserDir, findNode, ensureAgentBrowser } = require('./agent-browser');
@@ -55,7 +55,7 @@ async function hiddenWindowPreview(url) {
   } finally { if (!w.isDestroyed()) w.destroy(); previewWindows--; }
 }
 // Check an Amazon link is a real product page and pull its photo/price/rating.
-// Links that don't check out are dropped, so Claude can't hand James a made-up one.
+// Links that don't check out are dropped, so Claude can't hand the user a made-up one.
 async function enrichOption(o, lane) {
   const url = String(o.url || '');
   const base = { label: String(o.label || '').slice(0, 80), desc: String(o.desc || '').slice(0, 200) };
@@ -77,7 +77,7 @@ async function enrichOption(o, lane) {
     const img = [/data-old-hires="(https:[^"]+)"/, /"hiRes":"(https:[^"]+)"/, /data-a-dynamic-image="\{&quot;(https:[^&]+)&quot;/,
       /"large":"(https:[^"]+)"/, /property="og:image" content="(https:[^"]+)"/]
       .map((re) => (h.match(re) || [])[1]).find((u) => u && !/\.gif$/i.test(u));
-    if (!img) return null; // no real product photo: usually a sketchy listing, and James wants to see what he's buying
+    if (!img) return null; // no real product photo: usually a sketchy listing, and the user wants to see what he's buying
     const price = (h.match(/<span class="a-offscreen">(\$[0-9.,]+)<\/span>/) || [])[1];
     const rating = (h.match(/([0-9.]+) out of 5 stars/) || [])[1];
     return Object.assign(base, { url: clean,

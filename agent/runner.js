@@ -1,5 +1,5 @@
 /* Agent runner (the Claude lane).
-   When an Agent-tab task is queued (new, or James replied), start a headless
+   When an Agent-tab task is queued (new, or the user replied), start a headless
    Claude Code session with ONLY web search/fetch, hand it the queued tasks +
    his preferences, and pass its JSON answer to the renderer, which applies it
    and syncs like any other edit. Claude never touches the sync data itself.
@@ -13,13 +13,14 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
-const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, PINNED_CLOUDS } = require('./ai-connections');
+const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, closeStoreTabs, lastPage, SHOPS, SHOPS_DENIED, shopAgents } = require('./agent-browser');
 const runLive = require('./run-live');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
-const { wantsCalendar, calendarForAgent, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
+const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
-const { cleanSeats, cleanShowtimes } = require('./seats');
+const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
+const where = require('./where');
 const siteNotes = require('./site-notes');
 const { enrichOption, pagePreviewImage } = require('./previews');
 
@@ -27,6 +28,11 @@ const { enrichOption, pagePreviewImage } = require('./previews');
 const CLAUDE_AFTER_NOTE = '\n\n## Handing over\nClaude (with a full browser, his inbox and his photos) comes after you in this run. If a ' +
   'task needs a tool you don\'t have here (a browser to shop, order or check live prices, his inbox, a photo), leave that task out of ' +
   '`updates` entirely and Claude will take it. This replaces the needs-you advice below for those tasks; everything you can do, do.\n';
+// the same for an AI that has the agent browser this run: shopping and prices are its to do, only his inbox or a photo goes to Claude
+const CLAUDE_AFTER_BROWSER_NOTE = '\n\n## Handing over\nClaude (with his inbox and his photos) comes after you in this run. If a ' +
+  'task needs his inbox or a photo, leave that task out of `updates` entirely and Claude will take it. You have the browser_* tools: ' +
+  'shopping, live prices and orders are yours to do, not to hand over. This replaces the needs-you advice below for those tasks; ' +
+  'everything you can do, do.\n';
 
 let ctx = null; // { userData, documents, readConfig, dataFile, agentLog, sendToRenderer, memoryTidying }
 function init(c) { ctx = c; }
@@ -143,7 +149,7 @@ async function startAgentRun() {
   let rules;
   try { rules = fs.readFileSync(path.join(__dirname, 'instant-prompt.md'), 'utf8'); } catch (e) { agentLog('cannot read instructions: ' + e.message); return; }
   const prefs = await agentRow(':prefs');
-  // photos James attached (this reply + the latest few earlier ones) → ./attachments/<task>/ so
+  // photos the user attached (this reply + the latest few earlier ones) → ./attachments/<task>/ so
   // Claude can open them with its Read tool; only files from his own attachments bucket
   const workDir = path.join(ctx.documents(), 'Claude Agent');
   const attDir = path.join(workDir, 'attachments');
@@ -175,6 +181,11 @@ async function startAgentRun() {
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
   let allTasks = [];
   try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
+  const allSkills = loadSkills();
+  const nearMe = tasks.filter((t) => wantsNearby(t, allSkills)).map((t) => t.id);
+  const here = nearMe.length ? await where.hereNow().catch(() => null) : null;
+  if (nearMe.length) agentLog(here ? 'location: handed over (±' + (here.accuracyM || '?') + ' m)' : 'location: unavailable (Windows location off?)');
   const brief = tasks.map((t, i) => ({ id: t.id, n: tasks.length > 1 ? i + 1 : undefined, title: t.title, due: t.due, dueTime: t.dueTime, tag: t.tag,
     photos: photos[t.id] || undefined, // files to open with the Read tool (paths relative to your working folder)
     note: t.note || null, reply: t.reply || null,
@@ -190,9 +201,12 @@ async function startAgentRun() {
     scheduledRun: !!t.repeatDue,
     checkInboxFirst: wantsInbox(t) ? true : undefined,
     calendar: calendar && wantsCalendar(t) ? calendar : undefined,
+    whereHeIsNow: here && nearMe.includes(t.id) ? here : undefined, // from this computer's location, for "near me"
     howTo: (() => { const h = howtosFor(t); return h.length ? h.map(howtos.show) : undefined; })() }));
   // skills: the ones matching these tasks go in full; the rest are listed so Claude can open them itself
   const skills = loadSkills();
+  // tasks a `browser: yes` skill matches (seat maps, carts, forms): Gemini won't hand those to Flash-Lite
+  const needsBrowsing = (ids) => tasks.some((t) => ids.includes(t.id) && skills.some((s) => s.browser && s.match && s.match.test(skillText(t))));
   const loaded = skills.filter((s) => tasks.some((t) => s.match && s.match.test(skillText(t)))).slice(0, 4);
   if (loaded.length) agentLog('skills: ' + loaded.map((s) => s.name).join(', '));
   fs.mkdirSync(workDir, { recursive: true });
@@ -209,9 +223,11 @@ async function startAgentRun() {
   const notePart = notes.length ? '\n\n## Site notes\n' + notes.map(siteNotes.show).join('\n\n') : '';
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
-  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## James\'s preferences\n' + (prefs.trim() || '(none yet)') +
+  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
-    (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? CLAUDE_AFTER_NOTE : '');
+    (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
+  // which AIs get the agent browser this run (see the calls below): all of them, but Grok and Groq only when he turned it on
+  const browses = (id) => !!browserCfg && (!providers.COMPAT[id] || providers.settings(readConfig()).compatBrowser);
 
   // why each newly routed task went to Claude (shown on the task)
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
@@ -229,6 +245,8 @@ async function startAgentRun() {
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
+  // an answer saying it couldn't do the task waits here while the next AI tries; it's what he gets if none can
+  const held = {}, gaveUp = {};
   agentProc = 'running'; runIds = ids; runRetried = false;
   // a run must not be cut off by this computer idling to sleep. A closed lid (or Modern Standby with the screen
   // off) still freezes it: a beat that comes late tells us, and then the run starts over once it's awake, with
@@ -254,13 +272,20 @@ async function startAgentRun() {
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0])) }).finally(() => live.close())
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
-          timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; } })
-        : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs })
-        : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs })
-        : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs });
+          timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
+        : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+        // the ones answering one request at a time get the browser through the app's tool loop (agent/tool-loop.js);
+        // Grok and Groq only when he turned it on (compatBrowser)
+        : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs,
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+        : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs,
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } });
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
       if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
-      try { fs.writeFileSync(path.join(ctx.userData(), 'agent-last-run.log'), id + '\n' + (r.log || '') + '\n' + (r.text || '')); } catch (e) {}
+      // the last run overall, and each AI's own last run (agent-last-run-gemini.log…), so one AI's try isn't lost to the next
+      const runLog = id + '\n' + (r.log || '') + '\n' + (r.text || '');
+      try { fs.writeFileSync(path.join(ctx.userData(), 'agent-last-run.log'), runLog); fs.writeFileSync(path.join(ctx.userData(), 'agent-last-run-' + id + '.log'), runLog); } catch (e) {}
       let updates = null;
       try { const text = String(r.text || ''); updates = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)).updates; } catch (e) {}
       const isLast = order.indexOf(id) === order.length - 1;
@@ -271,12 +296,19 @@ async function startAgentRun() {
       if (Array.isArray(updates)) {
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
-        got.forEach((u) => { u._via = id; u._sawMail = sawMail; if (id === 'claude') { u.heard = live.heard(u.id); u.thoughts = live.thoughts(u.id); } });
-        answered.push(...got);
-        pending = pending.filter((x) => !got.some((u) => u.id === x));
+        got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; if (id === 'claude') { u.heard = live.heard(u.id); u.thoughts = live.thoughts(u.id); } });
+        const cant = isLast ? [] : got.filter(couldntDo);
+        cant.forEach((u) => { held[u.id] = u; (gaveUp[u.id] = gaveUp[u.id] || []).push(providers.NAMES[id]); });
+        const ok = got.filter((u) => !cant.includes(u));
+        answered.push(...ok);
+        pending = pending.filter((x) => !ok.some((u) => u.id === x));
         if (!pending.length) break;
+        if (cant.length) agentLog(providers.NAMES[id] + ' couldn’t do ' + cant.length + ' task(s), trying the next one');
+        // what it said, so a later look at the log shows why it was passed on (its own run log gets overwritten)
+        cant.forEach((u) => agentLog('  ' + providers.NAMES[id] + ' said: ' + String(u.cant || u.note || '').replace(/\s+/g, ' ').slice(0, 400)));
+        if (pending.length === cant.length) continue;
         lastWhy = 'it skipped this task';
-        agentLog(providers.NAMES[id] + ' skipped ' + pending.length + ' task(s)' + (isLast ? '' : ', trying the next one'));
+        agentLog(providers.NAMES[id] + ' skipped ' + (pending.length - cant.length) + ' task(s)' + (isLast ? '' : ', trying the next one'));
         continue;
       }
       if (id === 'claude' && r.resetAt) claudeResetAt = r.resetAt;
@@ -291,12 +323,25 @@ async function startAgentRun() {
     clearInterval(beats); ctx.powerSaveBlocker.stop(awake);
   }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
+  // none of the later AIs could do it either: the last one's "couldn't" answer goes to him
+  if (!slept && !runRetried) {
+    const last = pending.filter((x) => held[x]).map((x) => held[x]);
+    answered.push(...last);
+    pending = pending.filter((x) => !held[x]);
+  }
+  // a later AI took over: the note says who tried before it
+  for (const u of answered) {
+    const before = (gaveUp[u.id] || []).filter((n) => n !== providers.NAMES[u._via]);
+    if (before.length) u.note = String(u.note || '') + '\n\n(' + (held[u.id] === u ? 'Also tried: ' + before.join(', ') + '.'
+      : before.join(' and ') + ' couldn’t do this, so ' + providers.NAMES[u._via] + ' took over.') + ')';
+  }
   const valid = answered;
   const endPage = browserCfg ? await lastPage().catch(() => null) : null;
   for (const u of valid) {
     // a web try that opened his mail in the agent browser is treated like an inbox run from here on
     const sawMail = u._sawMail, via = u._via;
-    delete u._sawMail; delete u._via;
+    if (u._model) u.model = String(u._model).slice(0, 80); // which model wrote it, shown beside the AI's name
+    delete u._sawMail; delete u._via; delete u._model;
     if (sawMail && !mailRun) agentLog(providers.NAMES[via] + ' opened his mail in the browser: nothing from its answer is remembered, and its links are not opened');
     u.status = u.status === 'done' ? 'done' : 'needs-you';
     u.page = !sawMail && u.status === 'needs-you' ? endPage : null; // ◉ Watch opens this page for him
@@ -308,12 +353,15 @@ async function startAgentRun() {
     const task = tasks.find((x) => x.id === u.id);
     if (task && !sawMail && typeof u.howto === 'string') learnHowto(task, u.howto, taskLinks(task).concat((Array.isArray(u.options) ? u.options : []).map((o) => o && o.url).filter(Boolean)), 'claude');
     delete u.howto;
+    delete u.cant;
     // changes to his grocery list: short plain names only, and never from a run that saw his mail
     u.list = sawMail ? undefined : groceryChanges(u.list);
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.seats = sawMail ? null : (cleanSeats(u.seats) || null); // a seat map with its pick, he can tap other seats
     u.showtimes = sawMail ? null : (cleanShowtimes(u.showtimes) || null); // days and times he taps to pick one
+    u.theaters = sawMail ? null : (cleanTheaters(u.theaters) || null); // a map of the theaters, he taps one
+    if (u.theaters) await placeTheaters(u.theaters, here, where);
     // things to look at, as small picture cards (e.g. his grocery list): nothing to pick, no order
     u.cards = sawMail ? null : ((cleanCart(u.cards) || []).map((it) => ({ name: it.name, qty: it.qty, price: it.price, image: it.image, url: it.url })).slice(0, 40));
     if (!u.cards || !u.cards.length) u.cards = null;
@@ -402,7 +450,9 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       let text = '';
       text = meter.readClaudeStream(out);
       const log = 'exit ' + code + '\n' + err + '\n' + out;
-      if (text.includes('"updates"')) return finish({ text, log });
+      // the stream's first line (system init) names the model that ran
+      const model = (out.match(/"type":"system"[^\n]*?"model":"([^"]+)"/) || [])[1] || null;
+      if (text.includes('"updates"')) return finish({ text, log, model });
       // only the final answer and stderr: the stream also carries web pages the run read, which may say anything
       finish({ text, log, resetAt: parseUsageLimit(err + '\n' + text), auth: CLAUDE_AUTH_RE.test(err + text) });
     });

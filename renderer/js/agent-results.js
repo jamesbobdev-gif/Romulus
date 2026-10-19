@@ -85,7 +85,7 @@ if(window.desktop&&window.desktop.onAgentResults){
     const prefLines=[];
     updates.forEach(function(u){
       const t=state.tasks.find(function(x){ return x.id===u.id; });
-      // only answer tasks still waiting on this run (not ones James moved, finished or deleted meanwhile).
+      // only answer tasks still waiting on this run (not ones the user moved, finished or deleted meanwhile).
       // Queued counts too: a reply sent mid-run from a device without this fix puts it back in the queue,
       // and dropping the answer then threw away a whole run (10+ minutes on the mini PC)
       if(!t||taskWs(t)!=='agent'||t.done||(t.status!=='working'&&!(t.status==='queued'&&t.runFrom)))return; // switching AI clears runFrom
@@ -110,7 +110,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       // what it did on the way (the mini PC's live log), kept to read afterwards
       const thoughts=String(u.thoughts||liveText[t.id]||'').trim().slice(-6000);
       delete liveText[t.id]; delete t.runFrom;
-      // "done" = finished: the task stays in the Agent tab until James checks it off himself
+      // "done" = finished: the task stays in the Agent tab until the user checks it off himself
+      const reviewNote=t.note; // the order's review ("total … Reply yes"), for its total once it's placed
       t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked; // a fresh answer needs a fresh look
       // it stopped for something in its way: why, what to do, and what its browser showed
       t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
@@ -121,10 +122,12 @@ if(window.desktop&&window.desktop.onAgentResults){
       // questions to tap through, and an order to deselect from: each answer brings its own (or none)
       t.ask=Array.isArray(u.ask)&&u.ask.length?u.ask:null; if(typeof askDrafts!=='undefined')delete askDrafts[t.id];
       // the order went through (it marked what was bought): its cards are his last order, pictures and all
-      if(u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)keepLastOrder(t);
+      // and an order placed after his yes (Amazon): done, and its cart gone
+      if((u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)||(u.status==='done'&&Array.isArray(t.cart)&&t.cart.length&&!(Array.isArray(u.cart)&&u.cart.length)))keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''));
       t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
       t.seats=u.seats&&Array.isArray(u.seats.rows)?u.seats:null; if(typeof seatDrafts!=='undefined')delete seatDrafts[t.id]; // seat-map.js: its pick, fresh each answer
       t.showtimes=u.showtimes&&Array.isArray(u.showtimes.days)?u.showtimes:null; if(typeof showDay!=='undefined')delete showDay[t.id]; // seat-map.js: days and times to tap
+      t.theaters=u.theaters&&Array.isArray(u.theaters.theaters)?u.theaters:null; if(typeof theaterPick!=='undefined')delete theaterPick[t.id]; // seat-map.js: the theaters on a map
       // just to look at (his grocery list): small cards. They stay up when an answer brings none ("add hummus"),
       // with what it added or removed on the list
       if(Array.isArray(u.cards)&&u.cards.length)t.cards=u.cards;
@@ -135,7 +138,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Lupa Au Palatine asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
-      if(['gemini','openai','openrouter','xai','groq','cerebras'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS
+      if(['gemini','openai','openrouter','xai','groq','cloudflare'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS
+      if(u.lane!=='local'&&typeof u.model==='string'&&u.model)extra.model=u.model.slice(0,80); // which model wrote it (lists.js shows it by the name)
       if(t.shot)extra.images=[t.shot];
       if(thoughts){
         extra.thoughts=thoughts;

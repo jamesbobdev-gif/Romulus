@@ -12,6 +12,7 @@ function load(tasks) {
     window: { desktop: { onAgentResults: on('results'), onAgentWorking: on('working'), onAgentLive: on('live'), onAgentWaiting: on('waiting') } },
     state: { tasks }, liveText: {}, livePlan: {}, liveHeard: {}, fillPlan() {}, taskWs: (t) => t.ws,
     agentSay(t, who, text, extra) { t.history = t.history || []; t.history.push(Object.assign({ who, text, at: Date.now() }, extra || {})); },
+    keepLastOrder(t, note) { t.kept = note; },
     touch() {}, appendPrefs() {}, setInterval() {}, setTimeout() {}, document: { querySelector: () => null },
   };
   vm.createContext(ctx);
@@ -131,4 +132,13 @@ test('the computer slept mid-run: the task goes back in the queue and says why, 
   assert.strictEqual(t.runFrom, undefined);
   assert.strictEqual(ctx.liveText.s, undefined);
   assert.match(t.history.pop().text, /went to sleep/);
+});
+
+test('an order placed after his yes is kept, with the review that had its total', () => {
+  const t = { id: 'o', ws: 'agent', status: 'queued', note: 'Total with tax: $25.40. Reply yes to place this order.', cart: [{ name: 'Owala bottle' }], history: [] };
+  const { cb } = load([t]);
+  cb.working({ ids: ['o'] });
+  cb.results([{ id: 'o', status: 'done', note: 'Placed: order 112-3, arrives Tue.' }]);
+  assert.ok(t.kept && t.kept.includes('$25.40'));
+  assert.strictEqual(t.cart, null);
 });

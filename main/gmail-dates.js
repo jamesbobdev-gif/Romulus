@@ -41,9 +41,9 @@ function claudeJson(messages, schema, opts = {}) {
     p.stdin.end(messages[1].content);
   });
 }
-// one read-only Gmail API call (his account from Settings → Calendars, with Gmail ticked)
-async function gmail(sub) {
-  const acct = calendars.gmailAccount();
+// one read-only Gmail API call (his account from Settings → Calendars, with Gmail ticked; or acctId's)
+async function gmail(sub, acctId) {
+  const acct = acctId ? calendars.receiptAccounts().find((a) => a.id === acctId) : calendars.gmailAccount();
   if (!acct) throw new Error('Gmail isn’t connected');
   const token = await calendars.tokenFor(acct.id);
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + sub, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(20000) });
@@ -53,8 +53,10 @@ async function gmail(sub) {
 }
 handle('mail:status', () => {
   const cfg = readConfig();
-  return { connected: (cfg.calAccounts || []).some((a) => a.provider === 'google'), allowed: mailAllowed(), enabled: !(cfg.mailEvents && cfg.mailEvents.enabled === false),
-    last: (cfg.mailEvents && cfg.mailEvents.last) || null };
+  const acct = calendars.gmailAccount();
+  // expired: Google stopped taking its sign-in; Settings shows a Renew button for that address
+  return { connected: (cfg.calAccounts || []).some((a) => a.provider === 'google'), allowed: !!acct, enabled: !(cfg.mailEvents && cfg.mailEvents.enabled === false),
+    last: (cfg.mailEvents && cfg.mailEvents.last) || null, expired: !!(acct && acct.broken), email: (acct && acct.email) || null };
 });
 handle('mail:set-enabled', (_e, on) => {
   const cfg = readConfig(); cfg.mailEvents = Object.assign({}, cfg.mailEvents, { enabled: !!on }); writeConfig(cfg);
@@ -80,4 +82,4 @@ handle('mail:check', async () => {
 });
 
 
-module.exports = { init, handlers, gmail, claudeJson, mailAllowed };
+module.exports = { init, handlers, gmail, claudeJson, mailAllowed, receiptAccounts: () => calendars.receiptAccounts() };

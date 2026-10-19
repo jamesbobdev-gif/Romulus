@@ -1,8 +1,8 @@
-/* A Claude run, live on its tasks: what it plans and does, and what James writes meanwhile.
+/* A Claude run, live on its tasks: what it plans and does, and what the user writes meanwhile.
    - Plan + steps: Claude Code streams every tool call (stream-json). Its own checklist (TaskCreate /
      TaskUpdate) becomes the task's plan, and searches, pages and browser clicks become one-line steps.
      Both go to the task as 'agent:live' while it works, and the steps are kept as "What it did" after.
-   - Messages mid-run: what James writes on a task while Claude works on it goes into an inbox folder, one
+   - Messages mid-run: what the user writes on a task while Claude works on it goes into an inbox folder, one
      file each; agent/run-inbox.js (a Claude Code hook) hands them to Claude after its next tool call, or
      before it finishes. Those Claude took count as heard: his reply then doesn't start another run.
      A yes or photos sent that way still go round again (a yes unlocks final clicks only from the run's

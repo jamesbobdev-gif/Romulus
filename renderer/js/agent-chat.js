@@ -63,7 +63,8 @@ function localModelName(){
 function agentSay(t,who,text,extra){
   if(!text)return;
   if(!Array.isArray(t.history))t.history=[];
-  const e={who:who,text:String(text).slice(0,2000),at:Date.now()};
+  // an answer keeps all of its note (up to 6000 characters: an essay or a letter), the rest stay short
+  const e={who:who,text:String(text).slice(0,who==='claude'?6000:2000),at:Date.now()};
   if(extra)Object.assign(e,extra);
   t.history.push(e);
   if(t.history.length>40)t.history=t.history.slice(-40);
@@ -107,7 +108,7 @@ document.addEventListener('paste',function(e){
   const go=function(map,id){ e.preventDefault(); map[id].add(imgs); };
   // 1) typing directly in a reply box → that task
   const ae=document.activeElement, focusedReply=ae&&ae.dataset&&ae.dataset.replyFor;
-  const listy=state.activeTab!=='ideas'&&state.activeTab!=='calendar'&&state.activeTab!=='finance';
+  const listy=state.activeTab!=='ideas'&&state.activeTab!=='hours'&&state.activeTab!=='calendar'&&state.activeTab!=='finance';
   if(ae&&ae.id==='newTitle'&&listy&&attachProfile()){ e.preventDefault(); addComposerFiles(imgs); return; }
   if(focusedReply&&replies.indexOf(focusedReply)!==-1)return go(attachTargets,focusedReply);
   // 2) the task you're in (focus inside its panel / last clicked / selected / the only open one)
@@ -152,7 +153,7 @@ async function addComposerFiles(list){
 }
 function drawComposerAtts(){
   const box=document.getElementById('newAtts'); if(!box)return;
-  box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='calendar'||state.activeTab==='finance';
+  box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='calendar'||state.activeTab==='finance';
   composerAtts.forEach(function(a,i){
     const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for Romulus';
     im.addEventListener('click',function(){ openLightbox(composerAtts.map(function(x,j){ return {image:x.preview,label:'Photo '+(j+1)}; }),i); });
@@ -235,14 +236,14 @@ function repeatText(r){
 }
 // Moving between channels = delete here + a fresh copy (new id) there, so the
 // old channel's tombstone can never remove the moved copy.
-// James's override: the other model takes this task over. The conversation, his reply and the links all
+// the user's override: the other model takes this task over. The conversation, his reply and the links all
 // live on the task, so the new model starts from everything said so far. A late answer from the old
 // model is ignored (the app only applies a result to a task still "working" for it; the connector's
 // finish_task checks who holds the claim).
 // who has the task now: its lane, or for older tasks whoever answered last; null = nobody yet
 // 'gemini' / 'openai' = the cloud lane ('claude' on the server) with that AI only (t.cloud)
 // the cloud AIs besides Claude, by name (agent/providers.js NAMES); all of them are in the pill's cloud menu
-const CLOUD_NAMES={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',xai:'Grok',groq:'Groq',cerebras:'Cerebras'};
+const CLOUD_NAMES={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',xai:'Grok',groq:'Groq',cloudflare:'Cloudflare'};
 const PINNED_CLOUDS=Object.keys(CLOUD_NAMES);
 function laneNow(t){
   if(t.lane==='claude'&&(PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude'))return t.cloud;
@@ -289,10 +290,10 @@ function setLane(t,to,ok){
   agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
   buzz('tap'); touch();
 }
-function moveTask(t,toWs){
+function moveTask(t,toWs,id){ // id: keep a known one (holoBackToSchool); otherwise a fresh one
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   const now=Date.now();
-  const c=Object.assign({},t,{id:uid(),ws:toWs,googleEventId:null,calRef:null,updatedAt:now,subs:t.subs.map(function(s){ return Object.assign({},s); })});
+  const c=Object.assign({},t,{id:id||uid(),ws:toWs,googleEventId:null,calRef:null,updatedAt:now,subs:t.subs.map(function(s){ return Object.assign({},s); })});
   if(toWs==='agent'){ c.fromWs=taskWs(t); c.status='queued'; c.note=null; c.reply=null; c.options=null; c.done=false; c.repeat=null; c.nextRun=null; c.repeatDue=false; delete c.recur; delete c.recurNext;
     // carry any screenshots into Claude's view: as reply images + a conversation entry
     const imgs=Array.isArray(t.images)?t.images.slice(0,6):[];
@@ -303,10 +304,21 @@ function moveTask(t,toWs){
   ['lane','claimedBy','claimedAt'].forEach(function(k){ delete c[k]; }); // routed and claimed afresh
   // only school tasks carry a type + instructions; the old office build drops unknown fields on work tasks
   if(toWs!=='school'&&toWs!=='agent'){ delete c.kind; delete c.notes; }
+  // a School assignment handed to the Agent goes straight to the mini PC's model, no routing
+  if(toWs==='agent'&&taskWs(t)==='school'){ c.lane='local'; agentSay(c,'sys','From School → '+localModelName()); }
   state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; }).concat([c]);
   state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:now});
   touch();
+}
+/* Undo the short-lived "every School assignment goes to Holo by itself" (2026-10-17): those Agent tasks
+   ("holo-<old id>") go back to School under their old id, so the course calendars still know them. */
+function holoBackToSchool(){
+  state.tasks.filter(function(t){ return taskWs(t)==='agent'&&/^holo-/.test(t.id); }).forEach(function(t){
+    const id=t.id.slice(5);
+    state.tombstones=state.tombstones.filter(function(x){ return x.id!==id; });
+    moveTask(t,'school',id);
+  });
 }
 function setDone(t,v){
   t.done=v;
@@ -339,4 +351,69 @@ function startEdit(t,span){
   input.addEventListener('keydown',function(e){ if(e.key==='Enter')commit(); if(e.key==='Escape'){finished=true;render();} });
   input.addEventListener('blur',commit);
   span.replaceWith(input); input.focus(); input.select();
+}
+
+/* ── documents from the Agent tab (main/downloads.js) ── */
+// a long written answer (an essay, a letter, notes) is a document: it gets a download button
+function isDocAnswer(text){ return String(text||'').trim().split(/\s+/).length>=120; }
+function docButton(title,text){
+  const b=el('button','btn-ghost doc-dl','⬇ Download as Word');
+  b.title='Save this answer as a Word document';
+  b.addEventListener('click',function(e){ e.stopPropagation(); saveAnswerDoc(title,text); });
+  return b;
+}
+function saveAnswerDoc(title,text){
+  if(window.desktop&&window.desktop.saveDoc){
+    window.desktop.saveDoc(title,text).then(function(r){
+      if(r&&r.ok)pasteToast('Saved to '+r.path);
+      else if(r&&!r.canceled)pasteToast('Couldn’t save it: '+(r.error||'something went wrong'));
+    });
+    return;
+  }
+  // the phone: hand it to the Share menu (Files, Drive, email…), else a plain download
+  const file=new File([text],(String(title||'Document').replace(/[\/:*?"<>|]+/g,' ').trim().slice(0,80)||'Document')+'.txt',{type:'text/plain'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){ navigator.share({files:[file],title:title}).catch(function(){}); return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
+}
+/* files the mini PC's browser downloaded (a worksheet off Blackboard) land in Lupa's Downloads folder,
+   not on this computer: listed at the top of the Agent tab, each with a Download button */
+let lupaList=null, lupaAt=0, lupaLoading=false, lupaDrawn='';
+function loadLupaFiles(){
+  if(lupaLoading)return; lupaLoading=true;
+  window.desktop.lupaFiles().then(function(r){
+    lupaList=r&&r.ok?r.files:[]; lupaAt=Date.now();
+  }).catch(function(){ lupaList=[]; lupaAt=Date.now(); }).then(function(){ lupaLoading=false; if(state.activeTab==='agent')drawLupaFiles(true); });
+}
+function fileSize(n){ return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B'; }
+function drawLupaFiles(show){
+  const box=$('lupaFiles'); if(!box)return;
+  if(!show||!window.desktop||!window.desktop.lupaFiles||!(localStat&&localStat.configured)){ box.hidden=true; return; }
+  if(!lupaList||Date.now()-lupaAt>60000)loadLupaFiles();
+  // the browser's repeat copies ("Worksheet (3).docx", same size) show once: the newest
+  const seen={}, files=(lupaList||[]).filter(function(f){
+    const k=f.name.replace(/ \(\d+\)(?=\.[^.]+$|$)/,'')+'|'+f.size; if(seen[k])return false; seen[k]=1; return true;
+  });
+  box.hidden=!files.length;
+  const key=JSON.stringify(files); if(key===lupaDrawn)return; lupaDrawn=key;
+  box.textContent='';
+  box.appendChild(el('summary',null,'📄 Files on Lupa Au Palatine ('+files.length+')'));
+  const ul=el('ul','lupa-file-list');
+  files.forEach(function(f){
+    const li=el('li','lupa-file');
+    li.appendChild(el('span','lupa-file-name',f.name.replace(/ \(\d+\)(?=\.[^.]+$|$)/,'')));
+    li.appendChild(el('span','lupa-file-meta',fmtWhen(f.at)+' · '+fileSize(f.size)));
+    const b=el('button','btn-ghost doc-dl','⬇ Download');
+    b.title='Copy it from the mini PC to this computer';
+    b.addEventListener('click',function(e){
+      e.stopPropagation(); b.disabled=true; b.textContent='Copying…';
+      window.desktop.lupaFetch(f.name).then(function(r){
+        if(r&&r.ok)pasteToast('Saved to '+r.path);
+        else if(r&&!r.canceled)pasteToast('Couldn’t copy it: '+(r.error||'the mini PC didn’t answer'));
+      }).catch(function(err){ pasteToast('Couldn’t copy it: '+err.message); })
+        .then(function(){ b.disabled=false; b.textContent='⬇ Download'; });
+    });
+    li.appendChild(b); ul.appendChild(li);
+  });
+  box.appendChild(ul);
 }

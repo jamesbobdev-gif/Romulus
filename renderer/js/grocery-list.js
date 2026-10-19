@@ -135,8 +135,10 @@ function yesButton(t){
    same picks instead, so it fixes the cart before asking for the yes. An item with other sizes/brands
    (it.options) has a menu on its card: what he switches to goes along as "swap: A → B". */
 // an order that went through (or he checked off): what he kept on it, with pictures, is his last order.
-// Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor)
-function keepLastOrder(t){
+// Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor). The last dozen stay in
+// t.orders, with the store and total, so the Finance tab can show what a charge was for (order-match.js).
+// note: what Romulus said about it (its total), when t.note has already moved on
+function keepLastOrder(t,note){
   if(!Array.isArray(t.cart)||!t.cart.length)return;
   const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
   const items=t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).slice(0,40).map(function(it){
@@ -144,7 +146,10 @@ function keepLastOrder(t){
     const s=op||it;
     return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined};
   });
-  if(items.length)t.lastOrder={at:Date.now(),items:items};
+  if(!items.length)return;
+  t.lastOrder={at:Date.now(),items:items};
+  const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
+  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{})]).slice(-12);
 }
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){

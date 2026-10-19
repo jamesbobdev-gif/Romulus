@@ -109,7 +109,7 @@ async function startBrowserTools(lockFile) {
     close() { try { p.kill(); } catch (e) {} },
   };
 }
-/* When a mini PC run stops for something in its way, James gets why, what to do, and a picture of
+/* When a mini PC run stops for something in its way, the user gets why, what to do, and a picture of
    what its browser showed. The screenshot goes to his attachments bucket like the photos he adds. */
 async function miniPcScreenshot() {
   const node = findNode();

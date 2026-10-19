@@ -99,3 +99,12 @@ test('cleanCart: keeps the product page (https) so the app can find a picture', 
   assert.deepStrictEqual(ctx.cleanCart([{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs', url: 'javascript:x' }]),
     [{ name: 'Milk', url: 'https://www.walmart.com/ip/10450114' }, { name: 'Eggs' }]);
 });
+
+test('near-me tasks get his location: nearby skills or near words', () => {
+  const skills = ctx.loadSkills();
+  assert.deepStrictEqual(skills.filter((s) => s.nearby).map((s) => s.name).sort(), ['bookings-services', 'groceries', 'seats']);
+  for (const title of ['movies tonight', 'find a barber', 'weekly grocery order', 'closest Target with printer ink', 'is it in stock near me'])
+    assert.strictEqual(ctx.wantsNearby({ title }, skills), true, title);
+  for (const title of ['email my professor', 'buy a phone case on Amazon', 'print the bracket stl'])
+    assert.strictEqual(ctx.wantsNearby({ title }, skills), false, title);
+});

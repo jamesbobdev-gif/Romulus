@@ -24,7 +24,7 @@ const dayOf = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d
 
 function prompt(now) {
   const day = now.toLocaleDateString('en-US', { weekday: 'long' });
-  return `You are Romulus, James's assistant in his Tasks app. Every morning you look ahead for him and
+  return `You are Romulus, the user's assistant in his Tasks app. Every morning you look ahead for him and
 spot what needs to happen in the next two weeks before he realizes it. Today is ${day} ${dayOf(now)}.
 
 You get his calendar (next 14 days), his recent email (subject, sender, a snippet), what he has told
@@ -38,7 +38,8 @@ Look for things like:
 - appointment: something that needs booking or confirming (a checkup that's due, a reservation an
   event needs, an RSVP).
 - meals: planning the week's meals and a grocery list. Only on a Saturday or Sunday morning, and only
-  if his memory or lists show he plans meals or cooks.
+  if his memory or lists show he plans meals or cooks. His grocery order runs on its own 2-week timer
+  (see "Grocery order"): no meals or grocery suggestion before that date.
 - prep: something an upcoming event needs done first (pack for the trip, print the tickets, read
   before the meeting, get the form signed).
 
@@ -64,8 +65,9 @@ Rules:
 
 /* everything Claude is handed, as one message.
    calendar: {timeZone, events:[{start,end,title,where,details,invitedBy}]} or null
-   mails: [{from, subject, snippet, date}], prefs: his memory (text), tasks: open tasks, recent: earlier suggestions */
-function buildInput({ calendar, mails, prefs, tasks, recent }) {
+   mails: [{from, subject, snippet, date}], prefs: his memory (text), tasks: open tasks, recent: earlier suggestions,
+   groceryNext: 'YYYY-MM-DD' the next grocery order opens, or null */
+function buildInput({ calendar, mails, prefs, tasks, recent, groceryNext }) {
   const parts = [];
   parts.push('## Calendar (next 14 days)\n' + (calendar && calendar.events.length
     ? '```json\n' + JSON.stringify(calendar, null, 0) + '\n```' : '(no calendar connected or nothing on it)'));
@@ -77,12 +79,30 @@ function buildInput({ calendar, mails, prefs, tasks, recent }) {
     ? tasks.map((t) => '- ' + t.title + (t.due ? ' (due ' + t.due + ')' : '') + ' [' + t.list + ']').join('\n') : '(none)'));
   parts.push('## Already suggested (last 60 days)\n' + (recent && recent.length
     ? recent.map((r) => '- ' + r.key + ': ' + r.title).join('\n') : '(nothing)'));
+  if (groceryNext) parts.push('## Grocery order\nThe next 2-week grocery order opens on its own on ' + groceryNext + '. No meals or grocery suggestion before then.');
   return parts.join('\n\n');
 }
 
-// keep what the model got right: a known kind, a title, a sane due date, a key not suggested before
-function clean(proposals, { now = new Date(), recentKeys = [] } = {}) {
+/* the 2-week grocery order (renderer/js/grocery-list.js): it counts from his latest grocery ask, an
+   Agent task titled with grocery words or a reply of his saying them. → 'YYYY-MM-DD' it opens, or null */
+const GROCERY_WORDS = /\b(grocer(y|ies)|ebt|food stamps)\b/i;
+const GROCERY_EVERY = 14 * 24 * 3600 * 1000;
+function nextGroceryDay(tasks) {
+  let last = 0;
+  for (const t of Array.isArray(tasks) ? tasks : []) {
+    if (!t || t.ws !== 'agent') continue;
+    if (GROCERY_WORDS.test(t.title || '')) last = Math.max(last, t.created || 0);
+    for (const h of Array.isArray(t.history) ? t.history : []) if (h && h.who === 'you' && GROCERY_WORDS.test(String(h.text || ''))) last = Math.max(last, h.at || 0);
+  }
+  return last ? dayOf(new Date(last + GROCERY_EVERY)) : null;
+}
+
+// keep what the model got right: a known kind, a title, a sane due date, a key not suggested before.
+// groceryNext: no meals/grocery suggestion until 2 days before the next grocery order opens
+function clean(proposals, { now = new Date(), recentKeys = [], groceryNext = null } = {}) {
   const today = dayOf(now);
+  const soon = new Date(now); soon.setDate(soon.getDate() + 2);
+  const groceryLater = !!groceryNext && groceryNext > dayOf(soon);
   const limit = new Date(now); limit.setDate(limit.getDate() + 60);
   const seen = new Set(recentKeys.map((k) => String(k).toLowerCase()));
   const out = [];
@@ -93,6 +113,7 @@ function clean(proposals, { now = new Date(), recentKeys = [] } = {}) {
     const note = String(p.note || '').trim().slice(0, 600);
     if (!key || !title || !note || seen.has(key)) continue;
     const kind = KINDS.includes(p.kind) ? p.kind : 'other';
+    if (groceryLater && (kind === 'meals' || GROCERY_WORDS.test(title + ' ' + note))) continue;
     const d = String(p.due || '').match(/^\d{4}-\d{2}-\d{2}$/);
     const due = d && d[0] >= today && d[0] <= dayOf(limit) ? d[0] : null;
     seen.add(key);
@@ -127,4 +148,4 @@ async function recentMail(gmail) {
   return out;
 }
 
-module.exports = { SCHEMA, MAX_PROPOSALS, KINDS, prompt, buildInput, clean, isDue, recentMail, dayOf };
+module.exports = { SCHEMA, MAX_PROPOSALS, KINDS, prompt, buildInput, clean, isDue, recentMail, dayOf, nextGroceryDay };

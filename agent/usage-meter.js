@@ -1,7 +1,7 @@
 /* How much of each cloud AI is used up, for the usage bars in Settings → AI connections.
    Claude: the real 5-hour and weekly percentages Claude Code reports (rate_limit_event in stream-json).
    Gemini: calls per Google day (midnight Pacific); its daily limit is learned from the 429 that says so.
-   ChatGPT, OpenRouter, Grok, Groq, Cerebras: calls and tokens this month (OpenRouter's credit comes from its /key check).
+   ChatGPT, OpenRouter, Grok, Groq: calls and tokens this month (OpenRouter's credit comes from its /key check).
    Kept in userData/ai-usage.json on this computer only. No Electron here, so it can be tested on its own. */
 const fs = require('fs');
 const path = require('path');

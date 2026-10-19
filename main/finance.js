@@ -5,23 +5,35 @@
      user-data folder. It is encrypted with AES-256-GCM under a key made from his passphrase (scrypt), and
      the whole file is encrypted again with Windows' own encryption (safeStorage → DPAPI). The passphrase is
      never saved; the key is only in memory while the tab is unlocked, and is wiped when it locks.
-   - It locks after 10 minutes without use, when the screen locks, and when the computer sleeps.
+   - It locks after 30 minutes without use, when the screen locks, and when the computer sleeps.
+   - Windows Hello (main/finance-hello.js) can open it instead of the passphrase: after a passphrase unlock
+     the key is also kept in finance.hello, sealed with Windows' encryption, and only used after Windows'
+     own PIN / fingerprint / face prompt says it's him. (That's weaker than the passphrase alone against
+     something already running as him on this computer; he chose it for convenience. Off: finance:setHello.)
    - It never leaves this computer: not in config.json (so "Send my settings" to the hub mini PC can't carry
      it), not in tasks.json or Supabase, not one of the hub's remote calls, and the Agent can't read it.
    - It only ever talks to simplefin.org over HTTPS, never follows redirects, and the log never gets amounts,
-     names or the link. */
+     names or the link.
+   - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to Claude to be read,
+     and what they bought is kept in the vault too. Nothing from the bank goes with them.
+   - Live stock prices (main/finance-stocks.js) come from Yahoo Finance's public chart data: only ticker
+     symbols are sent, never shares, amounts or account names. */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const scrypt = require('util').promisify(crypto.scrypt);
+const financeMail = require('./finance-mail');
+const stocks = require('./finance-stocks');
+const hello = require('./finance-hello');
+// the SimpleFIN reading the phone shares (renderer/js/finance-core.js)
+const { checkSimplefinUrl, cleanAccounts, mergeAccounts: mergeWith, downloadAccounts, txt } = require('../renderer/js/finance-core');
 
 const VAULT = 'finance.vault';
 const KDF = { N: 2 ** 17, r: 8, p: 1, maxmem: 256 * 1024 * 1024 }; // ~128 MB per guess: slow to brute-force offline
 const MIN_PASSPHRASE = 10;
-const IDLE_LOCK_MS = 10 * 60 * 1000;
+const IDLE_LOCK_MS = 30 * 60 * 1000;
 const MIN_REFRESH_MS = 15 * 60 * 1000; // SimpleFIN Bridge allows only a couple dozen refreshes a day
 const STALE_MS = 6 * 60 * 60 * 1000; // older than this: refreshed by itself when he unlocks
-const FETCH_DAYS = 90;
 const KEEP_DAYS = 400; // history builds up past SimpleFIN's window, a year and a bit
 const AAD = Buffer.from('tasks-finance-v1');
 
@@ -73,11 +85,28 @@ function writeVault() {
 }
 const isSetUp = () => fs.existsSync(file());
 
+/* ── Windows Hello: the vault key, sealed by Windows, for when Hello says it's him ── */
+const helloFile = () => path.join(ctx.userData(), 'finance.hello');
+const helloReady = () => fs.existsSync(helloFile());
+const helloApi = () => ctx.hello || hello;
+function forgetHello() { try { fs.unlinkSync(helloFile()); } catch (e) {} }
+// after a passphrase unlock (unless he turned it off): only if Windows really encrypts it, and Hello is set up
+async function rememberForHello() {
+  if (!key || (vault && vault.hello === false) || !ctx.seal) return false;
+  const k = Buffer.from(key);
+  if (!(await helloApi().available().catch(() => false))) return false;
+  const sealed = ctx.seal(k.toString('base64'));
+  k.fill(0);
+  if (typeof sealed !== 'string' || !sealed.startsWith('enc:')) return false; // never the key in the clear
+  fs.writeFileSync(helloFile(), JSON.stringify({ v: 1, key: sealed }), { mode: 0o600 });
+  return true;
+}
+
 /* ── locking ── */
 function lock(why) {
   const was = !!key;
   if (key) key.fill(0);
-  key = null; vault = null; salt = null;
+  key = null; vault = null; salt = null; lastQuotes = null; lastDaily = null;
   clearTimeout(idleTimer); idleTimer = null;
   if (was) { log('locked (' + (why || 'asked') + ')'); if (ctx.sendToRenderer) ctx.sendToRenderer('finance:locked', why || 'asked'); }
 }
@@ -100,14 +129,6 @@ async function unlockWith(passphrase, v) {
 }
 
 /* ── SimpleFIN ── */
-// only simplefin.org, only HTTPS: a pasted token can't point this at anything else
-function checkSimplefinUrl(u) {
-  let x;
-  try { x = new URL(u); } catch (e) { return null; }
-  const host = x.hostname.toLowerCase();
-  if (x.protocol !== 'https:' || !(host === 'simplefin.org' || host.endsWith('.simplefin.org'))) return null;
-  return x;
-}
 function claimUrlFromToken(token) {
   const t = String(token || '').trim().replace(/\s+/g, '');
   if (!/^[A-Za-z0-9+/=_-]{20,2000}$/.test(t)) return null;
@@ -127,55 +148,8 @@ async function claim(token) {
   if (!x || !x.username || !x.password) throw new Error('SimpleFIN answered with something unexpected. Try a new token.');
   return accessUrl;
 }
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-const txt = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').slice(0, n || 200);
-// what SimpleFIN sent, cut down to the fields the tab shows (nothing else from it is kept)
-function cleanAccounts(body) {
-  const conns = {};
-  for (const c of Array.isArray(body.connections) ? body.connections : []) if (c && c.conn_id) conns[c.conn_id] = c.org_name || c.name;
-  return (Array.isArray(body.accounts) ? body.accounts : []).filter((a) => a && a.id).map((a) => ({
-    id: txt(a.id, 120), name: txt(a.name, 120),
-    org: txt(conns[a.conn_id] || (a.org && (a.org.name || a.org.domain)) || '', 120),
-    currency: /^[A-Z]{3}$/.test(a.currency) ? a.currency : 'USD',
-    balance: num(a.balance), available: a['available-balance'] == null ? null : num(a['available-balance']),
-    balanceDate: num(a['balance-date']),
-    transactions: (Array.isArray(a.transactions) ? a.transactions : []).filter((t) => t && t.id).map((t) => ({
-      id: txt(t.id, 160), posted: num(t.posted) || num(t.transacted_at), amount: num(t.amount),
-      description: txt(t.payee || t.description, 200), pending: !!t.pending || !num(t.posted),
-    })),
-  }));
-}
-const errorsOf = (body) => (Array.isArray(body.errlist) ? body.errlist.map((e) => e && e.msg) : Array.isArray(body.errors) ? body.errors : [])
-  .filter(Boolean).map((m) => txt(m, 300)).slice(0, 10);
-// new download + what was kept before: transactions add up past SimpleFIN's window; pending ones are replaced
-function mergeAccounts(old, fresh, now) {
-  const cutoff = now / 1000 - KEEP_DAYS * 86400;
-  const before = {};
-  for (const a of old || []) before[a.id] = a;
-  return fresh.map((a) => {
-    const seen = new Set(a.transactions.map((t) => t.id));
-    const kept = ((before[a.id] || {}).transactions || []).filter((t) => !seen.has(t.id) && !t.pending && t.posted >= cutoff);
-    const all = a.transactions.concat(kept).sort((x, y) => (y.posted || Infinity) - (x.posted || Infinity));
-    return Object.assign({}, a, { transactions: all });
-  });
-}
-async function download(accessUrl) {
-  const x = checkSimplefinUrl(accessUrl);
-  if (!x) throw new Error('The saved SimpleFIN link isn’t valid. Forget it and connect again.');
-  const auth = 'Basic ' + Buffer.from(decodeURIComponent(x.username) + ':' + decodeURIComponent(x.password)).toString('base64');
-  x.username = ''; x.password = '';
-  const base = x.toString().replace(/\/+$/, '');
-  const start = Math.floor(Date.now() / 1000) - FETCH_DAYS * 86400;
-  let r;
-  try { r = await doFetch(base + '/accounts?version=2&pending=1&start-date=' + start, { headers: { Authorization: auth }, redirect: 'error', signal: AbortSignal.timeout(90000) }); }
-  catch (e) { throw new Error('Couldn’t reach SimpleFIN. Are you online?'); }
-  if (r.status === 403) throw new Error('SimpleFIN turned this connection off (or it was disabled on bridge.simplefin.org). Forget it and connect again with a new token.');
-  if (r.status === 402) throw new Error('SimpleFIN says the subscription needs paying.');
-  if (!r.ok) throw new Error('SimpleFIN had a problem (HTTP ' + r.status + '). Try again later.');
-  const body = await r.json().catch(() => null);
-  if (!body || typeof body !== 'object') throw new Error('SimpleFIN sent something unreadable.');
-  return { accounts: cleanAccounts(body), errors: errorsOf(body) };
-}
+const mergeAccounts = (old, fresh, now) => mergeWith(old, fresh, now);
+const download = (accessUrl) => downloadAccounts(accessUrl, doFetch);
 async function refresh(force) {
   const last = (vault.cache && vault.cache.fetchedAt) || 0;
   if (Date.now() - last < MIN_REFRESH_MS) {
@@ -190,10 +164,105 @@ async function refresh(force) {
   return { ok: true };
 }
 
+/* ── purchase emails (main/finance-mail.js): in the background after a refresh or an unlock ── */
+const MAIL_EVERY_MS = 60 * 60 * 1000;
+let mailBusy = false;
+function lookAtMail(force) {
+  if (mailBusy || !key) return;
+  const was = vault.mail || {};
+  if (!force && Date.now() - (was.last || 0) < MAIL_EVERY_MS) return;
+  const gd = ctx.mail || require('./gmail-dates'); // {gmail, claudeJson, mailAllowed}
+  // every Gmail account in Settings → Calendars with "Read receipts for Finance" on, each with its own seen ids
+  let accts = [];
+  try { accts = gd.receiptAccounts ? gd.receiptAccounts() : (gd.mailAllowed() ? [{ id: null }] : []); } catch (e) {}
+  if (!accts.length) { vault.mail = Object.assign({}, was, { off: true }); return; }
+  mailBusy = true;
+  const k = key; // it locked meanwhile (key changed): what came is dropped
+  const tell = () => { if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'mail'); };
+  // the first account's seen ids were kept in mail.seen before there could be more than one
+  const seenBy = Object.assign({}, was.seenBy);
+  if (!was.seenBy && was.seen && accts[0].id) seenBy[accts[0].id] = was.seen;
+  (async () => {
+    const got = [], errors = [];
+    let checked = 0;
+    for (const a of accts) {
+      try {
+        const r = await financeMail.lookForReceipts({ gmail: (sub) => gd.gmail(sub, a.id), ask: gd.claudeJson, seen: seenBy[a.id] });
+        seenBy[a.id] = r.seen; got.push(...r.receipts); checked += r.checked;
+      } catch (e) { errors.push((accts.length > 1 && a.email ? a.email + ': ' : '') + e.message); }
+    }
+    if (errors.length && errors.length === accts.length) throw new Error(errors.join('; '));
+    return { receipts: got, checked, error: errors.length ? errors.join('; ') : null };
+  })()
+    .then((r) => {
+      if (key !== k) return;
+      const ids = new Set(r.receipts.map((x) => x.id));
+      const cutoff = Date.now() - KEEP_DAYS * 86400000;
+      vault.receipts = (vault.receipts || []).filter((x) => !ids.has(x.id) && x.at >= cutoff).concat(r.receipts)
+        .sort((a, b) => b.at - a.at).slice(0, 1500);
+      vault.mail = { seenBy, last: Date.now(), error: r.error ? txt(r.error, 200) : null };
+      writeVault();
+      log('emails: ' + r.checked + ' looked at in ' + accts.length + ' inbox' + (accts.length > 1 ? 'es' : '') + ', ' + r.receipts.length + ' purchases');
+    })
+    .catch((e) => {
+      if (key !== k) return;
+      vault.mail = Object.assign({}, was, { last: Date.now(), error: txt(e.message, 200), off: false });
+      writeVault();
+      log('emails: couldn’t look (' + txt(e.message, 80) + ')');
+    })
+    .finally(() => { mailBusy = false; if (key === k) tell(); });
+  tell();
+}
+
+/* ── live stocks (main/finance-stocks.js): the tab asks every minute while it's open ── */
+const QUOTE_MS = 55 * 1000;
+const DAILY_MS = 3 * 60 * 60 * 1000;
+let lastQuotes = null; // {at, quotes, warning}: today's prices, while unlocked (prices aren't saved)
+let lastDaily = null; // {at, quotes}: a year of daily closes (the chart shows 3 months, 6 months or the year)
+async function stocksNow(force) {
+  const held = stocks.holdingsOf((vault.cache && vault.cache.accounts) || []);
+  if (!held.length) return { held: 0, rows: [] };
+  const symbols = held.map((h) => h.symbol).filter(Boolean);
+  const k = key; // it locked meanwhile (key changed): what came is dropped
+  let error = null;
+  if (force || !lastQuotes || Date.now() - lastQuotes.at >= QUOTE_MS) {
+    try {
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1d');
+      if (key !== k) return { locked: true };
+      lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning };
+    } catch (e) { if (key !== k) return { locked: true }; error = e.message; }
+  }
+  if (!lastDaily || Date.now() - lastDaily.at >= DAILY_MS) {
+    try {
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1y');
+      if (key !== k) return { locked: true };
+      lastDaily = { at: Date.now(), quotes: got.quotes };
+    } catch (e) { if (key !== k) return { locked: true }; }
+  }
+  return stocks.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning);
+}
+
+// "tasks-finance:1:" + the link and (when they fit in a scannable code) his corrections, as base64url JSON
+function pairPayload(accessUrl, kinds) {
+  const enc = (o) => 'tasks-finance:1:' + Buffer.from(JSON.stringify(o), 'utf8').toString('base64url');
+  const withKinds = enc({ u: accessUrl, k: kinds || {} });
+  return withKinds.length <= 1600 ? withKinds : enc({ u: accessUrl, k: {} });
+}
+
+// after either unlock: an old download refreshed, purchase emails looked at → a warning or undefined
+async function afterUnlock() {
+  let warning;
+  if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) {
+    try { await refresh(false); } catch (e) { warning = e.message; }
+  }
+  lookAtMail(false);
+  return warning;
+}
+
 /* ── what the tab calls ── */
 function status() {
   return { setUp: isSetUp(), unlocked: !!key, fetchedAt: vault && vault.cache ? vault.cache.fetchedAt || 0 : 0,
-    waitSeconds: Math.max(0, Math.ceil((waitUntil - Date.now()) / 1000)), minPassphrase: MIN_PASSPHRASE };
+    waitSeconds: Math.max(0, Math.ceil((waitUntil - Date.now()) / 1000)), minPassphrase: MIN_PASSPHRASE, hello: helloReady() };
 }
 const handlers = {
   'finance:status': () => status(),
@@ -209,6 +278,8 @@ const handlers = {
     writeVault();
     watchPower(); stillHere();
     log('connected');
+    rememberForHello().catch(() => false);
+    lookAtMail(true);
     try { await refresh(false); } catch (e) { return { ok: true, warning: e.message }; }
     return { ok: true };
   },
@@ -227,31 +298,94 @@ const handlers = {
     }
     wrong = 0; waitUntil = 0;
     log('unlocked');
-    let warning;
-    if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) {
-      try { await refresh(false); } catch (e) { warning = e.message; }
+    await rememberForHello().catch(() => false);
+    return { ok: true, warning: await afterUnlock() };
+  },
+  // Windows' own prompt (PIN, fingerprint or face), then the key kept for it
+  'finance:helloUnlock': async () => {
+    if (key) { stillHere(); return { ok: true }; }
+    if (!helloReady()) return { ok: false, error: 'Unlock with your passphrase once, then Windows Hello can open Finance.' };
+    const result = await helloApi().verify('Unlock Finance', ctx.windowHandle ? ctx.windowHandle() : null);
+    if (result !== 'Verified') { log('Windows Hello: ' + (result || 'not asked')); return { ok: false, cancelled: result === 'Canceled', error: hello.why(result) }; }
+    if (key) { stillHere(); return { ok: true }; }
+    let v, k;
+    try {
+      v = readVaultFile();
+      const raw = ctx.unseal(JSON.parse(fs.readFileSync(helloFile(), 'utf8')).key);
+      if (!raw || raw.startsWith('enc:')) throw new Error('sealed');
+      k = Buffer.from(raw, 'base64');
+      vault = decrypt(v, k); key = k; salt = Buffer.from(v.salt, 'base64');
+    } catch (e) {
+      forgetHello(); // stale (the vault was made again) or unreadable: back to the passphrase, which sets it up again
+      return { ok: false, error: 'Windows Hello can’t open Finance any more. Use your passphrase once and it will work again.' };
     }
-    return { ok: true, warning };
+    watchPower(); stillHere();
+    log('unlocked with Windows Hello');
+    return { ok: true, warning: await afterUnlock() };
+  },
+  // on: kept for Hello now (he's unlocked); off: the sealed copy is deleted
+  'finance:setHello': async (_e, on) => {
+    if (!key) return { ok: false, error: 'locked' };
+    stillHere();
+    vault.hello = !!on; writeVault();
+    if (on) { if (!(await rememberForHello())) return { ok: false, error: 'Windows Hello isn’t set up on this computer (Settings → Accounts → Sign-in options).', hello: false }; }
+    else forgetHello();
+    return { ok: true, hello: helloReady() };
   },
   'finance:lock': () => { lock('asked'); return true; },
   'finance:data': () => {
     if (!key) return { locked: true };
     stillHere();
     const c = vault.cache || {};
-    return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [] };
+    const m = vault.mail || {};
+    return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, hello: helloReady(),
+      receipts: vault.receipts || [], mail: { last: m.last || 0, error: m.error || null, off: !!m.off, busy: mailBusy } };
+  },
+  // his correction for a payee on the cost charts: fixed, variable, not spending ('skip'), or back to the guess (null);
+  // for money in, the key is 'in:' + payee and the kind 'income' or 'skip' (finance-statements.js)
+  'finance:setKind': (_e, payee, kind) => {
+    if (!key) return { ok: false, error: 'locked' };
+    stillHere();
+    const k = txt(payee, 80).trim();
+    if (!k || (kind != null && !['fixed', 'variable', 'skip', 'income'].includes(kind))) return { ok: false, error: 'bad kind' };
+    const kinds = Object.assign({}, vault.kinds);
+    if (kind == null) delete kinds[k]; else kinds[k] = kind;
+    if (Object.keys(kinds).length > 2000) return { ok: false, error: 'too many' };
+    vault.kinds = kinds;
+    writeVault();
+    return { ok: true, kinds };
+  },
+  // the tab's minute-by-minute check doesn't count as using it (it still locks after 10 idle minutes)
+  'finance:stocks': async (_e, force) => {
+    if (!key) return { locked: true };
+    if (force) stillHere();
+    try { return await stocksNow(!!force); } catch (e) { return { error: e.message, rows: [] }; }
+  },
+  /* pairing the phone (mobile/finance-phone.js): a QR code with the SimpleFIN link and his fixed/variable
+     corrections, shown on this screen only when he asks. It goes straight to the phone's camera, never
+     over the internet. Anyone who scans it can read the accounts, so the tab hides it after 2 minutes. */
+  'finance:pairCode': async () => {
+    if (!key) return { ok: false, error: 'locked' };
+    stillHere();
+    const text = pairPayload(vault.accessUrl, vault.kinds);
+    const svg = await require('qrcode').toString(text, { type: 'svg', errorCorrectionLevel: 'L', margin: 2 });
+    log('showed the phone pairing code');
+    return { ok: true, svg };
   },
   'finance:refresh': async () => {
     if (!key) return { ok: false, error: 'locked' };
     stillHere();
+    lookAtMail(true);
     try { return await refresh(true); } catch (e) { return { ok: false, error: e.message }; }
   },
   // deletes the local file only; the connection itself is turned off on bridge.simplefin.org
   'finance:forget': () => {
     lock('forgotten');
     try { fs.unlinkSync(file()); } catch (e) {}
+    forgetHello();
     log('forgotten');
     return { ok: true };
   },
 };
 
-module.exports = { init, handlers, lock, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, MIN_PASSPHRASE, _kdf: KDF };
+module.exports = { init, handlers, lock, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };

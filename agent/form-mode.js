@@ -73,7 +73,7 @@ function schemaFor(fields) {
     missing: { type: 'array', items: { type: 'string' } } }, required: ['values', 'missing'] };
 }
 
-const RULES = `You fill in web forms for James. You get the task, his details and the form's fields.
+const RULES = `You fill in web forms for the user. You get the task, his details and the form's fields.
 For every field, give the value to enter:
 - Use only what the task and his details say. If you don't have it, give "" (leave it empty). Never
   make anything up: no guessed dates, numbers, answers or experience.
