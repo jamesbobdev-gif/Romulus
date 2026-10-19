@@ -25,10 +25,13 @@ function saveSettings(change) {
 // the task id a proposal gets: the same thing → the same id, so a deleted one isn't brought back
 const proposalId = (key) => 'look-' + crypto.createHash('sha1').update(key).digest('hex').slice(0, 16);
 
-// his open tasks, soonest first: titles only, so Claude doesn't suggest what's already there
-function openTasks() {
+function allTasks() {
   let data; try { data = JSON.parse(fs.readFileSync(ctx.dataFile(), 'utf8')); } catch (e) { return []; }
-  return (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t && !t.done && t.title)
+  return Array.isArray(data.tasks) ? data.tasks : [];
+}
+// his open tasks, soonest first: titles only, so Claude doesn't suggest what's already there
+function openTasks(tasks) {
+  return tasks.filter((t) => t && !t.done && t.title)
     .sort((a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999')))
     .slice(0, 120).map((t) => ({ title: String(t.title).replace(/\s+/g, ' ').slice(0, 100), due: t.due || null, list: t.ws || 'personal' }));
 }
@@ -63,11 +66,13 @@ handle('lookahead:tick', async (_e, force) => {
       saveSettings({ lastDay: lookAhead.dayOf(now), last: Date.now(), lastCount: 0, error: null });
       return { items: [], skipped: 'nothing to look at (connect a calendar or Gmail)' };
     }
-    const input = lookAhead.buildInput({ calendar, mails, prefs, tasks: openTasks(), recent });
+    const tasks = allTasks();
+    const groceryNext = lookAhead.nextGroceryDay(tasks);
+    const input = lookAhead.buildInput({ calendar, mails, prefs, tasks: openTasks(tasks), recent, groceryNext });
     const raw = await gmailDates.claudeJson([{ role: 'system', content: lookAhead.prompt(now) }, { role: 'user', content: input }],
       lookAhead.SCHEMA, { effort: 'medium' });
     let out; try { out = JSON.parse(raw); } catch (e) { throw new Error('the answer wasn’t JSON'); }
-    const items = lookAhead.clean(out && out.proposals, { now, recentKeys: recent.map((r) => r.key) })
+    const items = lookAhead.clean(out && out.proposals, { now, recentKeys: recent.map((r) => r.key), groceryNext })
       .map((p) => Object.assign({ id: proposalId(p.key) }, p));
     agentLog('look-ahead: ' + (calendar ? calendar.events.length : 0) + ' event(s), ' + mails.length + ' email(s) → ' + items.length + ' proposal(s)');
     saveSettings({ lastDay: lookAhead.dayOf(now), last: Date.now(), lastCount: items.length, error: null,

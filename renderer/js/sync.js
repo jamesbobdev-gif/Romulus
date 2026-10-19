@@ -223,6 +223,21 @@ async function syncOnce(){
       if(!firstErr)firstErr=e;
     }
   }
+  const hp=hoursProfile();
+  if(hp){
+    try{
+      for(let attempt=0;attempt<4;attempt++){ // same download-merge-upload for the Hours log
+        const row=await syncPullRow(hp);
+        const r=mergeHours(row.doc);
+        if(r.changedLocal)anyLocal=true;
+        if(!(r.changedRemote||(!row.doc&&state.hours.entries.length)))break;
+        if(await syncPushCas(hp,hoursDoc(),row.updatedAt))break;
+        if(attempt===3)throw new Error('the hours log kept changing; will retry');
+      }
+    }catch(e){
+      if(!firstErr)firstErr=e;
+    }
+  }
   if(anyLocal){
     rebuildSnap();
     store.save(currentDoc());

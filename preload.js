@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('desktop', {
   calAddLink: (url, name) => ipcRenderer.invoke('cal:add-link', url, name),
   calRemove: (id) => ipcRenderer.invoke('cal:remove', id),
   calSetPrefs: (change) => ipcRenderer.invoke('cal:set-prefs', change),
+  calSetReceipts: (id, on) => ipcRenderer.invoke('cal:set-receipts', id, on),
   calPull: () => ipcRenderer.invoke('cal:pull'),
   gcalOpenUrl: (url) => ipcRenderer.invoke('gcal:open-url', url),
   onSyncDone: (cb) => ipcRenderer.on('gcal:sync-done', (_event, tasks) => cb(tasks)),
@@ -29,7 +30,7 @@ contextBridge.exposeInMainWorld('desktop', {
   onAgentReconnect: (cb) => ipcRenderer.on('agent:reconnect', (_event, info) => cb(info)),
   onAgentReconnected: (cb) => ipcRenderer.on('agent:reconnected', (_event, info) => cb(info)),
   localStatus: () => ipcRenderer.invoke('local:status'),
-  // routing: James's rules changed (reload them), and tasks no rule matched (he picks the lane)
+  // routing: the user's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   // AI connections: Claude / Gemini / OpenRouter for the Agent lane, in his order
   aiStatus: () => ipcRenderer.invoke('ai:status'),
@@ -42,6 +43,10 @@ contextBridge.exposeInMainWorld('desktop', {
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
+  // documents from the Agent tab: an answer as a Word file, and files the mini PC's browser downloaded
+  saveDoc: (title, text) => ipcRenderer.invoke('doc:save', title, text),
+  lupaFiles: () => ipcRenderer.invoke('lupa:files'),
+  lupaFetch: (name) => ipcRenderer.invoke('lupa:fetch', name),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
@@ -74,11 +79,17 @@ contextBridge.exposeInMainWorld('desktop', {
   financeStatus: () => ipcRenderer.invoke('finance:status'),
   financeSetup: (token, passphrase) => ipcRenderer.invoke('finance:setup', token, passphrase),
   financeUnlock: (passphrase) => ipcRenderer.invoke('finance:unlock', passphrase),
+  financeHelloUnlock: () => ipcRenderer.invoke('finance:helloUnlock'),
+  financeSetHello: (on) => ipcRenderer.invoke('finance:setHello', on),
   financeLock: () => ipcRenderer.invoke('finance:lock'),
   financeData: () => ipcRenderer.invoke('finance:data'),
   financeRefresh: () => ipcRenderer.invoke('finance:refresh'),
   financeForget: () => ipcRenderer.invoke('finance:forget'),
+  financeSetKind: (payee, kind) => ipcRenderer.invoke('finance:setKind', payee, kind),
+  financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
+  financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   onFinanceLocked: (cb) => ipcRenderer.on('finance:locked', (_event, why) => cb(why)),
+  onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),
   // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
   voiceStop: () => ipcRenderer.invoke('voice:stop'),

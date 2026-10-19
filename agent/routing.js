@@ -1,4 +1,4 @@
-/* Lanes: each Agent task goes to ONE worker — 'claude' (this computer's Claude runner) or 'local' (James's
+/* Lanes: each Agent task goes to ONE worker — 'claude' (this computer's Claude runner) or 'local' (the user's
    own model on the mini PC). A task that already has a lane keeps it (switching changes it). A new one
    is routed by HIS rules, no AI involved: a #local / #claude tag in the title, then his rules in order
    (first match wins), then his default (claude, local, 'auto' = the app picks, or 'ask' = he picks). The
@@ -107,7 +107,7 @@ function routeTask(t) {
 }
 const laneOf = (t) => t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
-// unassigned tasks whose route is 'ask': James picks (the renderer turns them into a question with two buttons)
+// unassigned tasks whose route is 'ask': the user picks (the renderer turns them into a question with two buttons)
 const askedRoute = new Set();
 function askForRoutes(raw) {
   let data;

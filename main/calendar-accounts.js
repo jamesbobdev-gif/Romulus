@@ -11,10 +11,13 @@ const handle = (ch, fn) => { handlers[ch] = fn; };
 
 handle('cal:overview', (_e, fresh) => calendars.overview(!!fresh));
 handle('cal:connect', async (_e, provider, own) => {
-  const r = await calendars.connect(String(provider), own && own.clientId ? { clientId: String(own.clientId), clientSecret: String(own.clientSecret || '') } : {});
+  const r = await calendars.connect(String(provider), Object.assign(own && own.clientId ? { clientId: String(own.clientId), clientSecret: String(own.clientSecret || '') } : {},
+    own && own.loginHint ? { loginHint: String(own.loginHint) } : {}));
   if (r.ok) performSync().catch((e) => console.error('calendar sync failed:', e.message));
   return r;
 });
+// Finance reads purchase emails from this Gmail account, or not
+handle('cal:set-receipts', (_e, id, on) => calendars.setReceipts(String(id), !!on));
 handle('cal:add-link', (_e, url, name) => calendars.addLink(url, name));
 handle('cal:remove', async (_e, id) => {
   // its task events come off the calendar first, while the account can still be reached

@@ -34,6 +34,8 @@ const localLane = require('./agent/local-lane');
 const liveView = require('./agent/live-view');
 const hub = require('./main/hub');
 const finance = require('./main/finance');
+const downloads = require('./main/downloads');
+const updater = require('./main/updater');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
@@ -65,9 +67,13 @@ const ctx = {
   compactHowtos: (asked) => localLane.compactHowtos(asked),
   // Windows' own encryption for a whole file's text (main/finance.js wraps its vault in it)
   seal: store.sealValue, unseal: store.openValue,
+  windowHandle: win.windowHandle, // Windows Hello's prompt opens on the Tasks window
+  // the updater waits for these before restarting into a new version
+  busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
+  onUpdateReady: (version) => trayMod.setUpdateReady(version, updater.installNow),
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance];
+  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater];
 hub.init(ctx);
 const allHandlers = Object.assign({}, hub.localHandlers);
 for (const m of modules) {
@@ -84,6 +90,12 @@ if (hub.isClient()) {
   ipcHandlers['cal:connect'] = async (e, ...args) => {
     const r = await allHandlers['cal:connect'](e, ...args);
     if (r && r.ok) await hub.sendCalAccounts().catch((err) => { r.warning = 'connected here, but the mini PC didn’t get it: ' + err.message; });
+    return r;
+  };
+  // Finance reads mail here, so the switch is saved here; the mini PC gets the accounts too
+  ipcHandlers['cal:set-receipts'] = async (e, ...args) => {
+    const r = await allHandlers['cal:set-receipts'](e, ...args);
+    await hub.sendCalAccounts().catch(() => {});
     return r;
   };
 }
@@ -125,9 +137,13 @@ if (!gotLock) {
       const cfg = readConfig();
       if (!cfg.sync && seed.sync) writeConfig(Object.assign({}, seed, cfg));
     } catch (e) {}
-    // calendar accounts; the app's own sign-in clients come with the build (oauth-clients.json, not in git)
+    // calendar accounts; the app's own sign-in clients (oauth-clients.json, not in git) are copied into each
+    // computer's user-data folder (%APPDATA%/tasks), like seed-config.json: the installer is public, so it
+    // doesn't carry them. A dev run reads the project's copy.
     let oauthClients = {};
-    try { oauthClients = JSON.parse(fs.readFileSync(path.join(__dirname, 'oauth-clients.json'), 'utf8')); } catch (e) {}
+    for (const dir of [app.getPath('userData'), __dirname]) {
+      try { oauthClients = JSON.parse(fs.readFileSync(path.join(dir, 'oauth-clients.json'), 'utf8')); break; } catch (e) {}
+    }
     calendars.init({ readConfig, writeConfig, openExternal: (u) => shell.openExternal(u), clients: () => oauthClients });
     // Register "open at login" once on first run of the installed app.
     // After that, the tray checkbox is the source of truth.
@@ -142,6 +158,7 @@ if (!gotLock) {
 
     win.createWindow();
     trayMod.createTray();
+    updater.start();
     refreshTrayStatus();
     setInterval(() => refreshTrayStatus(), 60 * 60 * 1000);
     if (hub.role() === 'server') hub.startServer(allHandlers);

@@ -6,13 +6,22 @@ function init(c) { ctx = c; }
 
 let tray = null;
 
+let update = null; // { version, install } once a new version has downloaded (main/updater.js)
+
 function createTray() {
-  const { app, Tray, Menu, nativeImage } = require('electron');
+  const { Tray, nativeImage } = require('electron');
   const icon = nativeImage.createFromPath(ctx.icon).resize({ width: 16, height: 16 });
   tray = new Tray(icon);
   tray.setToolTip('Tasks');
+  buildMenu();
+  tray.on('click', ctx.showWindow);
+}
+
+function buildMenu() {
+  const { app, Menu } = require('electron');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Tasks', click: ctx.showWindow },
+    ...(update ? [{ label: 'Restart to update (' + update.version + ')', click: update.install }] : []),
     {
       label: 'Start when I log in',
       type: 'checkbox',
@@ -23,7 +32,11 @@ function createTray() {
     { type: 'separator' },
     { label: 'Quit Tasks', click: () => ctx.quit() }
   ]));
-  tray.on('click', ctx.showWindow);
+}
+
+function setUpdateReady(version, install) {
+  update = { version, install };
+  if (tray) buildMenu();
 }
 
 // "Tasks — 3 overdue · 1 due today" for these tasks, counted from `today`
@@ -52,4 +65,4 @@ function refreshTrayStatus(raw) {
   tray.setToolTip(trayTip(Array.isArray(data.tasks) ? data.tasks : []));
 }
 
-module.exports = { init, createTray, refreshTrayStatus, trayTip };
+module.exports = { init, createTray, refreshTrayStatus, trayTip, setUpdateReady };

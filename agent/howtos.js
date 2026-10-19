@@ -1,5 +1,5 @@
 /* How-tos: what worked on a finished task, kept for the next similar one ("Blackboard → Courses →
-   ENT 300 → Calendar lists everything due; Assignments misses quizzes"). After a run that didn't get
+   HIS 110 → Calendar lists everything due; Assignments misses quizzes"). After a run that didn't get
    stuck, the model may leave 2–3 lines; the next task that shares enough words (or the same site plus
    a word) gets the closest one or two in its instructions, marked as possibly out of date.
    A newer how-to for the same kind of task replaces the old one. Stored on this computer only:

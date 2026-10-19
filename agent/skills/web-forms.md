@@ -1,6 +1,7 @@
 ---
 name: web-forms
 description: Working through websites: filling forms and applications, sign-ups, bookings, multi-page checkouts
+browser: yes
 match: \b(forms?|fill (in|out)|sign ?up|register|registration|apply|application|book(ing)?|reserve|checkout|order|survey|website|site|page|portal|log ?in)\b
 ---
 # Working on web pages

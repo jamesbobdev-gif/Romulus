@@ -1,5 +1,5 @@
 /* Morning look-ahead (desktop only): main/look-ahead.js decides when it's due and asks Claude; here its
-   proposals become Agent tasks waiting on James ("needs you"). His reply starts the work like any
+   proposals become Agent tasks waiting on the user ("needs you"). His reply starts the work like any
    other Agent task; deleting one skips it, and it isn't suggested again.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';

@@ -1,6 +1,7 @@
 ---
 name: shopping
 description: Buying products: where to look, real product links, comparing options, the buy hand-off
+browser: yes
 match: \b(buy|order|purchase|shop|shopping|amazon|cheap(est)?|deal|price|gift|replacement|recommend|look(ing)? for|find me|get me|need (a|an|some|new))\b|\bbest\b.*\bfor\b
 ---
 # Shopping

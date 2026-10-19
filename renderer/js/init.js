@@ -40,6 +40,7 @@ store.load().then(async function(data){
           if(Array.isArray(t.ask)&&t.ask.length)out.ask=t.ask;
           if(t.seats&&Array.isArray(t.seats.rows))out.seats=t.seats;
           if(t.showtimes&&Array.isArray(t.showtimes.days))out.showtimes=t.showtimes;
+          if(t.theaters&&Array.isArray(t.theaters.theaters))out.theaters=t.theaters;
           if(t.page)out.page=t.page;
         }
         if(Array.isArray(t.cards)&&t.cards.length)out.cards=t.cards; // small cards to look at (his grocery list)
@@ -57,9 +58,11 @@ store.load().then(async function(data){
     state.tombstones=Array.isArray(data.tombstones)?data.tombstones:[];
   }
   state.ideas=normIdeas(data&&data.ideas);
+  state.hours=normHours(data&&data.hours);
   rebuildSnap();
   if(spawnMissedRecurs())persist();
   render(); // list is the default active tab
+  holoBackToSchool(); // undo the School → Holo auto-move
   startSyncLoop();
   setTimeout(function(){ swipeReady=true; maybeShowSwipe(); },4000); // after the first sync, so another device's choices are in
   setTimeout(runDueRepeats,10*1000);

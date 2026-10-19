@@ -138,10 +138,11 @@ function buildPanel(t){
         const who=h.who==='you'?'you':h.who==='claude'?'claude':'sys';
         const b=el('div','conv-msg '+who);
         const seen=who==='you'&&(h.heard||(liveHeard[t.id]||[]).indexOf(h.at)!==-1); // Claude took it mid-run
-        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Lupa Au Palatine':CLOUD_NAMES[h.via]||'Claude')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
+        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Lupa Au Palatine':CLOUD_NAMES[h.via]||'Claude')+(who==='claude'&&h.model?' ('+String(h.model).replace(/^models\//,'')+')':'')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
+        if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
         th.appendChild(b);
       });
@@ -249,6 +250,7 @@ function buildPanel(t){
       if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What the browser showed when it stopped. Click to enlarge'; } nb.appendChild(ps); }
     } else if(wantsYes(t)&&Array.isArray(t.cart)&&t.cart.length)nb.appendChild(noteFold(t)); // the cards do the talking: just its first line, the rest on a tap
     else nb.appendChild(document.createTextNode(t.note));
+    if(!stuck&&isDocAnswer(t.note))nb.appendChild(docButton(t.title,t.note)); // an essay or a letter: save it as a Word file
     // the latest answer's "What it did", right under it (older ones are in the conversation)
     const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
     if(lastAns&&lastAns.thoughts&&t.status!=='working')nb.appendChild(thoughtsBox(t,lastAns));
@@ -279,7 +281,11 @@ function buildPanel(t){
       if(metaBits.length)card.appendChild(el('div','opt-meta',metaBits.join(' · ')));
       const btns=el('div','opt-btns');
       if(o.url){ const ob=el('button','opt-open',siteName(o.url)+' ↗'); ob.addEventListener('click',function(){ openExternal(String(o.url)); }); btns.appendChild(ob);
-        const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb); }
+        const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb);
+        // email the link to yourself (the desktop sends it; nothing is picked or bought)
+        const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
+        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','📧 Emailing you the link to '+label+'.'); buzz('send'); touch(); });
+        btns.appendChild(mb); }
       if(canPick){
         const kind=isAmazon(o.url)?'amazon':optionKind(o.url);
         const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':kind==='amazon'?'Buy this':'Choose this');
@@ -341,6 +347,7 @@ function buildPanel(t){
   if(taskWs(t)==='agent'&&Array.isArray(t.cards)&&t.cards.length)panel.appendChild(cardsStrip(t)); // grocery-list.js: his list, as small pictures
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.seats&&Array.isArray(t.seats.rows))panel.appendChild(seatMap(t)); // seat-map.js: its pick, tap others
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.showtimes&&Array.isArray(t.showtimes.days))panel.appendChild(showtimesCard(t)); // seat-map.js: tap a day, then a time
+  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.theaters&&Array.isArray(t.theaters.theaters))panel.appendChild(theatersCard(t)); // seat-map.js: the theaters on a map, tap one
   if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):yesButton(t)); // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
@@ -709,6 +716,7 @@ function render(){
   const openVis=open.filter(visible).slice().sort(function(a,b){ return getSortKey(a)-getSortKey(b); });
   navOrder=openVis.map(function(t){ return t.id; });
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
+  drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
   const ol=$('openList'); ol.innerHTML='';
   openVis.forEach(function(t){ ol.appendChild(buildRow(t,true)); });
 

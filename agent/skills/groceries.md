@@ -1,11 +1,16 @@
 ---
 name: groceries
 description: Grocery orders with EBT (he picks the store each time): his grocery list, the weekly order, checkout up to the order button, placing it after his yes
+browser: yes
 match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|whole foods|ebt|snap|milk|eggs|bread|meat|chicken|produce|fruit|veggies|vegetables|snacks|restock|pantry|fridge)\b
+nearby: yes
 ---
 # Groceries
 
-- **Where: he picks, every time.** He pays with EBT (SNAP), and several stores take it online. Unless
+How he pays, where he lives and how many he shops for are in his preferences (Groceries, About him).
+The EBT rules below are for when he pays with EBT/SNAP.
+
+- **Where: he picks, every time.** When he pays with EBT (SNAP), several stores take it online. Unless
   this task, his latest reply or the conversation so far already names a store for this order, your
   FIRST answer on a new grocery task is one tap question in `ask` (nothing shopped yet):
   {"q":"Which store this time?","choices":["Walmart","Amazon Fresh", then one "<Store> (Instacart)" for
@@ -16,6 +21,8 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   taking EBT/SNAP is its own choice, "<Store> (Instacart)". Never offer just one Instacart store, never
   just "Instacart", and never assume Instacart means Aldi. Up to 8 choices in all: if there are more,
   keep the cheapest ones to get delivered.
+- **Closest first.** With `whereHeIsNow`, order the store choices nearest first and say each one's
+  distance in the note ("Walmart 1.4 mi, Aldi (Instacart) 2.1 mi"); for pickup, that's the store he'd drive to.
 - **Comparing stores: three helpers at once.** Whenever you check prices, fees or deals at more than
   one store, don't visit them one by one: split the stores into up to three groups and send
   store-checker-1, -2 and -3 in ONE message (several Agent calls together), each with its stores and
@@ -91,10 +98,10 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   from the last time he asked for groceries; or he asks for "the usual"): don't ask what to get. Put every due
   item in the cart, plus anything in his latest reply. No `groceryList` yet? Ask once what he
   usually buys, and `list.add` his answer.
-- **Best deal for one person:** he lives alone. For every item, compare the store's options (sizes,
+- **Best deal for his household** (its size is in his preferences; one person if they don't say). For every item, compare the store's options (sizes,
   store brand vs name brand, sale/rollback prices, multi-packs) by **unit price** (per oz, lb, ct), then
   pick the cheapest one he'll actually finish before it goes bad:
-  - Perishables (fresh produce, eggs, fresh meat): the amount one person uses up before the next
+  - Perishables (fresh produce, eggs, fresh meat): the amount his household uses up before the next
     order (a dozen eggs, not five dozen; a 2 lb bag of apples, not a 10 lb box), and meat he can freeze
     in portions.
   - Frozen, canned and shelf-stable food (frozen veggies and fruit, canned beans and tomatoes, nuts):
@@ -110,7 +117,7 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   url}], with pictures like the item itself). The item is your pick; the app shows the
   rest in a menu on its card so he can switch before checkout. Skip `options` only when the store has
   nothing else close (one kind of limes).
-- **EBT-eligible only:** with EBT as his only payment, keep the cart to SNAP-eligible food (Walmart
+- **EBT-eligible only (when he pays with EBT):** with EBT as his only grocery payment, keep the cart to SNAP-eligible food (Walmart
   marks it "EBT eligible"). Leave out non-eligible items (hot food, household, paper goods) and tell
   him which ones you left out.
 - **EBT balance:** checkout shows his EBT balance. If the cart is over it, take off the least
@@ -118,7 +125,7 @@ match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|
   out of) and say what you took off. Put the balance left after this order in the note.
 - **Swaps:** out of stock → pick the closest match (same size, similar price) and list every swap in
   the note. Allow the store's own substitutions only if he said so.
-- **Delivery:** he wants it delivered to his door. EBT usually can't pay the delivery fee or tip:
+- **Delivery:** to his door, unless his preferences say pickup. EBT usually can't pay the delivery fee or tip:
   if delivery needs a payment he doesn't have on file, say so and offer pickup instead of guessing.
   Check the store's minimum order and say if the cart is under it.
 - **He checks his items first, before any ideas.** Once his items are in the store cart (no ideas yet,

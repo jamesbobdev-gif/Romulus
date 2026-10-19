@@ -9,12 +9,12 @@ if(window.desktop&&window.desktop.openAgentBrowser){
   // it has no window of its own (headless): open it in the live view, which starts it if needed
   $('agentBrowserBtn').addEventListener('click',function(){ $('agentBrowserStatus').textContent=''; openLiveView(); });
 }
-/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter / Grok / Groq / Cerebras for the cloud Agent lane, in his order */
+/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter / Grok / Groq for the cloud Agent lane, in his order */
 // where each free-tier AI's key comes from, and what it does with what's sent (their terms, Oct 2026)
 const COMPAT_INFO={
   xai:{where:'console.x.ai',url:'https://console.x.ai',note:'xAI doesn’t train on API data unless you join its data-sharing program for extra free credits.'},
+  cloudflare:{where:'account ID + API token, from Workers AI → Use REST API',url:'https://dash.cloudflare.com/?to=/:account/ai/workers-ai',label:'Cloudflare account ID and API token (paste both)',note:'Free: 10,000 “neurons” a day, roughly 10–30 tasks, reset at 8 pm Eastern. Paste the account ID and the token together, with a space between. Cloudflare doesn’t train on what’s sent.'},
   groq:{where:'console.groq.com/keys',url:'https://console.groq.com/keys',note:'Very fast, but the free tier caps tokens per minute, so a big task can be too large for it. Groq doesn’t train on what’s sent.'},
-  cerebras:{where:'cloud.cerebras.ai',url:'https://cloud.cerebras.ai',note:'Very fast; the free tier has a smaller context, so a big task can be too large for it. Cerebras doesn’t train on what’s sent.'},
 };
 if(window.desktop&&window.desktop.aiStatus){
   $('aiSection').hidden=false; $('aiUsage').hidden=false;
@@ -75,6 +75,9 @@ if(window.desktop&&window.desktop.aiStatus){
     const list=$('aiList'); list.innerHTML='';
     ai.order.forEach(function(p,i){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
+      // switched on but it can't be used: listed at the top of Settings
+      const why=statusText(p.id);
+      if(p.on&&/^(not signed in|needs an API key|no key yet)$/.test(why))box.dataset.disconnected=ai.names[p.id]+': '+why;
       const head=el('div','settings-row'); head.style.marginTop='0';
       const sw=el('label','switch'); const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=p.on;
       sw.appendChild(cb); const tr=el('span','track'); tr.setAttribute('aria-hidden','true'); sw.appendChild(tr);
@@ -143,20 +146,20 @@ if(window.desktop&&window.desktop.aiStatus){
           box.appendChild(r);
           if(cx.signedIn)box.appendChild(modelRow('codex','codexModel',g.codexModel));
           const r2=el('div','settings-row'); r2.style.marginTop='4px'; r2.appendChild(swap('Use an API key instead','key')); box.appendChild(r2);
-          box.appendChild(el('p','settings-hint','Runs on your ChatGPT plan through OpenAI’s Codex app, so it counts against your plan’s Codex limits, not a paid API key. It gets web search only: no browser, files, Gmail or shell.'));
+          box.appendChild(el('p','settings-hint','Runs on your ChatGPT plan through OpenAI’s Codex app, so it counts against your plan’s Codex limits, not a paid API key. It gets web search and the agent browser (mail closed): no files, Gmail or shell.'));
           box.lastChild.style.margin='8px 0 0';
         } else {
           box.appendChild(keyRow(g.hasKey?'replace OpenAI API key':'OpenAI API key (platform.openai.com/api-keys)','openaiKey'));
           if(g.hasKey)box.appendChild(modelRow('openai','openaiModel',g.model));
           const r2=el('div','settings-row'); r2.style.marginTop='4px'; r2.appendChild(swap('Use my ChatGPT plan instead','chatgpt')); box.appendChild(r2);
-          box.appendChild(el('p','settings-hint','ChatGPT answers with web search but no browser, files or Gmail. The API key is billed separately from a ChatGPT Plus subscription. OpenAI doesn’t train on API data.'));
+          box.appendChild(el('p','settings-hint','ChatGPT answers with web search and the agent browser (mail closed), but no files or Gmail. The API key is billed separately from a ChatGPT Plus subscription. OpenAI doesn’t train on API data.'));
           box.lastChild.style.margin='8px 0 0';
         }
       }
       if(ai[p.id]&&ai[p.id].compat){
-        // Grok, Groq, Cerebras: a free API key and a model
+        // Grok, Groq: a free API key and a model
         const o=ai[p.id], info=COMPAT_INFO[p.id], name=ai.names[p.id];
-        box.appendChild(keyRow(o.hasKey?'replace '+name+' API key':name+' API key ('+info.where+')',p.id+'Key'));
+        box.appendChild(keyRow(o.hasKey?'replace '+name+' API key':(info.label||name+' API key')+' ('+info.where+')',p.id+'Key'));
         if(o.hasKey)box.appendChild(modelRow(p.id,p.id+'Model',o.model));
         const r=el('div','settings-row'); r.style.marginTop='4px';
         if(o.hasKey){ const t=el('button','ghost mono','Test key'); t.addEventListener('click',async function(){ say('checking…');
@@ -164,7 +167,13 @@ if(window.desktop&&window.desktop.aiStatus){
           say(!res.ok?'key failed: '+res.error:res.hasModel?'key works · '+res.count+' models':'key works, but '+o.model+' isn’t one of its models'+(res.suggest?': try '+res.suggest:'')); }); r.appendChild(t); }
         else { const g=el('button','ghost mono','Get a free key ↗'); g.addEventListener('click',function(){ openExternal(info.url); }); r.appendChild(g); }
         box.appendChild(r);
-        box.appendChild(el('p','settings-hint',name+' has a free tier. It answers without a browser, web search, files or Gmail, so it’s a backup for questions and writing. '+info.note));
+        // one switch for Grok and Groq both: free tiers browse poorly and run out fast, so it's off unless he turns it on
+        const bs=el('label','switch'); bs.style.marginTop='8px'; const bc=document.createElement('input'); bc.type='checkbox'; bc.checked=!!o.browser;
+        bs.appendChild(bc); const bt=el('span','track'); bt.setAttribute('aria-hidden','true'); bs.appendChild(bt);
+        bs.appendChild(el('span','','Let the free AIs (Grok, Groq, Cloudflare) use the agent browser (slow, uses up free tiers)'));
+        bc.addEventListener('change',function(){ save({compatBrowser:bc.checked}); });
+        box.appendChild(bs);
+        box.appendChild(el('p','settings-hint',name+' has a free tier. It answers without web search, files or Gmail'+(o.browser?'':' (or a browser, unless you turn it on above)')+', so it’s a backup for questions and writing. '+info.note));
         box.lastChild.style.margin='8px 0 0';
       }
       if(p.id==='openrouter'){
@@ -186,7 +195,7 @@ if(window.desktop&&window.desktop.aiStatus){
         zs.appendChild(el('span','','Zero data retention only (fewer models, nothing kept)'));
         zc.addEventListener('change',function(){ save({openrouterZdr:zc.checked}); });
         box.appendChild(zs);
-        box.appendChild(el('p','settings-hint','OpenRouter answers without a browser, files or Gmail, so it’s best as a backup for questions and research. It only uses providers that don’t collect or train on what’s sent.'));
+        box.appendChild(el('p','settings-hint','OpenRouter gets the agent browser (mail closed) when the model can use tools, but no files or Gmail. It only uses providers that don’t collect or train on what’s sent.'));
         box.lastChild.style.margin='8px 0 0';
       }
       list.appendChild(box);
@@ -529,6 +538,7 @@ $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
 $('tabWork').addEventListener('click',function(){ switchTab('work'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
+$('tabHours').addEventListener('click',function(){ switchTab('hours'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
@@ -548,7 +558,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -560,7 +570,7 @@ $('searchBox').addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='finance')switchTab('list');
+    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -571,7 +581,7 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='finance')return;
+  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
   const a=document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){

@@ -46,7 +46,7 @@ function prompt(now) {
   const pad = (n) => String(n).padStart(2, '0');
   const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
   const day = now.toLocaleDateString('en-US', { weekday: 'long' });
-  return `You read James's new emails and pick out what belongs on his calendar: appointments, interviews,
+  return `You read the user's new emails and pick out what belongs on his calendar: appointments, interviews,
 meetings, classes, exams, deadlines he must meet, events he's going to, reservations, flights, bills due.
 Today is ${day} ${today}.
 
