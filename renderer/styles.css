@@ -887,3 +887,7 @@ textarea.ask-other{min-height:70px}
 .hours-due-row .btn-accent:disabled{opacity:.4;cursor:default}
 .hours-row.turned-in .hours-amt,.hours-row.turned-in .hours-note{opacity:.55}
 .hours-done{color:var(--accent);display:inline-flex;flex:none}
+.lupa-file-x{background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer;padding:4px 6px;border-radius:6px}
+.lupa-file-x:hover{color:var(--ink);background:var(--hairline)}
+.lupa-file-x:disabled{opacity:.4;cursor:default}
+.hours-due-sub.hours-thru-k{flex:none;min-width:0}

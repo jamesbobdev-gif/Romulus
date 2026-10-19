@@ -385,6 +385,8 @@ function loadLupaFiles(){
     lupaList=r&&r.ok?r.files:[]; lupaAt=Date.now();
   }).catch(function(){ lupaList=[]; lupaAt=Date.now(); }).then(function(){ lupaLoading=false; if(state.activeTab==='agent')drawLupaFiles(true); });
 }
+// "Worksheet (3).docx" and "Worksheet.docx" of the same size are one file
+function fileKey(f){ return f.name.replace(/ \(\d+\)(?=\.[^.]+$|$)/,'')+'|'+f.size; }
 function fileSize(n){ return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B'; }
 function drawLupaFiles(show){
   const box=$('lupaFiles'); if(!box)return;
@@ -392,7 +394,7 @@ function drawLupaFiles(show){
   if(!lupaList||Date.now()-lupaAt>60000)loadLupaFiles();
   // the browser's repeat copies ("Worksheet (3).docx", same size) show once: the newest
   const seen={}, files=(lupaList||[]).filter(function(f){
-    const k=f.name.replace(/ \(\d+\)(?=\.[^.]+$|$)/,'')+'|'+f.size; if(seen[k])return false; seen[k]=1; return true;
+    const k=fileKey(f); if(seen[k])return false; seen[k]=1; return true;
   });
   box.hidden=!files.length;
   const key=JSON.stringify(files); if(key===lupaDrawn)return; lupaDrawn=key;
@@ -413,7 +415,19 @@ function drawLupaFiles(show){
       }).catch(function(err){ pasteToast('Couldn’t copy it: '+err.message); })
         .then(function(){ b.disabled=false; b.textContent='⬇ Download'; });
     });
-    li.appendChild(b); ul.appendChild(li);
+    li.appendChild(b);
+    // done with it: off the list, and to Lupa's trash with every copy of it (recoverable there)
+    const x=el('button','lupa-file-x','✕'); x.title='Remove (moves it to Lupa’s trash)'; x.setAttribute('aria-label','Remove '+f.name);
+    x.addEventListener('click',function(e){
+      e.stopPropagation(); x.disabled=true;
+      const k=fileKey(f), copies=(lupaList||[]).filter(function(g){ return fileKey(g)===k; }).map(function(g){ return g.name; });
+      window.desktop.lupaRemove(copies).then(function(r){
+        if(!r||!r.ok){ x.disabled=false; pasteToast('Couldn’t remove it: '+(r&&r.error||'the mini PC didn’t answer')); return; }
+        lupaList=(lupaList||[]).filter(function(g){ return copies.indexOf(g.name)===-1; });
+        drawLupaFiles(state.activeTab==='agent');
+      }).catch(function(err){ x.disabled=false; pasteToast('Couldn’t remove it: '+err.message); });
+    });
+    li.appendChild(x); ul.appendChild(li);
   });
   box.appendChild(ul);
 }
