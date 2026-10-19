@@ -92,9 +92,10 @@ function hoursPending(kind){ return state.hours.entries.filter(function(e){ retu
 function hoursLastTurnIn(kind){
   return state.hours.entries.reduce(function(a,e){ return e.kind===kind&&e.turnedIn>a?e.turnedIn:a; },0);
 }
-function hoursTurnIn(kind){
+// through = 'YYYY-MM-DD': only days up to and including it (an older sheet he already sent)
+function hoursTurnIn(kind,through){
   const now=Date.now();
-  hoursPending(kind).forEach(function(e){ e.turnedIn=now; e.updatedAt=now; });
+  hoursPending(kind).forEach(function(e){ if(!through||e.date<=through){ e.turnedIn=now; e.updatedAt=now; } });
   persist();
 }
 function hoursUndoTurnIn(kind){
@@ -116,11 +117,17 @@ function hoursDueDraw(){
       (last?'last turned in '+new Date(last).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'never turned in')+
       (oldest?' · from '+hParse(oldest).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')));
     if(hourUI.confirmTurnIn===kind){
-      const yes=el('button','btn-accent','Turn in '+fmtHours(sum));
-      yes.addEventListener('click',function(){ hourUI.confirmTurnIn=null; hoursTurnIn(kind); renderHours(); });
+      // which days the sheet covers: through today unless he picks an earlier day
+      const thru=el('input','sm'); thru.type='date'; thru.value=hourUI.turnInThrough||hDateKey(todayStart()); thru.setAttribute('aria-label','Turned in through');
+      const upTo=function(){ return pend.filter(function(e){ return e.date<=thru.value; }).reduce(function(a,e){ return a+e.hours; },0); };
+      const yes=el('button','btn-accent','Turn in '+fmtHours(upTo()));
+      thru.addEventListener('change',function(){ hourUI.turnInThrough=thru.value; yes.textContent='Turn in '+fmtHours(upTo()); yes.disabled=!upTo(); });
+      yes.disabled=!upTo();
+      yes.addEventListener('click',function(){ hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; hoursTurnIn(kind,thru.value); renderHours(); });
       const no=el('button','ghost','Cancel');
-      no.addEventListener('click',function(){ hourUI.confirmTurnIn=null; renderHours(); });
-      row.appendChild(yes); row.appendChild(no);
+      no.addEventListener('click',function(){ hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; renderHours(); });
+      row.appendChild(el('span','hours-due-sub hours-thru-k','through'));
+      row.appendChild(thru); row.appendChild(yes); row.appendChild(no);
     } else {
       if(last){
         const undo=el('button','ghost','Undo last');

@@ -1,6 +1,6 @@
 /* Downloading documents from the Agent tab.
    - doc:save: an AI's written answer (an essay, a letter) saved as a Word file where he picks.
-   - lupa:files / lupa:fetch: files the mini PC's browser downloaded (a worksheet off Blackboard) sit in
+   - lupa:files / lupa:fetch / lupa:remove: files the mini PC's browser downloaded (a worksheet off Blackboard) sit in
      Lupa's ~/Downloads, not on this computer. These list them and copy one here, over the same SSH the
      mini PC's browser uses (localModel.browser.ssh). */
 const fs = require('fs');
@@ -80,7 +80,16 @@ async function lupaFetch(_e, name) {
   return { ok: true, path: file };
 }
 
+// done with it: to Lupa's trash (not deleted for good), every copy the browser made
+async function lupaRemove(_e, names) {
+  names = (Array.isArray(names) ? names : [names]).map(String).filter((n) => n && !/[\/\u0000]/.test(n) && n !== '.' && n !== '..');
+  if (!names.length) return { ok: false, error: 'bad file name' };
+  try { await onLupa('cd ~/Downloads && gio trash -- ' + names.map(shQuote).join(' ')); return { ok: true }; }
+  catch (e) { ctx.agentLog('downloads: removing ' + names.join(', ') + ' on the mini PC failed: ' + e.message); return { ok: false, error: e.message }; }
+}
+
 const handlers = {
+  'lupa:remove': lupaRemove,
   'doc:save': saveDoc,
   'lupa:files': () => lupaFiles(),
   'lupa:fetch': lupaFetch,
