@@ -199,6 +199,10 @@ function writeGeminiWorkspace(workDir, browserMcpFile, browserDenied, model) {
 // the other AIs tend to stop at 3 options and link articles about them: the prompt's ask, said again where it reads it
 const CHOICES_NOTE = ' Offering choices? Give 6 or more `options` when there are that many good ones (the app shows 3 and ' +
   'he scrolls sideways for the rest), each `url` that option\'s own page, not an article or search page about it.';
+// they gave up after one look at a page whose results were still loading (a flight search, 2026-10-21)
+const KEEP_GOING_NOTE = ' Pages that load results with scripts (flights, tickets, stores) can look empty at first: wait ' +
+  '(browser_wait_for) and look again, or try another site, before saying you couldn\'t. Don\'t stop with browser steps left ' +
+  'while a skill above names another site or step to try.';
 /* The AIs answering one request at a time get the agent browser through the app's own tool loop (agent/tool-loop.js).
    who: 'running as X'; also: their other tools ('web search'), or none */
 const browserNote = (who, also) => '\n\n## This run\nYou are ' + who + ', standing in for Claude: the instructions above ' +
@@ -207,7 +211,7 @@ const browserNote = (who, also) => '\n\n## This run\nYou are ' + who + ', standi
     'There is no separate web search: to look something up, open a search page in the browser (https://duckduckgo.com/?q=...). Use the browser for anything current') +
   ' (showtimes, prices, stock, booking pages). You have about ' + loop.MAX_STEPS + ' browser steps, so go straight to the page ' +
   'that has the answer. No files or photos, no Gmail, and his mail and account pages are closed in the browser: if a ' +
-  'task needs his mail, say so in the note.' + CHOICES_NOTE + ' Reply with ONLY the JSON object described above.\n';
+  'task needs his mail, say so in the note.' + KEEP_GOING_NOTE + CHOICES_NOTE + ' Reply with ONLY the JSON object described above.\n';
 // opts.browserMcpFile (browserCfgFor's config) → the started browser for run(browser), closed after; null when there's none
 async function withBrowser(opts, run) {
   const browser = opts.browserMcpFile ? await loop.startBrowser(opts.browserMcpFile, opts.browserDenied || []).catch(() => null) : null;
@@ -231,7 +235,7 @@ const GEMINI_NOTE = '\n\n## This run\nYou are running as Gemini (Google), standi
   'written for Claude and apply to you the same way, the hard rule most of all. Your tools here: google_web_search, ' +
   'web_fetch, read_file (attachments/ and skills/ in your folder) and, when listed, the browser_* tools. There is no ' +
   'Gmail in this run, and his mail and account pages are closed in the browser: if a task needs his mail, say so in the note.' +
-  CHOICES_NOTE + ' Reply with ONLY the JSON object described above.\n';
+  KEEP_GOING_NOTE + CHOICES_NOTE + ' Reply with ONLY the JSON object described above.\n';
 
 /* note (the API runners below): replaces the "This run" note, e.g. for a helper's plain-text answer */
 /* Which Gemini models a run tries, in order: the one set in Settings, else Argon (the best, but free keys get none
@@ -611,6 +615,7 @@ async function compatEndpoint(id, key) {
 }
 // Cloudflare's "used up your daily free allocation of 10,000 neurons"
 const COMPAT_DAILY_RE = /daily free allocation|neurons/i;
+const COMPAT_BROKE_RE = /credits|spending limit|insufficient (balance|funds|quota)/i;
 
 async function compatCall(id, key, model, content, timeoutMs, browser, onProc) {
   const p = COMPAT[id];
@@ -622,10 +627,13 @@ async function compatCall(id, key, model, content, timeoutMs, browser, onProc) {
     // too big for a free tier's per-request or per-minute token cap: a 413, or a 429 that says so
     const big = r.status === 413 || COMPAT_BIG_RE.test(msg);
     const daily = COMPAT_DAILY_RE.test(msg);
+    // out of credit or over its spending limit (xAI says so with a 403): out of usage, not a sign-in problem
+    const broke = COMPAT_BROKE_RE.test(msg);
     if ((r.status === 429 || daily) && !big) meter.noteCall(id, { limited: true });
-    return { log: msg, limit: (r.status === 429 || daily) && !big, auth: r.status === 401 || r.status === 403,
+    return { log: msg, limit: (r.status === 429 || daily || broke) && !big, auth: !broke && (r.status === 401 || r.status === 403),
       gone: r.status === 404 || COMPAT_GONE_RE.test(msg),
-      why: big ? 'this was too big for ' + p.name + '’s free tier' : p.name + ' (' + model + '): ' + String(msg).slice(0, 160) };
+      why: big ? 'this was too big for ' + p.name + '’s free tier' : broke ? p.name + ' is out of credit or at its spending limit'
+        : p.name + ' (' + model + '): ' + String(msg).slice(0, 160) };
   };
   const base = browser ? { model, tools: loop.chatTools(browser.tools) } : { model };
   const api = loop.chatApi({ base, content, fail,
