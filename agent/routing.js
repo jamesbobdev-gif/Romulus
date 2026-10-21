@@ -7,12 +7,16 @@
    'auto' looks at what is up right now (main.js keeps noteSituation current: is the mini PC answering, is
    any cloud AI connected, is Claude near its limit) and at what the task needs: the inbox, the open web
    and shopping go to the cloud; writing and forms go to the mini PC; anything else to the cloud (faster).
-   With auto on, a rule that names a lane that's down hands the task to the other one instead of waiting. */
+   With auto on, a rule that names a lane that's down hands the task to the other one instead of waiting.
+   d1 (agent/decider.js, a small decision model on the mini PC) looks at each new task first: it adds to the
+   private words, holds a stray scrap of talk instead of running it, and makes auto's cloud-or-mini-PC pick.
+   Without d1 (mini PC off, model missing) the keyword rules here decide everything, as before. */
 const fs = require('fs');
 const supabase = require('./supabase');
+const decider = require('./decider');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer, scheduleAgentRun, scheduleLocalRun }
-function init(c) { ctx = c; }
+function init(c) { ctx = c; decider.init(c); }
 const readConfig = () => ctx.readConfig();
 const dataFile = () => ctx.dataFile();
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
@@ -46,9 +50,11 @@ const CLOUD_WORDS = ['email', 'emails', 'inbox', 'gmail', 'outlook', 'reply', 's
 const LOCAL_WORDS = ['write', 'rewrite', 'draft', 'essay', 'letter', 'cover letter', 'story', 'poem', 'proofread', 'edit', 'summarize',
   'summarise', 'outline', 'brainstorm', 'notes', 'fill', 'form', 'forms', 'apply', 'application', 'questionnaire', 'survey'];
 // → {lane, reason} picked by the app
-function autoRoute(text) {
+function autoRoute(text, t) {
   if (!up('local')) return { lane: 'claude', reason: 'auto: Lupa Au Palatine isn’t answering' };
   if (!up('claude')) return { lane: 'local', reason: 'auto: no cloud AI is connected' };
+  const d1 = t && decider.laneFor(t);
+  if (d1) return { lane: d1, reason: d1 === 'local' ? 'auto: d1 says Lupa Au Palatine can do this without the web' : 'auto: d1 says this needs the web' };
   const cloudHit = wordHit(text, CLOUD_WORDS), localHit = !cloudHit && wordHit(text, LOCAL_WORDS);
   if (cloudHit) return { lane: 'claude', reason: 'auto: needs the web or inbox (' + cloudHit + ')' };
   if (localHit) return { lane: 'local', reason: 'auto: writing/forms suit Lupa Au Palatine (' + localHit + ')' };
@@ -84,6 +90,7 @@ function privateMatch(t) {
   if (hit) return hit;
   if (/(^|[^0-9])(\d[ -]?){12,18}\d([^0-9]|$)/.test(text)) return 'a card number';
   if (/(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)/.test(text)) return 'a social security number';
+  if (decider.looksPrivate(t)) return 'd1 thinks it’s personal (health, money, IDs or grades)';
   return null;
 }
 /* a question about HIS money ("how much did I spend on gas", "my bank balance", "what are my bills"), which
@@ -108,6 +115,7 @@ function routeTask(t) {
   if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
   if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: Lupa reads Finance' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
+  if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
   // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
@@ -119,7 +127,7 @@ function routeTask(t) {
     const hit = wordHit(text, words);
     if (hit && (rule.lane === 'claude' || rule.lane === 'local')) return fallBack({ lane: rule.lane, reason: 'rule: ' + words.join(', ') });
   }
-  if (routing.default === 'auto') return autoRoute(text);
+  if (routing.default === 'auto') return autoRoute(text, t);
   const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
   return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
 }
@@ -138,4 +146,27 @@ function askForRoutes(raw) {
   sendToRenderer('agent:route-ask', ask.map((t) => t.id));
 }
 
-module.exports = { init, handlers, loadRouting, useRouting, getRouting, noteSituation, privateMatch, moneyQuestion, routeTask, laneOf, isClaudeLane, askForRoutes, ROUTING_DEFAULT };
+/* d1 sees new Agent tasks before they're routed. false = it's still looking (both runs are scheduled again
+   once it's done); true = go ahead (decided, or d1 isn't available and the rules decide alone) */
+let deciding = false;
+const toldScrap = new Set();
+function decided(raw) {
+  if (deciding) return false;
+  if (!decider.usable()) return true;
+  let data;
+  try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return true; }
+  const fresh = (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' &&
+    !t.lane && !t.financeSeen && String(t.title || '').trim() && !decider.get(t));
+  if (!fresh.length) return true;
+  deciding = true;
+  decider.decide(fresh).then(() => {
+    // a scrap waits for him: it shows as needing him, and a reply (or the lane switch) sends it on
+    const scraps = fresh.filter((t) => decider.looksLikeScrap(t) && !toldScrap.has(t.id));
+    scraps.forEach((t) => toldScrap.add(t.id));
+    if (scraps.length) sendToRenderer('agent:results', scraps.map((t) => ({ id: t.id, status: 'needs-you', options: undefined, pref: null,
+      note: 'This sounded like a bit of conversation Hey Romulus picked up, not a request, so nothing ran. Reply if you meant it.' })));
+  }).finally(() => { deciding = false; ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); });
+  return false;
+}
+
+module.exports = { init, decided, handlers, loadRouting, useRouting, getRouting, noteSituation, privateMatch, moneyQuestion, routeTask, laneOf, isClaudeLane, askForRoutes, ROUTING_DEFAULT };

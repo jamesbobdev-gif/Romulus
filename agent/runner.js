@@ -12,7 +12,7 @@ const providers = require('./providers');
 const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
-const { routeTask, isClaudeLane } = require('./routing');
+const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const agentFiles = require('./agent-files');
@@ -91,6 +91,7 @@ function scheduleAgentRun(raw) {
   }
   if (live && raw != null) live.forward(raw); // he wrote on a task Claude is working on: it hears it now
   if ((readConfig().agentRunner || {}).enabled === false) return;
+  if (!decided(raw)) return; // d1 is looking at new tasks first: this runs again when it's done
   const queued = queuedAgentTasks(raw);
   const n = queued.length;
   if (!n) return;
@@ -113,6 +114,7 @@ function failAgentTasks(ids, why) {
 }
 async function startAgentRun() {
   if (agentProc || ctx.memoryTidying()) { agentLog('skip: a run is already going'); return; } // it re-checks the queue when it exits
+  if (!decided()) return; // a task came in after the timer started: d1 looks first, then this is scheduled again
   const cfg = readConfig().agentRunner || {};
   const all = queuedAgentTasks();
   if (!all.length) { agentLog('skip: nothing queued any more'); return; }
