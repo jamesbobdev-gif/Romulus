@@ -85,48 +85,35 @@ function inTab(t,tab){
   return ws==='personal'||ws==='work'||(ws==='school'&&schoolSurfaced(t));
 }
 function syncHeaders(p){ return {'apikey':p.key,'Authorization':'Bearer '+p.key,'Content-Type':'application/json'}; }
-function syncBase(p){ return p.url.replace(/\/+$/,'')+'/rest/v1/tasks_sync'; }
+/* Every read and write goes through a database function that needs the list's sync key (sync_get,
+   sync_put, sync_set: supabase/migrations/20261021_sync_rpc_lockdown.sql). The table itself is closed to
+   the anon key, so the key in the app can't list or touch anything but what it knows the key of. */
+async function syncRpc(p,fn,body){
+  const res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return res.json();
+}
 function setSyncStatus(msg,isErr){
   const n=document.getElementById('syncStatus');
   if(n){ n.textContent=msg; n.style.color=isErr?'var(--late)':'var(--muted)'; }
 }
 
-async function syncPull(p){
-  const res=await fetch(syncBase(p)+'?sync_key=eq.'+encodeURIComponent(p.syncKey)+'&select=doc',{headers:syncHeaders(p)});
-  if(!res.ok)throw new Error('HTTP '+res.status);
-  const rows=await res.json();
-  return rows.length?rows[0].doc:null;
-}
 // The list plus when it was last written, so our upload can check nobody wrote in between.
+// Also learns the list's live-update channel (liveTopics), which only the database knows.
 async function syncPullRow(p){
-  const res=await fetch(syncBase(p)+'?sync_key=eq.'+encodeURIComponent(p.syncKey)+'&select=doc,updated_at',{headers:syncHeaders(p)});
-  if(!res.ok)throw new Error('HTTP '+res.status);
-  const rows=await res.json();
-  return rows.length?{doc:rows[0].doc,updatedAt:rows[0].updated_at}:{doc:null,updatedAt:null};
+  const rows=await syncRpc(p,'sync_get',{p_sync_key:p.syncKey});
+  const r=rows[0]||{};
+  if(r.topic)noteTopic(p,r.topic);
+  return {doc:r.doc||null,updatedAt:r.updated_at||null};
 }
+async function syncPull(p){ return (await syncPullRow(p)).doc; }
 // Compare-and-swap upload: replaces the list only if it's still the version we downloaded (or creates
 // it if there was none). false = someone else (phone, Claude, the connector) wrote in between.
 async function syncPushCas(p,doc,prevUpdatedAt){
-  const body={doc:doc,updated_at:new Date().toISOString()};
-  if(prevUpdatedAt==null){
-    const res=await fetch(syncBase(p),{method:'POST',headers:Object.assign(syncHeaders(p),{'Prefer':'return=minimal'}),
-      body:JSON.stringify([Object.assign({sync_key:p.syncKey},body)])});
-    if(res.status===409)return false;
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    return true;
-  }
-  const res=await fetch(syncBase(p)+'?sync_key=eq.'+encodeURIComponent(p.syncKey)+'&updated_at=eq.'+encodeURIComponent(prevUpdatedAt),
-    {method:'PATCH',headers:Object.assign(syncHeaders(p),{'Prefer':'return=representation'}),body:JSON.stringify(body)});
-  if(!res.ok)throw new Error('HTTP '+res.status);
-  return (await res.json()).length===1;
+  return (await syncRpc(p,'sync_put',{p_sync_key:p.syncKey,p_doc:doc,p_prev:prevUpdatedAt||null}))===true;
 }
 async function syncPushDoc(p,doc){
-  const res=await fetch(syncBase(p),{
-    method:'POST',
-    headers:Object.assign(syncHeaders(p),{'Prefer':'resolution=merge-duplicates'}),
-    body:JSON.stringify([{sync_key:p.syncKey,doc:doc,updated_at:new Date().toISOString()}])
-  });
-  if(!res.ok)throw new Error('HTTP '+res.status);
+  if((await syncRpc(p,'sync_set',{p_sync_key:p.syncKey,p_doc:doc}))!==true)throw new Error('not saved');
 }
 
 function canonTasks(tasks){
@@ -264,74 +251,90 @@ function startSyncLoop(){
     if(liveAllUp()&&Date.now()-(syncState.lastAt||0)<5*60000)return;
     syncNow();
   },30000);
-  liveStart();
-  syncNow();
+  syncNow(); // its downloads learn each list's live channel, which opens the sockets (noteTopic)
 }
 
 /* ── live updates (Supabase Realtime) ──
-   One socket per Supabase project, listening for writes to our rows of tasks_sync (lists, ideas, hours).
-   A change from anywhere (phone, Claude, the connector, the hub) just starts a normal sync: the
-   download-merge-upload above stays the only way data moves, so nothing here can lose an edit. */
+   One socket per Supabase project. The database says "changed" on a list's own broadcast channel
+   whenever it is written (a trigger, in the migration above); the channel's name is a hash of the sync
+   key that sync_get hands back, so nobody can listen without the key, and nothing travels on it but
+   the nudge. A change from anywhere (phone, Claude, the connector, the hub) just starts a normal sync:
+   the download-merge-upload above stays the only way data moves, so nothing here can lose an edit. */
 const live={sockets:{}, nudgeTimer:null};
+const liveTopics={}; // url|key|syncKey → channel name, learned from each list's first download
+function noteTopic(p,topic){
+  const id=p.url.replace(/\/+$/,'')+'|'+p.key;
+  if(liveTopics[id+'|'+p.syncKey]===topic)return;
+  liveTopics[id+'|'+p.syncKey]=topic;
+  liveStart(); // a socket already open for this project joins the new channel
+}
 function liveTargets(){
   const out={};
   function add(p){
     if(!p)return;
-    const url=p.url.replace(/\/+$/,''), id=url+'|'+p.key;
-    (out[id]=out[id]||{url:url,key:p.key,syncKeys:[]}).syncKeys.push(p.syncKey);
+    const url=p.url.replace(/\/+$/,''), id=url+'|'+p.key, topic=liveTopics[id+'|'+p.syncKey];
+    const t=(out[id]=out[id]||{url:url,key:p.key,topics:[]});
+    if(topic&&t.topics.indexOf(topic)<0)t.topics.push(topic);
   }
   profileList().forEach(function(ws){ add(syncState.cfg[ws]); });
   if(typeof ideasProfile==='function')add(ideasProfile());
   if(typeof hoursProfile==='function')add(hoursProfile());
+  Object.keys(out).forEach(function(id){ if(!out[id].topics.length)delete out[id]; });
   return out;
 }
 function liveAllUp(){
   const ids=Object.keys(live.sockets);
-  return ids.length>0&&ids.every(function(id){ return live.sockets[id].joined; });
+  return ids.length>0&&ids.every(function(id){ const s=live.sockets[id]; return s.ws&&s.ws.readyState===1&&s.wanted.every(function(t){ return s.joined[t]; }); });
 }
 function liveNudge(){ // a burst of writes (our own upload's echo included) becomes one sync
   clearTimeout(live.nudgeTimer);
   live.nudgeTimer=setTimeout(syncNow,300);
 }
+function liveJoin(s,topic){ // one Phoenix channel per list, on the shared socket
+  if(!s.ws||s.ws.readyState!==1||s.joined[topic]!=null)return;
+  s.ref++; s.joined[topic]=false; s.refs[String(s.ref)]=topic;
+  try{ s.ws.send(JSON.stringify({topic:'realtime:'+topic,event:'phx_join',ref:String(s.ref),join_ref:String(s.ref),
+    payload:{config:{broadcast:{self:false,ack:false},presence:{key:''},postgres_changes:[],private:false}}})); }catch(e){}
+}
 function liveOpen(id,t,tries){
   if(typeof WebSocket!=='function')return;
-  const s={ws:null,joined:false,ref:0,hb:null,retry:null,lastMsg:Date.now(),tries:tries||0};
+  const s={ws:null,wanted:t.topics.slice(),joined:{},refs:{},ref:0,hb:null,retry:null,lastMsg:Date.now(),tries:tries||0};
   live.sockets[id]=s;
-  const topic='realtime:tasks-sync';
-  function send(m){ try{ s.ws.send(JSON.stringify(m)); }catch(e){} }
   try{ s.ws=new WebSocket(t.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(t.key)+'&vsn=1.0.0'); }
   catch(e){ return; }
   s.ws.onopen=function(){
-    s.ref++;
-    send({topic:topic,event:'phx_join',ref:String(s.ref),join_ref:String(s.ref),payload:{config:{
-      broadcast:{self:false},presence:{key:''},
-      postgres_changes:t.syncKeys.map(function(k){ return {event:'*',schema:'public',table:'tasks_sync',filter:'sync_key=eq.'+k}; })
-    }}});
+    s.wanted.forEach(function(topic){ liveJoin(s,topic); });
     s.hb=setInterval(function(){
       if(Date.now()-s.lastMsg>60000){ try{ s.ws.close(); }catch(e){} return; } // went quiet: reconnect
-      s.ref++; send({topic:'phoenix',event:'heartbeat',payload:{},ref:String(s.ref)});
+      s.ref++; try{ s.ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:String(s.ref)})); }catch(e){}
     },25000);
   };
   s.ws.onmessage=function(e){
     s.lastMsg=Date.now();
     let m; try{ m=JSON.parse(e.data); }catch(err){ return; }
-    if(m.topic!==topic)return;
-    if(m.event==='system'&&m.payload&&m.payload.extension==='postgres_changes'){
-      if(m.payload.status==='ok'){ s.joined=true; s.tries=0; syncNow(); } // catch up on anything missed while away
+    const topic=String(m.topic||'').replace(/^realtime:/,'');
+    if(m.event==='phx_reply'&&s.refs[m.ref]){ // the answer to a join
+      const st=m.payload&&m.payload.status;
+      if(st==='ok'){ s.joined[s.refs[m.ref]]=true; s.tries=0; syncNow(); } // catch up on anything missed while away
       else { try{ s.ws.close(); }catch(err){} }
-    } else if(m.event==='phx_reply'&&m.payload&&m.payload.status==='error'){ try{ s.ws.close(); }catch(err){} }
-    else if(m.event==='postgres_changes'){ liveNudge(); }
+    } else if(m.event==='broadcast'&&s.joined[topic]){ liveNudge(); }
+    else if(m.event==='phx_error'||m.event==='phx_close'){ try{ s.ws.close(); }catch(err){} }
   };
   s.ws.onclose=function(){
-    clearInterval(s.hb); s.joined=false;
+    clearInterval(s.hb);
     if(live.sockets[id]!==s)return; // stopped on purpose
     const wait=Math.min(60000,2000*Math.pow(2,s.tries)); // 2s, 4s, 8s … up to a minute
-    s.retry=setTimeout(function(){ if(live.sockets[id]===s)liveOpen(id,t,s.tries+1); },wait);
+    s.retry=setTimeout(function(){ if(live.sockets[id]===s)liveOpen(id,liveTargets()[id]||t,s.tries+1); },wait);
   };
 }
 function liveStart(){
+  if(!syncEnabled())return;
   const targets=liveTargets();
-  Object.keys(targets).forEach(function(id){ liveOpen(id,targets[id]); });
+  Object.keys(targets).forEach(function(id){
+    const s=live.sockets[id];
+    if(!s){ liveOpen(id,targets[id]); return; }
+    targets[id].topics.forEach(function(topic){ if(s.wanted.indexOf(topic)<0)s.wanted.push(topic); liveJoin(s,topic); });
+  });
 }
 function liveStop(){
   Object.keys(live.sockets).forEach(function(id){

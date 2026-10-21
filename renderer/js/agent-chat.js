@@ -243,7 +243,7 @@ function repeatText(r){
 // who has the task now: its lane, or for older tasks whoever answered last; null = nobody yet
 // 'gemini' / 'openai' = the cloud lane ('claude' on the server) with that AI only (t.cloud)
 // the cloud AIs besides Claude, by name (agent/providers.js NAMES); all of them are in the pill's cloud menu
-const CLOUD_NAMES={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',xai:'Grok',groq:'Groq',cloudflare:'Cloudflare'};
+const CLOUD_NAMES={gemini:'Gemini',openai:'ChatGPT',openrouter:'OpenRouter',xai:'Grok',groq:'Groq',cloudflare:'Cloudflare',nvidia:'NVIDIA'};
 const PINNED_CLOUDS=Object.keys(CLOUD_NAMES);
 function laneNow(t){
   if(t.lane==='claude'&&(PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude'))return t.cloud;
