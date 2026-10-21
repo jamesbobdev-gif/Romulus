@@ -112,7 +112,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       delete liveText[t.id]; delete t.runFrom;
       // "done" = finished: the task stays in the Agent tab until the user checks it off himself
       const reviewNote=t.note; // the order's review ("total … Reply yes"), for its total once it's placed
-      t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked; // a fresh answer needs a fresh look
+      t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked;
+      if(u.financeSeen)t.financeSeen=true; // Lupa read his Finance for it: it never goes to a cloud AI (agent/routing.js) // a fresh answer needs a fresh look
       // it stopped for something in its way: why, what to do, and what its browser showed
       t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
       t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;

@@ -172,6 +172,18 @@ public class FinanceVaultPlugin extends Plugin {
         call.resolve();
     }
 
+    /** While Finance is on screen: no screenshots, screen recording, recent-apps preview, or screen-reading
+     *  assistants (Gemini "ask about this screen", Circle to Search) of it. */
+    @PluginMethod
+    public void secure(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        getActivity().runOnUiThread(() -> {
+            if (on) getActivity().getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            else getActivity().getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            call.resolve();
+        });
+    }
+
     /** The pairing QR code from the computer's Finance tab. → {text} */
     @PluginMethod
     public void scan(PluginCall call) {

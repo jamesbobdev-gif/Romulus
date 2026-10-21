@@ -173,9 +173,10 @@ function learnLinks(text) {
   }
 }
 const refLabels = {}; // ref → accessible name, learned from every page snapshot Playwright sends back
+// a name with a colon in it comes YAML-quoted: - 'button "Submit: final" [ref=e9]'
 function learnRefs(text) {
-  for (const m of text.matchAll(/- (\w+) "([^"\n]*)"[^\n]*\[ref=(\w+)\]/g)) refLabels[m[3]] = m[1] + ' ' + m[2];
-  for (const m of text.matchAll(/- (\w+)[^\n"]*\[ref=(\w+)\][^\n:]*: ([^\n]+)/g)) if (!refLabels[m[2]]) refLabels[m[2]] = m[1] + ' ' + m[3];
+  for (const m of text.matchAll(/- '?(\w+) "([^"\n]*)"[^\n]*\[ref=(\w+)\]/g)) refLabels[m[3]] = m[1] + ' ' + m[2];
+  for (const m of text.matchAll(/- '?(\w+)[^\n"]*\[ref=(\w+)\][^\n:]*: ([^\n]+)/g)) if (!refLabels[m[2]]) refLabels[m[2]] = m[1] + ' ' + m[3];
 }
 // → a reason to refuse this tool call, or null
 function lockedOut(msg) {

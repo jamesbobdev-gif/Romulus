@@ -14,9 +14,10 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, closeStoreTabs, lastPage, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const agentFiles = require('./agent-files');
 const runLive = require('./run-live');
+const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
@@ -238,7 +239,6 @@ async function startAgentRun() {
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
-  if (browserCfg) await freshTabs().catch(() => {});
   const grocer = loadSkills().find((s) => s.name === 'groceries');
   runTimeoutMs = grocer && grocer.match && tasks.some((t) => grocer.match.test(skillText(t))) ? GROCERY_TIMEOUT_MS : AGENT_TIMEOUT_MS;
   // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
@@ -252,6 +252,10 @@ async function startAgentRun() {
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   // an answer saying it couldn't do the task waits here while the next AI tries; it's what he gets if none can
   const held = {}, gaveUp = {};
+  // its own tabs (agent/task-tabs.js): tabs of tasks he hasn't finished stay open for ◉ Watch
+  const openIds = allTasks.filter((t) => t.ws === 'agent' && !t.done && t.status !== 'done').map((t) => t.id);
+  const startTab = browserCfg ? await taskTabs.startRun(ids, openIds).catch(() => null) : null;
+  let endPageP = null;
   agentProc = 'running'; runIds = ids; runRetried = false;
   // a run must not be cut off by this computer idling to sleep. A closed lid (or Modern Standby with the screen
   // off) still freezes it: a beat that comes late tells us, and then the run starts over once it's awake, with
@@ -275,17 +279,17 @@ async function startAgentRun() {
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const prompt = promptFor(pending, id);
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
-          browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0])) }).finally(() => live.close())
-        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED,
+          browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab) }).finally(() => live.close())
+        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED,
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
         // the ones answering one request at a time get the browser through the app's tool loop (agent/tool-loop.js);
         // Grok and Groq only when he turned it on (compatBrowser)
         : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs,
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs,
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block'), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } });
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } });
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
       if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
       // the last run overall, and each AI's own last run (agent-last-run-gemini.log…), so one AI's try isn't lost to the next
@@ -325,6 +329,7 @@ async function startAgentRun() {
     }
   } finally {
     agentProc = null; runIds = []; if (live) live.stop(); live = null;
+    endPageP = browserCfg ? taskTabs.endRun().catch(() => null) : null; // the page its tasks ended on
     clearInterval(beats); ctx.powerSaveBlocker.stop(awake);
   }
   agentLastKey = ''; // this run's tasks get answered (or failed) below, so a later reply may run again
@@ -341,7 +346,7 @@ async function startAgentRun() {
       : before.join(' and ') + ' couldn’t do this, so ' + providers.NAMES[u._via] + ' took over.') + ')';
   }
   const valid = answered;
-  const endPage = browserCfg ? await lastPage().catch(() => null) : null;
+  const endPage = await endPageP;
   for (const u of valid) {
     // a web try that opened his mail in the agent browser is treated like an inbox run from here on
     const sawMail = u._sawMail, via = u._via;
@@ -401,7 +406,8 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // takes the web tools out entirely, whatever his Claude settings allow.
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
-      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent'];
+      // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway)
+      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];

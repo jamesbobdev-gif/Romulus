@@ -66,3 +66,12 @@ test('every line keeps its transactions; his income / not income mark wins', () 
   assert.strictEqual(incomeStatement([t], {}, NOW).incomeTotal[2], 0);
   assert.strictEqual(incomeStatement([t], { 'in:transfer from mom': 'income' }, NOW).incomeTotal[2], 300);
 });
+
+test('contribution margin: income minus variable costs, and its share of income', () => {
+  const s = incomeStatement([checking, visa], {}, NOW);
+  const sep = 2;
+  assert.strictEqual(Math.round(s.contribution[sep] * 100) / 100, 3001.5 - 15);
+  assert.strictEqual(Math.round((s.contribution[sep] - s.fixedTotal[sep]) * 100) / 100, Math.round(s.net[sep] * 100) / 100, 'margin − fixed = net income');
+  assert.ok(Math.abs(s.contributionRatio[sep] - (3001.5 - 15) / 3001.5) < 1e-9);
+  assert.strictEqual(s.contributionRatio[0], null, 'no income in July');
+});

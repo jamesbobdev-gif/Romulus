@@ -55,8 +55,8 @@ contextBridge.exposeInMainWorld('desktop', {
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
-  livePages: () => ipcRenderer.invoke('live:pages'),
-  liveOpen: (url) => ipcRenderer.invoke('live:open', url),
+  livePages: (taskId) => ipcRenderer.invoke('live:pages', taskId),
+  liveOpen: (url, taskId) => ipcRenderer.invoke('live:open', url, taskId),
   // the hub mini PC (main/hub.js): this computer as its client, over Tailscale
   hubGet: () => ipcRenderer.invoke('hub:get'),
   hubTest: (url, token) => ipcRenderer.invoke('hub:test', url, token),
@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('desktop', {
   financeHelloUnlock: () => ipcRenderer.invoke('finance:helloUnlock'),
   financeSetHello: (on) => ipcRenderer.invoke('finance:setHello', on),
   financeLock: () => ipcRenderer.invoke('finance:lock'),
+  financeScreen: (on) => ipcRenderer.invoke('finance:screen', on),
   financeData: () => ipcRenderer.invoke('finance:data'),
   financeRefresh: () => ipcRenderer.invoke('finance:refresh'),
   financeForget: () => ipcRenderer.invoke('finance:forget'),

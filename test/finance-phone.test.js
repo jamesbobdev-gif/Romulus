@@ -90,3 +90,12 @@ test('asked while the app is in the background: no error to show, just not unloc
   const r = await c.api.financeUnlock();
   assert.deepStrictEqual([r.ok, r.notVisible, r.error], [false, true, undefined]);
 });
+
+test('the phone keeps Finance out of screenshots and screen-reading assistants while it shows', async () => {
+  const { api, ctx } = load({ scanned: pairPayload(ACCESS, {}) });
+  const seen = [];
+  const before = ctx.window.Capacitor.nativePromise;
+  ctx.window.Capacitor.nativePromise = async (p, m, o) => { if (m === 'secure') { seen.push(o.on); return {}; } return before(p, m, o); };
+  await api.financeScreen(true); await api.financeScreen(false);
+  assert.deepStrictEqual(seen, [true, false]);
+});
