@@ -245,7 +245,10 @@ async function syncOnce(){
     if(spawnMissedRecurs())touch(); // ticked off on a device or by a tool that doesn't make the next one
   }
   if(firstErr)setSyncStatus('sync error: '+firstErr.message,true);
-  else setSyncStatus('synced '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+  else{
+    syncState.lastAt=Date.now();
+    setSyncStatus('synced '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+(liveAllUp()?' · live':''));
+  }
 }
 function schedulePush(){
   if(!syncEnabled())return;
@@ -254,8 +257,92 @@ function schedulePush(){
 }
 function startSyncLoop(){
   clearInterval(syncState.pollTimer);
+  liveStop();
   if(!syncEnabled())return;
-  syncState.pollTimer=setInterval(syncNow,30000);
+  // While Realtime is connected, changes arrive the moment they happen; the timer is only a safety net then.
+  syncState.pollTimer=setInterval(function(){
+    if(liveAllUp()&&Date.now()-(syncState.lastAt||0)<5*60000)return;
+    syncNow();
+  },30000);
+  liveStart();
   syncNow();
 }
+
+/* ── live updates (Supabase Realtime) ──
+   One socket per Supabase project, listening for writes to our rows of tasks_sync (lists, ideas, hours).
+   A change from anywhere (phone, Claude, the connector, the hub) just starts a normal sync: the
+   download-merge-upload above stays the only way data moves, so nothing here can lose an edit. */
+const live={sockets:{}, nudgeTimer:null};
+function liveTargets(){
+  const out={};
+  function add(p){
+    if(!p)return;
+    const url=p.url.replace(/\/+$/,''), id=url+'|'+p.key;
+    (out[id]=out[id]||{url:url,key:p.key,syncKeys:[]}).syncKeys.push(p.syncKey);
+  }
+  profileList().forEach(function(ws){ add(syncState.cfg[ws]); });
+  if(typeof ideasProfile==='function')add(ideasProfile());
+  if(typeof hoursProfile==='function')add(hoursProfile());
+  return out;
+}
+function liveAllUp(){
+  const ids=Object.keys(live.sockets);
+  return ids.length>0&&ids.every(function(id){ return live.sockets[id].joined; });
+}
+function liveNudge(){ // a burst of writes (our own upload's echo included) becomes one sync
+  clearTimeout(live.nudgeTimer);
+  live.nudgeTimer=setTimeout(syncNow,300);
+}
+function liveOpen(id,t,tries){
+  if(typeof WebSocket!=='function')return;
+  const s={ws:null,joined:false,ref:0,hb:null,retry:null,lastMsg:Date.now(),tries:tries||0};
+  live.sockets[id]=s;
+  const topic='realtime:tasks-sync';
+  function send(m){ try{ s.ws.send(JSON.stringify(m)); }catch(e){} }
+  try{ s.ws=new WebSocket(t.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(t.key)+'&vsn=1.0.0'); }
+  catch(e){ return; }
+  s.ws.onopen=function(){
+    s.ref++;
+    send({topic:topic,event:'phx_join',ref:String(s.ref),join_ref:String(s.ref),payload:{config:{
+      broadcast:{self:false},presence:{key:''},
+      postgres_changes:t.syncKeys.map(function(k){ return {event:'*',schema:'public',table:'tasks_sync',filter:'sync_key=eq.'+k}; })
+    }}});
+    s.hb=setInterval(function(){
+      if(Date.now()-s.lastMsg>60000){ try{ s.ws.close(); }catch(e){} return; } // went quiet: reconnect
+      s.ref++; send({topic:'phoenix',event:'heartbeat',payload:{},ref:String(s.ref)});
+    },25000);
+  };
+  s.ws.onmessage=function(e){
+    s.lastMsg=Date.now();
+    let m; try{ m=JSON.parse(e.data); }catch(err){ return; }
+    if(m.topic!==topic)return;
+    if(m.event==='system'&&m.payload&&m.payload.extension==='postgres_changes'){
+      if(m.payload.status==='ok'){ s.joined=true; s.tries=0; syncNow(); } // catch up on anything missed while away
+      else { try{ s.ws.close(); }catch(err){} }
+    } else if(m.event==='phx_reply'&&m.payload&&m.payload.status==='error'){ try{ s.ws.close(); }catch(err){} }
+    else if(m.event==='postgres_changes'){ liveNudge(); }
+  };
+  s.ws.onclose=function(){
+    clearInterval(s.hb); s.joined=false;
+    if(live.sockets[id]!==s)return; // stopped on purpose
+    const wait=Math.min(60000,2000*Math.pow(2,s.tries)); // 2s, 4s, 8s … up to a minute
+    s.retry=setTimeout(function(){ if(live.sockets[id]===s)liveOpen(id,t,s.tries+1); },wait);
+  };
+}
+function liveStart(){
+  const targets=liveTargets();
+  Object.keys(targets).forEach(function(id){ liveOpen(id,targets[id]); });
+}
+function liveStop(){
+  Object.keys(live.sockets).forEach(function(id){
+    const s=live.sockets[id]; delete live.sockets[id];
+    clearInterval(s.hb); clearTimeout(s.retry);
+    try{ s.ws&&s.ws.close(); }catch(e){}
+  });
+}
+// The phone suspends sockets in the background: coming back reconnects straight away instead of after the backoff.
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden||!syncEnabled())return;
+  if(!liveAllUp()){ liveStop(); liveStart(); }
+});
 window.__syncNow=syncNow; // debugging hook
