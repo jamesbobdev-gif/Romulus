@@ -5,6 +5,8 @@
 // after the run, so the user can watch, log in to sites, and a half-filled form is still there when he
 // says "yes". agent/agent-browser.js copies this file next to the tool (node can't run files from inside app.asar).
 // Usage: node browser-proxy.js <playwright cli.js> <chrome.exe> <profile dir> <port> [<chrome flags, JSON>]
+// Guards (each a function below, tested in test/browser-guard.test.js): the mail guard, the mini PC's lock,
+// buying and submitting without a yes, and uploads of anything but his files for forms.
 const { spawn } = require('child_process');
 const http = require('http');
 
@@ -34,10 +36,7 @@ async function ensureBrowser() {
 // outlines or images: it asks for an outline when it needs one
 let extraArgs = ['--image-responses', 'allow'];
 try { if (process.env.TASKS_BROWSER_ARGS) extraArgs = JSON.parse(process.env.TASKS_BROWSER_ARGS); } catch (e) {}
-const child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs],
-  { stdio: ['pipe', 'pipe', 'inherit'] });
-child.on('exit', (code) => process.exit(code || 0));
-process.on('exit', () => { try { child.kill(); } catch (e) {} });
+let child = null; // Playwright's MCP server, started in main() below (the guards above it can be tested on their own)
 
 // Chrome doesn't draw a tab that isn't showing, so clicks there wait forever for the page to "settle"
 // (e.g. when the user left his own Outlook tab in front). Before every action, bring Claude's current
@@ -145,7 +144,8 @@ function mailFilter(line) {
    - "final" clicks (submit, send, buy, pay, book, apply, delete…) and pressing Enter are refused
      until "approved" is true, which the dispatcher sets only when the user's latest reply is a yes */
 const LOCK_FILE = process.env.TASKS_BROWSER_LOCK || '';
-const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|apply|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate)\b/i;
+// "Apply" / "Easy Apply" on a job posting only opens the application form; what sends it is "Submit"
+const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate)\b/i;
 // signing out is never part of a task, even after a yes: it ends the logins the user made on the mini PC
 // (Blackboard, D2L…), and only he can sign back in
 const SIGN_OUT = /\b(sign|log) ?(out|off)\b|logout|signout|logoff/i;
@@ -219,7 +219,34 @@ function buyRefusal(msg, here) {
   const approved = MAIL_APPROVED || (lockState() || {}).approved === true;
   if (name === 'browser_click' && !approved && BUY.test(labelOf(a.target || a.ref, a.element)))
     return 'Not without a yes: this places the order. List the items, total and time slot in your note and ask the user to reply yes.';
+  // a job application (or any other form): "Submit" sends it, and waits for his yes the same way
+  if (name === 'browser_click' && !approved && SUBMIT.test(labelOf(a.target || a.ref, a.element)))
+    return 'Not without a yes: "' + labelOf(a.target || a.ref, a.element).trim() + '" sends it. Say in your note what is filled in (the answers he should check, the file attached) and ask the user to reply yes.';
   return null;
+}
+const SUBMIT = /\b(submit|(send|finish|complete) (my |your |the |this )?application)\b/i;
+
+/* Uploads: browser_file_upload goes through, but only with his files for forms (TASKS_BROWSER_FILES, a
+   JSON list of full paths kept by agent/agent-files.js: his resume and the like). Any other path on
+   this computer is refused, whatever a page or a prompt says. No paths at all just closes the site's
+   file box, which is how a run gets unstuck when it has nothing to give. */
+let FILES = []; try { FILES = JSON.parse(process.env.TASKS_BROWSER_FILES || '[]'); } catch (e) {}
+if (!Array.isArray(FILES)) FILES = [];
+const samePath = (a, b) => {
+  const p = require('path'); a = p.resolve(String(a)); b = p.resolve(String(b));
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+};
+function fileRefusal(msg) {
+  if (!msg.params || msg.params.name !== 'browser_file_upload') return null;
+  const a = msg.params.arguments || {};
+  if (a.paths == null) return null; // closes the file box without sending anything
+  const paths = (Array.isArray(a.paths) ? a.paths : [a.paths]).map(String);
+  const bad = paths.filter((x) => !FILES.some((f) => samePath(f, x)));
+  if (!bad.length) return null;
+  const names = FILES.map((f) => require('path').basename(String(f)));
+  return (FILES.length ? 'Only his own files for forms can be uploaded: ' + names.join(', ') + ' (with the full path you were given). '
+    : 'He hasn\'t added any files for forms yet (⚙ Settings → About you → Files for forms), so nothing can be uploaded. ')
+    + 'Not ' + bad.join(', ') + '. To close the file box without uploading, call browser_file_upload with no paths, then say in your note what the site asked for.';
 }
 
 /* Store checkers (TASKS_BROWSER_SHOP, set for "shop1".."shop3" in agent/agent-browser.js) share this
@@ -239,47 +266,56 @@ async function shopTabs(msg) { // → a refusal, or null (msg may be changed to 
   return null;
 }
 
-// Playwright → Claude: pass everything through except the answers to our own calls
-let outBuf = '';
-child.stdout.on('data', (d) => {
-  outBuf += d;
-  let i;
-  while ((i = outBuf.indexOf('\n')) >= 0) {
-    const line = outBuf.slice(0, i + 1); outBuf = outBuf.slice(i + 1);
-    if (line.includes('[ref=')) { try { const t = resultText(JSON.parse(line)); learnRefs(t); learnLinks(t); } catch (e) {} }
-    if (line.includes('"proxy-')) {
-      let m = null; try { m = JSON.parse(line); } catch (e) {}
-      if (m && typeof m.id === 'string' && m.id.startsWith('proxy-')) {
-        if (pending[m.id]) { const r = pending[m.id]; delete pending[m.id]; r(m); }
-        continue; // ours (or a late answer to one of ours)
-      }
-    }
-    process.stdout.write(mailFilter(line));
-  }
-});
+function main() {
+  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'] });
+  child.on('exit', (code) => process.exit(code || 0));
+  process.on('exit', () => { try { child.kill(); } catch (e) {} });
 
-// Claude → Playwright: newline-delimited JSON-RPC, forwarded in order; the browser is opened before
-// the first tool call, and Claude's tab is brought to the front before each action
-let buf = '', started = false, chain = Promise.resolve();
-process.stdin.on('data', (d) => {
-  buf += d;
-  let i;
-  while ((i = buf.indexOf('\n')) >= 0) {
-    const line = buf.slice(0, i + 1); buf = buf.slice(i + 1);
-    chain = chain.then(async () => {
-      if (/"method"\s*:\s*"tools\/call"/.test(line)) {
-        if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
-        let msg = null; try { msg = JSON.parse(line); } catch (e) {}
-        const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-        const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || await shopTabs(msg));
-        if (refused) { // answer it ourselves; Playwright never sees the call
-          process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
-          return;
+  // Playwright → Claude: pass everything through except the answers to our own calls
+  let outBuf = '';
+  child.stdout.on('data', (d) => {
+    outBuf += d;
+    let i;
+    while ((i = outBuf.indexOf('\n')) >= 0) {
+      const line = outBuf.slice(0, i + 1); outBuf = outBuf.slice(i + 1);
+      if (line.includes('[ref=')) { try { const t = resultText(JSON.parse(line)); learnRefs(t); learnLinks(t); } catch (e) {} }
+      if (line.includes('"proxy-')) {
+        let m = null; try { m = JSON.parse(line); } catch (e) {}
+        if (m && typeof m.id === 'string' && m.id.startsWith('proxy-')) {
+          if (pending[m.id]) { const r = pending[m.id]; delete pending[m.id]; r(m); }
+          continue; // ours (or a late answer to one of ours)
         }
-        if (SHOP && msg && msg.params && msg.params.name === 'browser_tabs') { child.stdin.write(JSON.stringify(msg) + '\n'); return; } // its own tab's number
       }
-      child.stdin.write(line);
-    });
-  }
-});
-process.stdin.on('end', () => { chain.then(() => child.stdin.end()); });
+      process.stdout.write(mailFilter(line));
+    }
+  });
+
+  // Claude → Playwright: newline-delimited JSON-RPC, forwarded in order; the browser is opened before
+  // the first tool call, and Claude's tab is brought to the front before each action
+  let buf = '', started = false, chain = Promise.resolve();
+  process.stdin.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i + 1); buf = buf.slice(i + 1);
+      chain = chain.then(async () => {
+        if (/"method"\s*:\s*"tools\/call"/.test(line)) {
+          if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
+          let msg = null; try { msg = JSON.parse(line); } catch (e) {}
+          const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
+          const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || await shopTabs(msg));
+          if (refused) { // answer it ourselves; Playwright never sees the call
+            process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
+            return;
+          }
+          if (SHOP && msg && msg.params && msg.params.name === 'browser_tabs') { child.stdin.write(JSON.stringify(msg) + '\n'); return; } // its own tab's number
+        }
+        child.stdin.write(line);
+      });
+    }
+  });
+  process.stdin.on('end', () => { chain.then(() => child.stdin.end()); });
+}
+
+if (require.main === module) main();
+else module.exports = { lockedOut, mailRefusal, buyRefusal, fileRefusal, learnRefs, learnLinks, currentUrl, FINAL, BUY, SUBMIT }; // tests

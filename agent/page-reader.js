@@ -302,12 +302,17 @@ function fixArgs(name, args, state) {
 
 // ---------- one browser step ----------
 // tools after which the page may look different, so we look again for the model
-const CHANGES_PAGE = new Set(['browser_navigate', 'browser_navigate_back', 'browser_click', 'browser_type', 'browser_fill_form', 'browser_select_option', 'browser_press_key']);
+const CHANGES_PAGE = new Set(['browser_navigate', 'browser_navigate_back', 'browser_click', 'browser_type', 'browser_fill_form', 'browser_select_option', 'browser_press_key', 'browser_file_upload']);
 const firstLines = (s, n) => String(s).split('\n').filter((l) => l.trim() && !/^```|^### (Ran Playwright code|Page|Events)$|^await |^- Page (URL|Title)|^- Console|^- New console|^Call log:|^\s*(\x1b\[\d+m)?\s*- (waiting for|navigating to)/.test(l)).slice(0, n).join('\n');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// a site's file box is open (after a click on Upload / Attach): Playwright answers nothing else until it's handled
+const FILE_BOX = 'A file-choosing box is open: the site is waiting for a file, and nothing else on the page works until it is closed. ' +
+  'Call upload_file with the name of one of his files to put it in, or upload_file with no file to close the box.';
+const fileBoxOpen = (text) => /does not handle the modal state/i.test(String(text)) && /file ?chooser/i.test(String(text));
 async function look(browser, state, max) {
   let snap = await browser.call('browser_snapshot', {});
+  if (fileBoxOpen(snap)) return FILE_BOX;
   if (/^Refused or failed|^Browser error/.test(snap)) return snap;
   let o = outline(snap, { max });
   // a page still loading shows almost nothing: give it a moment once

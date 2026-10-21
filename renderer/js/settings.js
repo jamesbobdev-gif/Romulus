@@ -194,10 +194,38 @@ $('routingSaveBtn').addEventListener('click',async function(){
   }catch(e){ $('routingStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('routingStatus').textContent=''; },2500);
 });
+// his files for forms (the resume): on this computer, where the agent browser runs (main/downloads.js);
+// the phone has no window.desktop, so it never shows them
+async function formFilesLoad(){
+  const box=$('formFilesSection'); if(!box)return;
+  if(!window.desktop||!window.desktop.formFiles){ box.hidden=true; return; }
+  box.hidden=false;
+  let r=null; try{ r=await window.desktop.formFiles(); }catch(e){}
+  const list=$('formFilesList'); list.innerHTML='';
+  const files=(r&&r.files)||[];
+  if(!files.length){ list.appendChild(el('p','settings-hint','No files yet. Add your resume.')); return; }
+  files.forEach(function(f){
+    const row=el('div','settings-row');
+    row.appendChild(el('span','mono','📄 '+f.name+' · '+(f.size>=1048576?(f.size/1048576).toFixed(1)+' MB':Math.max(1,Math.round(f.size/1024))+' KB')));
+    const del=el('button','ghost mono danger','✕'); del.title='Remove this file';
+    del.addEventListener('click',async function(){ try{ await window.desktop.formFileRemove(f.name); }catch(e){} formFilesLoad(); });
+    row.appendChild(del); list.appendChild(row);
+  });
+}
+$('formFileAddBtn').addEventListener('click',async function(){
+  if(!window.desktop||!window.desktop.formFileAdd)return;
+  $('formFilesStatus').textContent='';
+  let r=null; try{ r=await window.desktop.formFileAdd(); }catch(e){ r={ok:false,error:e.message}; }
+  if(r&&r.ok)$('formFilesStatus').textContent='added';
+  else if(r&&r.error)$('formFilesStatus').textContent=r.error;
+  setTimeout(function(){ $('formFilesStatus').textContent=''; },3000);
+  formFilesLoad();
+});
 let prefsLoadedAt; // updated_at of the version in the box: Save only replaces that version (undefined = never loaded)
 async function prefsLoad(){
   lockedLoad();
   routingLoad();
+  formFilesLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
   try{ const r=await syncPullRow(p); $('prefsText').value=(r.doc&&r.doc.text)||''; prefsLoadedAt=r.updatedAt; $('prefsStatus').textContent=''; }

@@ -2,15 +2,28 @@
    - doc:save: an AI's written answer (an essay, a letter) saved as a Word file where he picks.
    - lupa:files / lupa:fetch / lupa:remove: files the mini PC's browser downloaded (a worksheet off Blackboard) sit in
      Lupa's ~/Downloads, not on this computer. These list them and copy one here, over the same SSH the
-     mini PC's browser uses (localModel.browser.ssh). */
+     mini PC's browser uses (localModel.browser.ssh).
+   - forms:files / forms:add / forms:remove: his files for forms (the resume a job site asks for), kept on this
+     computer where the browser launcher runs (agent/agent-files.js); Settings → About you lists them. */
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { app, dialog, shell } = require('electron');
 const { makeDocx } = require('../agent/docx-writer');
+const agentFiles = require('../agent/agent-files');
 
 let ctx = null;
 function init(c) { ctx = c; }
+
+const formDir = () => agentFiles.dirFor(ctx.userData());
+async function formAdd() {
+  const r = await dialog.showOpenDialog({ title: 'Add a file for forms', properties: ['openFile'],
+    filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'rtf', 'txt', 'odt', 'png', 'jpg', 'jpeg'] }] });
+  if (r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true };
+  const out = agentFiles.add(formDir(), r.filePaths[0]);
+  if (out.ok) ctx.agentLog('files for forms: added ' + out.file.name);
+  return out;
+}
 
 const sshHost = () => ((ctx.readConfig().localModel || {}).browser || {}).ssh || '';
 // a file name safe to use as a Windows file name
@@ -93,6 +106,9 @@ const handlers = {
   'doc:save': saveDoc,
   'lupa:files': () => lupaFiles(),
   'lupa:fetch': lupaFetch,
+  'forms:files': () => ({ ok: true, files: agentFiles.list(formDir()) }),
+  'forms:add': () => formAdd(),
+  'forms:remove': (_e, name) => agentFiles.remove(formDir(), name),
 };
 
 module.exports = { init, handlers };
