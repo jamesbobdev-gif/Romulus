@@ -311,6 +311,11 @@ function isAmazon(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
 }
+// a flight or event-ticket site: Romulus books it after a yes, like Amazon (tickets skill)
+function isTicketSite(url){
+  let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
+  return /(^|\.)(ticketmaster\.com|livenation\.com|axs\.com|seatgeek\.com|stubhub\.com|vividseats\.com|delta\.com|united\.com|aa\.com|southwest\.com|jetblue\.com|spirit\.com|flyfrontier\.com|alaskaair\.com)$/.test(h);
+}
 function isModelSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(makerworld|printables|thingiverse|thangs|cults3d|myminifactory|prusaprinters)\.com$/.test(h);

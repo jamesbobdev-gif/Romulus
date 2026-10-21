@@ -78,5 +78,9 @@ nearby: yes
     unticked. Then click "Continue to payment" (or "Continue"/"Next").
   - Only if his name or email isn't in his preferences: ask for them (`needs-you`, "What name and email
     should the tickets go to?") and add them with `pref` (section "About me") so it never asks again.
-  - **Payment page:** stop. The card is his to type: `needs-you`, "Name and email filled — tap <Site> ↗
-    and pay $<total>." Never type card details, and never press the final Pay / Complete purchase.
+  - **Payment page, no saved card** (Fandango and most movie sites ask for the card every time): stop.
+    The card is his to type: `needs-you`, "Name and email filled — tap <Site> ↗ and pay $<total>."
+    Never type card details.
+  - **Payment page with a card already on file** (Ticketmaster, AXS, SeatGeek, StubHub, the airlines):
+    go to the review page and follow the tickets skill: show the review, and press the final Pay /
+    Place order only after a yes that saw that exact total.
