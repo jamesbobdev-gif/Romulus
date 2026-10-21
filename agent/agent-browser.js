@@ -14,9 +14,13 @@ const handle = (ch, fn) => { handlers[ch] = fn; };
 
 const AGENT_BROWSER_PORT = 9334;
 const PLAYWRIGHT_MCP = '@playwright/mcp@0.0.83';
-// things a page could abuse: running its own code, sending his files, closing the window under him
-const RISKY = ['browser_run_code_unsafe', 'browser_evaluate', 'browser_file_upload', 'browser_drop', 'browser_close', 'browser_network_request'];
+// things a page could abuse: running its own code, closing the window under him. Uploads go through, but
+// the launcher lets only his files for forms (agent/agent-files.js: his resume) past, never another path
+const RISKY = ['browser_run_code_unsafe', 'browser_evaluate', 'browser_drop', 'browser_close', 'browser_network_request'];
 const BROWSER_DENIED = RISKY.map((n) => 'mcp__browser__' + n);
+const agentFiles = require('./agent-files');
+const formFilesDir = () => agentFiles.dirFor(ctx.userData());
+const formFiles = () => agentFiles.list(formFilesDir()); // [{name, path, size}]
 
 /* Store checkers: Claude's runs can hand the store comparison (prices, fees, deals) to three helpers
    that work at the same time. Each gets its own connection to the agent browser ("shop1".."shop3": the
@@ -25,7 +29,7 @@ const BROWSER_DENIED = RISKY.map((n) => 'mcp__browser__' + n);
 const SHOPS = ['shop1', 'shop2', 'shop3'];
 const SHOP_TOOLS = ['browser_navigate', 'browser_navigate_back', 'browser_snapshot', 'browser_find', 'browser_click', 'browser_type',
   'browser_select_option', 'browser_press_key', 'browser_hover', 'browser_wait_for', 'browser_tabs', 'browser_take_screenshot', 'browser_handle_dialog'];
-const SHOPS_DENIED = SHOPS.flatMap((s) => RISKY.map((n) => 'mcp__' + s + '__' + n));
+const SHOPS_DENIED = SHOPS.flatMap((s) => RISKY.concat('browser_file_upload').map((n) => 'mcp__' + s + '__' + n)); // checkers never upload
 function shopAgents() { // → the --agents definitions for a Claude run
   const agents = {};
   SHOPS.forEach((s, i) => {
@@ -100,10 +104,11 @@ const mailSeenFile = () => path.join(agentBrowserDir(), 'mail-seen.json');
 const mailSeen = () => fs.existsSync(mailSeenFile());
 function browserCfgFor(baseCfg, mode, approved) { // → this run's MCP config
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
-  j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0' };
+  j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
+    TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)) }; // the only things an upload may send
   // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
-  // never a yes (they only look)
-  if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1' }) });
+  // never a yes (they only look) and never a file
+  if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1', TASKS_BROWSER_FILES: '[]' }) });
   const f = path.join(agentBrowserDir(), 'mcp-' + mode + '.json');
   fs.writeFileSync(f, JSON.stringify(j));
   return f;
@@ -186,5 +191,5 @@ async function closeWindowedAgentBrowser() {
   await new Promise((r) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000 }, () => r()));
 }
 
-module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, findChrome, findNode, prepareAgentBrowser,
+module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
   mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, freshTabs, closeStoreTabs, STORE_PAGE, lastPage, chromeArgs, closeWindowedAgentBrowser };
