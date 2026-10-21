@@ -62,6 +62,16 @@ async function frontCurrentTab() {
   if (idx != null) await ownCall('browser_tabs', { action: 'select', index: Number(idx) });
   return currentUrl(list);
 }
+/* Each task has tabs of its own (agent/task-tabs.js); the run starts on its task's tab, not on whichever
+   tab Playwright happens to list first (another task's cart or login). TASKS_BROWSER_TAB is that tab's
+   address: the first tool call selects it. */
+const START_TAB = process.env.TASKS_BROWSER_TAB || '';
+async function selectStartTab() {
+  if (!START_TAB) return;
+  const list = resultText(await ownCall('browser_tabs', { action: 'list' }));
+  const hits = [...list.matchAll(/^- (\d+): (?:\(current\) )?\[.*\]\(([^()\s]*)\)/gm)].filter((m) => m[2] === START_TAB);
+  if (hits.length) await ownCall('browser_tabs', { action: 'select', index: Number(hits[hits.length - 1][1]) });
+}
 const currentUrl = (text) => (text.match(/^- \d+: \(current\) \[.*\]\(([^()\s]+)\)(?: \[crashed\])?\s*$/m) || [])[1] || null;
 
 /* Mail guard, for Claude's runs on the desktop (TASKS_BROWSER_MAIL). The user is logged in to his mail
@@ -189,11 +199,11 @@ function lockedOut(msg) {
   return null;
 }
 
-/* Buying, for every run. Grocery orders are placed by the agent once the user's latest reply is a yes
-   (TASKS_BROWSER_APPROVED, or "approved" in the local lane's lock file), so the order button itself
-   is held back until then, whatever a page says. Card numbers, PINs and security codes are his to
-   type, even after a yes. */
-const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order)|buy now|pay now|purchase)\b/i;
+/* Buying, for every run. Grocery orders, Amazon orders and tickets (flights, games, concerts) are
+   placed by the agent once the user's latest reply is a yes (TASKS_BROWSER_APPROVED, or "approved" in
+   the local lane's lock file), so the order button itself is held back until then, whatever a page
+   says. Card numbers, PINs and security codes are his to type, even after a yes. */
+const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order|booking)|buy now|buy tickets?|pay now|purchase|book (now|flight|trip|it)|confirm (and |& )?(pay|purchase|booking))\b/i;
 const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
 function buyRefusal(msg, here) {
   if (!msg.params) return null;
@@ -258,7 +268,7 @@ process.stdin.on('data', (d) => {
     const line = buf.slice(0, i + 1); buf = buf.slice(i + 1);
     chain = chain.then(async () => {
       if (/"method"\s*:\s*"tools\/call"/.test(line)) {
-        if (!started) { started = true; await ensureBrowser(); }
+        if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
         let msg = null; try { msg = JSON.parse(line); } catch (e) {}
         const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
         const refused = msg && (lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || await shopTabs(msg));

@@ -108,3 +108,14 @@ test('near-me tasks get his location: nearby skills or near words', () => {
   for (const title of ['email my professor', 'buy a phone case on Amazon', 'print the bracket stl'])
     assert.strictEqual(ctx.wantsNearby({ title }, skills), false, title);
 });
+
+test('tickets skill: flights and event tickets match it, and it is a browsing skill', () => {
+  const skills = ctx.loadSkills();
+  const tk = skills.find((s) => s.name === 'tickets');
+  assert.ok(tk && tk.browser && tk.match);
+  for (const title of ['fly to Denver Dec 20', 'cheapest flight home for Thanksgiving', 'Browns tickets for Sunday', 'tickets to the Cavs game', 'find concert tickets on stubhub'])
+    assert.ok(tk.match.test(title), title);
+  for (const title of ['email my professor', 'weekly grocery order', 'buy a phone case on Amazon'])
+    assert.ok(!tk.match.test(title), title);
+  assert.strictEqual(tk.nearby, false);
+});

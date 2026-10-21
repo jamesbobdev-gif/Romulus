@@ -255,7 +255,7 @@ function buildPanel(t){
     const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
     if(lastAns&&lastAns.thoughts&&t.status!=='working')nb.appendChild(thoughtsBox(t,lastAns));
     if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)nb.appendChild(retryButton(t));
-    if(!agentBusy&&!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t.page)); // e.g. to log in, or check a cart
+    if(!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t)); // e.g. to log in, or check a cart (its own tabs: fine while another task runs)
     panel.appendChild(nb);
   }
   // questions to tap through, one at a time (agent-ask.js)
@@ -287,12 +287,13 @@ function buildPanel(t){
         mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','📧 Emailing you the link to '+label+'.'); buzz('send'); touch(); });
         btns.appendChild(mb); }
       if(canPick){
-        const kind=isAmazon(o.url)?'amazon':optionKind(o.url);
-        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':kind==='amazon'?'Buy this':'Choose this');
-        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'Romulus gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':'Picks this option';
-        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='amazon'?'. Buy it on Amazon.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
-          // Amazon: Romulus builds the order and asks for a yes before placing it
+        const kind=isAmazon(o.url)?'amazon':isTicketSite(o.url)?'tickets':optionKind(o.url);
+        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':(kind==='amazon'||kind==='tickets')?'Buy this':'Choose this');
+        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'Romulus gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'Romulus gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
+        pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='amazon'?'. Buy it on Amazon.':kind==='tickets'?'. Book it.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
+          // Amazon and ticket sites: Romulus builds the order and asks for a yes before placing it
           if(kind==='amazon')agentSay(t,'sys','🛒 Getting the Amazon order ready. You’ll see it before anything is bought.');
+          else if(kind==='tickets')agentSay(t,'sys','🎟 Getting the booking ready. You’ll see the total before anything is bought.');
           // other links: stage an email with it — the desktop sends it (never orders anything)
           else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'📧 Emailing you the model to print.':kind==='link'?'📧 Emailing you the link.':'📧 Emailing you the link to buy this.'); }
           touch(); });
