@@ -14,7 +14,8 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, closeStoreTabs, lastPage, SHOPS, SHOPS_DENIED, shopAgents } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, freshTabs, closeStoreTabs, lastPage, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const agentFiles = require('./agent-files');
 const runLive = require('./run-live');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
@@ -224,8 +225,12 @@ async function startAgentRun() {
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
   const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') +
+    (browses(id) ? filesPart : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
     (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
+  // his files for forms (the resume), for a run with the browser: name and the full path the upload tool takes
+  const filesPart = (() => { const f = formFiles(); return f.length ? '\n\n## His files for forms\nHis own documents, for a site that asks for a resume or the like (the agent browser rules say how). ' +
+    'Give browser_file_upload the full path as written here; no other file can be sent:\n' + agentFiles.brief(f) : ''; })();
   // which AIs get the agent browser this run (see the calls below): all of them, but Grok and Groq only when he turned it on
   const browses = (id) => !!browserCfg && (!providers.COMPAT[id] || providers.settings(readConfig()).compatBrowser);
 
