@@ -25,6 +25,16 @@ on file. The card number itself is never yours to type.
   airline at once. Then open the airline's own site (Delta, United, American, Southwest, JetBlue…) to
   book — that is where his account and saved card are, and it's cheaper to change later than a
   third-party booking. Southwest doesn't show on Google Flights: check it yourself for domestic trips.
+  - Go straight to the results, airport codes and YYYY-MM-DD filled in, cheapest first:
+    `https://www.kayak.com/flights/CLE-FRA/2026-10-23?sort=price_a` (round trip: `/CLE-FRA/2026-10-23/2026-10-30`;
+    2 travelers: `/2adults` before `?`) or
+    `https://www.google.com/travel/flights?q=Flights%20to%20FRA%20from%20CLE%20on%202026-10-23%20oneway&curr=USD`.
+  - Fares load a few seconds after the page opens: if the first look shows no prices, wait
+    (browser_wait_for) and look again. If one site blocks you or shows nothing, use the other. Don't
+    give up on a flight search until you've seen both, and never just from web search results.
+  - A fare on the results page is real enough to show: its price, airline, times and stops are what
+    he picks from. When the fare has no page of its own to link, `url` can be that results page; the
+    exact fare gets checked on the airline's site after he picks.
 - **Events:** the venue's official seller first (Ticketmaster or AXS for most arenas, the team's own
   site), then resale (SeatGeek, StubHub, Vivid Seats) when it's sold out or cheaper. Resale listings
   show the price before fees: open one to see the all-in total before comparing.
