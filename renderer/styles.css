@@ -89,6 +89,16 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .live-bar .live-bigger:hover{color:var(--ink)}
 /* grocery list (grocery-list.js) and the one-tap yes */
 .agent-yes{display:block;width:100%;margin:10px 0 6px;padding:10px 14px;font-size:14px}
+.yes-prompts{display:grid;gap:8px;margin:0 0 12px}
+.yes-card{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;cursor:pointer}
+.yes-card:hover,.yes-card:focus-visible{border-color:var(--muted);border-left-color:var(--accent);outline:0}
+.yes-head{display:flex;align-items:baseline;gap:8px;min-width:0}
+.yes-who{flex:none;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.yes-title{font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yes-ctx{margin:5px 0 0;font-size:12.5px;line-height:1.4;color:var(--muted)}
+.yes-btns{display:flex;gap:8px;margin-top:9px}
+.yes-btns .btn-accent{margin-left:0;padding:7px 18px}
+.yes-btns .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;padding:7px 16px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
 
@@ -153,6 +163,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 /* "it's working" spinner: in the chip, the "is on it" box, and a dot on the Agent tab */
 .spin{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.conv-toggle .conv-spin{margin:0 0 0 8px;color:var(--accent)}
+.conv-msg.conv-typing{color:var(--muted);font-style:italic}
+.lane-slider .lane-word.on .spin{color:var(--accent)}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
 .tab.busy{position:relative}

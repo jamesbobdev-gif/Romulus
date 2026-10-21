@@ -139,7 +139,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Lupa Au Palatine asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
-      if(['gemini','openai','openrouter','xai','groq','cloudflare'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS
+      if(['gemini','openai','openrouter','xai','groq','cloudflare','nvidia'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS
       if(u.lane!=='local'&&typeof u.model==='string'&&u.model)extra.model=u.model.slice(0,80); // which model wrote it (lists.js shows it by the name)
       if(t.shot)extra.images=[t.shot];
       if(thoughts){

@@ -3,7 +3,7 @@
    browser and the attachments; without it, the plain API with Google Search), ChatGPT (his ChatGPT plan through
    OpenAI's Codex CLI when he's signed in to it, else an OpenAI API key; web search either way) and OpenRouter (one API key, any
    of its models, only through providers that don't keep or train on what's sent), plus the ones with a free
-   API tier that speak OpenAI's chat format (Grok, Groq, Cloudflare: see COMPAT). Each gets the
+   API tier that speak OpenAI's chat format (Grok, Groq, Cloudflare, NVIDIA: see COMPAT). Each gets the
    same instructions and task data as Claude and answers with the same {"updates": [...]} JSON.
    The order and the keys live in this computer's config only (config.json → ai), never in sync.
    No Electron here, so it can be tested on its own. */
@@ -15,13 +15,15 @@ const meter = require('./usage-meter');
 const loop = require('./tool-loop');
 
 /* The AIs with a free API tier and OpenAI's chat format: one key each, no tools (no files or Gmail; the agent browser
-   only when he turns on compatBrowser, as free tiers browse poorly and run out fast).
+   only when he turns it on for that one (<id>Browser), as free tiers browse poorly and run out fast).
    model: the default; prefer: which of its /models to use when that one is gone (they rename models often) */
 const COMPAT = {
   xai: { name: 'Grok', base: 'https://api.x.ai/v1', model: 'grok-4-fast-reasoning', prefer: /^grok-4.*fast/ },
   groq: { name: 'Groq', base: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', prefer: /gpt-oss-120b|llama-3\.3-70b/ },
   // Workers AI: 10,000 free "neurons" a day (reset 00:00 UTC). Its address has his account ID in it (see cfEndpoint)
   cloudflare: { name: 'Cloudflare', model: '@cf/openai/gpt-oss-120b', prefer: /gpt-oss-120b|llama-4|llama-3\.3-70b/, account: true },
+  // build.nvidia.com: a free key (nvapi-…) for trying its models, about 40 requests a minute
+  nvidia: { name: 'NVIDIA', base: 'https://integrate.api.nvidia.com/v1', model: 'z-ai/glm-5.3', prefer: /glm-5|deepseek-v4|nemotron-3-(ultra|super)/ },
 };
 const COMPAT_IDS = Object.keys(COMPAT);
 const PROVIDERS = ['claude', 'gemini', 'openai', 'openrouter', ...COMPAT_IDS];
@@ -31,7 +33,7 @@ const OPENAI_DEFAULT_MODEL = 'gpt-5-mini';
 const OPENROUTER_DEFAULT_MODEL = 'openrouter/auto'; // OpenRouter picks a model per request
 
 /* config.json → ai: {order: [{id, on}], claudeModel, geminiKey, geminiModel, openaiVia, openaiKey, openaiModel, codexModel, openrouterKey, openrouterModel,
-   openrouterWeb, openrouterZdr, and <id>Key, <id>Model for each COMPAT id}. A blank model is Auto: the best one that AI has (see Auto below) */
+   openrouterWeb, openrouterZdr, openrouterFree, and <id>Key, <id>Model for each COMPAT id}. A blank model is Auto: the best one that AI has (see Auto below) */
 function settings(cfg) {
   const ai = (cfg && cfg.ai) || {};
   const seen = new Set();
@@ -42,6 +44,8 @@ function settings(cfg) {
   for (const id of COMPAT_IDS) {
     compat[id + 'Key'] = String(ai[id + 'Key'] || '').trim();
     compat[id + 'Model'] = String(ai[id + 'Model'] || '').trim();
+    // the agent browser, his switch for each: off unless he turns it on (compatBrowser: the old one switch for all of them)
+    compat[id + 'Browser'] = typeof ai[id + 'Browser'] === 'boolean' ? ai[id + 'Browser'] : ai.compatBrowser === true;
   }
   return Object.assign(compat, {
     order,
@@ -57,7 +61,7 @@ function settings(cfg) {
     openrouterModel: String(ai.openrouterModel || '').trim() || OPENROUTER_DEFAULT_MODEL,
     openrouterWeb: ai.openrouterWeb !== false,
     openrouterZdr: ai.openrouterZdr !== false, // zero data retention only: on unless he turns it off
-    compatBrowser: ai.compatBrowser === true, // Grok and Groq get the agent browser: off unless he turns it on
+    openrouterFree: ai.openrouterFree !== false, // on Auto, its free models before paid ones: on unless he turns it off
     claudeLast: ai.claudeLast !== false, // Claude only after the others: his Claude usage is kept for building the app
   });
 }
@@ -72,6 +76,7 @@ const TIERS = {
   xai: [/^grok-\d+(\.\d+)?(-latest)?$/, /^grok-\d.*fast.*reasoning/, /^grok-\d.*fast/],
   groq: [/gpt-oss-120b/, /kimi-k2|llama-4-maverick|qwen3?-32b/, /llama-3\.3-70b/],
   cloudflare: [/gpt-oss-120b/, /llama-4-scout|qwen3|llama-3\.3-70b/, /gpt-oss-20b|mistral-small/],
+  nvidia: [/glm-5|deepseek-v4|nemotron-3-ultra|kimi-k2/, /nemotron-3-super|gpt-oss-120b|qwen3-(235b|next)/, /gpt-oss-20b|llama-3\.3-70b/],
 };
 // not chat models, or a dated snapshot of one that has a plain name too
 const SKIP_MODEL_RE = /embed|whisper|tts|audio|realtime|transcribe|image|imagen|vision|veo|guard|moderation|ocr|search|computer|robotics|live|aqa|codex|gemma|-\d{4}-\d{2}-\d{2}$/i;
@@ -560,13 +565,36 @@ async function runOpenRouter(cfg, opts) {
         why: broke ? 'OpenRouter is out of credit: add some at openrouter.ai/credits' : 'OpenRouter: ' + String(msg).slice(0, 160) };
     };
     const runNote = note != null ? note : browser ? browserNote('answering through OpenRouter', s.openrouterWeb ? 'web search results (added for you)' : '') : OPENROUTER_NOTE;
-    const api = loop.chatApi({ base, content: prompt + runNote, fail,
-      post: (body, ms) => postJson('https://openrouter.ai/api/v1/chat/completions', { Authorization: 'Bearer ' + s.openrouterKey, 'Content-Type': 'application/json', 'X-Title': 'Tasks' }, body, ms, 'OpenRouter') });
-    const r = await loop.runLoop(api, browser || { tools: [] }, { timeoutMs: timeoutMs || 600000, onProc: browser && onProc });
-    if (r.text) { meter.noteCall('openrouter', { tokens: r.tokens }); lastUsed.openrouter = r.model || s.openrouterModel; return withLog({ text: String(r.text), model: lastUsed.openrouter }, r); }
-    r.log = loopLog(r);
-    return r;
+    const once = async (model) => {
+      const api = loop.chatApi({ base: Object.assign({}, base, { model }), content: prompt + runNote, fail,
+        post: (body, ms) => postJson('https://openrouter.ai/api/v1/chat/completions', { Authorization: 'Bearer ' + s.openrouterKey, 'Content-Type': 'application/json', 'X-Title': 'Tasks' }, body, ms, 'OpenRouter') });
+      const r = await loop.runLoop(api, browser || { tools: [] }, { timeoutMs: timeoutMs || 600000, onProc: browser && onProc });
+      if (r.text) { meter.noteCall('openrouter', { tokens: r.tokens }); return withLog({ text: String(r.text), model: r.model || model }, r); }
+      r.log = loopLog(r);
+      if (FREE_RE.test(model) && !r.auth) {
+        // its free models' daily cap (50 a day, 1,000 once $10 of credit was ever bought): none until it resets
+        if (/per-day|per day/i.test(r.log || '')) freeOffUntil = nextUtcMidnight();
+        r.gone = true; // a free model that's busy, capped or has no endpoint for his privacy settings: on to the next
+      }
+      return r;
+    };
+    // Auto: up to 4 of its free models first (a free one with no endpoint for his privacy settings fails in a moment), then the paid pick
+    const free = s.openrouterFree && s.openrouterModel === OPENROUTER_DEFAULT_MODEL && Date.now() >= freeOffUntil
+      ? freeModels(await modelList('openrouter', s.openrouterKey)) : [];
+    return tryModels('openrouter', free.concat(s.openrouterModel), once);
   });
+}
+/* OpenRouter's free models (":free"), best first; tryModels takes the first that answers. The free list changes
+   every few weeks, so any free chat model counts: the known-good kinds first, then the biggest by its size in the name */
+const FREE_RE = /:free$/;
+const FREE_TIERS = [/deepseek-(chat-v3|v3|r1)|qwen3-(235b|coder|next)|kimi-k2|gpt-oss-120b|glm-[45]|nemotron-\d.*(ultra|super)|minimax-m\d/, /llama-3\.3-70b|gemma-\d+-(2[6-9]|3\d)b|gpt-oss-20b/];
+let freeOffUntil = 0;
+const nextUtcMidnight = () => { const d = new Date(); d.setUTCHours(24, 0, 0, 0); return d.getTime(); };
+const sizeB = (m) => Math.max(0, ...[...m.matchAll(/(\d+(?:\.\d+)?)b\b/gi)].map((x) => parseFloat(x[1])));
+function freeModels(models) {
+  return models.filter((m) => FREE_RE.test(m) && !/embed|tts|image|guard|safety|rerank/i.test(m))
+    .map((m) => { const t = FREE_TIERS.findIndex((re) => re.test(m)); return { m, t: t < 0 ? FREE_TIERS.length : t }; })
+    .sort((a, b) => a.t - b.t || sizeB(b.m) - sizeB(a.m) || a.m.localeCompare(b.m)).slice(0, 4).map((x) => x.m);
 }
 
 async function openRouterCheck(key) { // → {ok, label, credits} for Settings
@@ -580,7 +608,7 @@ async function openRouterCheck(key) { // → {ok, label, credits} for Settings
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-/* ── Grok, Groq: OpenAI's chat format, one key each ── */
+/* ── Grok, Groq, Cloudflare, NVIDIA: OpenAI's chat format, one key each ── */
 const compatNote = (name) => '\n\n## This run\nYou are running as ' + name + ', standing in for Claude: the instructions above ' +
   'are written for Claude and apply to you the same way, the hard rule most of all. In this run you have NO tools: no ' +
   'browser, no web search, no files, no Gmail. Answer what you can from what you know; if a task needs a browser, current ' +
@@ -666,8 +694,8 @@ async function runCompat(id, cfg, opts) {
   const p = COMPAT[id], s = settings(cfg);
   if (!p) return { why: 'unknown AI ' + id };
   if (!s[id + 'Key']) return { auth: true, why: 'no ' + p.name + ' API key' };
-  // the agent browser only when he turned it on for them
-  return withBrowser(s.compatBrowser ? opts : Object.assign({}, opts, { browserMcpFile: null }), (browser) => compatRun(id, s, opts, browser));
+  // the agent browser only when he turned it on for this one
+  return withBrowser(s[id + 'Browser'] ? opts : Object.assign({}, opts, { browserMcpFile: null }), (browser) => compatRun(id, s, opts, browser));
 }
 async function compatRun(id, s, { prompt, timeoutMs, note, onProc }, browser) {
   const p = COMPAT[id], key = s[id + 'Key'], model = s[id + 'Model'];

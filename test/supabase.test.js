@@ -14,15 +14,18 @@ test('channel needs url and key', () => {
   assert.deepStrictEqual(supabase.channel({ sync: { agent: a } }), a);
 });
 
-test('readRow builds the URL and headers', async () => {
+test('readRow calls sync_get with the key and headers; never the table', async () => {
   const seen = {};
-  const row = await supabase.readRow(a, ':prefs', { select: 'doc,updated_at', fetch: fakeFetch(200, [{ doc: { text: 'hi' } }], seen) });
-  assert.strictEqual(seen.url, 'https://x.supabase.co/rest/v1/tasks_sync?sync_key=eq.abc%3Aprefs&select=doc,updated_at');
-  assert.deepStrictEqual(seen.opts.headers, { apikey: 'k', Authorization: 'Bearer k' });
-  assert.deepStrictEqual(row, { doc: { text: 'hi' } });
+  const row = await supabase.readRow(a, ':prefs', { fetch: fakeFetch(200, [{ doc: { text: 'hi' }, updated_at: 't1', topic: 'sync:abc' }], seen) });
+  assert.strictEqual(seen.url, 'https://x.supabase.co/rest/v1/rpc/sync_get');
+  assert.strictEqual(seen.opts.method, 'POST');
+  assert.deepStrictEqual(JSON.parse(seen.opts.body), { p_sync_key: 'abc:prefs' });
+  assert.deepStrictEqual(seen.opts.headers, { apikey: 'k', Authorization: 'Bearer k', 'Content-Type': 'application/json' });
+  assert.deepStrictEqual(row, { doc: { text: 'hi' }, updated_at: 't1' });
 });
 
-test('readRow: no row → undefined, HTTP error → throws', async () => {
+test('readRow: no list yet (sync_get answers a null doc) → undefined, HTTP error → throws', async () => {
+  assert.strictEqual(await supabase.readRow(a, ':x', { fetch: fakeFetch(200, [{ doc: null, updated_at: null, topic: 'sync:x' }]) }), undefined);
   assert.strictEqual(await supabase.readRow(a, ':x', { fetch: fakeFetch(200, []) }), undefined);
   await assert.rejects(supabase.readRow(a, ':x', { fetch: fakeFetch(401, { message: 'no' }) }), /HTTP 401/);
 });
@@ -31,6 +34,18 @@ test('readText falls back to empty on errors', async () => {
   assert.strictEqual(await supabase.readText(a, ':prefs', { fetch: fakeFetch(200, [{ doc: { text: 'likes tea' } }]) }), 'likes tea');
   assert.strictEqual(await supabase.readText(a, ':prefs', { fetch: fakeFetch(500, {}) }), '');
   assert.strictEqual(await supabase.readText(a, ':prefs', { fetch: async () => { throw new Error('offline'); } }), '');
+});
+
+test('writeRow is a compare-and-swap through sync_put', async () => {
+  const seen = {};
+  assert.strictEqual(await supabase.writeRow(a, ':prefs', { v: 1, text: 'new' }, 't1', { fetch: fakeFetch(200, true, seen) }), true);
+  assert.strictEqual(seen.url, 'https://x.supabase.co/rest/v1/rpc/sync_put');
+  assert.deepStrictEqual(JSON.parse(seen.opts.body), { p_sync_key: 'abc:prefs', p_doc: { v: 1, text: 'new' }, p_prev: 't1' });
+  assert.strictEqual(await supabase.writeRow(a, ':prefs', { v: 1, text: 'new' }, 't1', { fetch: fakeFetch(200, false) }), false); // someone wrote meanwhile
+  const made = {};
+  await supabase.writeRow(a, ':prefs', { v: 1, text: 'first' }, null, { fetch: fakeFetch(200, true, made) });
+  assert.strictEqual(JSON.parse(made.opts.body).p_prev, null); // no row yet: make it
+  await assert.rejects(supabase.writeRow(a, ':prefs', {}, null, { fetch: fakeFetch(500, {}) }), /HTTP 500/);
 });
 
 test('headers merge extras', () => {

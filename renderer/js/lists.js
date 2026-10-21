@@ -125,11 +125,15 @@ function buildPanel(t){
   panel.addEventListener('pointerdown',function(){ lastPanelId=t.id; });
   panel.addEventListener('focusin',function(){ lastPanelId=t.id; });
 
+  // a model is answering right now (or it's being handed to one): spinners on the toggle, the pill and the conversation
+  const spinning=taskWs(t)==='agent'&&!t.done&&(t.status==='working'||(t.status==='queued'&&!(t.waitUntil&&t.waitUntil>Date.now())))
+    &&!(t.lane==='local'&&localStat&&localStat.configured&&!localStat.online);
   // the whole back-and-forth on this task, collapsed until tapped
   if(taskWs(t)==='agent'&&Array.isArray(t.history)&&t.history.length){
     const hist=t.history, open=convOpen.has(t.id);
     const tg=el('button','conv-toggle',(open?'\u25BE':'\u25B8')+' Conversation ('+hist.length+')');
     tg.setAttribute('aria-expanded',String(open));
+    if(spinning)tg.appendChild(el('span','spin conv-spin'));
     tg.addEventListener('click',function(){ if(convOpen.has(t.id))convOpen.delete(t.id); else convOpen.add(t.id); render(); });
     panel.appendChild(tg);
     if(open){
@@ -146,6 +150,12 @@ function buildPanel(t){
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
         th.appendChild(b);
       });
+      if(spinning){ // a "typing" line at the bottom while the answer is coming
+        const w=el('div','conv-msg claude conv-typing');
+        w.appendChild(el('span','spin'));
+        w.appendChild(document.createTextNode((t.lane==='local'?'Lupa Au Palatine':cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
+        th.appendChild(w);
+      }
       panel.appendChild(th);
       requestAnimationFrame(function(){ th.scrollTop=th.scrollHeight; }); // newest at the bottom, like a chat
     }
@@ -211,9 +221,11 @@ function buildPanel(t){
     cw.title=onCloud?LANE_NAMES[now]+' has this task. Pick another cloud AI to switch (asks first)':(now?'Switch this task to a cloud AI (asks first)':'Send this task to a cloud AI');
     pick.addEventListener('click',function(e){ e.stopPropagation(); });
     pick.addEventListener('change',function(e){ e.stopPropagation(); if(pick.value&&pick.value!==now)setLane(t,pick.value); });
+    if(spinning&&onCloud)cw.appendChild(el('span','spin'));
     cw.appendChild(pick); cw.appendChild(el('span','lane-caret','▾'));
     tg.appendChild(cw);
     const lw=el('button','lane-word'+(now==='local'?' on':''),localModelName());
+    if(spinning&&now==='local')lw.insertBefore(el('span','spin'),lw.firstChild);
     lw.setAttribute('role','radio'); lw.setAttribute('aria-checked',String(now==='local'));
     lw.title=now==='local'?'Lupa Au Palatine ('+localModelName()+') has this task':(now?'Switch this task to Lupa Au Palatine (asks first)':'Send this task to Lupa Au Palatine');
     lw.addEventListener('click',function(e){ e.stopPropagation(); if(now!=='local')setLane(t,'local'); });
@@ -718,6 +730,7 @@ function render(){
   navOrder=openVis.map(function(t){ return t.id; });
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
   drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
+  drawYesPrompts(tab==='list'?needing:[]);
   const ol=$('openList'); ol.innerHTML='';
   openVis.forEach(function(t){ ol.appendChild(buildRow(t,true)); });
 
@@ -739,4 +752,50 @@ function render(){
     const dlst=$('doneList'); dlst.hidden=!state.showDone; dlst.innerHTML='';
     if(state.showDone)doneVis.forEach(function(t){ dlst.appendChild(buildRow(t,false)); });
   } else { ds.hidden=true; state.confirmClear=false; }
+}
+
+/* On the Human tab: one card per Agent task waiting on a yes ("Reply yes to submit it"), with a line
+   of what it's about and Yes / No. Tap the card itself to open the task on the Agent tab. An order
+   with its cart shows no Yes here: items can be left out there, so it opens the order instead. */
+function yesContext(t){
+  const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
+  let s=String((last&&last.text)||t.note||'');
+  s=s.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
+  s=s.replace(/[^.!?]*\breply\s*yes\b[^.!?]*[.!?]?/ig,'').trim(); // the ask itself is the buttons
+  return s.length>220?s.slice(0,217).replace(/\s+\S*$/,'')+'…':s;
+}
+function drawYesPrompts(needing){
+  const box=$('yesPrompts'); box.innerHTML='';
+  const asks=needing.filter(wantsYes);
+  box.hidden=!asks.length;
+  asks.forEach(function(t){
+    const c=el('div','yes-card'); c.tabIndex=0; c.title='Open this task on the Agent tab';
+    const head=el('div','yes-head');
+    head.appendChild(el('span','yes-who','Romulus asks'));
+    head.appendChild(el('b','yes-title',t.title));
+    c.appendChild(head);
+    const ctx=yesContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
+    const row=el('div','yes-btns');
+    const cart=Array.isArray(t.cart)&&t.cart.length;
+    if(cart){
+      const r=el('button','btn-accent','Review the order');
+      r.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(t.id); });
+      row.appendChild(r);
+    } else {
+      const y=yesButton(t); y.classList.remove('agent-yes'); row.appendChild(y);
+      const n=el('button','btn-ghost','No');
+      n.title='Tell Romulus no: it won’t go ahead';
+      n.addEventListener('click',function(e){
+        e.stopPropagation();
+        const lt=liveTask(t);
+        lt.reply='no'; agentSay(lt,'you','no'); lt.status='queued';
+        buzz('send'); touch();
+      });
+      row.appendChild(n);
+    }
+    c.appendChild(row);
+    c.addEventListener('click',function(){ openTaskById(t.id); });
+    c.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target===c)openTaskById(t.id); });
+    box.appendChild(c);
+  });
 }
