@@ -5,6 +5,7 @@
    so the Origin header is dropped for that one localhost port, for the app's own page only. */
 const { session } = require('electron');
 const { AGENT_BROWSER_PORT, agentBrowserUp, ensureAgentBrowser, closeWindowedAgentBrowser } = require('./agent-browser');
+const taskTabs = require('./task-tabs');
 
 let ctx = null;
 const handlers = {};
@@ -27,26 +28,32 @@ function init(c) {
   setTimeout(() => closeWindowedAgentBrowser().catch(() => {}), 3000);
 }
 
-// its open tabs (most recently used first, as Chrome lists them), with the socket to watch each
-async function pages() {
+// its open tabs (most recently used first, as Chrome lists them), with the socket to watch each.
+// taskId: only that task's tabs (agent/task-tabs.js), so watching one task never shows another's
+const view = (p) => ({ id: p.id, title: p.title || '', url: p.url || '', ws: p.webSocketDebuggerUrl });
+async function pages(taskId) {
   if (!(await agentBrowserUp())) return { up: false, pages: [] };
-  const list = await fetch(BASE + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
-  return { up: true, pages: list.filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl)
-    .map((p) => ({ id: p.id, title: p.title || '', url: p.url || '', ws: p.webSocketDebuggerUrl })) };
+  const list = taskId ? await taskTabs.pagesFor(String(taskId)) : await fetch(BASE + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
+  return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl).map(view) };
 }
-handle('live:pages', () => pages());
-// ◉ Watch on a task that needs him: the page its run ended on. The tab if it's still open, or a new one
-// (a later run closed it; his logins and cart are in the profile) → its id, for the view to show
-async function openPage(url) {
+handle('live:pages', (_e, taskId) => pages(taskId));
+// ◉ Watch on a task that needs him: its own tab, as the run left it (nothing reloaded). If that tab is gone
+// (the browser was closed), the page its run ended on, in a new tab of its own: never a sign-in step
+// (those only work once, and opening one again just shows an error) → the tab's id, for the view to show
+async function openPage(url, taskId) {
   url = String(url || '');
-  if (!/^https:\/\//i.test(url) || !(await ensureAgentBrowser())) return null;
-  const same = (a) => { try { const x = new URL(a), y = new URL(url); return x.host === y.host && x.pathname === y.pathname; } catch (e) { return false; } };
-  const open = (await pages()).pages.find((p) => same(p.url));
-  if (open) { await fetch(BASE + '/json/activate/' + open.id, { signal: AbortSignal.timeout(1500) }).catch(() => {}); return open.id; }
+  if (taskId) {
+    const mine = await taskTabs.pagesFor(String(taskId)).catch(() => null);
+    const p = mine && (mine.find((x) => /^https?:/i.test(x.url)) || mine[0]);
+    if (p) { await fetch(BASE + '/json/activate/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {}); return p.id; }
+  }
+  if (!/^https:\/\//i.test(url) || taskTabs.signInPage(url) || !(await ensureAgentBrowser())) return null;
   const made = await fetch(BASE + '/json/new?' + url, { method: 'PUT', signal: AbortSignal.timeout(3000) }).then((r) => r.json()).catch(() => null);
-  return made && made.id ? made.id : null;
+  if (!made || !made.id) return null;
+  if (taskId) taskTabs.give(made.id, String(taskId));
+  return made.id;
 }
-handle('live:open', (_e, url) => openPage(url));
+handle('live:open', (_e, url, taskId) => openPage(url, taskId));
 // "Start it": it starts headless (no window); the view shows it
 handle('live:start', async () => ({ ok: await ensureAgentBrowser() }));
 

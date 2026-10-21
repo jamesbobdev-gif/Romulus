@@ -69,6 +69,8 @@ function createWindow() {
   // leaves a blank window forever — retry until it sticks.
   loadApp().catch(() => setTimeout(loadApp, 1500));
   mainWindow.webContents.on('did-fail-load', () => setTimeout(loadApp, 1500));
+  // a fresh page starts off Finance: drop the capture block it may have left (it sets it again if it opens there)
+  mainWindow.webContents.on('did-start-loading', () => protect(false));
 
   // Closing the window hides it to the tray; the app keeps running
   // so it can reappear when the screen wakes. Quit from the tray menu.
@@ -101,6 +103,11 @@ function reloadWindow() { if (mainWindow && !mainWindow.isDestroyed()) mainWindo
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
+// while Finance is on screen: Windows leaves the window out of every capture (screenshots, screen sharing,
+// Recall / Copilot, an AI assistant's screenshot tools); it shows as black there
+function protect(on) {
+  if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.setContentProtection(!!on); } catch (e) {} }
+}
 // the main window's handle as a number (Windows Hello attaches its prompt to it), or null
 function windowHandle() {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -108,4 +115,4 @@ function windowHandle() {
   return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
 }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle, protect };

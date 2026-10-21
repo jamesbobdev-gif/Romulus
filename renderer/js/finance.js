@@ -9,7 +9,7 @@ const fin={ data:null, query:'', account:'', shown:50, busy:false, msg:'', msgEr
 const finApi=window.desktop&&window.desktop.financeStatus?window.desktop:(window.phoneFinance||null);
 if(finApi){
   $('tabFinance').hidden=false;
-  finApi.onFinanceLocked(function(){ fin.data=null; if(state.activeTab==='finance')renderFinance(); });
+  finApi.onFinanceLocked(function(){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });
   // purchase emails came in (or it started or stopped looking): drawn again, search and filter kept
   if(finApi.onFinanceUpdated)finApi.onFinanceUpdated(function(){ if(state.activeTab==='finance'&&fin.data&&!fin.busy)renderFinance(); });
   // the phone: back in the app on a locked Finance tab → the fingerprint prompt again
@@ -19,7 +19,7 @@ if(finApi){
     if(state.activeTab==='finance'&&!fin.data&&!fin.invalidated&&!inFlight){ fin.autoAsked=false; renderFinance(); }
   });
 }
-function financeLeave(){ if(typeof finStopStocks==='function')finStopStocks(); fin.autoAsked=false; fin.data=null; fin.query=''; fin.account=''; fin.shown=50; fin.msg=''; const v=$('financeView'); if(v)v.textContent=''; }
+function financeLeave(){ fin.allowCapture=false; if(finApi&&finApi.financeScreen&&fin.screen){ fin.screen=false; finApi.financeScreen(false); } if(typeof finStopStocks==='function')finStopStocks(); fin.autoAsked=false; fin.data=null; fin.query=''; fin.account=''; fin.shown=50; fin.msg=''; const v=$('financeView'); if(v)v.textContent=''; }
 
 function finMoney(n,cur){
   try{ return new Intl.NumberFormat(undefined,{style:'currency',currency:cur||'USD'}).format(n); }catch(e){ return (n<0?'-':'')+'$'+Math.abs(n).toFixed(2); }
@@ -38,6 +38,12 @@ function finInput(type,placeholder,id){
 
 async function renderFinance(){
   const v=$('financeView'); if(!v||!finApi)return;
+  // a refresh or unlock that finished after he left the tab: nothing to draw, and no turning capture back off-limits
+  // (that left the whole app hidden from screenshots until he went back to Finance)
+  if(state.activeTab!=='finance')return;
+  // on screen: shut out screenshots, screen sharing and screen-reading AI (Recall, Copilot, Gemini, Circle to Search)
+  // (unless he let Claude see it for now: finCaptureFold, until it locks or he leaves the tab)
+  if(finApi.financeScreen&&!fin.screen&&!fin.allowCapture){ fin.screen=true; finApi.financeScreen(true); }
   let st; try{ st=await finApi.financeStatus(); }catch(e){ v.textContent=''; v.appendChild(el('p','empty','Finance isn’t available.')); return; }
   if(state.activeTab!=='finance')return;
   if(!st.setUp)return drawFinSetup(v,st);
@@ -567,14 +573,16 @@ function finIncomeTable(host,s,cur,d,onMark){
   const rows=[['head','Income']];
   s.income.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   if(!s.income.length)rows.push(['line','No income in these months',null]);
-  rows.push(['sub','Total income',s.incomeTotal],['gap'],['head','Fixed costs']);
-  s.fixed.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
-  rows.push(['sub','Total fixed costs',s.fixedTotal],['gap'],['head','Variable costs']);
+  // contribution format: variable costs first, the margin they leave, then the fixed costs it has to cover
+  rows.push(['sub','Total income',s.incomeTotal],['gap'],['head','Variable costs']);
   s.variable.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
-  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],['sub','Total expenses',s.expenseTotal],
+  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],
+    ['margin','Contribution margin',s.contribution],['pct','Contribution margin ratio',s.contributionRatio],['gap'],['head','Fixed costs']);
+  s.fixed.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
+  rows.push(['sub','Total fixed costs',s.fixedTotal],['gap'],
     ['total','Net income',s.net],['pct','Savings rate',s.savingsRate]);
   finStmtTable(host,s.cols,rows,cur,'Income statement',
-    'Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
+    'Contribution margin is what your income leaves after variable costs, to pay the fixed ones; its ratio is that as a share of income. Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
     // money in: a "not income" button on each, so a transfer counted as income can be taken out
     function(r){ return s.income.indexOf(s.income.find(function(x){ return x.items===r[3]; }))===-1?null:function(x){ return finIncomeTag(x.t,'income',onMark); }; });
 }
@@ -661,6 +669,25 @@ function finIncomeTag(t,kind,redraw){
     fin.data.kinds=r.kinds; if(redraw)redraw();
   });
   return b;
+}
+
+/* Claude (or anyone helping him with the app) can see this page in screenshots, for now: screen capture is
+   let through until Finance locks or he leaves the tab, then shut out again. Shut out is the normal state. */
+function finCaptureFold(){
+  const fold=el('details','fin-fold');
+  fold.appendChild(el('summary','mono',fin.allowCapture?'screenshots: allowed for now':'let Claude see this page'));
+  fold.appendChild(el('p','fin-note',fin.allowCapture
+    ?'Screenshots (and anything that reads the screen, like Windows Recall or Copilot) can see Finance until it locks or you leave this tab.'
+    :'Finance is normally hidden from screenshots, screen sharing and screen-reading AI. To let Claude see it while you work on the app together, allow screenshots here. It turns back off when Finance locks or you leave this tab.'));
+  const b=el('button',fin.allowCapture?'ghost mono':'btn-accent',fin.allowCapture?'hide it again':'Allow screenshots for now');
+  b.addEventListener('click',async function(){
+    fin.allowCapture=!fin.allowCapture;
+    fin.screen=!fin.allowCapture;
+    await finApi.financeScreen(!fin.allowCapture);
+    renderFinance();
+  });
+  fold.appendChild(b);
+  return fold;
 }
 
 // Windows Hello on or off (on: the key is kept, sealed by Windows, for Hello to open; off: deleted)
@@ -820,6 +847,7 @@ function drawFinMain(v){
   more.addEventListener('click',function(){ fin.shown+=100; drawList(); });
   drawList();
 
+  if(finApi.financeScreen)v.appendChild(finCaptureFold());
   if(finApi.financeSetHello)v.appendChild(finHelloFold(d.hello));
   if(finApi.financePairCode)v.appendChild(finPairFold());
   v.appendChild(finApi.phone?finForgetFold('remove Finance from this phone','This deletes Finance’s data and fingerprint key on this phone only. Your computer and SimpleFIN keep working, and you can pair again from the computer.')

@@ -21,7 +21,7 @@ if(window.desktop&&window.desktop.aiStatus){
   let ai=null;
   const say=function(t){ $('aiStatusLine').textContent=t||''; if(t)setTimeout(function(){ if($('aiStatusLine').textContent===t)$('aiStatusLine').textContent=''; },4000); };
   const save=async function(change,msg){
-    Object.keys(change).forEach(function(k){ if(/Key$/.test(k))delete modelLists[k.slice(0,-3)]; }); // a new key: ask for its models again
+    Object.keys(change).forEach(function(k){ if(/Key$/.test(k)){ delete modelLists[k.slice(0,-3)]; delete keyBad[k.slice(0,-3)]; } }); // a new key: ask for its models again
     try{ ai=await window.desktop.aiSave(change); aiDraw(); say(msg||'saved'); }catch(e){ say('save failed'); } };
   const keyRow=function(ph,saveAs,label){
     const r=el('div','settings-row'); r.style.marginTop='8px';
@@ -70,6 +70,26 @@ if(window.desktop&&window.desktop.aiStatus){
       return g.hasKey?'key '+g.key+' · '+(g.model||'Auto'):'no key yet'; }
     const o=ai[id]; return o.hasKey?'key '+o.key+' · '+(o.model&&o.model!=='openrouter/auto'?o.model:'Auto'):'no key yet';
   };
+  /* an AI that stopped working (key expired, sign-in ran out, credits gone): the runner's open "Reconnect X:" to-do
+     on his Human list, or a failed Test key. Its card says so, with a button to the site to fix it */
+  const keyBad={}; // id → why, from Test key
+  const SITE={gemini:['Google AI Studio','https://aistudio.google.com/apikey'],openai:['OpenAI','https://platform.openai.com/api-keys'],
+    openrouter:['OpenRouter','https://openrouter.ai/keys']};
+  const siteFor=function(id){
+    if(id==='openai'&&ai.openai.via==='chatgpt')return ['ChatGPT','https://chatgpt.com'];
+    if(SITE[id])return SITE[id];
+    const info=COMPAT_INFO[id]; return info?[ai.names[id],info.url]:null; // Claude's fix is claude /login in a terminal
+  };
+  const brokenWhy=function(id){
+    if(keyBad[id])return keyBad[id];
+    const prefix='Reconnect '+ai.names[id]+':';
+    const t=(typeof state!=='undefined'&&state.tasks||[]).find(function(x){ return !x.done&&taskWs(x)==='personal'&&x.title.startsWith(prefix); });
+    return t?t.title.slice(prefix.length).trim():null;
+  };
+  // the runner flagged one (or it answered again): redraw once agent-results.js has added or checked off the to-do
+  const redrawSoon=function(){ setTimeout(function(){ if(ai)aiDraw(); },0); };
+  if(window.desktop.onAgentReconnect)window.desktop.onAgentReconnect(redrawSoon);
+  if(window.desktop.onAgentReconnected)window.desktop.onAgentReconnected(function(p){ const id=p&&p.id; if(id)delete keyBad[id]; redrawSoon(); });
   function aiDraw(){
     usageDraw();
     const list=$('aiList'); list.innerHTML='';
@@ -89,6 +109,16 @@ if(window.desktop&&window.desktop.aiStatus){
       if(i>0){ const up=el('button','ghost mono','↑'); up.title='Try this one earlier';
         up.addEventListener('click',function(){ const o=ai.order.slice(); o.splice(i-1,0,o.splice(i,1)[0]); save({order:o}); }); head.appendChild(up); }
       box.appendChild(head);
+      const broke=!box.dataset.disconnected&&brokenWhy(p.id);
+      if(broke){
+        if(p.on)box.dataset.disconnected=ai.names[p.id]+': disconnected';
+        const w=el('div','settings-row'); w.style.cssText='margin-top:6px;align-items:center';
+        const m=el('span','','⚠ Disconnected: '+broke); m.style.cssText='flex:1;font-size:13px;color:var(--late)';
+        w.appendChild(m);
+        const site=siteFor(p.id);
+        if(site){ const go=el('button','ghost mono','Open '+site[0]+' ↗'); go.addEventListener('click',function(){ openExternal(site[1]); }); w.appendChild(go); }
+        box.appendChild(w);
+      }
       if(p.id==='claude')box.appendChild(modelRow('claude','claudeModel',ai.claudeModel));
       if(p.id==='gemini'){
         const g=ai.gemini;
@@ -164,6 +194,7 @@ if(window.desktop&&window.desktop.aiStatus){
         const r=el('div','settings-row'); r.style.marginTop='4px';
         if(o.hasKey){ const t=el('button','ghost mono','Test key'); t.addEventListener('click',async function(){ say('checking…');
           const res=await window.desktop.aiCompatCheck(p.id);
+          if(!res.ok!==!!keyBad[p.id]){ if(res.ok)delete keyBad[p.id]; else keyBad[p.id]='key failed: '+res.error; aiDraw(); }
           say(!res.ok?'key failed: '+res.error:res.hasModel?'key works · '+res.count+' models':'key works, but '+o.model+' isn’t one of its models'+(res.suggest?': try '+res.suggest:'')); }); r.appendChild(t); }
         else { const g=el('button','ghost mono','Get a free key ↗'); g.addEventListener('click',function(){ openExternal(info.url); }); r.appendChild(g); }
         box.appendChild(r);
@@ -183,6 +214,7 @@ if(window.desktop&&window.desktop.aiStatus){
         const r=el('div','settings-row'); r.style.marginTop='4px';
         if(o.hasKey){ const t=el('button','ghost mono','Test key'); t.addEventListener('click',async function(){ say('checking…');
           const res=await window.desktop.aiOpenRouterCheck();
+          if(!res.ok!==!!keyBad.openrouter){ if(res.ok)delete keyBad.openrouter; else keyBad.openrouter='key failed: '+res.error; aiDraw(); }
           say(res.ok?'key works'+(res.usage!=null?' · $'+Number(res.usage).toFixed(2)+' used'+(res.limit!=null?' of $'+res.limit:''):''):'key failed: '+res.error); }); r.appendChild(t); }
         box.appendChild(r);
         const ws=el('label','switch'); ws.style.marginTop='8px'; const wc=document.createElement('input'); wc.type='checkbox'; wc.checked=o.web;

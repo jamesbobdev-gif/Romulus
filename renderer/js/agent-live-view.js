@@ -9,17 +9,20 @@ let liveView=null; // { box, img, ws, page, pages, meta, nextId, timer, touchedA
 const liveHidden={}; // task id → he closed its embedded view: a button brings it back
 
 function liveViewAvailable(){ return !!(window.desktop&&window.desktop.livePages); }
-// page: where the task's run ended (its cart, a login): shown first, reopened if a later run closed it
-function watchButton(page){
+// Watch on a task: that task's own tabs only (agent/task-tabs.js), as its run left them. page: where the
+// run ended, reopened only if its tab is gone
+function watchButton(t){
   const b=el('button','btn-ghost agent-watch','◉ Watch');
-  b.title='Watch the agent browser here, and click or type to take over';
+  b.title='Watch this task’s browser here, and click or type to take over';
   b.addEventListener('click',async function(e){
     e.stopPropagation();
     let id=null;
-    if(page&&window.desktop.liveOpen){ b.disabled=true; try{ id=await window.desktop.liveOpen(page); }catch(err){} b.disabled=false; }
+    if(window.desktop.liveOpen){ b.disabled=true; try{ id=await window.desktop.liveOpen(t.page||null,t.id); }catch(err){} b.disabled=false; }
+    // a view showing another task (say, one working now) makes way for this one
+    if(liveView&&liveView.forId!==t.id)closeLiveView();
     const had=!!liveView;
     if(had){ liveView.want=id; liveView.touchedAt=Date.now(); }
-    openLiveView(null,null,id);
+    openLiveView(null,t.id,id);
     if(had&&id)livePoll();
   });
   return b;
@@ -32,7 +35,7 @@ function liveEmbed(slot,id){
     b.addEventListener('click',function(e){ e.stopPropagation(); delete liveHidden[id]; render(); });
     slot.appendChild(b); return;
   }
-  if(liveView&&liveView.forId&&liveView.forId!==id&&state.tasks.some(function(t){ return t.id===liveView.forId&&t.status==='working'; }))return;
+  if(liveView&&liveView.forId&&liveView.forId!==id&&(liveView.big||state.tasks.some(function(t){ return t.id===liveView.forId&&t.status==='working'; })))return;
   openLiveView(slot,id);
 }
 function openLiveView(host,forId,want){
@@ -105,7 +108,7 @@ function liveShow(text,startBtn){
 // (unless he's been using the view in the last few seconds)
 async function livePoll(){
   const v=liveView; if(!v)return;
-  let r; try{ r=await window.desktop.livePages(); }catch(e){ r={up:false,pages:[]}; }
+  let r; try{ r=await window.desktop.livePages(v.forId||undefined); }catch(e){ r={up:false,pages:[]}; }
   if(liveView!==v)return;
   // its task finished: the card went (checked after the wait: a card being drawn isn't on the page yet)
   if(!v.big&&!v.box.isConnected){ closeLiveView(); return; }
@@ -120,7 +123,7 @@ async function livePoll(){
   v.tabs.innerHTML='';
   r.pages.forEach(function(p){ const o=el('option',null,(p.title||p.url||'New tab').slice(0,60)); o.value=p.id; v.tabs.appendChild(o); });
   v.tabs.hidden=r.pages.length<2;
-  if(!r.pages.length){ liveShow('No tabs open in the agent browser.'); return; }
+  if(!r.pages.length){ liveShow(v.forId?'This task has no pages open in the browser yet.':'No tabs open in the agent browser.'); return; }
   // the tab Watch opened for a task: straight to it, once it's listed
   const want=v.want&&r.pages.find(function(p){ return p.id===v.want; });
   if(want){ v.want=null; liveConnect(want,true); return; }
