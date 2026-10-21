@@ -234,8 +234,8 @@ async function startAgentRun() {
   // his files for forms (the resume), for a run with the browser: name and the full path the upload tool takes
   const filesPart = (() => { const f = formFiles(); return f.length ? '\n\n## His files for forms\nHis own documents, for a site that asks for a resume or the like (the agent browser rules say how). ' +
     'Give browser_file_upload the full path as written here; no other file can be sent:\n' + agentFiles.brief(f) : ''; })();
-  // which AIs get the agent browser this run (see the calls below): all of them, but Grok and Groq only when he turned it on
-  const browses = (id) => !!browserCfg && (!providers.COMPAT[id] || providers.settings(readConfig()).compatBrowser);
+  // which AIs get the agent browser this run (see the calls below): all of them, but the free ones only when he turned it on for that one
+  const browses = (id) => !!browserCfg && (!providers.COMPAT[id] || providers.settings(readConfig())[id + 'Browser']);
 
   // why each newly routed task went to Claude (shown on the task)
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
@@ -287,7 +287,7 @@ async function startAgentRun() {
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
           browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
         // the ones answering one request at a time get the browser through the app's tool loop (agent/tool-loop.js);
-        // Grok and Groq only when he turned it on (compatBrowser)
+        // the free ones only when he turned it on for that one (<id>Browser)
         : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs,
           browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs,

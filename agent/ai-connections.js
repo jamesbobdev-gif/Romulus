@@ -23,9 +23,9 @@ function aiStatus() {
   return { order: s.order, names: providers.NAMES, used: providers.usedModels(), claudeModel: s.claudeModel, claudeLast: s.claudeLast, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usage.blockedUntil() > Date.now() ? usage.blockedUntil() : 0,
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
     openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel, codexModel: s.codexModel, via: s.openaiVia, codex: providers.codexStatus() },
-    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr },
+    openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr, free: s.openrouterFree },
     // Grok, Groq: one key and a model each
-    ...Object.fromEntries(providers.COMPAT_IDS.map((id) => [id, { compat: true, browser: s.compatBrowser, hasKey: !!s[id + 'Key'], key: maskKey(s[id + 'Key']), model: s[id + 'Model'], defaultModel: providers.COMPAT[id].model }])) };
+    ...Object.fromEntries(providers.COMPAT_IDS.map((id) => [id, { compat: true, browser: s[id + 'Browser'], hasKey: !!s[id + 'Key'], key: maskKey(s[id + 'Key']), model: s[id + 'Model'], defaultModel: providers.COMPAT[id].model }])) };
 }
 handle('ai:status', () => aiStatus());
 handle('ai:save', (_e, change) => {
@@ -34,7 +34,7 @@ handle('ai:save', (_e, change) => {
   if (Array.isArray(change.order)) ai.order = change.order.map((p) => ({ id: String(p.id), on: !!p.on }));
   if (change.openaiVia === 'chatgpt' || change.openaiVia === 'key') ai.openaiVia = change.openaiVia;
   for (const k of ['claudeModel', 'codexModel', 'geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel', ...providers.COMPAT_IDS.flatMap((id) => [id + 'Key', id + 'Model'])]) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
-  for (const k of ['openrouterWeb', 'openrouterZdr', 'helpers', 'claudeLast', 'compatBrowser']) if (typeof change[k] === 'boolean') ai[k] = change[k];
+  for (const k of ['openrouterWeb', 'openrouterZdr', 'openrouterFree', 'helpers', 'claudeLast', ...providers.COMPAT_IDS.map((id) => id + 'Browser')]) if (typeof change[k] === 'boolean') ai[k] = change[k];
   c.ai = ai; writeConfig(c);
   scheduleAgentRun();
   return aiStatus();

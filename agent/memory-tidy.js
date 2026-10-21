@@ -24,7 +24,7 @@ let memoryTidying = false;
 async function agentPrefsRow() {
   const a = supabase.channel(readConfig());
   if (!a) return null;
-  const row = await supabase.readRow(a, ':prefs', { select: 'doc,updated_at' });
+  const row = await supabase.readRow(a, ':prefs');
   return { a, text: (row && row.doc && row.doc.text) || '', updated_at: row ? row.updated_at : null };
 }
 function recentReplies() { // the user's own words to Claude in the last 14 days, with the question each one answered
@@ -113,15 +113,9 @@ async function maybeTidyMemory() {
     if (!now || now.updated_at !== before.updated_at) { agentLog('memory tidy: list changed meanwhile, kept his version'); markDone(); return; }
     try { fs.writeFileSync(path.join(ctx.userData(), 'memory-before-tidy.txt'), before.text); } catch (e) {}
     const a = now.a;
-    const r = await fetch(supabase.rowUrl(a, ':prefs') +
-      (now.updated_at ? '&updated_at=eq.' + encodeURIComponent(now.updated_at) : ''), {
-      method: now.updated_at ? 'PATCH' : 'POST',
-      headers: supabase.headers(a, { 'Content-Type': 'application/json', Prefer: 'return=representation' }),
-      body: JSON.stringify(now.updated_at ? { doc: { v: 1, text: next }, updated_at: new Date().toISOString() }
-        : [{ sync_key: a.syncKey + ':prefs', doc: { v: 1, text: next }, updated_at: new Date().toISOString() }]),
-    });
-    const saved = r.ok ? await r.json() : [];
-    agentLog('memory tidy: ' + (saved.length ? 'saved (' + items(before.text) + ' → ' + items(next) + ' lines)' : 'not saved (HTTP ' + r.status + ')'));
+    let saved = false;
+    try { saved = await supabase.writeRow(a, ':prefs', { v: 1, text: next }, now.updated_at); } catch (e) { agentLog('memory tidy: ' + e.message); }
+    agentLog('memory tidy: ' + (saved ? 'saved (' + items(before.text) + ' → ' + items(next) + ' lines)' : 'not saved (the list changed meanwhile)'));
     markDone();
   } catch (e) {
     agentLog('memory tidy crashed: ' + (e && e.message || e));

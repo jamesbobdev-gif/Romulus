@@ -270,14 +270,17 @@ test('Gemini API with the browser: functionDeclarations beside Google Search, fu
   } finally { global.fetch = real; }
 });
 
-test('Grok/Groq: no browser unless compatBrowser is on', async () => {
+test('Grok/Groq: no browser unless it is turned on for that one', async () => {
   const fb = fakeBrowser(), real = global.fetch, bodies = [];
   global.fetch = async (url, init) => { bodies.push(JSON.parse(init.body)); return reply({ choices: [{ message: { content: 'ok' } }] }); };
   try {
-    assert.strictEqual(providers.settings({}).compatBrowser, false);
-    await providers.runCompat('groq', { ai: { groqKey: 'k', groqModel: 'm' } }, { prompt: 'p', browserMcpFile: fb.cfg, browserDenied: DENIED });
+    assert.strictEqual(providers.settings({}).groqBrowser, false);
+    // the old one switch still counts until he sets one of his own
+    assert.strictEqual(providers.settings({ ai: { compatBrowser: true } }).xaiBrowser, true);
+    assert.strictEqual(providers.settings({ ai: { compatBrowser: true, xaiBrowser: false } }).xaiBrowser, false);
+    await providers.runCompat('groq', { ai: { groqKey: 'k', groqModel: 'm', xaiBrowser: true } }, { prompt: 'p', browserMcpFile: fb.cfg, browserDenied: DENIED });
     assert.strictEqual(bodies[0].tools, undefined);
-    await providers.runCompat('groq', { ai: { groqKey: 'k', groqModel: 'm', compatBrowser: true } }, { prompt: 'p', browserMcpFile: fb.cfg, browserDenied: DENIED });
+    await providers.runCompat('groq', { ai: { groqKey: 'k', groqModel: 'm', groqBrowser: true } }, { prompt: 'p', browserMcpFile: fb.cfg, browserDenied: DENIED });
     assert.deepStrictEqual(bodies[1].tools.map((t) => t.function.name), ['browser_navigate', 'browser_snapshot']);
     assert.match(bodies[1].messages[0].content, /duckduckgo/); // no web search of its own: it searches in the browser
   } finally { global.fetch = real; }

@@ -675,11 +675,11 @@ function finIncomeTag(t,kind,redraw){
    let through until Finance locks or he leaves the tab, then shut out again. Shut out is the normal state. */
 function finCaptureFold(){
   const fold=el('details','fin-fold');
-  fold.appendChild(el('summary','mono',fin.allowCapture?'screenshots: allowed for now':'let Claude see this page'));
+  fold.appendChild(el('summary','mono',fin.allowCapture?'screenshots: on for now':'let me take screenshots'));
   fold.appendChild(el('p','fin-note',fin.allowCapture
-    ?'Screenshots (and anything that reads the screen, like Windows Recall or Copilot) can see Finance until it locks or you leave this tab.'
-    :'Finance is normally hidden from screenshots, screen sharing and screen-reading AI. To let Claude see it while you work on the app together, allow screenshots here. It turns back off when Finance locks or you leave this tab.'));
-  const b=el('button',fin.allowCapture?'ghost mono':'btn-accent',fin.allowCapture?'hide it again':'Allow screenshots for now');
+    ?'You can take screenshots of Finance now (so can anything else that reads the screen, like Windows Recall or Copilot). It goes back to hidden when Finance locks or you leave this tab.'
+    :'Finance is hidden from screenshots, screen sharing and screen-reading AI. Turn screenshots on when you want to take one, for example to show Claude something. It goes back to hidden when Finance locks or you leave this tab.'));
+  const b=el('button',fin.allowCapture?'ghost mono':'btn-accent',fin.allowCapture?'hide it again':'Let me take screenshots');
   b.addEventListener('click',async function(){
     fin.allowCapture=!fin.allowCapture;
     fin.screen=!fin.allowCapture;

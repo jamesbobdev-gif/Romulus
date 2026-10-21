@@ -117,3 +117,43 @@ test('Cloudflare: just the token looks up its account; the daily neuron cap coun
     assert.strictEqual(r.limit, true);
   } finally { global.fetch = real; }
 });
+
+test('NVIDIA: its free key on integrate.api.nvidia.com, Auto picks gpt-oss-120b from its models', async () => {
+  const real = global.fetch, calls = [];
+  global.fetch = async (u, i) => {
+    calls.push({ u, i });
+    if (u.endsWith('/models')) return reply(200, { data: [{ id: 'nvidia/nv-embedqa-e5-v5' }, { id: 'meta/llama-3.3-70b-instruct' }, { id: 'openai/gpt-oss-120b' }] });
+    return reply(200, { choices: [{ message: { content: '{"updates":[]}' } }] });
+  };
+  try {
+    providers.clearModelCache();
+    assert.strictEqual(providers.NAMES.nvidia, 'NVIDIA');
+    const r = await providers.runCompat('nvidia', { ai: { nvidiaKey: 'nvapi-x' } }, { prompt: 'p' });
+    assert.strictEqual(calls[1].u, 'https://integrate.api.nvidia.com/v1/chat/completions');
+    assert.strictEqual(calls[1].i.headers.Authorization, 'Bearer nvapi-x');
+    assert.strictEqual(JSON.parse(calls[1].i.body).model, 'openai/gpt-oss-120b');
+    assert.strictEqual(r.text, '{"updates":[]}');
+  } finally { global.fetch = real; }
+});
+
+test('OpenRouter on Auto: its free models first (known kinds, then any by size), then the paid pick when they fail', async () => {
+  const real = global.fetch, models = [];
+  global.fetch = async (u, i) => {
+    if (u.endsWith('/models')) return reply(200, { data: [{ id: 'openai/gpt-5' }, { id: 'meta-llama/llama-3.3-70b-instruct:free' }, { id: 'deepseek/deepseek-chat-v3.1:free' }, { id: 'google/gemma-3-4b-it:free' }] });
+    const b = JSON.parse(i.body); models.push(b.model);
+    assert.deepStrictEqual(b.provider, { data_collection: 'deny', zdr: true }); // his privacy settings still hold
+    if (b.model.endsWith(':free')) return reply(404, { error: { message: 'No endpoints found matching your data policy' } });
+    return reply(200, { choices: [{ message: { content: 'ok' } }] });
+  };
+  try {
+    providers.clearModelCache();
+    const r = await providers.runOpenRouter({ ai: { openrouterKey: 'kf' } }, { prompt: 'p' });
+    assert.deepStrictEqual(models, ['deepseek/deepseek-chat-v3.1:free', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemma-3-4b-it:free', 'openrouter/auto']);
+    assert.strictEqual(r.text, 'ok');
+    // off, or a model he picked: straight to it
+    models.length = 0;
+    await providers.runOpenRouter({ ai: { openrouterKey: 'kf', openrouterFree: false } }, { prompt: 'p' });
+    await providers.runOpenRouter({ ai: { openrouterKey: 'kf', openrouterModel: 'openai/gpt-5' } }, { prompt: 'p' });
+    assert.deepStrictEqual(models, ['openrouter/auto', 'openai/gpt-5']);
+  } finally { global.fetch = real; }
+});

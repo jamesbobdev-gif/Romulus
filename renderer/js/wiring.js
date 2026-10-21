@@ -9,12 +9,13 @@ if(window.desktop&&window.desktop.openAgentBrowser){
   // it has no window of its own (headless): open it in the live view, which starts it if needed
   $('agentBrowserBtn').addEventListener('click',function(){ $('agentBrowserStatus').textContent=''; openLiveView(); });
 }
-/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter / Grok / Groq for the cloud Agent lane, in his order */
+/* AI connections (desktop only): Claude / Gemini / ChatGPT / OpenRouter / Grok / Groq / Cloudflare / NVIDIA for the cloud Agent lane, in his order */
 // where each free-tier AI's key comes from, and what it does with what's sent (their terms, Oct 2026)
 const COMPAT_INFO={
   xai:{where:'console.x.ai',url:'https://console.x.ai',note:'xAI doesn’t train on API data unless you join its data-sharing program for extra free credits.'},
   cloudflare:{where:'account ID + API token, from Workers AI → Use REST API',url:'https://dash.cloudflare.com/?to=/:account/ai/workers-ai',label:'Cloudflare account ID and API token (paste both)',note:'Free: 10,000 “neurons” a day, roughly 10–30 tasks, reset at 8 pm Eastern. Paste the account ID and the token together, with a space between. Cloudflare doesn’t train on what’s sent.'},
   groq:{where:'console.groq.com/keys',url:'https://console.groq.com/keys',note:'Very fast, but the free tier caps tokens per minute, so a big task can be too large for it. Groq doesn’t train on what’s sent.'},
+  nvidia:{where:'build.nvidia.com → Get API Key',url:'https://build.nvidia.com/settings/api-keys',note:'Free for trying its models: about 40 requests a minute (it may ask to verify a phone number). It’s a trial, so NVIDIA doesn’t promise not to keep what’s sent; private tasks never go to cloud AIs anyway.'},
 };
 if(window.desktop&&window.desktop.aiStatus){
   $('aiSection').hidden=false; $('aiUsage').hidden=false;
@@ -198,11 +199,11 @@ if(window.desktop&&window.desktop.aiStatus){
           say(!res.ok?'key failed: '+res.error:res.hasModel?'key works · '+res.count+' models':'key works, but '+o.model+' isn’t one of its models'+(res.suggest?': try '+res.suggest:'')); }); r.appendChild(t); }
         else { const g=el('button','ghost mono','Get a free key ↗'); g.addEventListener('click',function(){ openExternal(info.url); }); r.appendChild(g); }
         box.appendChild(r);
-        // one switch for Grok and Groq both: free tiers browse poorly and run out fast, so it's off unless he turns it on
+        // a switch for each: free tiers browse poorly and run out fast, so it's off unless he turns it on
         const bs=el('label','switch'); bs.style.marginTop='8px'; const bc=document.createElement('input'); bc.type='checkbox'; bc.checked=!!o.browser;
         bs.appendChild(bc); const bt=el('span','track'); bt.setAttribute('aria-hidden','true'); bs.appendChild(bt);
-        bs.appendChild(el('span','','Let the free AIs (Grok, Groq, Cloudflare) use the agent browser (slow, uses up free tiers)'));
-        bc.addEventListener('change',function(){ save({compatBrowser:bc.checked}); });
+        bs.appendChild(el('span','','Let '+name+' use the agent browser (slow, uses up its free tier)'));
+        bc.addEventListener('change',function(){ const ch={}; ch[p.id+'Browser']=bc.checked; save(ch); });
         box.appendChild(bs);
         box.appendChild(el('p','settings-hint',name+' has a free tier. It answers without web search, files or Gmail'+(o.browser?'':' (or a browser, unless you turn it on above)')+', so it’s a backup for questions and writing. '+info.note));
         box.lastChild.style.margin='8px 0 0';
@@ -227,6 +228,12 @@ if(window.desktop&&window.desktop.aiStatus){
         zs.appendChild(el('span','','Zero data retention only (fewer models, nothing kept)'));
         zc.addEventListener('change',function(){ save({openrouterZdr:zc.checked}); });
         box.appendChild(zs);
+        // on Auto: its free models first, so credit is only spent when they're busy or used up
+        const fs=el('label','switch'); fs.style.marginTop='8px'; const fc=document.createElement('input'); fc.type='checkbox'; fc.checked=o.free;
+        fs.appendChild(fc); const ft=el('span','track'); ft.setAttribute('aria-hidden','true'); fs.appendChild(ft);
+        fs.appendChild(el('span','','Try free models first (on Auto; 50 free a day, 1,000 once you’ve ever bought $10)'));
+        fc.addEventListener('change',function(){ save({openrouterFree:fc.checked}); });
+        box.appendChild(fs);
         box.appendChild(el('p','settings-hint','OpenRouter gets the agent browser (mail closed) when the model can use tools, but no files or Gmail. It only uses providers that don’t collect or train on what’s sent.'));
         box.lastChild.style.margin='8px 0 0';
       }
