@@ -17,7 +17,10 @@
    - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to Claude to be read,
      and what they bought is kept in the vault too. Nothing from the bank goes with them.
    - Live stock prices (main/finance-stocks.js) come from Yahoo Finance's public chart data: only ticker
-     symbols are sent, never shares, amounts or account names. */
+     symbols are sent, never shares, amounts or account names.
+   - Lupa Au Palatine, his own model on the mini PC, can read it (forAgent) for a money question while it's
+     unlocked here: agent/local-lane.js gives that tool only to Lupa, in runs with no web, browser or cloud
+     helpers, and such a task is never handed to Claude or the other cloud AIs (agent/routing.js). */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -259,6 +262,58 @@ async function afterUnlock() {
   return warning;
 }
 
+/* ── Lupa (agent/local-lane.js my_finances): his own model reading it, as plain text ── */
+const money = (n) => (n < 0 ? '-$' : '$') + Math.abs(Number(n) || 0).toFixed(2);
+const day = (sec) => (sec ? new Date(sec * 1000).toISOString().slice(0, 10) : 'pending');
+const isUnlocked = () => !!key;
+/* args: {what: 'overview' | 'transactions' | 'statement', query?, from?, to? (YYYY-MM-DD)} → text for the model.
+   Read-only; nothing in it is saved anywhere else. */
+function forAgent(args) {
+  if (!key) return 'Finance is locked on his computer. Tell him to unlock the Finance tab there (Windows Hello or his passphrase), then reply to this task.';
+  stillHere();
+  const a = args || {};
+  const accounts = (vault.cache && vault.cache.accounts) || [];
+  if (!accounts.length) return 'Finance has no accounts downloaded yet.';
+  const costs = require('../renderer/js/finance-costs'), stmt = require('../renderer/js/finance-statements');
+  const what = ['transactions', 'statement'].includes(a.what) ? a.what : 'overview';
+  log('Lupa read ' + what); // what, never amounts
+  if (what === 'transactions') {
+    const q = String(a.query || '').trim().toLowerCase();
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(a.from || '') ? new Date(a.from + 'T00:00:00').getTime() / 1000 : 0;
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(a.to || '') ? new Date(a.to + 'T23:59:59').getTime() / 1000 : Infinity;
+    const rows = [];
+    accounts.forEach((acct) => (acct.transactions || []).forEach((t) => {
+      const when = t.posted || Date.now() / 1000;
+      if (when < from || when > to) return;
+      if (q && ![t.description, t.bank, t.memo].join(' ').toLowerCase().includes(q)) return;
+      rows.push({ t, acct });
+    }));
+    rows.sort((x, y) => (y.t.posted || Infinity) - (x.t.posted || Infinity));
+    const out = rows.filter((r) => r.t.amount < 0).reduce((s, r) => s - r.t.amount, 0), inn = rows.filter((r) => r.t.amount > 0).reduce((s, r) => s + r.t.amount, 0);
+    return rows.length + ' transaction(s)' + (q ? ' matching "' + q + '"' : '') + ': ' + money(out) + ' out, ' + money(inn) + ' in.\n' +
+      rows.slice(0, 80).map((r) => day(r.t.posted) + '  ' + money(r.t.amount) + '  ' + r.t.description + (r.t.bank ? ' [' + r.t.bank + ']' : '') + '  (' + r.acct.name + ')').join('\n') +
+      (rows.length > 80 ? '\n…and ' + (rows.length - 80) + ' more (narrow it with query or dates).' : '');
+  }
+  if (what === 'statement') {
+    const s = stmt.incomeStatement(accounts, vault.kinds);
+    const line = (name, vals) => name + ': ' + vals.map(money).join(' | ');
+    return 'Income statement, columns: ' + s.cols.map((c) => c.label + (c.partial ? ' (so far)' : '')).join(' | ') + '\n' +
+      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Contribution margin', s.contribution),
+        line('Fixed costs', s.fixedTotal), line('Net income', s.net)].join('\n') +
+      '\nBiggest variable costs: ' + s.variable.slice(0, 6).map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ') +
+      '\nFixed costs: ' + s.fixed.map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ');
+  }
+  const c = costs.costsOf([].concat(...accounts.map((x) => x.transactions || [])), vault.kinds);
+  const net = accounts.reduce((sum, x) => sum + x.balance, 0);
+  const held = stocks.holdingsOf(accounts);
+  return 'Accounts:\n' + accounts.map((x) => '- ' + (x.org ? x.org + ' ' : '') + x.name + ': ' + money(x.balance)).join('\n') +
+    '\nNet (all accounts, cards and loans negative): ' + money(net) +
+    '\nMonthly bills (fixed costs), about ' + money(c.fixedTotal) + ' a month: ' + c.fixed.map((f) => f.name + ' ' + money(f.monthly)).join('; ') +
+    '\nEverything else bought (variable), by month: ' + c.months.map((m) => m.label + (m.partial ? ' so far' : '') + ' ' + money(m.total)).join('; ') +
+    (held.length ? '\nStocks (brokerage values): ' + held.map((h) => (h.symbol || h.name) + ' ' + h.shares + ' sh ' + money(h.value)).join('; ') : '') +
+    '\nLast downloaded from the bank: ' + new Date((vault.cache && vault.cache.fetchedAt) || 0).toLocaleString();
+}
+
 /* ── what the tab calls ── */
 function status() {
   return { setUp: isSetUp(), unlocked: !!key, fetchedAt: vault && vault.cache ? vault.cache.fetchedAt || 0 : 0,
@@ -333,6 +388,8 @@ const handlers = {
     return { ok: true, hello: helloReady() };
   },
   'finance:lock': () => { lock('asked'); return true; },
+  // the tab is (or stops being) on screen: no screenshots, screen sharing or screen-reading AI of it
+  'finance:screen': (_e, on) => { if (ctx.protectWindow) ctx.protectWindow(!!on); return true; },
   'finance:data': () => {
     if (!key) return { locked: true };
     stillHere();
@@ -388,4 +445,4 @@ const handlers = {
   },
 };
 
-module.exports = { init, handlers, lock, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };
+module.exports = { init, handlers, lock, forAgent, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };

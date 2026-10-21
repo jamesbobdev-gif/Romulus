@@ -127,6 +127,7 @@
       return { ok: true, warning: warning };
     },
     financeLock: async function () { lock('asked'); return true; },
+    financeScreen: async function (on) { try { await call('secure', { on: !!on }); } catch (e) {} return true; },
     financeData: async function () {
       if (!key) return { locked: true };
       stillHere();

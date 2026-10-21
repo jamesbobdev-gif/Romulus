@@ -4,7 +4,8 @@
    pay, interest & dividends, refunds (which count against spending) and other income. He can say otherwise
    for a payee's money in (kinds['in:'+payee] = 'income' | 'skip', the tag on it in the transaction list).
    In an investment account only dividends and interest count: buying, selling and moving cash there is his
-   own money moving. Expenses: fixed and variable exactly as the cost charts count them.
+   own money moving. Expenses: fixed and variable exactly as the cost charts count them, laid out in the
+   contribution format: income − variable costs = contribution margin; − fixed costs = net income.
    Every line keeps its transactions (items), so the tab can show what's behind a number.
    Balance sheet: each account's balance on a past day is today's minus what was posted since; investment
    accounts move with the market too, so theirs are only as good as their transactions.
@@ -79,8 +80,11 @@ function incomeStatement(accounts,kinds,now,full){
   const incomeTotal=stmtSum(income,n), fixedTotal=stmtSum(fixed,n), variableTotal=stmtSum(variable,n);
   const expenseTotal=fixedTotal.map(function(v,i){ return v+variableTotal[i]; });
   const net=incomeTotal.map(function(v,i){ return v-expenseTotal[i]; });
+  // contribution margin: what's left of income after the variable costs, to cover the fixed ones
+  const contribution=incomeTotal.map(function(v,i){ return v-variableTotal[i]; });
+  const ofIncome=function(l){ return l.map(function(v,i){ return incomeTotal[i]>0?v/incomeTotal[i]:null; }); };
   return {cols:cols,income:income,fixed:fixed,variable:variable,incomeTotal:incomeTotal,fixedTotal:fixedTotal,variableTotal:variableTotal,
-    expenseTotal:expenseTotal,net:net,savingsRate:net.map(function(v,i){ return incomeTotal[i]>0?v/incomeTotal[i]:null; })};
+    expenseTotal:expenseTotal,contribution:contribution,contributionRatio:ofIncome(contribution),net:net,savingsRate:ofIncome(net)};
 }
 
 // an account's balance at the end of a past moment: today's minus what was posted after it

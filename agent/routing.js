@@ -76,6 +76,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wordHit = (text, words) => words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(text));
 // → what made a task private (a word from his list, or something shaped like a card / social security number), or null
 function privateMatch(t) {
+  if (t && t.financeSeen) return 'his finances'; // Lupa read Finance for it (agent/local-lane.js)
   const text = [t.title, t.notes].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').map((h) => h.text))
     .map((x) => String(x || '')).join('\n').toLowerCase();
   const words = String(routing.private || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
@@ -85,10 +86,27 @@ function privateMatch(t) {
   if (/(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)/.test(text)) return 'a social security number';
   return null;
 }
+/* a question about HIS money ("how much did I spend on gas", "my bank balance", "what are my bills"), which
+   Lupa answers from Finance on this computer (agent/local-lane.js). Not shopping ("budget $50", "compare costs") */
+const MY_MONEY = new RegExp([
+  '\\b(my|our)\\s+(spending|bank|accounts?|balances?|budget|bills|income|finances?|money|net worth|transactions?|statements?|subscriptions?|savings|portfolio|stocks|investments|expenses|purchases|paychecks?|credit cards?|debts?|cash flow|charges)\\b',
+  '\\bhow much (did|have|has|do) (i|we) (spend|spent|pay|paid|earn|earned|make|made|save|saved|owe)\\b',
+  '\\b(i|we) (spent|paid|earned|saved|owe)\\b',
+  '\\bwhat did (i|we) (spend|buy|pay)\\b',
+  '\\b(spent|spending|spend) on\\b',
+  '\\b(income statement|balance sheet|net worth|contribution margin)\\b',
+].join('|'), 'i');
+function moneyQuestion(t) {
+  const text = [t.title, t.notes, t.reply].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-2).map((h) => h.text))
+    .map((x) => String(x || '')).join('\n');
+  return MY_MONEY.test(text);
+}
 // → {lane: 'claude' | 'local' | 'ask', reason}
 function routeTask(t) {
   const title = String(t.title || '');
   if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
+  if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
+  if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: Lupa reads Finance' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
@@ -105,7 +123,8 @@ function routeTask(t) {
   const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
   return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
 }
-const laneOf = (t) => t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
+// a task Lupa read his Finance for stays on the mini PC even if it was switched to Claude by hand
+const laneOf = (t) => t.financeSeen ? 'local' : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
 // unassigned tasks whose route is 'ask': the user picks (the renderer turns them into a question with two buttons)
 const askedRoute = new Set();
@@ -119,4 +138,4 @@ function askForRoutes(raw) {
   sendToRenderer('agent:route-ask', ask.map((t) => t.id));
 }
 
-module.exports = { init, handlers, loadRouting, useRouting, getRouting, noteSituation, privateMatch, routeTask, laneOf, isClaudeLane, askForRoutes, ROUTING_DEFAULT };
+module.exports = { init, handlers, loadRouting, useRouting, getRouting, noteSituation, privateMatch, moneyQuestion, routeTask, laneOf, isClaudeLane, askForRoutes, ROUTING_DEFAULT };

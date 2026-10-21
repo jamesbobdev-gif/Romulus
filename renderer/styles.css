@@ -155,7 +155,8 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 @keyframes spin{to{transform:rotate(360deg)}}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
-.tab.busy::after{content:'';display:inline-block;width:6px;height:6px;margin-left:6px;vertical-align:1px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
+.tab.busy{position:relative}
+.tab.busy::after{content:'';position:absolute;top:50%;right:5px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
 @keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tab.busy::after{animation:none}}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
@@ -309,7 +310,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 
 /* ── tabs ── */
 .tabs{display:flex;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px}
-.tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s}
+.tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 @media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}}
@@ -765,6 +766,7 @@ textarea.ask-other{min-height:70px}
 .fin-stmt .st-line .st-name{padding-left:14px;color:var(--ink)}
 .fin-stmt .st-subhead .st-name{padding-left:14px;color:var(--muted);font-size:12px;padding-top:4px}
 .fin-stmt .st-sub td{font-weight:600;border-top:1px solid var(--hairline)}
+.fin-stmt .st-margin td{font-weight:700;border-top:1px solid var(--ink);padding-top:5px}
 .fin-stmt .st-total td{font-weight:700;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);padding-top:5px;padding-bottom:4px}
 .fin-stmt .st-pct td{color:var(--muted);font-size:12px;padding-top:6px}
 .fin-stmt .st-gap td{height:6px;padding:0}

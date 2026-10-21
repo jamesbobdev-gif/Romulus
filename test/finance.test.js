@@ -162,3 +162,37 @@ test('Windows Hello: kept after a passphrase unlock, opens Finance after Hello s
   assert.strictEqual(fs.existsSync(path.join(d6, 'finance.hello')), false);
   h['finance:forget']();
 });
+
+test('the Finance tab on screen shuts out screen capture, and lets it back when it goes', () => {
+  const calls = [];
+  finance.init({ userData: () => fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-')), agentLog: () => {}, protectWindow: (on) => calls.push(on) });
+  h['finance:screen'](null, true); h['finance:screen'](null, false);
+  assert.deepStrictEqual(calls, [true, false]);
+});
+
+test('the Agent is never allowed to read Finance’s files', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../agent/runner.js'), 'utf8');
+  assert.ok(src.includes("'Read(**/finance.vault*)'") && src.includes("'Read(**/finance.hello)'"));
+  for (const f of ['../agent/local-lane.js', '../agent/memory-tidy.js']) assert.match(fs.readFileSync(path.join(__dirname, f), 'utf8'), /--disallowedTools', '[^']*\bRead\b/);
+});
+
+test('Lupa’s view of Finance: only while unlocked, plain text, read-only', async () => {
+  const d7 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  const now = Math.floor(Date.now() / 1000);
+  const logs = [];
+  finance.init({ userData: () => d7, agentLog: (m) => logs.push(m), sendToRenderer: () => {},
+    fetch: async (url, opts) => opts.method === 'POST' ? { ok: true, status: 200, text: async () => ACCESS }
+      : { ok: true, status: 200, json: async () => ({ accounts: [{ id: 'a1', name: 'Checking', balance: '900', transactions: [
+        { id: 't1', posted: now - 86400, amount: '-42.10', description: 'Shell Oil 123' }, { id: 't2', posted: now - 2 * 86400, amount: '-8', description: 'Corner Deli' }] }] }) } });
+  await h['finance:setup'](null, token, 'correct horse battery');
+  assert.match(finance.forAgent({ what: 'overview' }), /Checking: \$900\.00/);
+  const gas = finance.forAgent({ what: 'transactions', query: 'shell' });
+  assert.match(gas, /1 transaction\(s\) matching "shell": \$42\.10 out/);
+  assert.ok(!gas.includes('Deli'));
+  assert.match(finance.forAgent({ what: 'statement' }), /Contribution margin/);
+  assert.ok(logs.filter((m) => /Lupa read/.test(m)).every((m) => !/\d+\.\d\d/.test(m)), 'the log never gets amounts');
+  h['finance:lock']();
+  assert.match(finance.forAgent({ what: 'overview' }), /locked/);
+  assert.strictEqual(finance.isUnlocked(), false);
+  h['finance:forget']();
+});

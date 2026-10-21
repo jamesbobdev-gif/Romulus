@@ -102,10 +102,11 @@ async function prepareAgentBrowser() {
    Gemini's runs: mail is off limits (its own web tools can't be stopped mid-run). */
 const mailSeenFile = () => path.join(agentBrowserDir(), 'mail-seen.json');
 const mailSeen = () => fs.existsSync(mailSeenFile());
-function browserCfgFor(baseCfg, mode, approved) { // → this run's MCP config
+function browserCfgFor(baseCfg, mode, approved, startTab) { // → this run's MCP config (startTab: see agent/task-tabs.js)
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
     TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)) }; // the only things an upload may send
+  if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
   // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
   // never a yes (they only look) and never a file
   if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1', TASKS_BROWSER_FILES: '[]' }) });
@@ -146,18 +147,6 @@ async function ensureAgentBrowser() {
   for (let i = 0; i < 40; i++) { if (await agentBrowserUp()) return true; await new Promise((r) => setTimeout(r, 250)); }
   return false;
 }
-// a new run starts on one blank tab: pages left from earlier tasks are closed (logins stay, they're in
-// the profile), so the agent and the live view (Watch) both use the tab the run opens, not an old one
-async function freshTabs() {
-  if (!(await agentBrowserUp())) return;
-  const base = 'http://127.0.0.1:' + AGENT_BROWSER_PORT;
-  const list = await fetch(base + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
-  const pages = list.filter((p) => p.type === 'page' && !/^(devtools|chrome-extension):/.test(p.url));
-  if (pages.length === 1 && /^about:blank/.test(pages[0].url)) return;
-  const made = await fetch(base + '/json/new?about:blank', { method: 'PUT', signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
-  if (!made) return; // never close the last tab: that would quit the browser
-  for (const p of pages) await fetch(base + '/json/close/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {});
-}
 // a grocery order he checked off: its store pages (and the store checkers' tabs) are closed. Logins and
 // the store's own cart stay, they're in the profile and on the store's side
 const STORE_PAGE = /^https?:\/\/([^/]+\.)?(instacart|walmart|amazon|aldi|kroger|gianteagle|marcs|wholefoodsmarket|target|costco|doordash|ubereats)\.[a-z.]+(\/|$)/i;
@@ -175,14 +164,6 @@ async function closeStoreTabs() { // → how many it closed
   for (const p of shut) await fetch(base + '/json/close/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {});
   return shut.length;
 }
-// the page the run ended on (Chrome lists the most recently used tab first): Watch reopens it for that
-// task later, since the next run's freshTabs() closes it
-async function lastPage() {
-  if (!(await agentBrowserUp())) return null;
-  const list = await fetch('http://127.0.0.1:' + AGENT_BROWSER_PORT + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
-  const p = list.find((x) => x.type === 'page' && /^https:\/\//i.test(x.url));
-  return p ? String(p.url).slice(0, 2000) : null;
-}
 // an agent browser left open from before (with a window): close it, so the next one starts without
 async function closeWindowedAgentBrowser() {
   if (process.platform !== 'win32') return;
@@ -192,4 +173,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, freshTabs, closeStoreTabs, STORE_PAGE, lastPage, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

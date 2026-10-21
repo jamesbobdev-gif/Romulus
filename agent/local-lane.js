@@ -11,6 +11,7 @@ const fs = require('fs');
 const { claudeExe } = require('./platform');
 const os = require('os');
 const pageReader = require('./page-reader');
+const signinWatch = require('./signin-watch');
 const formMode = require('./form-mode');
 const localAnswer = require('./local-answer');
 const providers = require('./providers');
@@ -24,7 +25,7 @@ const { cloudOrder, couldntDo } = require('./ai-connections');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText,
   agentRow, prefLine, claimAgentTasks, howtoFile } = require('./task-context');
-const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot } = require('./qwen-browser');
+const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const { formFiles } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
 const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_file',
@@ -43,6 +44,22 @@ const handlers = {};
 const handle = (ch, fn) => { handlers[ch] = fn; };
 
 const LOCAL_MAX_STEPS = 8;
+/* Money questions: Lupa reads Finance (main/finance.js forAgent, through ctx.finance) — and in that run it
+   gets nothing that reaches outside: no web search, page reading, browser or cloud helpers (so nothing it
+   read can be sent anywhere), and nothing from it is kept where Claude reads later (how-tos, site tips,
+   preferences). The task is marked financeSeen, so it's never handed to Claude or the other cloud AIs. */
+const FINANCE_TOOL = { type: 'function', function: { name: 'my_finances',
+  description: 'His bank accounts and spending from the Finance tab (read-only). what: "overview" (accounts, net worth, monthly bills, spending by month, stocks), "transactions" (newest first, matching query and/or dates), or "statement" (income statement by month: income, variable costs, contribution margin, fixed costs, net income). query: words in the payee (optional). from / to: YYYY-MM-DD (optional).',
+  parameters: { type: 'object', properties: { what: { type: 'string', enum: ['overview', 'transactions', 'statement'] }, query: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' } }, required: ['what'] } } };
+const LOCAL_FINANCE_RULES = `
+
+## His money (this task)
+This task is about his money. Use my_finances to look (start with "overview", then "transactions" or
+"statement" for details) and search_my_data for anything else he's told the app. There is no web, browser
+or helpers in this task. Answer with the actual numbers, dates and payees you found; add up only what the
+tool gave you. Don't give investment advice or tell him what to buy or sell. If it says Finance is locked,
+answer with needs-you and ask him to unlock Finance on his computer, then reply.`;
+const isMoneyTask = (t) => !!ctx.finance && (!!t.financeSeen || routing.moneyQuestion(t));
 let localBusy = false, localTimer = null;
 function localCfg() {
   const c = readConfig().localModel || {};
@@ -296,7 +313,9 @@ async function runLocalTask(c, t) {
     cal.events.slice(0, 60).map((e) => '- ' + String(e.start).replace('T', ' ').slice(0, 16) + ' ' + e.title + (e.where ? ' @ ' + e.where : '') + (e.invitedBy ? ' (invited by ' + e.invitedBy + ')' : '')).join('\n') : '';
   // Qwen's browser, when the mini PC's is reachable: locked to the task's links + his allowed sites
   let browser = null, sites = [];
-  if (await ensureQwenBrowser()) {
+  const money = isMoneyTask(t);
+  if (money) t.financeSeen = true; // from here on, this task stays on the mini PC (routing.privateMatch)
+  if (!money && await ensureQwenBrowser()) {
     sites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
     const links = (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
@@ -305,13 +324,14 @@ async function runLocalTask(c, t) {
     browser = await startBrowserTools(lockFile).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
-  const canAsk = helpersFor(t);
+  const canAsk = !money && helpersFor(t);
   // his files for forms (the resume): upload_file puts one in a site's file box, through the launcher's allowlist
   const files = browser ? formFiles() : [];
   const filesRule = files.length
     ? 'to attach one, click the site\'s Upload / Attach / Choose file button, then call upload_file with its name. His files: ' + files.map((f) => f.name).join(', ') + '. Only these can ever be uploaded, nothing else.'
     : 'he hasn\'t added any (⚙ Settings → About you → Files for forms). If a site needs his resume, fill the rest and say in your note that he should add it there, then reply "try again".';
-  const tools = (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : []);
+  const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
+    : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   const taskNotes = siteNotesFor(taskLinks(t));
   const earlier = howtosFor(t);
@@ -320,7 +340,7 @@ async function runLocalTask(c, t) {
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   let maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
-  const system = rules + (browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + calText +
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -335,6 +355,7 @@ async function runLocalTask(c, t) {
   const show = (s, force) => { live = (live + s).slice(-6000); if (force || Date.now() - lastSent > 250) { lastSent = Date.now(); sendToRenderer('agent:live', { id: t.id, text: live }); } };
   let myCal = null, calTried = false; // his calendar, for search_my_data
   const page = {}; // what the browser last showed (refs, address), so slips in browser calls can be fixed
+  const signins = signinWatch.tracker(sendToRenderer); // signed out of a school site: a to-do on his Human list
   // the browser as it is right now goes in with the task, so it never starts from an old idea of the
   // screen (it twice said "log in to Blackboard" from an old message while Blackboard was open and logged in)
   let startSeen = false;
@@ -396,6 +417,10 @@ async function runLocalTask(c, t) {
     for (const call of calls) {
       const name = call.function && call.function.name, args = (call.function && call.function.arguments) || {};
       let result;
+      if (money && name !== 'my_finances' && name !== 'search_my_data') {
+        messages.push({ role: 'tool', tool_name: name, content: 'Not in this task: it is about his money, so there is no web or browser here. Use my_finances or search_my_data, or answer.' });
+        continue;
+      }
       // the same search or page again: Holo4 read one page and ran one search twice each, in turn
       const key = (name === 'web_search' || name === 'read_page') ? name + ':' + String(args.query || args.url || '').trim().toLowerCase() : null;
       if (key && madeCalls.has(key)) {
@@ -415,6 +440,7 @@ async function runLocalTask(c, t) {
             result += '\n\n(Nothing new: you have seen all of these results already. ' + (unread.length ? 'Open one you haven\'t read yet with read_page, like ' + unread[0] + ', instead of searching again.)' : 'Answer with what you have.)');
           links.forEach((u) => searchedLinks.add(u));
         } else if (name === 'read_page') { show('\n📄 Reading: ' + args.url + '\n', true); opened.add(String(args.url)); result = await localReadPage(args.url); }
+        else if (money && name === 'my_finances') { show('\n💵 Looking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
         else if (name === 'search_my_data') {
           show('\n🗂 Searching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
@@ -462,11 +488,15 @@ async function runLocalTask(c, t) {
             browser_select_option: '☑️ Choosing in: ' + what, browser_press_key: '⌨️ Pressing ' + a.key, browser_find: '🔎 Finding on the page: ' + (a.text || a.regex) }[name] || ('🌐 ' + name.replace('browser_', ''));
           show('\n' + label + '\n', true);
           const r = await pageReader.step(browser, name, args, page);
+          if (page.url && signins.see(page.url, page.title) === 'signed-out') {
+            show('🔑 Signed out: a sign-in page\n', true);
+            result = r.text + '\n\n(This is a sign-in page: he is signed out here. Don\'t try to sign in. Answer "needs-you" now and say he needs to sign in on the mini PC\'s browser; a to-do for that is already on his list.)';
+          }
           if (r.locked) show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true);
           else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (r.clickTimeout) clickTimeouts++; else if (r.loadTimeout) loadTimeouts++; }
           const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
-          result = r.text;
+          if (!result) result = r.text;
           if (r.blocked && ++blocked >= 2) { forceAnswer = true; show('⛔ Stuck repeating itself: wrapping up\n', true); }
           // a page with a form it hasn't run form mode on yet: point it there
           else if (!r.failed && !formsFilled[(page.url || '') + '|' + formMode.formFields(page).map((f) => f.label).join('|')] && formMode.formFields(page).filter((f) => !f.now).length >= 2) result += '\n\n(This page has a form: call fill_form to fill it in one go.)';
@@ -495,17 +525,21 @@ async function runLocalTask(c, t) {
   if (browser && final.status === 'done') await tidyAgentTabs();
   if (final.status !== 'done') {
     stuck = cleanStuck(final.stuck) || stuck;
-    if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on Lupa Au Palatine kept timing out: its screen is probably locked or asleep.',
+    const signedOut = signins.signedOut();
+    if (signedOut.length) stuck = { reason: 'Lupa Au Palatine was signed out of ' + signedOut.join(' and ') + '.',
+      fix: 'On Lupa Au Palatine’s own screen, sign in to ' + signedOut.join(' and ') + ' in its browser (tick “Stay signed in”), then reply “try again”. The sign-in to-do on your list checks itself off once it works.' };
+    else if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on Lupa Au Palatine kept timing out: its screen is probably locked or asleep.',
       fix: 'Unlock Lupa Au Palatine (or turn off its screen lock and sleep), then reply “try again”.' };
     else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on Lupa Au Palatine: the site is slow or Lupa Au Palatine is busy (low on memory).',
       fix: 'Reply “try again” in a bit, or switch it to Claude.' };
   }
   // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task)
-  if (final.status !== 'done' && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !privateMatch(t)) {
+  if (final.status !== 'done' && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t)) {
     agentLog('local: couldn’t do it, passing it to the cloud AIs');
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160) }]);
     return;
   }
+  if (money) { final.howto = null; final.site_tips = null; final.pref = null; } // nothing from his money kept where Claude reads
   if (!stuck && typeof final.howto === 'string') learnHowto(t, final.howto, [...visited].map((h) => 'https://' + h).concat(taskLinks(t)), 'local');
   // a picture of what the browser showed, when it stopped there
   const shot = stuck && browser ? await miniPcScreenshot().catch(() => null) : null;
@@ -526,8 +560,28 @@ async function runLocalTask(c, t) {
   const opts = real.length ? (await Promise.all(real.slice(0, 6).map((o) => enrichOption(o, 'local')))).filter(Boolean) : [];
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
-    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live }]); // room for an essay; thoughts = what it did, to read afterwards
+    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live,
+    ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
+}
+
+/* Once a day (agent/signin-watch.js): is he still signed in to his school sites on the mini PC? Run when
+   Lupa is idle, holding it busy meanwhile so a task doesn't start in the same browser halfway through.
+   force: run now even if it already ran today. */
+async function checkSignins(force) {
+  if (!localCfg() || localBusy || howtoCompacting) return { ok: false, error: 'Busy, try again in a minute.' };
+  if (!force && !signinWatch.due(ctx.userData())) return { ok: true, skipped: true };
+  localBusy = true;
+  try {
+    if (!(await ensureQwenBrowser())) return { ok: false, error: 'Lupa Au Palatine’s browser isn’t reachable.' };
+    const r = routing.getRouting().sites;
+    const sites = (Array.isArray(r) ? r : String(r || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
+    const out = await signinWatch.dailyCheck({ port: QWEN_BROWSER_LOCAL_PORT, sites, send: sendToRenderer, userData: ctx.userData(), log: agentLog });
+    return { ok: true, sites: out };
+  } finally {
+    localBusy = false;
+    scheduleLocalRun(); // a task that came in meanwhile
+  }
 }
 
 const isBusy = () => localBusy || howtoCompacting;
-module.exports = { init, handlers, localStatus, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy };
+module.exports = { init, handlers, localStatus, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins };
