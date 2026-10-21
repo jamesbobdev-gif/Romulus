@@ -72,7 +72,7 @@ function queuedLocalTasks(raw) {
   return (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isLocalLane(t));
 }
 function scheduleLocalRun(raw) {
-  if (!localCfg() || localBusy || !queuedLocalTasks(raw).length) return;
+  if (!localCfg() || localBusy || !routing.decided(raw) || !queuedLocalTasks(raw).length) return;
   clearTimeout(localTimer);
   localTimer = setTimeout(() => { localTimer = null; startLocalRun().catch((e) => { localBusy = false; agentLog('local run crashed: ' + (e && e.stack || e)); }); }, AGENT_GRACE_MS);
 }
@@ -262,7 +262,7 @@ function cleanStuck(s) {
 }
 async function startLocalRun() {
   const c = localCfg();
-  if (!c || localBusy) return;
+  if (!c || localBusy || !routing.decided()) return;
   const queued = queuedLocalTasks();
   if (!queued.length) return;
   localBusy = true;
