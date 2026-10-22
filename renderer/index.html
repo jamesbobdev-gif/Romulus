@@ -212,6 +212,7 @@
       <p class="settings-hint">
         Sync with your phone via a free <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
+      <p class="settings-hint">Adding a device? Press <b>Copy sync code</b> here, then paste it into the first box on the other device: it fills in all three.</p>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKey" class="settings-inp" placeholder="Anon / publishable key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
@@ -224,6 +225,7 @@
       </details>
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
+        <button id="syncCopyBtn" class="ghost mono">Copy sync code</button>
         <button id="syncGenBtn" class="ghost mono">Generate key</button>
         <button id="syncOffBtn" class="ghost mono danger" hidden>Turn off</button>
         <span id="syncStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
