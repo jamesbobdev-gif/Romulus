@@ -1,11 +1,14 @@
 ---
 name: bookings-services
 description: Services, appointments, restaurants and places: finding them near him and the booking hand-off
+browser: yes
 match: \b(book|booking|appointment|reserve|reservation|table for|haircut|barber|salon|dentist|doctor|restaurant|dinner|near me|nearby|open now|mechanic|repair shop)\b
+nearby: yes
 ---
 # Bookings and services
 
-- **Where he is:** use the location in his preferences. Don't ask for it if it's there.
+- **Where he is:** `whereHeIsNow` when the task has it, else the location in his preferences. Don't
+  ask for it if you have either. List places nearest first, with the distance in `desc`.
 - **Links:** go to the right site for the thing, never Amazon: the business's own booking page,
   Fresha, Booksy, OpenTable, Resy, Yelp or Google Maps. The app names the button after the link's site,
   so in your note say "tap Fresha ↗", not "tap Amazon ↗".

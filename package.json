@@ -1,15 +1,17 @@
 {
   "name": "tasks",
   "productName": "Tasks",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "A clean, minimal to-do app",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "test": "node --test \"test/*.test.js\"",
+    "release": "node scripts/release.js"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
+    "electron": "33.4.11",
     "electron-builder": "^25.1.8"
   },
   "build": {
@@ -17,6 +19,7 @@
     "productName": "Tasks",
     "files": [
       "main.js",
+      "main/**",
       "preload.js",
       "renderer/**",
       "assets/**",
@@ -27,10 +30,23 @@
     },
     "win": {
       "target": "nsis",
-      "signAndEditExecutable": false
+      "icon": "build/icon.ico"
     },
     "linux": {
       "target": "AppImage"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "jamesbobdev-gif",
+      "repo": "tasks-releases",
+      "releaseType": "release"
+    },
+    "nsis": {
+      "artifactName": "Tasks-Setup-${version}.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "qrcode": "^1.5.4"
   }
 }

@@ -35,7 +35,7 @@ function when(p) {
   return { due: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), dueTime: pad(d.getHours()) + ':' + pad(d.getMinutes()), at: d };
 }
 
-// "1170-CSUOH-ACT222-2411: Fall 26 (1) ACT 222 Intro to Managerial Acct" → "ACT 222"
+// "1170-UNIV-BIO101-2411: Fall 26 (1) BIO 101 Intro to Biology" → "BIO 101"
 function courseCode(s) {
   const m = String(s || '').match(/\b([A-Z]{2,5})[ -]?(\d{3,4}[A-Z]?)\b/g);
   if (!m) return String(s || '').trim().slice(0, 40) || null;
@@ -50,7 +50,7 @@ function toItem(ev, now) {
   const t = when(ev.DTEND) || when(ev.DTSTART);
   if (!t || t.at < new Date(now.getTime() - 2 * 864e5)) return null; // already past: nothing to do
   let course = unescape((ev.LOCATION && ev.LOCATION.value) || (ev.CATEGORIES && ev.CATEGORIES.value) || '');
-  // "ACT 222: Chapter 19" / "[ACT 222] Chapter 19" / "ENT 315 - Sec 510 - Deliverable" carry the course in the title
+  // "BIO 101: Chapter 19" / "[BIO 101] Chapter 19" / "HIS 210 - Sec 510 - Deliverable" carry the course in the title
   const pre = title.match(/^\[([^\]]+)\]\s*(.+)$/) || title.match(/^([A-Z]{2,5}[ -]?\d{3,4}[A-Z]?[^:]*):\s*(.+)$/) ||
     title.match(/^([A-Z]{2,5}[ -]?\d{3,4}[A-Z]?)\s+-\s+(.+)$/);
   if (pre) { course = course || pre[1]; title = pre[2]; }

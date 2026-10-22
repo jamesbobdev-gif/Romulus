@@ -1,6 +1,7 @@
 # downloaded packages and build output (recreated by npm install / npm run dist / gradle)
 node_modules/
 dist/
+dist-clean/
 mobile/node_modules/
 mobile/www/
 mobile/android/.gradle/
@@ -19,6 +20,7 @@ mobile/agent-sync-config.json
 mobile/school-sync-config.json
 mobile/android/app/src/main/res/raw/sync_config.json
 mobile/android/app/src/main/res/raw/agent_sync_config.json
+mobile/android/app/src/main/res/raw/oauth_clients.json
 mobile/android/app/src/main/res/raw/school_sync_config.json
 
 # local safety copies made before installs
@@ -29,3 +31,12 @@ mobile/android/app/src/main/res/raw/school_sync_config.json
 
 # OS installer images (multi-GB; download them, never commit them)
 *.iso
+
+# sync links baked into a build for another computer (like a password; never commit)
+seed-config.json
+
+# Picovoice wake word ("Hey Romulus"): the AccessKey is personal
+mobile/picovoice-key.txt
+
+# the app's own Google / Microsoft sign-in clients (bundled into builds; see oauth-clients.example.json)
+oauth-clients.json

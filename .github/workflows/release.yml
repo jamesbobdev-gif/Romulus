@@ -1,0 +1,58 @@
+# Builds the installers for Windows, Linux and macOS and publishes them to the public releases repository
+# (package.json → build.publish) whenever a version tag is pushed, or by hand from the Actions tab.
+#
+# Needs one repository secret: RELEASES_TOKEN, a GitHub token with "contents: write" on the releases
+# repository (a fine-grained personal access token scoped to that one repo is enough).
+#
+# The macOS build is unsigned and not notarized: macOS will ask the person to allow it in System Settings
+# until an Apple Developer certificate is added (CSC_LINK / CSC_KEY_PASSWORD secrets).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: ubuntu-latest
+            target: --linux
+          - os: macos-latest
+            target: --mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # the app's own Google / Microsoft sign-in clients, when the repository has them as a secret
+      - name: OAuth clients
+        if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
+        env:
+          OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
+        shell: bash
+        run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder ${{ matrix.target }} --publish always
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.dmg
+            dist/*.yml
+            dist/*.blockmap
+          if-no-files-found: ignore
