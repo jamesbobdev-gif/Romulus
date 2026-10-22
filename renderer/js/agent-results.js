@@ -13,7 +13,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){
         t.status='working'; t.runFrom=Date.now(); // what he writes after this, the run can't see: it goes next
-        if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'Lupa Au Palatine':'Claude')+' ('+reasons[id]+')'); }
+        if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'); }
         changed=true;
       }
       // the AI the runner is asking now: the pill shows it, and the task stays with it from here on
@@ -30,7 +30,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'&&!t.lane){
         t.status='needs-you'; t.routeAsk=true; t.note='Who should do this one? No routing rule matched.';
-        agentSay(t,'sys','No routing rule matched: waiting for you to pick Claude or Lupa Au Palatine');
+        agentSay(t,'sys','No routing rule matched: waiting for you to pick Claude or the local model');
         changed=true;
       }
     });
@@ -95,7 +95,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(u.handoff){
         t.lane='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
         t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
-        agentSay(t,'sys','Lupa Au Palatine couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
+        agentSay(t,'sys','The local model couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
         return;
       }
       if(u.lane!=='local'){ const via=u.via||'claude'; if(via!=='claude')t.cloud=via; else if(t.cloud!=='claude')delete t.cloud; } // whoever answered: its pill, which it keeps (Claude only when he picked it)
@@ -113,7 +113,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       // "done" = finished: the task stays in the Agent tab until the user checks it off himself
       const reviewNote=t.note; // the order's review ("total … Reply yes"), for its total once it's placed
       t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked;
-      if(u.financeSeen)t.financeSeen=true; // Lupa read his Finance for it: it never goes to a cloud AI (agent/routing.js) // a fresh answer needs a fresh look
+      if(u.financeSeen)t.financeSeen=true; // The local model read his Finance for it: it never goes to a cloud AI (agent/routing.js) // a fresh answer needs a fresh look
       // it stopped for something in its way: why, what to do, and what its browser showed
       t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
       t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;
@@ -136,7 +136,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       // suggestions for the week start unselected: he taps the ones he wants
       if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
       if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
-      (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','Lupa Au Palatine asked Claude: '+q); });
+      (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','The local model asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';
       if(['gemini','openai','openrouter','xai','groq','cloudflare','nvidia'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS

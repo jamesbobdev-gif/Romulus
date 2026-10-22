@@ -51,14 +51,14 @@ function refreshLocalStatus(){
     if(changed&&state.activeTab==='agent')render();
   }).catch(function(){});
 }
-// the model running on the mini PC, short: hf.co/Hcompany/Holo4-35B-A3B-GGUF:Q4_K_M → Holo4-35B-A3B ('Lupa' until it's known)
+// the model running on the mini PC, short: hf.co/Hcompany/Holo4-35B-A3B-GGUF:Q4_K_M → Holo4-35B-A3B ('The local model' until it's known)
 function localModelName(){
   const m=localStat&&localStat.model;
   if(!m)return 'Local';
   const p=String(m).split('/').pop().split(':'), tag=p[1]||'';
   const name=p[0].replace(/[-_.]?gguf$/i,'');
   // the quantization (Q4_K_M) and "latest" tags are dropped; a size tag (qwen3:8b) stays
-  return (name+(tag&&!/^(latest|i?q\d.*|b?f(p)?(16|32))$/i.test(tag)?' '+tag:''))||'Lupa';
+  return (name+(tag&&!/^(latest|i?q\d.*|b?f(p)?(16|32))$/i.test(tag)?' '+tag:''))||'Local model';
 }
 function agentSay(t,who,text,extra){
   if(!text)return;
@@ -155,7 +155,7 @@ function drawComposerAtts(){
   const box=document.getElementById('newAtts'); if(!box)return;
   box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='calendar'||state.activeTab==='finance';
   composerAtts.forEach(function(a,i){
-    const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for Romulus';
+    const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for the Agent';
     im.addEventListener('click',function(){ openLightbox(composerAtts.map(function(x,j){ return {image:x.preview,label:'Photo '+(j+1)}; }),i); });
     const x=el('button',null,'\u2715'); x.setAttribute('aria-label','Remove photo');
     x.addEventListener('click',function(){ URL.revokeObjectURL(a.preview); composerAtts.splice(i,1); drawComposerAtts(); });
@@ -185,9 +185,9 @@ function openTaskById(id){
 window.__tasksHook=function(p){
   p=p||{};
   if(p.kind==='open'){ openTaskById(p.arg); return 'ok'; }
-  if(p.kind==='tab'){ switchTab(p.arg==='agent'&&agentConfigured()?'agent':p.arg==='school'&&schoolConfigured()?'school':p.arg==='work'&&workConfigured()?'work':'list'); window.scrollTo(0,0); return 'ok'; }
+  if(p.kind==='tab'){ switchTab(p.arg==='agent'&&agentAvailable()?'agent':p.arg==='school'&&schoolConfigured()?'school':p.arg==='work'&&workConfigured()?'work':'list'); window.scrollTo(0,0); return 'ok'; }
   if(p.kind==='voice'){
-    switchTab(p.arg==='agent'&&agentConfigured()?'agent':'list'); window.scrollTo(0,0);
+    switchTab(p.arg==='agent'&&agentAvailable()?'agent':'list'); window.scrollTo(0,0);
     setTimeout(voiceAdd,300); return 'ok';
   }
   if(p.kind==='wake'){ // "Hey Romulus" (WakeWordService.java): listen right where you are
@@ -195,11 +195,11 @@ window.__tasksHook=function(p){
     setTimeout(function(){ voiceAdd(true); },250); return 'ok';
   }
   if(p.kind==='quickAdd'){
-    switchTab(p.arg==='agent'&&agentConfigured()?'agent':'list'); window.scrollTo(0,0);
+    switchTab(p.arg==='agent'&&agentAvailable()?'agent':'list'); window.scrollTo(0,0);
     const ti=$('newTitle'); ti.focus(); return 'keyboard';
   }
   if(p.kind==='share'){
-    switchTab(agentConfigured()?'agent':'list'); window.scrollTo(0,0);
+    switchTab(agentAvailable()?'agent':'list'); window.scrollTo(0,0);
     const bits=[p.subject,p.text].filter(function(x){ return x&&String(x).trim(); }).map(function(x){ return String(x).trim(); });
     const ti=$('newTitle'); if(bits.length)ti.value=bits.join(' \u2014 ').slice(0,600);
     (p.images||[]).forEach(function(d){
@@ -253,7 +253,7 @@ function laneNow(t){
   if(t.lane==='claude'||t.lane==='local')return t.lane;
   return last?(last.lane==='local'?'local':'claude'):null;
 }
-const LANE_NAMES=Object.assign({claude:'Claude'},CLOUD_NAMES,{local:'Lupa Au Palatine'});
+const LANE_NAMES=Object.assign({claude:'Claude'},CLOUD_NAMES,{local:'Local model'});
 // the cloud AI a cloud-lane task is on (same rule as agent/ai-connections.js homeCloud), by name
 function cloudNameOf(t){
   let id=t.cloud;
@@ -376,7 +376,7 @@ function saveAnswerDoc(title,text){
   const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
 }
-/* files the mini PC's browser downloaded (a worksheet off Blackboard) land in Lupa's Downloads folder,
+/* files the mini PC's browser downloaded (a worksheet off Blackboard) land in the local model’s Downloads folder,
    not on this computer: listed at the top of the Agent tab, each with a Download button */
 let lupaList=null, lupaAt=0, lupaLoading=false, lupaDrawn='';
 function loadLupaFiles(){
@@ -399,7 +399,7 @@ function drawLupaFiles(show){
   box.hidden=!files.length;
   const key=JSON.stringify(files); if(key===lupaDrawn)return; lupaDrawn=key;
   box.textContent='';
-  box.appendChild(el('summary',null,'📄 Files on Lupa Au Palatine ('+files.length+')'));
+  box.appendChild(el('summary',null,'📄 Files on the local model ('+files.length+')'));
   const ul=el('ul','lupa-file-list');
   files.forEach(function(f){
     const li=el('li','lupa-file');
@@ -416,8 +416,8 @@ function drawLupaFiles(show){
         .then(function(){ b.disabled=false; b.textContent='⬇ Download'; });
     });
     li.appendChild(b);
-    // done with it: off the list, and to Lupa's trash with every copy of it (recoverable there)
-    const x=el('button','lupa-file-x','✕'); x.title='Remove (moves it to Lupa’s trash)'; x.setAttribute('aria-label','Remove '+f.name);
+    // done with it: off the list, and to the local model’s trash with every copy of it (recoverable there)
+    const x=el('button','lupa-file-x','✕'); x.title='Remove (moves it to the local model’s trash)'; x.setAttribute('aria-label','Remove '+f.name);
     x.addEventListener('click',function(e){
       e.stopPropagation(); x.disabled=true;
       const k=fileKey(f), copies=(lupaList||[]).filter(function(g){ return fileKey(g)===k; }).map(function(g){ return g.name; });

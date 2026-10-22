@@ -44,7 +44,7 @@ const handlers = {};
 const handle = (ch, fn) => { handlers[ch] = fn; };
 
 const LOCAL_MAX_STEPS = 8;
-/* Money questions: Lupa reads Finance (main/finance.js forAgent, through ctx.finance) — and in that run it
+/* Money questions: The local model reads Finance (main/finance.js forAgent, through ctx.finance) — and in that run it
    gets nothing that reaches outside: no web search, page reading, browser or cloud helpers (so nothing it
    read can be sent anywhere), and nothing from it is kept where Claude reads later (how-tos, site tips,
    preferences). The task is marked financeSeen, so it's never handed to Claude or the other cloud AIs. */
@@ -258,7 +258,7 @@ function runHelperOn(id, prompt) {
       let j = null; try { j = JSON.parse(out); } catch (e) {}
       if (j && !j.is_error && typeof j.result === 'string' && j.result.trim()) return resolve({ text: j.result });
       const resetAt = parseUsageLimit(err + '\n' + out);
-      if (resetAt) holdForUsage([], resetAt); // the Agent lane waits too, instead of hitting the same wall
+      if (resetAt) holdForUsage([], resetAt); // The Agent lane waits too, instead of hitting the same wall
       resolve({ why: resetAt ? 'out of usage' : 'no answer' });
     });
   });
@@ -268,7 +268,7 @@ function runHelperOn(id, prompt) {
 let howtoCompacting = false;
 async function compactHowtos(asked) {
   const c = localCfg();
-  if (!c) return { ok: false, error: 'Compacting uses Lupa Au Palatine, and it isn’t set up.' };
+  if (!c) return { ok: false, error: 'Compacting uses the local model, and it isn’t set up.' };
   if (howtoCompacting || (!asked && localBusy)) return { ok: false, error: 'Busy, try again in a minute.' };
   howtoCompacting = true;
   try {
@@ -311,11 +311,11 @@ async function startLocalRun() {
       agentLog('local task failed: ' + msg + (slept ? ' (after this computer slept)' : ''));
       const where = c.url.replace(/^https?:\/\//, '');
       const stuck = slept
-        ? { reason: 'This computer went to sleep while Lupa Au Palatine worked, which cut the connection.', fix: 'Keep the lid open (or set closing the lid to do nothing when plugged in), then reply “try again”.' }
+        ? { reason: 'This computer went to sleep while the local model worked, which cut the connection.', fix: 'Keep the lid open (or set closing the lid to do nothing when plugged in), then reply “try again”.' }
         : /fetch failed|ECONNREFUSED|abort/i.test(msg)
-        ? { reason: 'Lupa Au Palatine isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
+        ? { reason: 'The local model isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
         : /timed? ?out/i.test(msg)
-        ? { reason: 'Lupa Au Palatine’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on Lupa Au Palatine, or switch this to Claude.' }
+        ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
         : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
       // it failed: the cloud AIs take over, unless he was asleep (that's on this computer) or it's private
       if (!slept && cloudOrder().length && !privateMatch(t)) {
@@ -324,7 +324,7 @@ async function startLocalRun() {
       }
       const shot = await miniPcScreenshot().catch(() => null);
       sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
-        note: 'Lupa Au Palatine couldn’t finish this one. ' + stuck.reason }]);
+        note: 'The local model couldn’t finish this one. ' + stuck.reason }]);
     });
   } finally {
     localBusy = false;
@@ -480,7 +480,7 @@ async function runLocalTask(c, t) {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
           const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
-          refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on Lupa Au Palatine (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
+          refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the local model (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
           else {
             show('\n🤝 Sending ' + ok.length + ' question(s) to helpers…\n', true);
@@ -557,11 +557,11 @@ async function runLocalTask(c, t) {
   if (final.status !== 'done') {
     stuck = cleanStuck(final.stuck) || stuck;
     const signedOut = signins.signedOut();
-    if (signedOut.length) stuck = { reason: 'Lupa Au Palatine was signed out of ' + signedOut.join(' and ') + '.',
-      fix: 'On Lupa Au Palatine’s own screen, sign in to ' + signedOut.join(' and ') + ' in its browser (tick “Stay signed in”), then reply “try again”. The sign-in to-do on your list checks itself off once it works.' };
-    else if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on Lupa Au Palatine kept timing out: its screen is probably locked or asleep.',
-      fix: 'Unlock Lupa Au Palatine (or turn off its screen lock and sleep), then reply “try again”.' };
-    else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on Lupa Au Palatine: the site is slow or Lupa Au Palatine is busy (low on memory).',
+    if (signedOut.length) stuck = { reason: 'The local model was signed out of ' + signedOut.join(' and ') + '.',
+      fix: 'On the local model’s own screen, sign in to ' + signedOut.join(' and ') + ' in its browser (tick “Stay signed in”), then reply “try again”. The sign-in to-do on your list checks itself off once it works.' };
+    else if (!stuck && clickTimeouts >= 2) stuck = { reason: 'Clicks on the local model kept timing out: its screen is probably locked or asleep.',
+      fix: 'Unlock the local model (or turn off its screen lock and sleep), then reply “try again”.' };
+    else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on the local model: the site is slow or the local model is busy (low on memory).',
       fix: 'Reply “try again” in a bit, or switch it to Claude.' };
   }
   // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task)
@@ -596,14 +596,14 @@ async function runLocalTask(c, t) {
 }
 
 /* Once a day (agent/signin-watch.js): is he still signed in to his school sites on the mini PC? Run when
-   Lupa is idle, holding it busy meanwhile so a task doesn't start in the same browser halfway through.
+   The local model is idle, holding it busy meanwhile so a task doesn't start in the same browser halfway through.
    force: run now even if it already ran today. */
 async function checkSignins(force) {
   if (!localCfg() || localBusy || howtoCompacting) return { ok: false, error: 'Busy, try again in a minute.' };
   if (!force && !signinWatch.due(ctx.userData())) return { ok: true, skipped: true };
   localBusy = true;
   try {
-    if (!(await ensureQwenBrowser())) return { ok: false, error: 'Lupa Au Palatine’s browser isn’t reachable.' };
+    if (!(await ensureQwenBrowser())) return { ok: false, error: 'The local model’s browser isn’t reachable.' };
     const r = routing.getRouting().sites;
     const sites = (Array.isArray(r) ? r : String(r || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
     const out = await signinWatch.dailyCheck({ port: QWEN_BROWSER_LOCAL_PORT, sites, send: sendToRenderer, userData: ctx.userData(), log: agentLog });

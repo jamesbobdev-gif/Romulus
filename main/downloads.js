@@ -1,7 +1,7 @@
 /* Downloading documents from the Agent tab.
    - doc:save: an AI's written answer (an essay, a letter) saved as a Word file where he picks.
    - lupa:files / lupa:fetch / lupa:remove: files the mini PC's browser downloaded (a worksheet off Blackboard) sit in
-     Lupa's ~/Downloads, not on this computer. These list them and copy one here, over the same SSH the
+     The local model’s ~/Downloads, not on this computer. These list them and copy one here, over the same SSH the
      mini PC's browser uses (localModel.browser.ssh).
    - forms:files / forms:add / forms:remove: his files for forms (the resume a job site asks for), kept on this
      computer where the browser launcher runs (agent/agent-files.js); Settings → About you lists them. */
@@ -66,7 +66,7 @@ function onLupa(cmd, toFile) {
   });
 }
 
-// what's in Lupa's Downloads: [{name, size, at}] newest first (half-downloaded and installer files left out)
+// what's in the local model’s Downloads: [{name, size, at}] newest first (half-downloaded and installer files left out)
 async function lupaFiles() {
   try {
     const out = (await onLupa("find ~/Downloads -maxdepth 1 -type f -printf '%T@\\t%s\\t%f\\n'")).toString();
@@ -93,7 +93,7 @@ async function lupaFetch(_e, name) {
   return { ok: true, path: file };
 }
 
-// done with it: to Lupa's trash (not deleted for good), every copy the browser made
+// done with it: to the local model’s trash (not deleted for good), every copy the browser made
 async function lupaRemove(_e, names) {
   names = (Array.isArray(names) ? names : [names]).map(String).filter((n) => n && !/[\/\u0000]/.test(n) && n !== '.' && n !== '..');
   if (!names.length) return { ok: false, error: 'bad file name' };

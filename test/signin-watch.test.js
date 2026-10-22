@@ -25,7 +25,7 @@ test('Blackboard sending him to Microsoft puts one Blackboard to-do on his list'
   tr.see(SAML, 'Sign in to your account'); // again: no second to-do
   const todos = sent.filter((s) => s[0] === 'agent:reconnect');
   assert.strictEqual(todos.length, 1);
-  assert.match(todos[0][1].title, /^Sign in to Blackboard on Lupa Au Palatine: /);
+  assert.match(todos[0][1].title, /^Sign in to Blackboard on the local model’s computer: /);
   assert.deepStrictEqual(tr.signedOut(), ['Blackboard']);
 });
 

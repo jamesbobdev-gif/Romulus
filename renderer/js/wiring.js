@@ -97,6 +97,9 @@ if(window.desktop&&window.desktop.aiStatus){
   if(window.desktop.onAgentReconnected)window.desktop.onAgentReconnected(function(p){ const id=p&&p.id; if(id)delete keyBad[id]; redrawSoon(); });
   function aiDraw(){
     usageDraw();
+    // the Agent tab's "Pick an AI" card and nudge (welcome.js) follow this
+    const readyNow=!!(ai&&ai.ready);
+    if(window.agentAiReady!==readyNow){ window.agentAiReady=readyNow; if(typeof render==='function')render(); }
     const list=$('aiList'); list.innerHTML='';
     ai.order.forEach(function(p,i){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
@@ -302,7 +305,7 @@ if(window.desktop&&window.desktop.aiStatus){
     // the mini PC may hand research to these AIs as helpers (never private tasks or his details)
     const hs=el('label','switch'); hs.style.marginTop='6px'; const hc=document.createElement('input'); hc.type='checkbox'; hc.checked=ai.helpers;
     hs.appendChild(hc); const ht=el('span','track'); ht.setAttribute('aria-hidden','true'); hs.appendChild(ht);
-    hs.appendChild(el('span','','Lupa Au Palatine can send research to these as helpers'));
+    hs.appendChild(el('span','','The local model can send research to these as helpers'));
     hc.addEventListener('change',function(){ save({helpers:hc.checked}); });
     list.appendChild(hs);
     list.appendChild(el('p','settings-hint','Up to 4 questions at once, spread across the AIs above. Private tasks and your details never go out.'));
@@ -530,7 +533,7 @@ function drawHowtos(){
       del.addEventListener('click',function(e){ e.stopPropagation(); window.desktop.howtosDelete(h.id).then(drawHowtos); });
       head.appendChild(del);
       body.appendChild(el('div','howto-text',h.text));
-      body.appendChild(el('div','howto-meta',(h.merged?'merged from '+h.merged+' notes':(h.lane==='local'?'Lupa Au Palatine':'Claude'))+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
+      body.appendChild(el('div','howto-meta',(h.merged?'merged from '+h.merged+' notes':(h.lane==='local'?'The local model':'Claude'))+((h.sites||[]).length?' \u00B7 '+h.sites.join(', '):'')));
       body.hidden=true;
       head.addEventListener('click',function(){ body.hidden=!body.hidden; });
       row.appendChild(head); row.appendChild(body);
@@ -542,7 +545,7 @@ if(window.desktop&&window.desktop.howtosList){
   $('howtosSection').hidden=false; drawHowtos();
   $('howtosCompactBtn').addEventListener('click',async function(){
     const b=this, say=function(t){ $('howtosStatus').textContent=t; };
-    b.disabled=true; say('merging overlapping notes on Lupa Au Palatine…');
+    b.disabled=true; say('merging overlapping notes on the local model…');
     let r; try{ r=await window.desktop.howtosCompact(); }catch(e){ r={ok:false,error:e.message}; }
     b.disabled=false;
     say(!r.ok?r.error:r.merged?'merged '+r.merged+' group'+(r.merged>1?'s':'')+' of notes':'nothing overlaps right now');

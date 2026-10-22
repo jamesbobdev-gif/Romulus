@@ -113,7 +113,7 @@ $('lockedSaveBtn').addEventListener('click',async function(){
 // Form answers: the questions forms keep asking, answered once; the mini PC's form mode uses them as
 // written, and a question left blank stays empty on the form. Added at the end, never over what's there.
 const FORM_ANSWERS=`## Form answers
-(Answer after each colon. Leave one blank and Lupa Au Palatine leaves that question empty on forms.)
+(Answer after each colon. Leave one blank and the local model leaves that question empty on forms.)
 - Full legal name:
 - Preferred first name:
 - Email for applications:
@@ -157,7 +157,7 @@ function routingRow(rule){
   const r=el('div','settings-row routing-rule');
   const w=el('input','settings-inp'); w.value=rule.words||''; w.placeholder='words, like: apply, form'; w.style.flex='1';
   const sel=document.createElement('select'); sel.className='settings-inp'; sel.style.width='auto';
-  [['claude','→ Claude'],['local','→ Lupa Au Palatine']].forEach(function(o){ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); });
+  [['claude','→ Claude'],['local','→ the local model']].forEach(function(o){ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); });
   sel.value=rule.lane==='local'?'local':'claude';
   const up=el('button','ghost mono','↑'); up.title='Move up (checked earlier)';
   up.addEventListener('click',function(){ const p=r.previousElementSibling; if(p)r.parentNode.insertBefore(r,p); });

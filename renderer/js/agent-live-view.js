@@ -56,7 +56,7 @@ function openLiveView(host,forId,want){
   const img=el('img','live-img'); img.alt=''; img.draggable=false; stage.appendChild(img);
   const msg=el('div','live-msg'); stage.appendChild(msg);
   box.appendChild(stage);
-  box.appendChild(el('div','live-hint','Click, scroll and type here to use it yourself. Romulus keeps going when you’re done.'));
+  box.appendChild(el('div','live-hint','Click, scroll and type here to use it yourself. The Agent keeps going when you’re done.'));
   // what has keyboard focus: a hidden box, so text that comes without key presses (emoji picker,
   // voice typing, IME) arrives as input and is typed into the page too
   const keys=el('textarea','live-keys'); keys.setAttribute('aria-label','Type into the agent browser'); keys.tabIndex=-1; box.appendChild(keys);
@@ -115,7 +115,7 @@ async function livePoll(){
   // in a card: only once the browser has a real page up (a run that only searches never shows it)
   if(!v.big)v.box.hidden=!r.up||!r.pages.some(function(p){ return p.url&&!/^(about:|chrome:|devtools:)/.test(p.url); });
   if(!r.up){ v.dot.className='live-dot'; v.where.textContent='Agent browser isn’t open'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
-    liveShow('Romulus’s browser isn’t running. It starts by itself when Romulus needs the web.',true); return; }
+    liveShow('The Agent’s browser isn’t running. It starts by itself when the Agent needs the web.',true); return; }
   const first=Object.keys(v.seen).length===0;
   const fresh=r.pages.filter(function(p){ return !v.seen[p.id]; });
   r.pages.forEach(function(p){ v.seen[p.id]=true; });

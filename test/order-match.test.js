@@ -6,7 +6,7 @@ const DAY = 86400000;
 const AT = Date.UTC(2026, 9, 10);
 const sec = (ms) => Math.floor(ms / 1000);
 
-test('the total comes from what Romulus said', () => {
+test('the total comes from what the Agent said', () => {
   assert.strictEqual(orderTotalFrom('Arrives Tue. Total with tax and shipping: $1,054.21, Visa ending 1234. Reply yes'), 1054.21);
   assert.strictEqual(orderTotalFrom('Order 112-33 placed, total $23.10'), 23.1);
   assert.strictEqual(orderTotalFrom('about $41 with delivery'), 41);

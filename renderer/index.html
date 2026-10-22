@@ -31,7 +31,7 @@
     <div id="settingsAlerts" hidden></div>
     <div id="aiUsage" hidden></div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
-      <summary class="settings-label">Romulus &amp; AI</summary>
+      <summary class="settings-label">Agent &amp; AI</summary>
       <div class="settings-sub" id="hubSection" hidden>
         <h3 class="settings-subhead">Mini PC server</h3>
         <p class="settings-hint">When it's on, the agent, its browser, mail dates and calendar sync run on your mini PC. This computer only shows them and syncs, over Tailscale.</p>
@@ -70,7 +70,7 @@
       <div class="settings-sub" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
         <p class="settings-hint"><span class="mono">#local</span> or <span class="mono">#claude</span> in a title beats everything below. Then: private words, rules (first match), default.</p>
-        <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> (or card/SSN numbers) → Lupa Au Palatine.</p>
+        <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> (or card/SSN numbers) → the local model.</p>
         <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
         <div id="routingRules"></div>
         <div class="settings-row" style="margin-top:8px">
@@ -82,11 +82,11 @@
             <option value="auto">Auto (picks for you)</option>
             <option value="ask">Ask me</option>
             <option value="claude">Claude</option>
-            <option value="local">Lupa Au Palatine</option>
+            <option value="local">The local model</option>
           </select>
         </div>
-        <p class="settings-hint" style="margin-top:6px">Auto: inbox, web, shopping → cloud. Writing, forms → Lupa Au Palatine. Anything else → cloud, or Lupa Au Palatine if Claude is near its limit. If a side is offline, the other takes it.</p>
-        <p class="settings-hint" style="margin-top:14px">Sites Lupa Au Palatine may open, one per line.</p>
+        <p class="settings-hint" style="margin-top:6px">Auto: inbox, web, shopping → cloud. Writing, forms → the local model. Anything else → cloud, or the local model if Claude is near its limit. If a side is offline, the other takes it.</p>
+        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line.</p>
         <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="routingSaveBtn" class="btn-accent">Save</button>
@@ -94,10 +94,10 @@
         </div>
       </div>
       <div class="settings-sub" id="agentBrowserSection" hidden>
-        <h3 class="settings-subhead">Romulus's browser</h3>
-        <p class="settings-hint">Romulus's own Chrome. It has no window: it runs out of sight and shows up here, so you can watch it or log in to sites. It asks before buying or submitting.</p>
+        <h3 class="settings-subhead">The Agent’s browser</h3>
+        <p class="settings-hint">The Agent’s own Chrome. It has no window: it runs out of sight and shows up here, so you can watch it or log in to sites. It asks before buying or submitting.</p>
         <div class="settings-row">
-          <button id="agentBrowserBtn" class="ghost mono">Open Romulus's browser</button>
+          <button id="agentBrowserBtn" class="ghost mono">Open the Agent’s browser</button>
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
@@ -114,7 +114,7 @@
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
       <summary class="settings-label">About you</summary>
       <div class="settings-sub" id="prefsSection" hidden>
-        <h3 class="settings-subhead">What Romulus knows about you</h3>
+        <h3 class="settings-subhead">What the Agent knows about you</h3>
         <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
         <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “Alex”&#10;- Morning appointments work best"></textarea>
         <div class="settings-row">
@@ -123,8 +123,8 @@
         </div>
       </div>
       <div class="settings-sub" id="lockedSection" hidden>
-        <h3 class="settings-subhead">Locked — only Lupa Au Palatine sees this</h3>
-        <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. Romulus's cloud AIs never read it. No passwords, card numbers or SSN.</p>
+        <h3 class="settings-subhead">Locked — only the local model sees this</h3>
+        <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. The Agent’s cloud AIs never read it. No passwords, card numbers or SSN.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
           <button id="lockedSaveBtn" class="btn-accent">Save</button>
@@ -134,7 +134,7 @@
       </div>
       <div class="settings-sub" id="formFilesSection" hidden>
         <h3 class="settings-subhead">Files for forms</h3>
-        <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, Romulus or Lupa Au Palatine attaches it; nothing else on this computer can be uploaded.</p>
+        <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, the Agent or the local model attaches it; nothing else on this computer can be uploaded.</p>
         <div id="formFilesList"></div>
         <div class="settings-row">
           <button id="formFileAddBtn" class="ghost mono">+ Add a file</button>
@@ -143,10 +143,10 @@
       </div>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
-      <summary class="settings-label">Romulus features</summary>
+      <summary class="settings-label">Agent features</summary>
       <div class="settings-sub" id="lookAheadSection" hidden>
         <h3 class="settings-subhead">Morning look-ahead</h3>
-        <p class="settings-hint">Each morning Romulus reads the next two weeks of your calendar, last week's email and what it knows about you, and adds what needs doing to the Agent list. It only suggests; you reply to start it.</p>
+        <p class="settings-hint">Each morning the Agent reads the next two weeks of your calendar, last week's email and what it knows about you, and adds what needs doing to the Agent list. It only suggests; you reply to start it.</p>
         <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="lookAheadOn"><span class="track" aria-hidden="true"></span><span>Look ahead every morning</span></label>
         <div class="settings-row">
           <button id="lookAheadRun" class="ghost mono">Run now</button>
@@ -294,14 +294,40 @@
 
   <!-- List view -->
   <div id="listView">
+    <!-- first launch only (welcome.js): what to set up, and four things worth knowing -->
+    <div id="welcomeCard" class="connect-card welcome" hidden>
+      <b>Welcome to Tasks</b>
+      <p>A to-do list that works on its own. Everything else is optional. What would you like?</p>
+      <div class="welcome-choices">
+        <button id="welcomeTasksBtn" class="btn-accent">Just tasks</button>
+        <button id="welcomeAiBtn" class="ghost">Add an AI assistant</button>
+        <button id="welcomeSyncBtn" class="ghost">Sync with my phone</button>
+      </div>
+      <ul class="welcome-tips">
+        <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
+        <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
+        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Ideas</b> and <b>Hours</b> are extra views of the same tasks.</li>
+        <li id="welcomeTrayTip">Closing the window hides Tasks in the tray by the clock; right-click the tray icon to quit.</li>
+      </ul>
+      <p class="welcome-foot">You can change all of this later in ⚙ Settings. This card shows once.</p>
+    </div>
+    <!-- Agent tasks are waiting but nothing can run them (welcome.js) -->
+    <div id="agentNudge" class="nudge" hidden><span id="agentNudgeText"></span> <button id="agentNudgeBtn" class="ghost mono">Connect an AI</button></div>
     <input id="searchBox" class="search" placeholder="Search tasks… (Ctrl+F)" aria-label="Search tasks" autocomplete="off">
     <div id="wsFilters" class="filters" hidden></div>
     <div id="filters" class="filters" hidden></div>
     <details id="lupaFiles" class="lupa-files" hidden></details>
-    <!-- Romulus is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
+    <!-- the Agent is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
     <div id="yesPrompts" class="yes-prompts" hidden></div>
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
+    <!-- Agent tab, nothing connected yet (welcome.js drawAgentSetup) -->
+    <div id="agentSetupCard" class="connect-card" hidden>
+      <b>Pick an AI to do your tasks</b>
+      <p>The Agent hands each task to an AI that can search the web, read pages, fill forms and shop, then comes back when it needs you. Connect one to start: your Claude or ChatGPT plan, a free OpenRouter account, or your own local model.</p>
+      <button id="agentSetupBtn" class="btn-accent">Connect an AI</button>
+    </div>
+    <div id="agentSyncHint" class="empty" hidden>Want the Agent on your phone too? <a href="#" id="agentSyncLink">Set up device sync</a>.</div>
     <div id="connectCard" class="connect-card" hidden>
       <b id="connectTitle"></b>
       <p id="connectText"></p>
@@ -370,6 +396,7 @@
 <script src="js/settings.js"></script>
 <script src="js/hub.js"></script>
 <script src="js/local-model.js"></script>
+<script src="js/welcome.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/look-ahead.js"></script>

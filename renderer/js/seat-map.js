@@ -1,5 +1,5 @@
 /* ── the seat map ──
-   When Romulus picks seats on a ticket site (t.seats, from agent/seats.js), the task shows the map the
+   When the Agent picks seats on a ticket site (t.seats, from agent/seats.js), the task shows the map the
    way the site does: the screen on top, every row, taken seats grey and its pick in blue. He can tap
    open seats to choose his own instead (seatDrafts, a draft on this device); "Use these seats" sends
    them back as a reply, so the next run selects those and asks for the yes again. */
@@ -51,7 +51,7 @@ function seatMap(t){
   const info=el('div','seat-info'); foot.appendChild(info);
   const acts=el('div','seat-acts'); foot.appendChild(acts);
   const use=el('button','btn-accent seat-use','Use these seats'); acts.appendChild(use);
-  const reset=el('button','cart-all','Back to Romulus’s pick'); acts.appendChild(reset);
+  const reset=el('button','cart-all','Back to the Agent’s pick'); acts.appendChild(reset);
   const same=function(a,b){ return a.length===b.length&&a.every(function(x){ return b.indexOf(x)!==-1; }); };
   function draw(){
     const m=mine(), on=m||its;
@@ -59,7 +59,7 @@ function seatMap(t){
     const changed=!!m&&!same(m,its);
     const names=changed?m:(s.picked&&s.picked.length?s.picked:its);
     info.textContent=changed?(m.length?'Your pick: '+m.join(', '):'Tap the seats you want')
-      :(names.length?'Romulus picked '+names.join(', '):'Tap the seats you want')+(s.price?' · '+s.price:'');
+      :(names.length?'The Agent picked '+names.join(', '):'Tap the seats you want')+(s.price?' · '+s.price:'');
     acts.hidden=!changed; use.disabled=!m||!m.length;
   }
   use.addEventListener('click',function(e){
@@ -76,7 +76,7 @@ function seatMap(t){
 }
 
 /* ── showtimes ──
-   When Romulus looks up a movie (t.showtimes, from agent/seats.js), the task shows the days as tabs and
+   When the Agent looks up a movie (t.showtimes, from agent/seats.js), the task shows the days as tabs and
    each theater's times as buttons, right here instead of a link out. Tapping a time sends it back as his
    reply ("Get tickets for …"), so the next run opens that showing and picks seats. */
 const showDay={}; // task id → the day tab he's on (a draft on this device)
@@ -124,7 +124,7 @@ function showtimesCard(t){
 }
 
 /* ── theaters on a map ──
-   When Romulus finds where a movie is playing on the days he's free (t.theaters, from agent/seats.js), the
+   When the Agent finds where a movie is playing on the days he's free (t.theaters, from agent/seats.js), the
    task shows a map (Esri's gray basemap) with him (the blue dot) and a numbered pin per theater, and the list
    below, closest first. Tapping a pin picks its row; "Go here" sends it back as his reply ("Go to …"), so
    the next run shows that theater's times. */

@@ -303,7 +303,7 @@ function ideaTextBox(text,ph){
     if(!p){ hideT=setTimeout(function(){ bar.hidden=true; pick=null; },250); return; } // the delay lets a tap on the bar land first
     pick=p;
     msg.textContent=p.lines.length===1?'Move 1 line':'Move '+p.lines.length+' lines';
-    toAgent.hidden=!agentConfigured();
+    toAgent.hidden=!agentAvailable();
     bar.hidden=false;
     const bw=bar.offsetWidth, bh=bar.offsetHeight;
     const x=Math.max(8,Math.min(window.innerWidth-bw-8,p.rect.left+p.rect.width/2-bw/2));
