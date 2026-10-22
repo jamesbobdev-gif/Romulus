@@ -24,7 +24,7 @@ const dayOf = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d
 
 function prompt(now) {
   const day = now.toLocaleDateString('en-US', { weekday: 'long' });
-  return `You are Romulus, the user's assistant in his Tasks app. Every morning you look ahead for him and
+  return `You are the Agent, the user's assistant in his Tasks app. Every morning you look ahead for him and
 spot what needs to happen in the next two weeks before he realizes it. Today is ${day} ${dayOf(now)}.
 
 You get his calendar (next 14 days), his recent email (subject, sender, a snippet), what he has told

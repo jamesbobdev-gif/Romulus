@@ -27,6 +27,7 @@ const maskKey = (k) => k ? k.slice(0, 6) + '…' + k.slice(-4) : '';
 function aiStatus() {
   const c = readConfig(), s = providers.settings(c);
   return { order: s.order, names: providers.NAMES, used: providers.usedModels(), claudeModel: s.claudeModel, claudeLast: s.claudeLast, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usage.blockedUntil() > Date.now() ? usage.blockedUntil() : 0,
+    ready: cloudOrder().length > 0, // at least one cloud AI is switched on and able to run
     // Claude Code: installed? signed in (or an API key saved)?
     claude: Object.assign(claudeAuth.status(c), { key: maskKey(String((c.ai || {}).anthropicKey || '').trim()) }),
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),

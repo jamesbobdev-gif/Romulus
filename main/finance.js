@@ -18,8 +18,8 @@
      and what they bought is kept in the vault too. Nothing from the bank goes with them.
    - Live stock prices (main/finance-stocks.js) come from Yahoo Finance's public chart data: only ticker
      symbols are sent, never shares, amounts or account names.
-   - Lupa Au Palatine, his own model on the mini PC, can read it (forAgent) for a money question while it's
-     unlocked here: agent/local-lane.js gives that tool only to Lupa, in runs with no web, browser or cloud
+   - the local model, his own model on the mini PC, can read it (forAgent) for a money question while it's
+     unlocked here: agent/local-lane.js gives that tool only to the local model, in runs with no web, browser or cloud
      helpers, and such a task is never handed to Claude or the other cloud AIs (agent/routing.js). */
 const fs = require('fs');
 const path = require('path');
@@ -262,7 +262,7 @@ async function afterUnlock() {
   return warning;
 }
 
-/* ── Lupa (agent/local-lane.js my_finances): his own model reading it, as plain text ── */
+/* ── the local model (agent/local-lane.js my_finances): his own model reading it, as plain text ── */
 const money = (n) => (n < 0 ? '-$' : '$') + Math.abs(Number(n) || 0).toFixed(2);
 const day = (sec) => (sec ? new Date(sec * 1000).toISOString().slice(0, 10) : 'pending');
 const isUnlocked = () => !!key;
@@ -276,7 +276,7 @@ function forAgent(args) {
   if (!accounts.length) return 'Finance has no accounts downloaded yet.';
   const costs = require('../renderer/js/finance-costs'), stmt = require('../renderer/js/finance-statements');
   const what = ['transactions', 'statement'].includes(a.what) ? a.what : 'overview';
-  log('Lupa read ' + what); // what, never amounts
+  log('The local model read ' + what); // what, never amounts
   if (what === 'transactions') {
     const q = String(a.query || '').trim().toLowerCase();
     const from = /^\d{4}-\d{2}-\d{2}$/.test(a.from || '') ? new Date(a.from + 'T00:00:00').getTime() / 1000 : 0;

@@ -1,7 +1,7 @@
 /* d1, the small decision model on the mini PC (Liquid AI's d1-3B through Ollama's /v1/systemone). Before a new
    Agent task runs it answers three questions about it in ~2 s, no text written and no cloud tokens spent:
    is it private, is it a real request (not a scrap of talk Hey Romulus picked up), and does it need the web.
-   agent/routing.js uses the answers next to his keyword rules; with Lupa off or d1 missing, the rules alone decide.
+   agent/routing.js uses the answers next to his keyword rules; with the local model off or d1 missing, the rules alone decide.
    Answers are kept per task text, so routing can read them without waiting. */
 const DEFAULT_MODEL = 'hf.co/LiquidAI/d1-3B-GGUF:Q4_K_M';
 const QUESTIONS = {
@@ -45,7 +45,7 @@ async function ask(c, state, ms) {
       lane: a.lane && a.lane.choice === 'local' ? 'local' : 'claude', laneSure: Number(a.lane && a.lane.confidence) || 0 };
   } finally { clearTimeout(timer); }
 }
-// asks d1 about the tasks it hasn't seen yet (one at a time: Lupa has one CPU). false = d1 couldn't answer
+// asks d1 about the tasks it hasn't seen yet (one at a time: The local model has one CPU). false = d1 couldn't answer
 let going = null;
 async function decide(tasks) {
   const c = cfg();

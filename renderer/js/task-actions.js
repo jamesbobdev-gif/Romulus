@@ -92,7 +92,7 @@ function parseSpokenTask(text,now){
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
 const VOICE_TABS={human:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas'};
 const VOICE_TAB_NAME={list:'Human',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Ideas'};
-function voiceTabOk(tab){ return tab==='agent'?agentConfigured():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
+function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
 // "app" / "app ideas" / "the app ideas group" → that idea group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
   const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?)\b/g,' ').replace(/\s+/g,' ').trim(); };
@@ -165,7 +165,7 @@ function parseVoiceCommand(said,curTab,smart){
     // question or an errand goes to Claude word for word, else Human (not whatever tab is open)
     const guess=voiceGuessTab(plain);
     if(guess)return {kind:'task',tab:guess,text:plain,learned:guess!=='list'};
-    if(plain===s&&agentConfigured()&&VOICE_ASK.test(s))return {kind:'task',tab:'agent',text:s,raw:true};
+    if(plain===s&&agentAvailable()&&VOICE_ASK.test(s))return {kind:'task',tab:'agent',text:s,raw:true};
     return {kind:'task',tab:'list',text:plain};
   }
   const where=tab||curTab;
@@ -215,7 +215,7 @@ function wakeBubble(mode,text){
   clearTimeout(wakeBubble._t);
   if(mode==='hide'){ b.classList.add('out'); wakeBubble._t=setTimeout(function(){ b.hidden=true; b.classList.remove('out'); },260); return; }
   b.className='wake-bubble'+(mode==='listen'?'':' '+mode); b.hidden=false;
-  if(mode==='listen'){ $('wakeHead').textContent='Listening…'; $('wakeWords').textContent=text||'a task, or ask Romulus something'; return; }
+  if(mode==='listen'){ $('wakeHead').textContent='Listening…'; $('wakeWords').textContent=text||'a task, or ask the Agent something'; return; }
   $('wakeHead').textContent=mode==='err'?'Hmm…':'Got it'; $('wakeWords').textContent=text||'';
   wakeBubble._t=setTimeout(function(){ wakeBubble('hide'); },mode==='err'?5000:3500);
 }
@@ -242,7 +242,7 @@ async function voiceAdd(smart){
   if(voiceOn){ if(smart!==true){ try{ await v.stop(); }catch(e){} } return; } // tap again: done talking
   smart=smart===true;
   voiceOn=true; btn.classList.add('listening'); btn.innerHTML=I.stop+'<span>Listening\u2026</span>';
-  voiceToast(smart?'Hey! Listening\u2026 a task, or ask Romulus something':'Listening\u2026 say the task (and a day, if it has one)');
+  voiceToast(smart?'Hey! Listening\u2026 a task, or ask the Agent something':'Listening\u2026 say the task (and a day, if it has one)');
   const before=ti.value, prevPh=ti.placeholder; ti.value=''; ti.placeholder='Listening\u2026';
   if(smart){ wakeLive=true; wakeBubble('listen'); }
   let partial=null, heard=''; try{ partial=v.onPartial(function(text){ heard=text; ti.value=text; if(smart)wakeBubble('listen','“'+text+'”'); }); }catch(e){}
@@ -285,7 +285,7 @@ async function voiceAdd(smart){
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
     await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
-    voiceToast(cmd.raw?'Sent to Romulus: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+(cmd.learned?' (like your past ones)':'')+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
+    voiceToast(cmd.raw?'Sent to the Agent: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+(cmd.learned?' (like your past ones)':'')+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
   }finally{
@@ -306,12 +306,12 @@ function optionKind(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return 'link'; }
   return /(^|\.)(amazon\.[a-z.]+|amzn\.(to|com)|bestbuy\.com|walmart\.com|target\.com|newegg\.com|ebay\.com|etsy\.com|homedepot\.com|lowes\.com|costco\.com|bhphotovideo\.com|microcenter\.com|bambulab\.com|aliexpress\.com|temu\.com|adorama\.com|rei\.com|ikea\.com)$/.test(h)?'buy':'link';
 }
-// an Amazon product page: Romulus orders it (after a yes) instead of emailing the link
+// an Amazon product page: The Agent orders it (after a yes) instead of emailing the link
 function isAmazon(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
 }
-// a flight or event-ticket site: Romulus books it after a yes, like Amazon (tickets skill)
+// a flight or event-ticket site: The Agent books it after a yes, like Amazon (tickets skill)
 function isTicketSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(ticketmaster\.com|livenation\.com|axs\.com|seatgeek\.com|stubhub\.com|vividseats\.com|delta\.com|united\.com|aa\.com|southwest\.com|jetblue\.com|spirit\.com|flyfrontier\.com|alaskaair\.com)$/.test(h);

@@ -170,13 +170,13 @@ test('the Finance tab on screen shuts out screen capture, and lets it back when 
   assert.deepStrictEqual(calls, [true, false]);
 });
 
-test('the Agent is never allowed to read Finance’s files', () => {
+test('The Agent is never allowed to read Finance’s files', () => {
   const src = fs.readFileSync(path.join(__dirname, '../agent/runner.js'), 'utf8');
   assert.ok(src.includes("'Read(**/finance.vault*)'") && src.includes("'Read(**/finance.hello)'"));
   for (const f of ['../agent/local-lane.js', '../agent/memory-tidy.js']) assert.match(fs.readFileSync(path.join(__dirname, f), 'utf8'), /--disallowedTools', '[^']*\bRead\b/);
 });
 
-test('Lupa’s view of Finance: only while unlocked, plain text, read-only', async () => {
+test('The local model’s view of Finance: only while unlocked, plain text, read-only', async () => {
   const d7 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
   const now = Math.floor(Date.now() / 1000);
   const logs = [];
@@ -190,7 +190,7 @@ test('Lupa’s view of Finance: only while unlocked, plain text, read-only', asy
   assert.match(gas, /1 transaction\(s\) matching "shell": \$42\.10 out/);
   assert.ok(!gas.includes('Deli'));
   assert.match(finance.forAgent({ what: 'statement' }), /Contribution margin/);
-  assert.ok(logs.filter((m) => /Lupa read/.test(m)).every((m) => !/\d+\.\d\d/.test(m)), 'the log never gets amounts');
+  assert.ok(logs.filter((m) => /the local model read/.test(m)).every((m) => !/\d+\.\d\d/.test(m)), 'the log never gets amounts');
   h['finance:lock']();
   assert.match(finance.forAgent({ what: 'overview' }), /locked/);
   assert.strictEqual(finance.isUnlocked(), false);

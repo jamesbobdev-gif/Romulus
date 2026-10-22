@@ -51,20 +51,20 @@ const LOCAL_WORDS = ['write', 'rewrite', 'draft', 'essay', 'letter', 'cover lett
   'summarise', 'outline', 'brainstorm', 'notes', 'fill', 'form', 'forms', 'apply', 'application', 'questionnaire', 'survey'];
 // → {lane, reason} picked by the app
 function autoRoute(text, t) {
-  if (!up('local')) return { lane: 'claude', reason: 'auto: Lupa Au Palatine isn’t answering' };
+  if (!up('local')) return { lane: 'claude', reason: 'auto: The local model isn’t answering' };
   if (!up('claude')) return { lane: 'local', reason: 'auto: no cloud AI is connected' };
   const d1 = t && decider.laneFor(t);
-  if (d1) return { lane: d1, reason: d1 === 'local' ? 'auto: d1 says Lupa Au Palatine can do this without the web' : 'auto: d1 says this needs the web' };
+  if (d1) return { lane: d1, reason: d1 === 'local' ? 'auto: d1 says the local model can do this without the web' : 'auto: d1 says this needs the web' };
   const cloudHit = wordHit(text, CLOUD_WORDS), localHit = !cloudHit && wordHit(text, LOCAL_WORDS);
   if (cloudHit) return { lane: 'claude', reason: 'auto: needs the web or inbox (' + cloudHit + ')' };
-  if (localHit) return { lane: 'local', reason: 'auto: writing/forms suit Lupa Au Palatine (' + localHit + ')' };
+  if (localHit) return { lane: 'local', reason: 'auto: writing/forms suit the local model (' + localHit + ')' };
   if (situation.claudeTight) return { lane: 'local', reason: 'auto: Claude is near its limit' };
   return { lane: 'claude', reason: 'auto: quickest for everyday tasks' };
 }
 // with auto on, a lane that's down hands over to the other one (only if that one is up)
 function fallBack(r) {
   if (routing.default !== 'auto' || up(r.lane) || !up(other(r.lane))) return r;
-  return { lane: other(r.lane), reason: r.reason + ', but ' + (r.lane === 'local' ? 'Lupa Au Palatine isn’t answering' : 'no cloud AI is connected') };
+  return { lane: other(r.lane), reason: r.reason + ', but ' + (r.lane === 'local' ? 'The local model isn’t answering' : 'no cloud AI is connected') };
 }
 async function loadRouting() {
   const a = supabase.channel(readConfig());
@@ -82,7 +82,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wordHit = (text, words) => words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(text));
 // → what made a task private (a word from his list, or something shaped like a card / social security number), or null
 function privateMatch(t) {
-  if (t && t.financeSeen) return 'his finances'; // Lupa read Finance for it (agent/local-lane.js)
+  if (t && t.financeSeen) return 'his finances'; // The local model read Finance for it (agent/local-lane.js)
   const text = [t.title, t.notes].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').map((h) => h.text))
     .map((x) => String(x || '')).join('\n').toLowerCase();
   const words = String(routing.private || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
@@ -94,7 +94,7 @@ function privateMatch(t) {
   return null;
 }
 /* a question about HIS money ("how much did I spend on gas", "my bank balance", "what are my bills"), which
-   Lupa answers from Finance on this computer (agent/local-lane.js). Not shopping ("budget $50", "compare costs") */
+   The local model answers from Finance on this computer (agent/local-lane.js). Not shopping ("budget $50", "compare costs") */
 const MY_MONEY = new RegExp([
   '\\b(my|our)\\s+(spending|bank|accounts?|balances?|budget|bills|income|finances?|money|net worth|transactions?|statements?|subscriptions?|savings|portfolio|stocks|investments|expenses|purchases|paychecks?|credit cards?|debts?|cash flow|charges)\\b',
   '\\bhow much (did|have|has|do) (i|we) (spend|spent|pay|paid|earn|earned|make|made|save|saved|owe)\\b',
@@ -113,7 +113,7 @@ function routeTask(t) {
   const title = String(t.title || '');
   if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
   if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
-  if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: Lupa reads Finance' };
+  if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: The local model reads Finance' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
   if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);
@@ -131,7 +131,7 @@ function routeTask(t) {
   const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
   return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
 }
-// a task Lupa read his Finance for stays on the mini PC even if it was switched to Claude by hand
+// a task the local model read his Finance for stays on the mini PC even if it was switched to Claude by hand
 const laneOf = (t) => t.financeSeen ? 'local' : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
 // unassigned tasks whose route is 'ask': the user picks (the renderer turns them into a question with two buttons)

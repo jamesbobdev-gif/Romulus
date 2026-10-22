@@ -59,6 +59,9 @@ function profileList(){
 function syncEnabled(){ return profileList().length>0; }
 function workConfigured(){ return !!(syncState.cfg&&validProfile(syncState.cfg.work)); }
 function agentConfigured(){ return !!(syncState.cfg&&validProfile(syncState.cfg.agent)); }
+// the Agent tab can be used here: this computer runs the agent itself (sync only shares the list with
+// the phone), while the phone needs the synced list to reach it
+function agentAvailable(){ return agentConfigured()||!!(window.desktop&&window.desktop.aiStatus); }
 function schoolConfigured(){ return !!(syncState.cfg&&validProfile(syncState.cfg.school)); }
 // "agent" is a third channel: tasks Claude works on by itself. Only it carries
 // the status/note fields — personal/work docs keep the old shape so older

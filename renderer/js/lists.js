@@ -70,7 +70,7 @@ function buildRow(t,canDrag){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
     if(t.status==='working')sc.insertBefore(el('span','spin'),sc.firstChild); // a spinner so you can see it's going
-    sc.title=t.status==='needs-you'&&t.parked?'You parked this — Romulus’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'Romulus got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
+    sc.title=t.status==='needs-you'&&t.parked?'You parked this — the Agent’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'The Agent got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
     // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
     if(t.status==='needs-you'){
       sc.classList.add('tap'); sc.setAttribute('role','button'); sc.tabIndex=0;
@@ -81,7 +81,7 @@ function buildRow(t,canDrag){
     }
     meta.appendChild(sc);
     // which worker it's assigned to (Claude on this computer, or your own model on the mini PC)
-    if(t.lane==='local'){ const lc=el('span','chip st','Lupa'); lc.title='Your own model on Lupa Au Palatine handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
+    if(t.lane==='local'){ const lc=el('span','chip st','The local model'); lc.title='Your own model on the local model handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
   }
   // snooze: overdue → today, due today → tomorrow
   if(!t.done&&dueDiff!==null&&dueDiff<=0){
@@ -102,9 +102,9 @@ function buildRow(t,canDrag){
   const del=iconBtn(I.x,'Delete task');
   del.addEventListener('click',function(e){ e.stopPropagation(); deleteTask(t); });
   meta.appendChild(pen);
-  if(agentConfigured()){
+  if(agentAvailable()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
-    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to Agent (Romulus does it)';
+    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';
     const mv=iconBtn(isAgentTask?I.human:I.bot,mvLabel); mv.title=mvLabel;
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
     meta.appendChild(mv);
@@ -142,7 +142,7 @@ function buildPanel(t){
         const who=h.who==='you'?'you':h.who==='claude'?'claude':'sys';
         const b=el('div','conv-msg '+who);
         const seen=who==='you'&&(h.heard||(liveHeard[t.id]||[]).indexOf(h.at)!==-1); // Claude took it mid-run
-        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Lupa Au Palatine':CLOUD_NAMES[h.via]||'Claude')+(who==='claude'&&h.model?' ('+String(h.model).replace(/^models\//,'')+')':'')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
+        if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Local model':CLOUD_NAMES[h.via]||'Claude')+(who==='claude'&&h.model?' ('+String(h.model).replace(/^models\//,'')+')':'')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
@@ -153,7 +153,7 @@ function buildPanel(t){
       if(spinning){ // a "typing" line at the bottom while the answer is coming
         const w=el('div','conv-msg claude conv-typing');
         w.appendChild(el('span','spin'));
-        w.appendChild(document.createTextNode((t.lane==='local'?'Lupa Au Palatine':cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
+        w.appendChild(document.createTextNode((t.lane==='local'?'The local model':cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
         th.appendChild(w);
       }
       panel.appendChild(th);
@@ -172,7 +172,7 @@ function buildPanel(t){
     if(t.status==='working')sb.classList.add('running');
     // queued: it's being handed to a model (no lane yet = routing hasn't picked one)
     const routing=t.status==='queued'&&!outOfUsage&&!offline;
-    const hd=sb.appendChild(el('b',null,local?(offline?'Lupa Au Palatine isn’t reachable':t.status==='working'?'Lupa Au Palatine is on it':'Routing to Lupa Au Palatine'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
+    const hd=sb.appendChild(el('b',null,local?(offline?'The local model isn’t reachable':t.status==='working'?'The local model is on it':'Routing to the local model'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
     if((t.status==='working'||routing)&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
     sb.appendChild(document.createTextNode(local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
@@ -206,7 +206,7 @@ function buildPanel(t){
   // who does it: a two-part pill, [cloud AI ▾ | mini PC model], with a highlight that slides between them.
   // The cloud half is a menu of every cloud AI, so the pill stays the same size however many there are.
   // Switching asks first; a first pick (no rule matched) doesn't.
-  if(taskWs(t)==='agent'&&!t.done&&agentConfigured()){
+  if(taskWs(t)==='agent'&&!t.done&&agentAvailable()){
     const now=laneNow(t), onCloud=!!now&&now!=='local';
     const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
     tg.style.setProperty('--n',2); tg.style.setProperty('--i',now==='local'?1:0);
@@ -227,7 +227,7 @@ function buildPanel(t){
     const lw=el('button','lane-word'+(now==='local'?' on':''),localModelName());
     if(spinning&&now==='local')lw.insertBefore(el('span','spin'),lw.firstChild);
     lw.setAttribute('role','radio'); lw.setAttribute('aria-checked',String(now==='local'));
-    lw.title=now==='local'?'Lupa Au Palatine ('+localModelName()+') has this task':(now?'Switch this task to Lupa Au Palatine (asks first)':'Send this task to Lupa Au Palatine');
+    lw.title=now==='local'?'The local model ('+localModelName()+') has this task':(now?'Switch this task to the local model (asks first)':'Send this task to the local model');
     lw.addEventListener('click',function(e){ e.stopPropagation(); if(now!=='local')setLane(t,'local'); });
     tg.appendChild(lw);
     panel.appendChild(tg);
@@ -235,7 +235,7 @@ function buildPanel(t){
     if(ask&&ask!==now){
       const name=LANE_NAMES[ask];
       const ar=el('div','lane-ask');
-      ar.appendChild(el('span',null,ask==='local'?'Send this task to Lupa Au Palatine? It takes over with the whole conversation.'
+      ar.appendChild(el('span',null,ask==='local'?'Send this task to the local model? It takes over with the whole conversation.'
         :'Send this task to '+name+'? '+name+' will see the whole conversation, including anything the others wrote.'));
       const yes=el('button','btn-accent','Switch'), no=el('button','btn-ghost','Cancel');
       yes.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,ask,true); });
@@ -249,7 +249,7 @@ function buildPanel(t){
   const staleFail=agentBusy&&failed;
   if(taskWs(t)==='agent'&&t.note&&!staleFail){
     const nb=el('div','agent-note');
-    const who=t.lane==='local'?'Lupa Au Palatine':cloudNameOf(t);
+    const who=t.lane==='local'?'The local model':cloudNameOf(t);
     const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
     if(agentBusy||stuck||t.status!=='needs-you')nb.appendChild(el('b',null,agentBusy?who+'’s last message':stuck?who+' stopped':'From '+who));
     if(stuck){
@@ -302,9 +302,9 @@ function buildPanel(t){
         btns.appendChild(mb); } }
       if(canPick){
         const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':(kind==='amazon'||kind==='tickets')?'Buy this':'Choose this');
-        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'Romulus gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'Romulus gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
+        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'The Agent gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
         pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='amazon'?'. Buy it on Amazon.':kind==='tickets'?'. Book it.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
-          // Amazon and ticket sites: Romulus builds the order and asks for a yes before placing it
+          // Amazon and ticket sites: The Agent builds the order and asks for a yes before placing it
           if(kind==='amazon')agentSay(t,'sys','🛒 Getting the Amazon order ready. You’ll see it before anything is bought.');
           else if(kind==='tickets')agentSay(t,'sys','🎟 Getting the booking ready. You’ll see the total before anything is bought.');
           // other links: stage an email with it — the desktop sends it (never orders anything)
@@ -365,7 +365,7 @@ function buildPanel(t){
   if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):yesButton(t)); // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
-    const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to Romulus');
+    const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to the Agent');
     ta.placeholder=agentBusy?'Add something…':'Your answer…';
     ta.value=replyDrafts[t.id]||''; // survives a re-render from a background sync
     ta.dataset.replyFor=t.id;
@@ -646,16 +646,16 @@ function render(){
   }
   // a pulsing dot on the Agent tab while any task is running, so you see it from other tabs
   const anyWorking=state.tasks.some(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='working'; });
-  const ta=$('tabAgent'); if(ta){ ta.classList.toggle('busy',anyWorking); ta.title=anyWorking?'Romulus is working on a task':''; }
+  const ta=$('tabAgent'); if(ta){ ta.classList.toggle('busy',anyWorking); ta.title=anyWorking?'The Agent is working on a task':''; }
   const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work';
   const tab=onAgent?'agent':onSchool?'school':onWork?'work':'list';
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
-  const unconnected=onAgent?!agentConfigured():onSchool?!schoolConfigured():onWork?!workConfigured():false;
+  const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():false;
   document.querySelector('.composer').hidden=unconnected;
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
-    const what=onAgent?['Agent','agent','Hand tasks to Romulus — on this computer or Lupa Au Palatine: they work on them and come back when they need you.']
+    const what=onAgent?['Agent','agent','Hand tasks to the Agent — on this computer or the local model: they work on them and come back when they need you.']
       :onSchool?['School','school','Your assignments, with due dates pulled in from your course calendars.']
       :['Work','work','A second list that syncs with your work project.'];
     $('connectTitle').textContent='Connect your '+what[0]+' list';
@@ -694,7 +694,7 @@ function render(){
   });
   fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
-  $('newTitle').placeholder=onAgent?'Add a task for Romulus…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
+  $('newTitle').placeholder=onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
 
   // workspace filter chips (only when a work list is connected; not on the Agent tab)
   const wsf=$('wsFilters'); wsf.innerHTML='';
@@ -737,12 +737,13 @@ function render(){
 
   const es=$('emptyState');
   if(unconnected){ es.hidden=true; }
-  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for Romulus yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
+  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for the Agent yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
   else if(openVis.length===0){
     es.hidden=false;
     es.textContent=q?'No matches for "'+$('searchBox').value.trim()+'".':(state.filter?'Nothing open under "'+state.filter+'".':'All clear.');
   }
   else { es.hidden=true; }
+  if(typeof drawAgentSetup==='function')drawAgentSetup(onAgent,tasks,es); // welcome.js: no AI connected yet → say so here
 
   const doneVis=tasks.filter(function(t){ return t.done; }).filter(visible).sort(function(a,b){ return b.created-a.created; });
   const ds=$('doneSection');
@@ -772,7 +773,7 @@ function drawYesPrompts(needing){
   asks.forEach(function(t){
     const c=el('div','yes-card'); c.tabIndex=0; c.title='Open this task on the Agent tab';
     const head=el('div','yes-head');
-    head.appendChild(el('span','yes-who','Romulus asks'));
+    head.appendChild(el('span','yes-who','The Agent asks'));
     head.appendChild(el('b','yes-title',t.title));
     c.appendChild(head);
     const ctx=yesContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
@@ -785,7 +786,7 @@ function drawYesPrompts(needing){
     } else {
       const y=yesButton(t); y.classList.remove('agent-yes'); row.appendChild(y);
       const n=el('button','btn-ghost','No');
-      n.title='Tell Romulus no: it won’t go ahead';
+      n.title='Tell the Agent no: it won’t go ahead';
       n.addEventListener('click',function(e){
         e.stopPropagation();
         const lt=liveTask(t);

@@ -63,7 +63,7 @@ function addToGroceries(text){
 }
 
 /* ── the 2-week grocery order ──
-   Every 2 weeks the desktop opens a new "Groceries" task on its own: Romulus builds the order from his
+   Every 2 weeks the desktop opens a new "Groceries" task on its own: The Agent builds the order from his
    list and shows it as picture cards, his items selected and a few ideas to add. Asking for groceries
    himself ("order groceries", "can I get groceries", "EBT") starts the 2 weeks over. The timer needs
    nothing stored: it counts from the latest ask, which the tasks already hold. */
@@ -78,7 +78,7 @@ function lastGroceryAsk(){
   return last;
 }
 const nextGroceryAt=function(){ const l=lastGroceryAsk(); return l?l+GROCERY_EVERY:null; };
-// desktop only (it runs Romulus), like runDueRepeats
+// desktop only (it runs the Agent), like runDueRepeats
 function runGroceryTimer(){
   if(!window.desktop||!window.desktop.onAgentResults)return;
   const at=nextGroceryAt();
@@ -116,7 +116,7 @@ function wantsYes(t){
 }
 function yesButton(t){
   const b=el('button','btn-accent agent-yes',/order/i.test(t.note||'')?'Yes, place the order':'Yes');
-  b.title='Answer yes to exactly what Romulus described above';
+  b.title='Answer yes to exactly what the Agent described above';
   b.addEventListener('click',function(e){
     e.stopPropagation();
     const lt=liveTask(t);
@@ -127,17 +127,17 @@ function yesButton(t){
 }
 
 /* ── the order, as a grid of pictures ──
-   When Romulus has a cart ready (t.cart, sent with "Reply yes to place this order"), every item shows as
+   When the Agent has a cart ready (t.cart, sent with "Reply yes to place this order"), every item shows as
    a card, all selected. Tap a card to leave it out; the total follows. "Place order" answers yes, naming
-   what to take out, so Romulus removes those and places it (groceries skill). What he left out is kept
-   on the task (t.cartOff, by name) so it survives a re-render or a sync. When Romulus is waiting on
+   what to take out, so the Agent removes those and places it (groceries skill). What he left out is kept
+   on the task (t.cartOff, by name) so it survives a re-render or a sync. When the Agent is waiting on
    something else first ("add a payment method, then reply done"), the button answers "done" with the
    same picks instead, so it fixes the cart before asking for the yes. An item with other sizes/brands
    (it.options) has a menu on its card: what he switches to goes along as "swap: A → B". */
 // an order that went through (or he checked off): what he kept on it, with pictures, is his last order.
 // Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor). The last dozen stay in
 // t.orders, with the store and total, so the Finance tab can show what a charge was for (order-match.js).
-// note: what Romulus said about it (its total), when t.note has already moved on
+// note: what the Agent said about it (its total), when t.note has already moved on
 function keepLastOrder(t,note){
   if(!Array.isArray(t.cart)||!t.cart.length)return;
   const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
@@ -182,9 +182,9 @@ function cartStrip(t){
   const box=el('div','cart-box');
   const items=t.cart.slice(0,100).filter(function(it){ return !it.suggested; }).concat(t.cart.slice(0,100).filter(function(it){ return it.suggested; })); // ideas for the week go last
   const off=function(){ return Array.isArray(liveTask(t).cartOff)?liveTask(t).cartOff:[]; };
-  // his switches to another size/brand Romulus found (t.cartPick: item name → option name)
+  // his switches to another size/brand the Agent found (t.cartPick: item name → option name)
   const picks=function(){ const p=liveTask(t).cartPick; return p&&typeof p==='object'?p:{}; };
-  const shown=function(it){ // what this card stands for now: Romulus's pick, or the option he switched to
+  const shown=function(it){ // what this card stands for now: The Agent’s pick, or the option he switched to
     const n=picks()[it.name], op=n&&Array.isArray(it.options)&&it.options.find(function(x){ return x.name===n; });
     return op?Object.assign({},it,{name:op.name,qty:op.qty||1,price:op.price,unit:op.unit,image:op.image,url:op.url,swap:null,picked:true}):it;
   };
@@ -199,10 +199,10 @@ function cartStrip(t){
     const total=kept.reduce(function(s,it){ return s+cartPrice(shown(it).price); },0);
     const base=items.filter(function(it){ return !it.suggested; }).length, ideas=items.length-base, picked=kept.filter(function(it){ return it.suggested; }).length;
     head.textContent='Your order · '+kept.length+' items'+(ideas?' ('+picked+' of '+ideas+' ideas added)':'')+(total?' · about $'+total.toFixed(2):'');
-    all.hidden=o.slice().sort().join('|')===startOff().sort().join('|')&&!Object.keys(picks()).length; // as Romulus set it: nothing to reset
+    all.hidden=o.slice().sort().join('|')===startOff().sort().join('|')&&!Object.keys(picks()).length; // as the Agent set it: nothing to reset
     go.disabled=!kept.length;
     go.textContent=!kept.length?'Nothing selected':!asksYes(t)?'Done, use these '+kept.length+' items':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';
-    go.title=asksYes(t)?'':'Tell Romulus you did what it asked, and which items to keep';
+    go.title=asksYes(t)?'':'Tell the Agent you did what it asked, and which items to keep';
     strip.querySelectorAll('.cart-card').forEach(function(c){ const on=o.indexOf(c.dataset.name)===-1; c.classList.toggle('off',!on); c.setAttribute('aria-pressed',String(on)); });
   };
   // a card is a div (it holds the options menu, which can't sit inside a button); tap or Enter toggles it
@@ -218,10 +218,10 @@ function cartStrip(t){
     const bits=[(s.qty&&s.qty>1)?'×'+s.qty:'',s.price||'',s.unit||''].filter(Boolean);
     if(bits.length)c.appendChild(el('div','cart-meta',bits.join(' · ')));
     if(s.swap)c.appendChild(el('div','cart-swap','swap for '+s.swap));
-    if(s.picked)c.appendChild(el('div','cart-swap','your pick (Romulus picked '+it.name+')'));
+    if(s.picked)c.appendChild(el('div','cart-swap','your pick (The Agent picked '+it.name+')'));
     else if(s.why)c.appendChild(el('div','cart-why',s.why));
     if(Array.isArray(it.options)&&it.options.length){
-      const sel=el('select','cart-opt'); sel.title='Other sizes and brands Romulus found';
+      const sel=el('select','cart-opt'); sel.title='Other sizes and brands the Agent found';
       sel.setAttribute('aria-label','Options for '+it.name);
       [it].concat(it.options).forEach(function(op,i){
         const o=el('option',null,(i?'':'★ ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));

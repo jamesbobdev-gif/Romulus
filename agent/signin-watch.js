@@ -1,6 +1,6 @@
-/* Signed out on Lupa Au Palatine: his school sites (Blackboard, D2L) sign him out every so often (the school's
+/* Signed out on the local model: his school sites (Blackboard, D2L) sign him out every so often (the school's
    Microsoft sign-in runs out), and the next task there failed at the last minute (Ch 8 Quiz, Oct 20). Now:
-   - any Lupa run that lands on a sign-in page puts a to-do on his Human list ("Sign in to Blackboard on Lupa…"),
+   - any local-model run that lands on a sign-in page puts a to-do on his Human list ("Sign in to Blackboard on the local model…"),
      the same way an AI with an expired key does (agent:reconnect); one per site
    - a page of that site that isn't a sign-in page checks it off again (agent:reconnected)
    - once a day, dailyCheck() opens his school sites in a background tab on the mini PC to see where they land,
@@ -30,7 +30,7 @@ function isLoginPage(url, title) {
   return LOGIN_TITLE.test(String(title || '').trim());
 }
 // the to-do's title; the renderer finds it again by everything up to the first ':'
-const prefixFor = (site) => 'Sign in to ' + site.name + ' on Lupa Au Palatine:';
+const prefixFor = (site) => 'Sign in to ' + site.name + ' on the local model’s computer:';
 const todoTitle = (site) => prefixFor(site) + ' it signed you out. On its own screen, open ' + site.name +
   ' in its browser, sign in and tick "Stay signed in", so its tasks there can run';
 

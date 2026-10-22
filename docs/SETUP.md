@@ -21,7 +21,7 @@ Updates on Windows arrive on their own: the app checks every few hours and insta
 
 ## 2. Connect an AI
 
-The **Agent** tab hands tasks to an AI that can search the web, read your inbox, fill forms and shop for you. It needs at least one AI connected. Open **⚙ Settings → Romulus & AI → AI connections**. Each AI is a card; switch it on, follow the button on the card, and it's connected. When several are on, the app tries them top to bottom.
+The **Agent** tab hands tasks to an AI that can search the web, read your inbox, fill forms and shop for you. It needs at least one AI connected. The Agent tab says so until you do, with a **Connect an AI** button; or open **⚙ Settings → Agent & AI → AI connections**. Each AI is a card; switch it on, follow the button on the card, and it's connected. When several are on, the app tries them top to bottom.
 
 Pick whichever of these you already have.
 

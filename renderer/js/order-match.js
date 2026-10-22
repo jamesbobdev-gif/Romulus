@@ -51,7 +51,7 @@ function agentOrders(tasks){
   return out.sort(function(a,b){ return b.at-a.at; });
 }
 // purchase emails (main/finance-mail.js) as orders too, except one the Agent's own order already covers
-// (Amazon emails about the order Romulus placed): same store, about the same total, within 3 days
+// (Amazon emails about the order the Agent placed): same store, about the same total, within 3 days
 function emailOrders(receipts,agent){
   return (receipts||[]).filter(function(r){
     return r&&r.store&&!(agent||[]).some(function(o){ return o.store===r.store&&Math.abs(o.at-r.at)<3*ORDER_DAY&&(!o.total||!r.total||Math.abs(o.total-r.total)<1); });
