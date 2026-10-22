@@ -1,69 +1,92 @@
 # Tasks
 
-Think of it as an open-source Meta Muse: a clean, minimal to-do app with an agent in it. Simple list with due dates, tags, subtasks, and drag-to-reorder.
+**A to-do list with an agent in it.** Write a task the way you'd tell a person ("find the cheapest flight to Denver the weekend of the 14th", "order the groceries", "apply to these three internships", "draft a reply to the landlord"), hand it to the Agent, and it goes and does it: searches the web, reads pages, fills forms, compares prices, builds the cart, drafts the email. It comes back only when it needs a decision, and it **never buys, sends, submits or books anything until you reply "yes"** to the exact thing it described.
 
-**New here?** [docs/SETUP.md](docs/SETUP.md) walks through installing, connecting an AI (Claude, OpenRouter, ChatGPT, Gemini, a free tier, or your own local model), syncing with your phone and connecting calendars. The rest of this file is for people working on the code.
+**Bring your own model.** Plug in whatever you already pay for or can run: a Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama. Connect several and the app tries them in your order. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model.
 
-## Run it (dev mode)
+Plus a School list that pulls due dates from course calendars, a Finance page that reads your bank read-only into an encrypted vault, an Ideas board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
 
-You need Node.js (v18 or newer). Then, in this folder:
+<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
+
+## Install
+
+**Windows:** download `Tasks-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/tasks-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
+
+**Linux and macOS:** installers are built by the release workflow and attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
+
+**From source:** Node 18 or newer, then `npm install` and `npm start`.
+
+Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.
+
+## What's in the box
+
+| | |
+|---|---|
+| **Human** | Your own to-dos: due dates, times, tags, subtasks, repeats, drag to reorder, search. |
+| **Agent** | Tasks the AI does. Live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI. |
+| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. |
+| **Work** | A second list, synced with the rest. |
+| **Calendar · Ideas · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
+| **Finance** | Bank accounts read-only through SimpleFIN, receipts from Gmail, live stock prices. Encrypted twice, locks itself, never leaves the computer. |
+
+What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
+
+## Privacy, in short
+
+Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
+
+---
+
+## Working on the code
 
 ```
 npm install
-npm start
+npm start        # dev mode
+npm test         # unit tests (Node's built-in runner, files in test/)
+npm run dist     # installer into dist/
 ```
 
-## How the code is laid out
-
-- `main.js` starts the Electron main process. It only wires the pieces together: each module gets what it shares with the others (config, the log, the window…) through its `init(ctx)` and lists its IPC calls in `handlers`.
-- `main/` holds the desktop plumbing: the window and tray, saving tasks, config and secrets (`store.js`), calendar sync and accounts, Gmail dates, the morning look-ahead, "Buy this" emails, and Speak.
-- `agent/` holds the Agent tab: routing between lanes, the Claude runner, the mini PC (local) lane with its tools and browser, AI connections, the usage-limit hold, the weekly memory tidy, and their helpers.
+- `main.js` starts the Electron main process and wires the modules: each gets what it shares with the others through `init(ctx)` and lists its IPC calls in `handlers`.
+- `main/` is the desktop plumbing: window and tray, saving tasks, config and encrypted secrets (`store.js`), calendar sync and accounts, Gmail dates, the morning look-ahead, Finance, the hub.
+- `agent/` is the Agent: routing between lanes, the Claude runner, the other cloud AIs (`providers.js`), the local-model lane and its tools and browser, AI connections (`ai-connections.js`, `claude-auth.js`, `openrouter-connect.js`), the usage-limit hold, the weekly memory tidy, skills and site notes.
 - `preload.js` is the bridge between the two.
-- `renderer/` is the UI. `index.html` holds the markup, `styles.css` the look, and `js/*.js` the page scripts. They are plain scripts, with no bundler: they share one global scope and load in the order `index.html` lists them, ending with `init.js`. So declare a top-level name in one file only, and don't use a later file's names in code that runs while the page loads.
+- `renderer/` is the UI. `index.html` holds the markup, `styles.css` the look, `js/*.js` the page scripts. Plain scripts, no bundler: they share one global scope and load in the order `index.html` lists them, ending with `init.js`. Declare a top-level name in one file only.
+- `mobile/` wraps the same UI in Capacitor for Android. `supabase/` holds the sync project's SQL (`setup.sql` is the one-paste version) and edge functions. `minipc/` has scripts for running the model or the whole agent on a second machine ([docs/second-machine.md](docs/second-machine.md)).
 
-Tests run with `npm test` (Node's built-in runner, files in `test/`).
+[CONTRIBUTING.md](CONTRIBUTING.md) has the ground rules; the one that matters most is that the Agent's "ask before anything final" stays enforced in code.
 
-## Install it properly (do this for auto-start + pinning)
+### Sign-in clients
 
-```
-npm run dist
-```
+One-click Google and Microsoft sign-in needs the app's own OAuth clients in `oauth-clients.json` (see `oauth-clients.example.json`; git-ignored). The official builds carry the maintainer's. A build without one still works: people paste their own Google Cloud credential in Settings → Calendars.
 
-The installer lands in `dist/` — `Tasks Setup.exe` on Windows, `Tasks.dmg` on Mac, an AppImage on Linux. Run it once and you have a real installed app with its own icon. The auto-start and tray behavior below apply to the **installed** app, not dev mode.
+### Releases
 
-## Opens when your screen turns on
+`npm run release` bumps the version, builds the Windows installer on this machine and publishes it to the public releases repository named in `package.json` → `build.publish`, where installed copies look for updates. Pushing a `v*` tag runs `.github/workflows/release.yml` instead, which builds Windows, Linux and macOS on GitHub's runners; it needs a `RELEASES_TOKEN` secret with write access to that repository (and optionally `OAUTH_CLIENTS_JSON`).
 
-Two things handle this, both automatic after install:
+Never add `seed-config.json` or `oauth-clients.json` to a build you share, and never share an APK built with your own `mobile/sync-config.json`: both hold keys to your lists.
 
-1. **Starts when you log in.** Registered on first launch. Toggle it any time via the tray icon menu ("Start when I log in"), or in Task Manager → Startup on Windows.
-2. **Reappears when your PC wakes or unlocks.** The app keeps running in the background — closing the window just hides it to the tray (near the clock). When the screen comes back on, the window pops back up.
-
-To fully quit: right-click the tray icon → Quit Tasks.
-
-## Pin it to the taskbar
-
-Windows doesn't let apps pin themselves (deliberately), so it's a one-time manual step after installing: open the Start menu, find **Tasks**, right-click → **Pin to taskbar**. Or while it's running, right-click its taskbar icon → Pin to taskbar.
-
-On a Mac: right-click the Dock icon → Options → **Keep in Dock**.
-
-## Phone app (Android)
-
-The `mobile/` folder wraps the same UI in Capacitor. To rebuild the APK after changing anything in `renderer/`:
+### Phone app (Android)
 
 ```
 cd mobile
-node prepare-www.js        # copies renderer/ + bakes in sync-config.json
+node prepare-www.js        # copies renderer/ and bakes in sync-config.json
 npx cap sync android
-cd android && .\gradlew.bat assembleDebug
+cd android && ./gradlew assembleDebug
 ```
 
-Requires `JAVA_HOME=C:\Users\James\android-dev\jdk21` and `ANDROID_HOME=C:\Users\James\android-dev\sdk`. The APK lands in `mobile/android/app/build/outputs/apk/debug/app-debug.apk` — copy it to the phone and tap to install (it updates in place, data survives).
+Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/debug/`; it updates an installed copy in place.
 
-Desktop and phone stay in sync through the Supabase project configured in `mobile/sync-config.json` (phone) and `%APPDATA%\Tasks\config.json` (desktop).
+### Where your data lives
 
-## Make it yours (custom theme)
+Tasks are in `tasks.json` in the app's user-data folder (`%APPDATA%\Tasks` on Windows, `~/Library/Application Support/Tasks` on macOS, `~/.config/Tasks` on Linux). Back up that one file. Config and keys are in `config.json` next to it, secrets encrypted.
 
-Open ⚙ Settings → **Theme** and paste CSS. The whole look is driven by CSS variables, so a full re-skin is just overriding values, e.g. a dark theme:
+### Desktop behaviour
+
+The installed app starts at login (toggle in the tray menu), hides to the tray when closed, and reappears when the screen wakes or unlocks. Windows won't let an app pin itself: Start menu → right-click **Tasks** → Pin to taskbar.
+
+### Theme
+
+⚙ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin is a handful of overrides:
 
 ```css
 :root{
@@ -73,41 +96,15 @@ Open ⚙ Settings → **Theme** and paste CSS. The whole look is driven by CSS v
 }
 ```
 
-Hit **Apply** to see it instantly; **Reset** returns to the default. Your theme persists across restarts (stored per device).
+### Quick reference
 
-## Sharing the app
+- Enter adds a task (date, time and tag are optional and stay sticky for batch entry)
+- `/` jumps to the input · Ctrl+F (Cmd+F) searches
+- ↑/↓ select · Space completes · Enter expands · Delete removes · Esc deselects
+- Drag the dots on a row's left edge to reorder; click a tag chip to filter
+- Hover a row for edit / expand / delete; overdue and due-today rows get a snooze button
+- Ideas: + Add an idea in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
 
-Give people `dist/Tasks-Setup-<version>.exe` (or the link to the latest one on https://github.com/jamesbobdev-gif/tasks-releases/releases) — it contains no personal data or credentials (keep it that way: it's public; your details belong in the Agent preferences, not in the code). Never add `seed-config.json` to the build: it holds your sync keys, and anyone with them can read and edit your lists. To set up another computer of yours, copy `seed-config.json` into that computer's `%APPDATA%/tasks` folder before first launch instead. They get their own empty task list, and can sign in with Google or Microsoft (or paste any calendar link) under ⚙ Settings → Calendars, then pick per calendar whether tasks go onto it and whether its events become to-dos (repeating events like classes are skipped by default). One-click sign-in needs the app's own OAuth clients in `oauth-clients.json` (see `oauth-clients.example.json`; kept out of git and out of the public installer): copy it into each computer's `%APPDATA%/tasks` folder, like `seed-config.json`. Without a Google one, people paste their own Google Cloud credential instead. (Windows may show an "unrecognized app" warning since the installer is unsigned — "More info → Run anyway".)
+## License
 
-**Updates.** `npm run release` bumps the version, builds the installer and publishes it to the public releases repo (`jamesbobdev-gif/tasks-releases`, made on the first run; needs `gh auth login` once). Every installed copy on Windows checks there every 4 hours, downloads a new version in the background, and installs it once that computer has been idle 15 minutes with no agent work running — or straight away from the tray's "Restart to update". Copies older than 1.0.1 have no updater and need one manual install.
-
-Do **not** share your built APK from `mobile/` — your private sync credentials are baked into it.
-
-## Where your data lives
-
-Tasks are saved to a `tasks.json` file in the app's user-data folder (e.g. `%APPDATA%/tasks` on Windows, `~/Library/Application Support/tasks` on Mac). They survive restarts and updates, and you can back up that one file.
-
-## Ideas
-
-The **Ideas** tab holds ideas as note cards, as long as you like, that you sort into groups.
-
-- Tap **+ Add an idea** in a group and write. Tap an idea to drop down its description, made of sections: **+ Add a section** gives it a heading and text, and tapping a section changes it. **Edit title** renames the idea; **Delete** (tap twice) removes it. Highlight lines in a section and a bar pops up: **→ To-do** or **→ Agent** turns each line into its own task there and takes it out of the description. Enter starts a new line; click away (or Esc) to save, or Ctrl+Enter to save and start another. New ideas can start in **Unsorted**.
-- Long ideas show their first few lines; click (tap) a card to read all of it and edit it. Clear the text or press **Delete** to remove it.
-- **+ Group** makes a new group; click its name to rename it, the dot to change its colour, and × to remove it (its ideas go back to Unsorted).
-- **Unsorted** is the default group: new ideas can start there and removed groups' ideas land there. You can rename it and change its colour too; it just can't be removed.
-- Drag a card into another group, or above/below another card to reorder; the others slide aside. On a phone, press and hold a card to pick it up.
-- Drag a group by its ⠿ handle to move the whole group around the board (Unsorted too). With the handle focused, the arrow keys move it one place.
-
-Ideas sync across devices with the personal channel, in their own row (`<personal sync key>:ideas`), so they never show up as tasks or in Claude's task tools.
-
-## Quick reference
-
-- Enter — add a task (date, time, and tag are optional and stay sticky for batch entry)
-- / — jump to the input
-- Ctrl+F (Cmd+F on Mac) — search tasks
-- ↑/↓ — select a task · Space completes it · Enter expands it · Delete removes it · Esc deselects
-- Drag the dots on the left edge of a row to reorder
-- Click a row to expand it: subtasks, change date, time, or tag
-- Click a tag chip to filter by it
-- Hover a row for edit / expand / delete — overdue and due-today tasks also get a snooze (clock) button that pushes them to today / tomorrow
-- The tray icon's tooltip shows how many tasks are overdue or due today
+[MIT](LICENSE).
