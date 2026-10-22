@@ -21,6 +21,20 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .connect-card[hidden]{display:none}
 .connect-card b{display:block;font-size:15px;margin-bottom:6px}
 .connect-card p{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 14px}
+/* first-launch welcome (welcome.js) */
+.connect-card.welcome{max-width:520px;margin:18px auto 22px;text-align:left}
+.connect-card.welcome>b{font-size:17px}
+.welcome-choices{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;margin:0 0 16px}
+.welcome-choices button{margin:0}
+.welcome-tips{margin:0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.55}
+.welcome-tips li{margin:4px 0}
+.welcome-tips b{display:inline;font-size:inherit;margin:0;color:var(--ink)}
+.welcome-foot{font-size:12px;margin:12px 0 0 !important;color:var(--faint)}
+/* Agent tasks waiting with no AI to run them */
+.nudge{display:flex;align-items:center;gap:10px;margin:10px 0 4px;padding:10px 12px;border:1px solid var(--late);border-radius:10px;font-size:13px;color:var(--ink);background:var(--surface)}
+.nudge[hidden]{display:none}
+.nudge span{flex:1}
+#agentSyncHint a{color:var(--accent)}
 .settings-inp.flash,.settings-label.flash{outline:2px solid var(--accent);outline-offset:2px}
 .needs-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;margin-top:6px;overflow:hidden;white-space:nowrap}
 .needs-bar[hidden]{display:none}
@@ -641,7 +655,7 @@ textarea.ask-other{min-height:70px}
 .cart-opt-n{margin-top:auto;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
 .cart-opt{width:100%;box-sizing:border-box;border:1px solid var(--hairline);border-radius:6px;padding:4px 6px;font:inherit;font-size:11px;background:var(--bg);color:var(--ink);cursor:pointer}
 .cart-card.off .cart-opt{pointer-events:none}
-/* the seat map Romulus picked from (seat-map.js): its pick in blue; tap open seats to choose your own */
+/* the seat map the Agent picked from (seat-map.js): its pick in blue; tap open seats to choose your own */
 .seat-box{margin:0 0 12px;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px}
 .seat-head{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
 .seat-where{text-transform:none;letter-spacing:0;font-size:11px;color:var(--ink)}

@@ -128,7 +128,7 @@ function saidYes(t) {
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
   return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply)( it)?\b/i.test(lastYou) && /reply\s*\**\s*yes/i.test(asked);
 }
-// ⚙ "Open Romulus's browser": make sure it's running; the page then shows it in the live view
+// ⚙ "Open the Agent’s browser": make sure it's running; the page then shows it in the live view
 async function openAgentBrowser() {
   if (!findChrome()) return { ok: false, error: 'Chrome isn’t installed' };
   return { ok: await ensureAgentBrowser() };

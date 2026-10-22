@@ -1,5 +1,5 @@
 /* ── questions, one at a time ──
-   When Romulus needs answers (a skill's setup, or a choice), it sends them as t.ask:
+   When the Agent needs answers (a skill's setup, or a choice), it sends them as t.ask:
    [{q, choices, pick:'one'|'many', default:[...], other}]. Instead of typing a reply, he taps through
    them: one question per step, the usual answer already picked, Back / Next, then Send. The answers
    go back as one reply ("Store: Walmart (EBT)" per line). Where he is in the steps is kept per task

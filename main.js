@@ -69,7 +69,7 @@ const ctx = {
   seal: store.sealValue, unseal: store.openValue,
   windowHandle: win.windowHandle, // Windows Hello's prompt opens on the Tasks window
   protectWindow: win.protect, // no screen capture while Finance is showing
-  // Lupa's money questions (agent/local-lane.js): read-only, only while Finance is unlocked here
+  // The local model’s money questions (agent/local-lane.js): read-only, only while Finance is unlocked here
   finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked() },
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
@@ -188,7 +188,7 @@ if (!gotLock) {
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);
     setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000);
-    // still signed in to his school sites on the mini PC? Looked at every 30 min; it runs once a day, when Lupa is idle
+    // still signed in to his school sites on the mini PC? Looked at every 30 min; it runs once a day, when the local model is idle
     setInterval(() => localLane.checkSignins().catch((e) => agentLog('sign-in check crashed: ' + (e && e.message || e))), 30 * 60 * 1000);
 
     // Bring the window back whenever the screen turns on.
