@@ -16,6 +16,7 @@ const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const agentFiles = require('./agent-files');
+const supabase = require('./supabase');
 const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
@@ -158,7 +159,7 @@ async function startAgentRun() {
   const workDir = path.join(ctx.documents(), 'Claude Agent');
   const attDir = path.join(workDir, 'attachments');
   try { fs.rmSync(attDir, { recursive: true, force: true }); } catch (e) {}
-  const a = ((readConfig().sync) || {}).agent || {};
+  const a = supabase.channel(readConfig()) || {};
   const allowedPrefix = a.url ? a.url.replace(/\/+$/, '') + '/storage/v1/object/public/agent-attachments/' : null;
   const photos = {};
   for (const t of tasks) {

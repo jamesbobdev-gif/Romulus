@@ -5,17 +5,12 @@
 /* ── settings panel (all platforms) ── */
 function syncFillForm(){
   const c=syncState.cfg||{};
-  const p=c.personal||{}, w=c.work||{};
+  const p=c.personal||{};
   $('syncUrl').value=p.url||'';
   $('syncAnonKey').value=p.key||'';
   $('syncKey').value=p.syncKey||'';
-  $('syncUrlW').value=w.url||'';
-  $('syncAnonKeyW').value=w.key||'';
-  $('syncKeyW').value=w.syncKey||'';
-  const ag=c.agent||{}, sc=c.school||{};
-  // the project URL/key show only when they differ from personal's (blank = the same)
-  $('syncUrlA').value=ag.url&&ag.url!==p.url?ag.url:''; $('syncAnonKeyA').value=ag.key&&ag.key!==p.key?ag.key:''; $('syncKeyA').value=ag.syncKey||'';
-  $('syncUrlS').value=sc.url&&sc.url!==p.url?sc.url:''; $('syncAnonKeyS').value=sc.key&&sc.key!==p.key?sc.key:''; $('syncKeyS').value=sc.syncKey||'';
+  // a list's own key shows; one made from the personal key shows as blank ("automatic")
+  [['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']].forEach(function(x){ const l=c[x[0]]; $(x[1]).value=l&&!l.derived?l.syncKey||'':''; });
   $('syncOffBtn').hidden=!syncEnabled();
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
@@ -267,18 +262,14 @@ $('syncGenBtn').addEventListener('click',function(){
 });
 $('syncSaveBtn').addEventListener('click',function(){
   const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim(), sk=$('syncKey').value.trim();
-  const urlW=$('syncUrlW').value.trim(), keyW=$('syncAnonKeyW').value.trim(), skW=$('syncKeyW').value.trim();
-  if(!url||!key||!sk){ setSyncStatus('fill in the three personal fields',true); return; }
-  const anyW=urlW||keyW||skW;
-  if(anyW&&(!urlW||!keyW||!skW)){ setSyncStatus('work list needs all three fields (or none)',true); return; }
-  // Agent / School: only the sync key is needed when they live in the personal project
-  const side=function(u,k,sk2){ u=$(u).value.trim(); k=$(k).value.trim(); sk2=$(sk2).value.trim(); return sk2?{url:u||url,key:k||key,syncKey:sk2}:null; };
-  const agentP=side('syncUrlA','syncAnonKeyA','syncKeyA'), schoolP=side('syncUrlS','syncAnonKeyS','syncKeyS');
-  if(agentP&&agentP.syncKey===sk||schoolP&&schoolP.syncKey===sk){ setSyncStatus('Agent and School need their own sync keys, not the personal one',true); return; }
-  syncState.cfg={personal:{url:url,key:key,syncKey:sk}};
-  if(anyW)syncState.cfg.work={url:urlW,key:keyW,syncKey:skW};
-  if(agentP)syncState.cfg.agent=agentP;
-  if(schoolP)syncState.cfg.school=schoolP;
+  if(!url||!key||!sk){ setSyncStatus('fill in the three fields',true); return; }
+  if(sk.length<16){ setSyncStatus('the sync key must be at least 16 characters (press Generate key)',true); return; }
+  // the lists share the project; a key typed for one is its own, blank = made from the sync key
+  const raw={personal:{url:url,key:key,syncKey:sk}};
+  const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
+  for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
+  if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
+  syncState.cfg=normalizeSyncCfg(raw);
   localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg));
   if(window.desktop&&window.desktop.syncSaveCfg)window.desktop.syncSaveCfg(syncState.cfg);
   $('syncOffBtn').hidden=false;

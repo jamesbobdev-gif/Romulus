@@ -619,8 +619,8 @@ $('tabList').addEventListener('click',function(){ switchTab('list'); });
 $('tabAgent').addEventListener('click',function(){ switchTab('agent'); });
 $('connectBtn').addEventListener('click',function(){
   const ws=this.getAttribute('data-ws');
-  const field=ws==='agent'?'syncKeyA':ws==='school'?'syncKeyS':'syncUrlW';
-  const label=ws==='agent'?'syncAgentLabel':ws==='school'?'syncSchoolLabel':null;
+  // every list syncs once the project is set up, so the personal fields are what to fill in
+  const field='syncUrl', label=null;
   setSettingsOpen(true);
   $('syncSection').open=true;
   requestAnimationFrame(function(){
