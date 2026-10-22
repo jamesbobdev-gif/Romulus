@@ -14,7 +14,9 @@ test('Linux looks for Google Chrome first, and npm -g folders without sudo', () 
   assert.ok(platform.npmGlobalRoots({}, false).some((p) => p.includes('.npm-global')));
 });
 
-test('his own claude command wins', () => {
+test('the user’s own claude command wins; otherwise claude is looked for, and the installer’s path is the fallback', () => {
   assert.strictEqual(platform.claudeExe({ agentRunner: { command: '/x/claude' } }), '/x/claude');
-  assert.match(platform.claudeExe({}), /\.local.bin.claude(\.exe)?$/);
+  assert.strictEqual(platform.claudeInstalled({ agentRunner: { command: '/x/nope/claude' } }), false);
+  const found = platform.claudeExe({});
+  assert.ok(/claude(\.exe|\.cmd)?$/i.test(found) || found.includes('claude-code'), found);
 });

@@ -17,7 +17,7 @@ function configFile() {
    the file is useless if copied off this account. Everything else stays plain so it can still be
    hand-edited; a secret typed in by hand is picked up as-is and encrypted on the next save. */
 const SECRET_KEYS = new Set(['access_token', 'refresh_token', 'id_token', 'clientSecret', 'key', 'syncKey',
-  'geminiKey', 'openaiKey', 'openrouterKey', 'xaiKey', 'groqKey', 'cloudflareKey', 'nvidiaKey', 'buyEmailUrl', 'calendarFeeds', 'hubToken']);
+  'geminiKey', 'openaiKey', 'anthropicKey', 'openrouterKey', 'xaiKey', 'groqKey', 'cloudflareKey', 'nvidiaKey', 'buyEmailUrl', 'calendarFeeds', 'hubToken']);
 const ENC = 'enc:v1:';
 function canEncrypt() { try { return io.safeStorage.isEncryptionAvailable(); } catch (e) { return false; } }
 function sealValue(v) {

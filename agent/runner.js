@@ -6,7 +6,7 @@
    Which cloud AI answers, in what order, is agent/ai-connections.js; the mini PC lane is agent/local-lane.js. */
 const path = require('path');
 const fs = require('fs');
-const { claudeExe } = require('./platform');
+const { claudeExe, claudeEnv } = require('./platform');
 const os = require('os');
 const providers = require('./providers');
 const usage = require('./usage-limit');
@@ -445,7 +445,7 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
         catch (e) { agentLog('hooks: ' + e.message); }
       }
       args.push('--allowedTools', allowed.join(','), '--disallowedTools', denied.join(','));
-      proc = require('child_process').spawn(exe, args, { cwd: workDir, windowsHide: true });
+      proc = require('child_process').spawn(exe, args, { cwd: workDir, windowsHide: true, env: claudeEnv(readConfig()) });
       agentProc = proc;
     } catch (e) { agentLog('spawn failed: ' + e.message); return resolve({ why: 'could not start Claude' }); }
     agentLog('started Claude (pid ' + proc.pid + ')');

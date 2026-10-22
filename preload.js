@@ -30,6 +30,10 @@ contextBridge.exposeInMainWorld('desktop', {
   onAgentReconnect: (cb) => ipcRenderer.on('agent:reconnect', (_event, info) => cb(info)),
   onAgentReconnected: (cb) => ipcRenderer.on('agent:reconnected', (_event, info) => cb(info)),
   localStatus: () => ipcRenderer.invoke('local:status'),
+  // ⚙ Local model: any Ollama (this computer by default)
+  localGet: () => ipcRenderer.invoke('local:get'),
+  localProbe: (url) => ipcRenderer.invoke('local:probe', url),
+  localSave: (change) => ipcRenderer.invoke('local:save', change),
   // routing: the user's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   // AI connections: Claude / Gemini / OpenRouter for the Agent lane, in his order
@@ -39,6 +43,12 @@ contextBridge.exposeInMainWorld('desktop', {
   aiCodexInstall: () => ipcRenderer.invoke('ai:codex-install'),
   aiCodexLogin: () => ipcRenderer.invoke('ai:codex-login'),
   aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
+  aiOpenRouterConnect: () => ipcRenderer.invoke('ai:openrouter-connect'),
+  // Claude Code on this computer: install it, sign in, look again, prove it works
+  aiClaudeInstall: () => ipcRenderer.invoke('ai:claude-install'),
+  aiClaudeLogin: () => ipcRenderer.invoke('ai:claude-login'),
+  aiClaudeRefresh: () => ipcRenderer.invoke('ai:claude-refresh'),
+  aiClaudeCheck: () => ipcRenderer.invoke('ai:claude-check'),
   aiCompatCheck: (id) => ipcRenderer.invoke('ai:compat-check', id),
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
