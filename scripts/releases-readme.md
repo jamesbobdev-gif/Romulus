@@ -6,7 +6,9 @@
 
 **Bring your own model.** The Agent is not tied to one AI company. Plug in whatever you already pay for or can run: your Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama, on this computer or a box in the closet. Connect several and the app tries them in your order, falling to the next when one is busy or out of credit. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model, never a cloud one.
 
-**And a Finance page, a School list, a phone app, and more.** Read on.
+**Your money, without the subscription.** The Finance tab does what people pay Rocket Money, Monarch or Copilot for: every account in one place, recurring bills and subscriptions found automatically, net worth over time, statements, receipts from your inbox, live stock prices. Read-only, about $15 a year for the bank connection, and the data lives in an encrypted vault on your computer rather than on someone's server.
+
+**And a School list, a phone app, and more.** Read on.
 
 This repository holds the **installers**. Download the latest from the [Releases](../../releases/latest) page.
 
@@ -35,7 +37,16 @@ What it can do today, with the right AI connected:
 Rules you set decide which AI gets which task: a word list, first-match rules, or "auto". Private words always route to the local model.
 
 ### Finance (optional, desktop only)
-A Finance tab that reads your bank accounts **read-only** through [SimpleFIN Bridge](https://bridge.simplefin.org) (about $15 a year, which pays the bank-connection cost), reads receipts out of your Gmail, and shows live prices for the stocks you hold. Costs, bills, net worth, statements.
+The parts of Rocket Money, Monarch, Copilot or Mint that most people actually use, on your own computer:
+
+- **Every account in one place**, read **read-only** through [SimpleFIN Bridge](https://bridge.simplefin.org) (about $15 a year, which pays the bank-connection cost; compare $100+ a year for the apps above).
+- **Recurring bills and subscriptions found automatically**: anything charged in two or more months for about the same amount (rent, insurance, phone, streaming), shown as fixed costs against everything else, and dropped from the list when it stops coming, so a cancelled subscription shows as cancelled. Correct a payee with one tap if it guessed wrong.
+- **Net worth over time**: assets against debts, charted back through your transaction history.
+- **Statements like a company's**: an income statement by month and a balance sheet against 30 and 90 days ago.
+- **Receipts from your Gmail** matched to purchases, and **live prices** for the stocks you hold.
+- **Ask your local model** a money question ("what did I spend on food last month?") and it answers from this data, in a run with no web access.
+
+What it doesn't do: budgets with envelopes, bill negotiation, or cancelling subscriptions for you. Those are the paid apps' upsells; the information to do them yourself is all here.
 
 Everything is kept in one file encrypted twice: AES-256 under a passphrase that is never saved, then again with your operating system's own encryption. It locks after 30 minutes, when the screen locks and when the computer sleeps. Windows Hello can unlock it. The cloud AIs can never read it; your local model can answer a money question from it, in a run with no web access, while it's unlocked.
 
