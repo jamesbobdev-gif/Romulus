@@ -30,4 +30,6 @@ console.log('Releasing ' + pkg.version);
 // the public repo's README (install steps, what the repo is) travels with each release
 try { require('./releases-readme').syncReadme(); } catch (e) { console.log('releases README not updated: ' + e.message); }
 run('npx electron-builder --win --publish always', { stdio: 'inherit', env: Object.assign({}, process.env, { GH_TOKEN: token }) });
+// the release page: say which file to download (GitHub adds source archives of its own that hold only the README)
+try { require('./releases-readme').writeNotes(pkg.version); } catch (e) { console.log('release notes not written: ' + e.message); }
 console.log(`Done: ${pkg.version} is on https://github.com/${owner}/${repo}/releases — installed copies update within a few hours.`);
