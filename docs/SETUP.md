@@ -80,7 +80,7 @@ In **⚙ Settings → Device sync**:
 2. Press **Generate key** to make a sync key. This is the password to your list: anyone with it can read and change the list, so treat it like one.
 3. Press **Save & sync**.
 
-The optional Work, Agent and School lists each need their own sync key (press Generate key again for each); they can live in the same project.
+That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
 ### Connect the phone
 

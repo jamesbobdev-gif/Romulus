@@ -14,6 +14,17 @@ test('channel needs url and key', () => {
   assert.deepStrictEqual(supabase.channel({ sync: { agent: a } }), a);
 });
 
+test('with only a personal profile, the agent list lives in the same project under a key made from it', () => {
+  const p = { url: 'https://x.supabase.co', key: 'anon', syncKey: 'tk_abc123def456ghi' };
+  const c = supabase.channel({ sync: { personal: p } });
+  assert.deepStrictEqual(c, { url: p.url, key: 'anon', syncKey: 'tk_agent_abc123def456ghi', derived: true });
+  assert.strictEqual(supabase.deriveSyncKey('tk_abc', 'work'), 'tk_work_abc');
+  assert.strictEqual(supabase.deriveSyncKey('plainkey', 'school'), 'tk_school_plainkey');
+  assert.strictEqual(supabase.deriveSyncKey('', 'school'), '');
+  // an agent profile of its own still wins
+  assert.deepStrictEqual(supabase.channel({ sync: { personal: p, agent: a } }), a);
+});
+
 test('readRow calls sync_get with the key and headers; never the table', async () => {
   const seen = {};
   const row = await supabase.readRow(a, ':prefs', { fetch: fakeFetch(200, [{ doc: { text: 'hi' }, updated_at: 't1', topic: 'sync:abc' }], seen) });

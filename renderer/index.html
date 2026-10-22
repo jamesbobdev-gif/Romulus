@@ -210,23 +210,18 @@
     <details class="settings-panel settings-collapse" id="syncSection">
       <summary class="settings-label">Device sync</summary>
       <p class="settings-hint">
-        Sync with your phone via a free <a id="supabaseLink">Supabase</a> project. Use the same values on every device; keep the sync key private.
+        Sync with your phone via a free <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
-      <input id="syncAnonKey" class="settings-inp" placeholder="Anon public key" type="password" autocomplete="off">
+      <input id="syncAnonKey" class="settings-inp" placeholder="Anon / publishable key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
-      <span class="settings-label" style="margin-top:14px">Work list (optional)</span>
-      <input id="syncUrlW" class="settings-inp" placeholder="Work project URL" autocomplete="off" spellcheck="false">
-      <input id="syncAnonKeyW" class="settings-inp" placeholder="Work anon public key" type="password" autocomplete="off">
-      <input id="syncKeyW" class="settings-inp" placeholder="Work sync key" autocomplete="off" spellcheck="false">
-      <span class="settings-label" id="syncAgentLabel" style="margin-top:14px">Agent list</span>
-      <input id="syncUrlA" class="settings-inp" placeholder="Agent project URL (blank = same as personal)" autocomplete="off" spellcheck="false">
-      <input id="syncAnonKeyA" class="settings-inp" placeholder="Agent anon public key (blank = same as personal)" type="password" autocomplete="off">
-      <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key" autocomplete="off" spellcheck="false">
-      <span class="settings-label" id="syncSchoolLabel" style="margin-top:14px">School list</span>
-      <input id="syncUrlS" class="settings-inp" placeholder="School project URL (blank = same as personal)" autocomplete="off" spellcheck="false">
-      <input id="syncAnonKeyS" class="settings-inp" placeholder="School anon public key (blank = same as personal)" type="password" autocomplete="off">
-      <input id="syncKeyS" class="settings-inp" placeholder="School sync key" autocomplete="off" spellcheck="false">
+      <details class="settings-sub" style="margin-top:14px">
+        <summary class="settings-label" id="syncListsLabel">Per-list keys (optional)</summary>
+        <p class="settings-hint">The Work, Agent and School lists get their own keys made from the sync key above, so they sync wherever it does. Type a key here only to share one list with a different key (for example a Work list shared with a colleague).</p>
+        <input id="syncKeyW" class="settings-inp" placeholder="Work sync key (automatic)" autocomplete="off" spellcheck="false">
+        <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key (automatic)" autocomplete="off" spellcheck="false">
+        <input id="syncKeyS" class="settings-inp" placeholder="School sync key (automatic)" autocomplete="off" spellcheck="false">
+      </details>
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
         <button id="syncGenBtn" class="ghost mono">Generate key</button>

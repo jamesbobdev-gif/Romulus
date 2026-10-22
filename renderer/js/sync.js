@@ -35,14 +35,23 @@ try{ applyTheme(localStorage.getItem(THEME_KEY)||''); }catch(e){}
    the ws field, so other devices/apps on a channel need no changes. */
 const SYNC_CFG_KEY='tasks.sync.v1';
 const syncState={ cfg:null, busy:false, again:false, pushTimer:null, pollTimer:null };
+/* One project, one sync key. The Work, Agent and School lists live in the same project under keys made
+   from the personal one (tk_<id> → tk_work_<id>, tk_agent_<id>, tk_school_<id>; the Agent one must start
+   with tk_agent_ for the server's claim function), unless a list was given its own key. A derived
+   profile is marked derived:true so Settings shows it as automatic and it follows the personal key.
+   The same rule lives in agent/supabase.js for the desktop side. */
+function deriveSyncKey(personalKey,list){
+  const id=String(personalKey||'').replace(/^tk_/,'');
+  return id?'tk_'+list+'_'+id:'';
+}
 function normalizeSyncCfg(raw){
   if(!raw)return null;
-  if(raw.url)return {personal:raw}; // legacy single-profile shape
+  if(raw.url)raw={personal:raw}; // legacy single-profile shape
   const out={};
   if(raw.personal&&raw.personal.url)out.personal=raw.personal;
-  if(raw.work&&raw.work.url)out.work=raw.work;
-  if(raw.agent&&raw.agent.url)out.agent=raw.agent;
-  if(raw.school&&raw.school.url)out.school=raw.school;
+  ['work','agent','school'].forEach(function(k){ const p=raw[k]; if(p&&p.url&&p.syncKey&&!p.derived)out[k]=p; });
+  const p=out.personal;
+  if(p&&p.url&&p.key&&p.syncKey)['work','agent','school'].forEach(function(k){ if(!out[k])out[k]={url:p.url,key:p.key,syncKey:deriveSyncKey(p.syncKey,k),derived:true}; });
   return (out.personal||out.work)?out:null;
 }
 try{ syncState.cfg=normalizeSyncCfg(JSON.parse(localStorage.getItem(SYNC_CFG_KEY))); }catch(e){}

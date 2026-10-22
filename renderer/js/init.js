@@ -13,6 +13,8 @@ store.load().then(async function(data){
       if(n&&!syncState.cfg){ syncState.cfg=n; localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(n)); }
       // an agent channel added to config.json later is picked up without a reset
       else if(n){ let add=false; ['work','agent','school'].forEach(function(k){ if(n[k]&&!syncState.cfg[k]){ syncState.cfg[k]=n[k]; add=true; } }); if(add)localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg)); }
+      // config.json with only a personal profile (an older setup, or a seed file): the lists made from it go back, so the runner sees the agent list
+      if(n&&syncState.cfg&&['work','agent','school'].some(function(k){ return n[k]&&n[k].derived; }))window.desktop.syncSaveCfg(syncState.cfg);
     }catch(e){}
   }
   if(data&&Array.isArray(data.tasks)){
