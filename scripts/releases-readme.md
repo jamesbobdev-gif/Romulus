@@ -110,7 +110,7 @@ Your lists are shared through a free [Supabase](https://supabase.com) project of
 
 **Connect the phone**: install the Android app, open the same Settings panel, enter the same three values. The sync key is long, so send it to yourself through something you trust (a password-manager note), not a group chat.
 
-Work, Agent and School lists each take their own sync key (Generate key again for each); they can live in the same project.
+That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
 ### 4. Calendars
 **⚙ Settings → Calendars.** Press **+ Google** or **+ Microsoft** and sign in; the official installer has sign-in built in. Or **+ Calendar link** for any subscribe link (iCloud, a shared calendar). For **course calendars** (Blackboard: Calendar → ⚙ → Share Calendar; D2L: Calendar → Subscribe), paste the link under Course calendars and due dates land on School. Per calendar, choose whether events become to-dos and whether your tasks appear on it.

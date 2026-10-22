@@ -9,10 +9,20 @@ const base = (a) => String(a.url).replace(/\/+$/, '') + '/rest/v1';
 const headers = (a, extra) => Object.assign({ apikey: a.key, Authorization: 'Bearer ' + a.key }, extra);
 const rpcUrl = (a, fn) => base(a) + '/rpc/' + fn;
 
-// The channel from a config, or null when it isn't set up
+// a list's key made from the personal sync key (the same rule as renderer/js/sync.js deriveSyncKey)
+function deriveSyncKey(personalKey, list) {
+  const id = String(personalKey || '').replace(/^tk_/, '');
+  return id ? 'tk_' + list + '_' + id : '';
+}
+// The channel from a config, or null when it isn't set up. Without an agent profile of its own, the
+// agent list lives in the personal project under a key made from the personal one.
 function channel(cfg) {
-  const a = ((cfg && cfg.sync) || {}).agent;
-  return a && a.url && a.key ? a : null;
+  const s = (cfg && cfg.sync) || {};
+  const a = s.agent;
+  if (a && a.url && a.key && a.syncKey) return a;
+  const p = s.personal;
+  if (p && p.url && p.key && p.syncKey) return { url: p.url, key: p.key, syncKey: deriveSyncKey(p.syncKey, 'agent'), derived: true };
+  return null;
 }
 
 async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
@@ -43,4 +53,4 @@ async function writeRow(a, suffix, doc, prev, opts) {
   return (await rpc(a, 'sync_put', { p_sync_key: a.syncKey + suffix, p_doc: doc, p_prev: prev || null }, opts)) === true;
 }
 
-module.exports = { base, headers, rpcUrl, channel, rpc, readRow, readText, writeRow };
+module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow };
