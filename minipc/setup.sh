@@ -6,7 +6,7 @@
 set -euo pipefail
 LAN="192.168.1.0/24"          # devices allowed in (your home network)
 MODEL="qwen3.5:9b"            # fits 16 GB; switch to qwen3.6:35b-a3b once the second memory stick is in
-USER_NAME="${SUDO_USER:-lupa}"
+USER_NAME="${SUDO_USER:-$(whoami)}"
 log() { echo; echo "=== $* ==="; }
 
 log "1/5 Updating Ubuntu (a few minutes)"

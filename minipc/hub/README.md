@@ -3,15 +3,15 @@
 **Why (decided 2026-10-16):** the laptop joins public Wi-Fi (CSUwireless). The hub keeps the agent, its browser
 with your site logins, mail dates and calendar sync on a box at home that's always on. Nothing on it is open to
 the internet: the only way in is over your Tailscale tailnet, with a token.
-**lupa stays the local-model box** (Ollama + Holo4). The hub talks to it on the home network, so the hub has to
-be at home too, since lupa's firewall only lets in 192.168.1.0/24.
+**the model box stays the local-model box** (Ollama + Holo4). The hub talks to it on the home network, so the hub has to
+be at home too, since the model box’s firewall only lets in 192.168.1.0/24.
 
 ## What runs where
 
 | | Hub mini PC | Laptop app | Phone |
 |---|---|---|---|
 | Agent runner (Claude → Gemini → OpenRouter), agent browser + logins | ✅ | – | – |
-| lupa's coordinator (mini PC lane), memory tidy | ✅ | – | – |
+| the model box’s coordinator (mini PC lane), memory tidy | ✅ | – | – |
 | Mail dates, morning look-ahead, calendar ↔ tasks, "Buy this" emails | ✅ | – | – |
 | Your lists | syncs with Supabase | syncs with Supabase | syncs with Supabase |
 | Watch, Settings → AI connections / calendars / mail | answers | shows, through the hub | – |
@@ -45,7 +45,7 @@ Task sync stays on Supabase (option C). That keeps the claude.ai Tasks connector
 5. **From the laptop**, in the repo folder: `.\minipc\hub\deploy.ps1 -Hub james@tasks-hub` (copies the app,
    starts the service). Run it again after every app change.
 6. **Sign in to Claude on the hub:** `ssh james@tasks-hub`, then `claude`, then `/login` (paste the code back).
-7. **Laptop app → Settings → Romulus & AI → Mini PC server:** address `https://tasks-hub.<tailnet>.ts.net`, token
+7. **Laptop app → Settings → Agent & AI → Mini PC server:** address `https://tasks-hub.<tailnet>.ts.net`, token
    from `ssh james@tasks-hub cat ~/.config/Tasks/hub-token.txt`. Then **Test**, **Use the mini PC** (Tasks
    restarts), and **Send my settings to it**. That sends your calendar/Gmail sign-ins, AI keys, sync links,
    course feeds and what the agent learned. It goes over Tailscale only.

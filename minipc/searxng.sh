@@ -38,4 +38,4 @@ log "4/4 Testing"
 for i in $(seq 1 30); do curl -fs "http://127.0.0.1:8888/search?q=test&format=json" >/dev/null && break; sleep 2; done
 curl -fs "http://127.0.0.1:8888/search?q=3d+print+headphone+hook&format=json" | head -c 300; echo
 echo
-echo "ALL DONE. SearXNG: http://192.168.1.192:8888 (home network only)"
+echo "ALL DONE. SearXNG: http://<mini-pc-ip>:8888 (home network only)"
