@@ -6,10 +6,16 @@ const meter = require('./usage-meter');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { claudeExe } = require('./platform');
+const { claudeExe, claudeEnv } = require('./platform');
+const claudeAuth = require('./claude-auth');
+const openrouterConnect = require('./openrouter-connect');
 
-let ctx = null; // { userData, readConfig, writeConfig, agentLog, scheduleAgentRun }
-function init(c) { ctx = c; meter.init(c); }
+let ctx = null; // { userData, readConfig, writeConfig, agentLog, scheduleAgentRun, openExternal }
+function init(c) {
+  ctx = c; meter.init(c);
+  // is Claude Code signed in? asked once at start, in the background; Settings asks again on demand
+  setTimeout(() => { claudeAuth.refresh(readConfig()).catch(() => {}); }, 3000);
+}
 const readConfig = () => ctx.readConfig();
 const writeConfig = (c) => ctx.writeConfig(c);
 const agentLog = (m) => ctx.agentLog(m);
@@ -21,6 +27,8 @@ const maskKey = (k) => k ? k.slice(0, 6) + '…' + k.slice(-4) : '';
 function aiStatus() {
   const c = readConfig(), s = providers.settings(c);
   return { order: s.order, names: providers.NAMES, used: providers.usedModels(), claudeModel: s.claudeModel, claudeLast: s.claudeLast, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usage.blockedUntil() > Date.now() ? usage.blockedUntil() : 0,
+    // Claude Code: installed? signed in (or an API key saved)?
+    claude: Object.assign(claudeAuth.status(c), { key: maskKey(String((c.ai || {}).anthropicKey || '').trim()) }),
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
     openai: { hasKey: !!s.openaiKey, key: maskKey(s.openaiKey), model: s.openaiModel, codexModel: s.codexModel, via: s.openaiVia, codex: providers.codexStatus() },
     openrouter: { hasKey: !!s.openrouterKey, key: maskKey(s.openrouterKey), model: s.openrouterModel, web: s.openrouterWeb, zdr: s.openrouterZdr, free: s.openrouterFree },
@@ -33,7 +41,7 @@ handle('ai:save', (_e, change) => {
   change = change || {};
   if (Array.isArray(change.order)) ai.order = change.order.map((p) => ({ id: String(p.id), on: !!p.on }));
   if (change.openaiVia === 'chatgpt' || change.openaiVia === 'key') ai.openaiVia = change.openaiVia;
-  for (const k of ['claudeModel', 'codexModel', 'geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel', ...providers.COMPAT_IDS.flatMap((id) => [id + 'Key', id + 'Model'])]) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
+  for (const k of ['claudeModel', 'anthropicKey', 'codexModel', 'geminiKey', 'geminiModel', 'openaiKey', 'openaiModel', 'openrouterKey', 'openrouterModel', ...providers.COMPAT_IDS.flatMap((id) => [id + 'Key', id + 'Model'])]) if (typeof change[k] === 'string') ai[k] = change[k].trim().slice(0, 300);
   for (const k of ['openrouterWeb', 'openrouterZdr', 'openrouterFree', 'helpers', 'claudeLast', ...providers.COMPAT_IDS.map((id) => id + 'Browser')]) if (typeof change[k] === 'boolean') ai[k] = change[k];
   c.ai = ai; writeConfig(c);
   scheduleAgentRun();
@@ -83,6 +91,31 @@ handle('ai:codex-login', () => {
     return Object.assign(r, { status: aiStatus() });
   });
 });
+/* Claude Code: the official installer, a sign-in (opens a terminal running `claude auth login`, and watches
+   for it to finish), a fresh look at whether it's signed in, and a one-word run to prove it works */
+handle('ai:claude-refresh', async () => { await claudeAuth.refresh(readConfig()); return aiStatus(); });
+handle('ai:claude-install', async () => {
+  const r = await claudeAuth.install(agentLog);
+  if (r.ok) await claudeAuth.refresh(readConfig()).catch(() => {});
+  return Object.assign(r, { status: aiStatus() });
+});
+handle('ai:claude-login', async () => {
+  const r = await claudeAuth.login(readConfig(), path.join(ctx.userData(), 'helper-run'), agentLog);
+  if (r.ok) scheduleAgentRun();
+  return Object.assign(r, { status: aiStatus() });
+});
+handle('ai:claude-check', () => claudeAuth.check(readConfig(), path.join(ctx.userData(), 'helper-run')));
+/* OpenRouter without copy-and-paste: its PKCE sign-in in the browser makes a key for this app */
+handle('ai:openrouter-connect', async () => {
+  agentLog('openrouter: connecting in the browser');
+  const r = await openrouterConnect.connect({ openExternal: (u) => ctx.openExternal(u) });
+  if (r.ok) {
+    const c = readConfig(); c.ai = Object.assign({}, c.ai, { openrouterKey: r.key }); writeConfig(c);
+    providers.clearModelCache && providers.clearModelCache('openrouter');
+    scheduleAgentRun(); agentLog('openrouter: connected');
+  } else agentLog('openrouter: connect failed: ' + r.error);
+  return { ok: r.ok, error: r.error, status: aiStatus() };
+});
 handle('ai:compat-check', async (_e, id) => { // Test key: the key's model list, and whether the saved model is on it
   if (!providers.COMPAT[id]) return { ok: false, error: 'unknown AI' };
   const s = providers.settings(readConfig());
@@ -109,7 +142,7 @@ function probeClaude() {
     let out = '', p;
     try {
       p = require('child_process').spawn(exe, ['-p', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--max-turns', '1',
-        '--tools', '', '--strict-mcp-config'], { cwd: dir, windowsHide: true });
+        '--tools', '', '--strict-mcp-config'], { cwd: dir, windowsHide: true, env: claudeEnv(cfg) });
     } catch (e) { return resolve(); }
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 60 * 1000);
     p.stdout.on('data', (d) => { out += d; });
@@ -136,7 +169,8 @@ const PINNED_CLOUDS = ['gemini', 'openai', 'openrouter', ...providers.COMPAT_IDS
 function cloudReady(id) {
   const c = readConfig(), s = providers.settings(c);
   if (providers.COMPAT[id]) return !!s[id + 'Key'];
-  return id === 'claude' || (id === 'gemini' ? providers.geminiStatus(c).ready : id === 'openai' ? (s.openaiVia === 'chatgpt' ? providers.codexStatus().signedIn : !!s.openaiKey) : !!s.openrouterKey);
+  if (id === 'claude') return claudeAuth.status(c).ready; // installed, and signed in or with an API key
+  return (id === 'gemini' ? providers.geminiStatus(c).ready : id === 'openai' ? (s.openaiVia === 'chatgpt' ? providers.codexStatus().signedIn : !!s.openaiKey) : !!s.openrouterKey);
 }
 // the connected cloud AIs, in his order, that can run right now; with "Save Claude for last" on, Claude goes after all the others
 function cloudOrder() {

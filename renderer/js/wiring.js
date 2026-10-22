@@ -62,7 +62,11 @@ if(window.desktop&&window.desktop.aiStatus){
     return r;
   };
   const statusText=function(id){
-    if(id==='claude')return ai.claudeBlockedUntil?'out of usage until '+fmtWhen(ai.claudeBlockedUntil):'Claude Code on this computer';
+    if(id==='claude'){ const c=ai.claude||{};
+      if(!c.installed)return 'not installed';
+      if(!c.ready)return 'not signed in';
+      if(ai.claudeBlockedUntil)return 'out of usage until '+fmtWhen(ai.claudeBlockedUntil);
+      return c.via==='key'?'API key '+c.key:'signed in'+(c.email?' as '+c.email:'')+(c.plan?' · '+c.plan:''); }
     if(id==='gemini'){ const g=ai.gemini;
       if(!g.hasKey)return 'needs an API key';
       return 'API key '+g.key+(g.installed?' · CLI (browser)':' · API (search only)'); }
@@ -98,7 +102,7 @@ if(window.desktop&&window.desktop.aiStatus){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
       // switched on but it can't be used: listed at the top of Settings
       const why=statusText(p.id);
-      if(p.on&&/^(not signed in|needs an API key|no key yet)$/.test(why))box.dataset.disconnected=ai.names[p.id]+': '+why;
+      if(p.on&&/^(not installed|not signed in|needs an API key|no key yet)$/.test(why))box.dataset.disconnected=ai.names[p.id]+': '+why;
       const head=el('div','settings-row'); head.style.marginTop='0';
       const sw=el('label','switch'); const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=p.on;
       sw.appendChild(cb); const tr=el('span','track'); tr.setAttribute('aria-hidden','true'); sw.appendChild(tr);
@@ -120,7 +124,44 @@ if(window.desktop&&window.desktop.aiStatus){
         if(site){ const go=el('button','ghost mono','Open '+site[0]+' ↗'); go.addEventListener('click',function(){ openExternal(site[1]); }); w.appendChild(go); }
         box.appendChild(w);
       }
-      if(p.id==='claude')box.appendChild(modelRow('claude','claudeModel',ai.claudeModel));
+      if(p.id==='claude'){
+        const c=ai.claude||{};
+        const busy=function(b,t){ b.disabled=true; b.textContent=t; };
+        if(!c.installed){
+          // step 1: Claude Code itself (the official installer; no Node needed)
+          const how=el('p','settings-hint','Claude runs through Claude Code, a small program from Anthropic. Install it, then sign in with your Claude account (Pro or Max) or paste an Anthropic API key.'); how.style.margin='8px 0 0'; box.appendChild(how);
+          const r=el('div','settings-row'); r.style.marginTop='8px';
+          const b=el('button','btn-accent','Install Claude Code');
+          b.addEventListener('click',async function(){ busy(b,'installing… (a minute or two)');
+            try{ const res=await window.desktop.aiClaudeInstall(); ai=res.status; aiDraw(); say(res.ok?'installed: now sign in':'install failed: '+res.error); }
+            catch(e){ say('install failed'); b.disabled=false; b.textContent='Install Claude Code'; } });
+          r.appendChild(b);
+          const already=el('button','ghost mono','I already have it'); already.title='Look again for claude on this computer';
+          already.addEventListener('click',async function(){ say('looking…'); try{ ai=await window.desktop.aiClaudeRefresh(); aiDraw(); say(ai.claude.installed?'found it':'still not found: is claude on your PATH?'); }catch(e){ say('couldn’t check'); } });
+          r.appendChild(already); box.appendChild(r);
+        } else {
+          // step 2: a sign-in (the usual way) or an API key
+          const r=el('div','settings-row'); r.style.marginTop='8px';
+          if(c.signedIn&&c.via!=='key'){ const ok=el('span','','✓ Signed in'+(c.email?' as '+c.email:'')); ok.style.cssText='font-size:13px;flex:1'; r.appendChild(ok); }
+          const b=el('button',c.ready?'ghost mono':'btn-accent',c.signedIn?'Sign in again':'Sign in to Claude');
+          b.addEventListener('click',async function(){ busy(b,'finish signing in in the window that opened…');
+            try{ const res=await window.desktop.aiClaudeLogin(); ai=res.status; aiDraw(); say(res.ok?'signed in':'sign-in failed: '+res.error); }
+            catch(e){ say('sign-in failed'); b.disabled=false; } });
+          r.appendChild(b);
+          if(c.ready){ const t=el('button','ghost mono','Check'); t.addEventListener('click',async function(){ say('asking Claude…');
+            const res=await window.desktop.aiClaudeCheck(); say(res.ok?'Claude answered'+(res.model?' ('+res.model+')':''):'didn’t work: '+res.error); }); r.appendChild(t); }
+          box.appendChild(r);
+          box.appendChild(modelRow('claude','claudeModel',ai.claudeModel));
+          // the key: for people without a Claude plan; it wins over the sign-in when both are there
+          box.appendChild(keyRow(c.hasKey?'replace Anthropic API key ('+c.key+')':'or an Anthropic API key (console.anthropic.com)','anthropicKey',c.hasKey?'Replace':'Save key'));
+          const kr=el('div','settings-row'); kr.style.marginTop='4px';
+          if(c.hasKey){ const rm=el('button','ghost mono','Remove key (use the sign-in)'); rm.addEventListener('click',function(){ save({anthropicKey:''},'key removed'); }); kr.appendChild(rm); }
+          else { const g=el('button','ghost mono','Get an API key ↗'); g.addEventListener('click',function(){ openExternal('https://console.anthropic.com/settings/keys'); }); kr.appendChild(g); }
+          box.appendChild(kr);
+          box.appendChild(el('p','settings-hint',c.hasKey?'Runs are billed to this API key, pay as you go. Remove it to use your Claude plan instead.':'Signed in, runs count against your Claude plan’s usage. An API key is billed separately, pay as you go.'));
+          box.lastChild.style.margin='8px 0 0';
+        }
+      }
       if(p.id==='gemini'){
         const g=ai.gemini;
         // unlike Claude, Gemini can't use a Google sign-in any more (Google ended that for personal accounts), so walk him through the key
@@ -210,6 +251,17 @@ if(window.desktop&&window.desktop.aiStatus){
       }
       if(p.id==='openrouter'){
         const o=ai.openrouter;
+        if(!o.hasKey){
+          // one click: OpenRouter's sign-in in the browser makes a key for this app, nothing to paste
+          const cr=el('div','settings-row'); cr.style.marginTop='8px';
+          const cb2=el('button','btn-accent','Connect with OpenRouter ↗');
+          cb2.addEventListener('click',async function(){ cb2.disabled=true; cb2.textContent='finish in your browser…';
+            try{ const res=await window.desktop.aiOpenRouterConnect(); ai=res.status; aiDraw(); say(res.ok?'OpenRouter connected':'didn’t connect: '+res.error); }
+            catch(e){ say('didn’t connect'); cb2.disabled=false; cb2.textContent='Connect with OpenRouter ↗'; } });
+          cr.appendChild(cb2); box.appendChild(cr);
+          box.appendChild(el('p','settings-hint','Sign in (or make a free account) and OpenRouter hands Tasks a key. One account, hundreds of models, some free. Or paste a key from openrouter.ai/keys below.'));
+          box.lastChild.style.margin='8px 0 0';
+        }
         box.appendChild(keyRow(o.hasKey?'replace OpenRouter key':'OpenRouter API key (openrouter.ai/keys)','openrouterKey'));
         if(o.hasKey)box.appendChild(modelRow('openrouter','openrouterModel',o.model,'openrouter/auto'));
         const r=el('div','settings-row'); r.style.marginTop='4px';

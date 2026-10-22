@@ -51,6 +51,22 @@
         <div id="aiList"></div>
         <span id="aiStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
+      <div class="settings-sub" id="localSection" hidden>
+        <h3 class="settings-subhead">Local model</h3>
+        <p class="settings-hint">Your own model through <a id="ollamaLink" href="#">Ollama</a>, on this computer or another one on your network. Nothing it works on leaves your machines. Tasks with private words always go here.</p>
+        <div class="settings-row" style="margin-top:0">
+          <input id="localUrl" class="settings-inp mono" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" style="flex:1;margin:0">
+          <button id="localProbeBtn" class="ghost mono">Find models</button>
+        </div>
+        <div class="settings-row" id="localModelRow" hidden>
+          <select id="localModelSel" class="settings-inp" style="flex:1;margin:0;min-width:0"></select>
+          <button id="localSaveBtn" class="btn-accent">Use it</button>
+        </div>
+        <div class="settings-row" style="margin-top:8px">
+          <button id="localOffBtn" class="ghost mono danger" hidden>Turn off</button>
+          <span id="localStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
       <div class="settings-sub" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
         <p class="settings-hint"><span class="mono">#local</span> or <span class="mono">#claude</span> in a title beats everything below. Then: private words, rules (first match), default.</p>
@@ -353,6 +369,7 @@
 <script src="js/wiring.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/hub.js"></script>
+<script src="js/local-model.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/look-ahead.js"></script>

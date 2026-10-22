@@ -54,7 +54,7 @@ function refreshLocalStatus(){
 // the model running on the mini PC, short: hf.co/Hcompany/Holo4-35B-A3B-GGUF:Q4_K_M → Holo4-35B-A3B ('Lupa' until it's known)
 function localModelName(){
   const m=localStat&&localStat.model;
-  if(!m)return 'Lupa';
+  if(!m)return 'Local';
   const p=String(m).split('/').pop().split(':'), tag=p[1]||'';
   const name=p[0].replace(/[-_.]?gguf$/i,'');
   // the quantization (Q4_K_M) and "latest" tags are dropped; a size tag (qwen3:8b) stays
