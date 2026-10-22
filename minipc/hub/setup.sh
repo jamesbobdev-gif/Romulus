@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time setup of the NEW mini PC as the Tasks hub (not lupa: lupa stays the local-model box).
-# The hub runs the Tasks app as a service: the agent and its browser, mail dates, calendar sync and lupa's
+# One-time setup of the NEW mini PC as the Tasks hub (not the model box: that one keeps running Ollama).
+# The hub runs the Tasks app as a service: the agent and its browser, mail dates, calendar sync and the model box’s
 # coordinator. The laptop and phone reach it over Tailscale only.
 # Works on Ubuntu Server 24.04+ and AlmaLinux 9/10. Run once, on the mini PC, as your own user:
 #   sudo bash setup.sh                  (or: sudo bash setup.sh 192.168.1.0/24  to also allow SSH from home Wi-Fi)

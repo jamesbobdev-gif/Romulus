@@ -26,10 +26,10 @@ FINAL = re.compile(r'\b(submit|send|place (your )?order|buy|purchase|pay|check ?
 EXCLUDE = ['search', 'upload_file', 'extract', 'screenshot', 'save_as_pdf', 'write_file', 'replace_file', 'read_file', 'evaluate', 'close']
 
 RULES = """
-You are filling in a web form for James. Fill every field you have his details for, then stop.
+You are filling in a web form for the user. Fill every field you have his details for, then stop.
 - Use only the details in the task. If a field needs something you don't have, a password, or anything
   you would have to make up, leave it empty and list it in your final message. Never invent answers.
-- Final buttons (submit, send, pay, book, apply…) and the Enter key are locked unless James already said
+- Final buttons (submit, send, pay, book, apply…) and the Enter key are locked unless the user already said
   yes. A refused click is expected: don't try other ways around it, just finish.
 - Before you finish, look at the page once more and check every field shows what you meant to enter.
 - Finish with done: what you filled (as the page shows it), what is missing, and whether it was submitted.
@@ -56,13 +56,13 @@ def locked_tools(approved: bool) -> Tools:
             node = await browser_session.get_element_by_index(params.index)
             label = element_label(node) if node else ''
             if FINAL.search(label) or (node and str((node.attributes or {}).get('type', '')).lower() == 'submit'):
-                return ActionResult(error=f'Locked: "{label.strip()[:80]}" looks like a final step. Stop here: James has to say yes first.')
+                return ActionResult(error=f'Locked: "{label.strip()[:80]}" looks like a final step. Stop here: The user has to say yes first.')
         return await orig_click.function(params=params, browser_session=browser_session)
 
     @tools.action('Send keyboard keys (like Tab, Escape, arrows).', param_model=SendKeysAction)
     async def send_keys(params: SendKeysAction, browser_session: BrowserSession):
         if not approved and re.search(r'enter|return', params.keys, re.I):
-            return ActionResult(error='Locked: Enter can submit a form. James has to say yes first.')
+            return ActionResult(error='Locked: Enter can submit a form. The user has to say yes first.')
         return await orig_keys.function(params=params, browser_session=browser_session)
 
     return tools
@@ -72,7 +72,7 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--task', required=True)
     ap.add_argument('--allow', action='append', default=[], help='an allowed site; repeat for more')
-    ap.add_argument('--approved', action='store_true', help='James said yes: final buttons are unlocked')
+    ap.add_argument('--approved', action='store_true', help='The user said yes: final buttons are unlocked')
     ap.add_argument('--cdp', default='http://127.0.0.1:9334')
     ap.add_argument('--ollama', default='http://127.0.0.1:11434')
     ap.add_argument('--model', default='qwen3.5:9b')
