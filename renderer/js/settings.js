@@ -257,6 +257,27 @@ $('supabaseLink').addEventListener('click',function(e){
   if(window.desktop&&window.desktop.gcalOpenUrl)window.desktop.gcalOpenUrl('https://supabase.com');
   else window.open('https://supabase.com','_blank');
 });
+// one code carries the whole form to another device (the anon key box hides its text, so it can't be copied on its own)
+const SYNC_CODE_PREFIX='tasks-sync:';
+const SYNC_CODE_FIELDS=[['u','syncUrl'],['k','syncAnonKey'],['s','syncKey'],['w','syncKeyW'],['a','syncKeyA'],['c','syncKeyS']];
+$('syncCopyBtn').addEventListener('click',function(){
+  const o={}; SYNC_CODE_FIELDS.forEach(function(x){ const v=$(x[1]).value.trim(); if(v)o[x[0]]=v; });
+  if(!o.u||!o.k||!o.s){ setSyncStatus('fill in the three fields first',true); return; }
+  const code=SYNC_CODE_PREFIX+btoa(JSON.stringify(o));
+  const done=function(){ setSyncStatus('sync code copied: paste it into the first box on the other device'); };
+  const oldCopy=function(){ const ta=document.createElement('textarea'); ta.value=code; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(e){} ta.remove(); if(ok)done(); else setSyncStatus('couldn’t copy',true); };
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(done,oldCopy); else oldCopy();
+});
+SYNC_CODE_FIELDS.slice(0,3).forEach(function(x){
+  $(x[1]).addEventListener('paste',function(e){
+    const t=((e.clipboardData&&e.clipboardData.getData('text'))||'').trim();
+    if(t.indexOf(SYNC_CODE_PREFIX)!==0)return;
+    e.preventDefault();
+    let o; try{ o=JSON.parse(atob(t.slice(SYNC_CODE_PREFIX.length))); }catch(err){ setSyncStatus('that sync code is cut off: copy it again',true); return; }
+    SYNC_CODE_FIELDS.forEach(function(f){ $(f[1]).value=o[f[0]]||''; });
+    setSyncStatus('filled in from the sync code: press Save & sync');
+  });
+});
 $('syncGenBtn').addEventListener('click',function(){
   $('syncKey').value='tk_'+(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,10));
 });
