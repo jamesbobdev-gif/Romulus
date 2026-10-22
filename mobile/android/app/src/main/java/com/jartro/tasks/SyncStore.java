@@ -12,7 +12,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -57,9 +56,12 @@ final class SyncStore {
     static Row fetch(Context ctx, String channel) throws Exception {
         JSONObject cfg = config(ctx, channel);
         if (cfg == null) return null;
-        String url = base(cfg) + "/rest/v1/tasks_sync?sync_key=eq."
-                + URLEncoder.encode(cfg.getString("syncKey"), "UTF-8") + "&select=doc,updated_at";
-        HttpURLConnection c = open(cfg, url, "GET");
+        // through the database function that needs the key (the table itself is closed to the anon key)
+        HttpURLConnection c = open(cfg, base(cfg) + "/rest/v1/rpc/sync_get", "POST");
+        c.setDoOutput(true);
+        JSONObject body = new JSONObject();
+        body.put("p_sync_key", cfg.getString("syncKey"));
+        try (OutputStream os = c.getOutputStream()) { os.write(body.toString().getBytes("UTF-8")); }
         try {
             if (c.getResponseCode() != 200) return null;
             JSONArray rows = new JSONArray(readAll(c.getInputStream()));
@@ -67,7 +69,7 @@ final class SyncStore {
             if (rows.length() == 0) { r.doc = new JSONObject(); return r; }
             r.doc = rows.getJSONObject(0).optJSONObject("doc");
             if (r.doc == null) r.doc = new JSONObject();
-            r.updatedAt = rows.getJSONObject(0).optString("updated_at", null);
+            r.updatedAt = rows.getJSONObject(0).isNull("updated_at") ? null : rows.getJSONObject(0).getString("updated_at");
             return r;
         } finally { c.disconnect(); }
     }

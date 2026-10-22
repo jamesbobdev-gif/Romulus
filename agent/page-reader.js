@@ -10,7 +10,7 @@
    - step(browser, name, args, state): one browser tool call; after anything that can change the page
      it looks again by itself (so a step is never spent on browser_snapshot, and refs are never stale),
      and it says when the model repeats itself (a third identical call in a row isn't run)
-   Used by main.js; no Electron here, so it can be tested on its own. */
+   Used by agent/local-lane.js; no Electron here, so it can be tested on its own. */
 
 const REF = /^(?:f\d+)?e\d+$/;
 const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'listbox', 'spinbutton', 'checkbox', 'radio', 'switch', 'slider']);
@@ -46,7 +46,7 @@ function parse(text) {
     const m = line.match(/^(\s*)- (.*)$/);
     if (!m || /^- Page (URL|Title)|^- Console:|^- New console/.test(line.trim())) continue;
     const depth = m[1].length / 2;
-    const n = node(m[2]);
+    const n = node(yamlUnquote(m[2]));
     if (!n) continue;
     n.depth = depth; n.children = [];
     while (stack.length > 1 && stack[stack.length - 1].depth >= depth) stack.pop();
@@ -55,6 +55,17 @@ function parse(text) {
     stack.push(n);
   }
   return { page, root };
+}
+/* A name with a colon in it makes the line YAML-quoted: - 'link "Past due: Chapter 8 Discussion" [ref=e169]':
+   Read as text, it lost its ref (Blackboard's items and status boxes all have one) */
+function yamlUnquote(c) {
+  if (c[0] !== "'") return c;
+  let s = '', i = 1;
+  for (; i < c.length; i++) {
+    if (c[i] === "'") { if (c[i + 1] === "'") { s += "'"; i++; continue; } break; }
+    s += c[i];
+  }
+  return i >= c.length ? c : s + c.slice(i + 1);
 }
 function node(c) {
   if (c.startsWith('/url:')) return { role: '/url', value: c.slice(5).trim() };
@@ -151,6 +162,16 @@ function outline(snapshot, opts = {}) {
 
   // the page, wrappers removed, labels said once, site menus folded into one line each
   const body = [];
+  const clickLine = (n) => {
+    const name = once(n.name || clip(allText(n).join(' '), 80));
+    const url = ((n.children || []).find((c) => c.role === '/url') || {}).value;
+    let line = n.role + ' "' + clip(name, 100) + '" ' + tag(n);
+    if (n.role === 'link' && url && !/^(#|javascript:)/.test(url)) line += ' → ' + clip(url, 90);
+    if (n.attrs.disabled) line += ' (disabled)';
+    if (n.attrs.selected || n.attrs.pressed === true || n.attrs.expanded === true) line += ' (on)';
+    if (n.role === 'button' && FINAL.test(name)) line += '  🔒 final step';
+    return line;
+  };
   const render = (n, depth) => {
     const pad = '  '.repeat(Math.min(depth, 6));
     const kids = (n.children || []).filter((c) => c.role !== '/url');
@@ -171,7 +192,13 @@ function outline(snapshot, opts = {}) {
       for (const c of kids) render(c, depth);
       return;
     }
-    if (n.role === 'heading') { body.push(pad + '#'.repeat(Math.min(Number(n.attrs.level) || 2, 4)) + ' ' + clip(n.name || allText(n).join(' '), 150)); return; }
+    if (n.role === 'heading') {
+      const hashes = pad + '#'.repeat(Math.min(Number(n.attrs.level) || 2, 4)) + ' ';
+      // a heading that is itself the button or link (each of Blackboard's modules): show that, with its ref
+      const inner = []; walk(n, (c) => { if (c.ref && CLICKABLE.has(c.role)) inner.push(c); });
+      if (inner.length) { for (const c of inner) body.push(hashes + clickLine(c)); return; }
+      body.push(hashes + clip(n.name || allText(n).join(' '), 150)); return;
+    }
     if (n.role === 'img' || n.role === 'image') { if (n.name && n.ref && n.parent && CLICKABLE.has(n.parent.role)) return; if (n.name && n.name.length > 3) body.push(pad + '(image: ' + clip(n.name, 80) + ')'); return; }
     if (FIELD_ROLES.has(n.role)) {
       let line = pad + n.role + ' "' + clip(n.name || '', 80) + '" ' + tag(n) + ' = ' + fieldValue(n);
@@ -184,14 +211,7 @@ function outline(snapshot, opts = {}) {
       return;
     }
     if (CLICKABLE.has(n.role) && n.ref) {
-      const name = once(n.name || clip(allText(n).join(' '), 80));
-      const url = (kids.find((c) => c.role === '/url') || (n.children || []).find((c) => c.role === '/url') || {}).value;
-      let line = pad + n.role + ' "' + clip(name, 100) + '" ' + tag(n);
-      if (n.role === 'link' && url && !/^(#|javascript:)/.test(url)) line += ' → ' + clip(url, 90);
-      if (n.attrs.disabled) line += ' (disabled)';
-      if (n.attrs.selected || n.attrs.pressed === true || n.attrs.expanded === true) line += ' (on)';
-      if (n.role === 'button' && FINAL.test(name)) line += '  🔒 final step';
-      body.push(line);
+      body.push(pad + clickLine(n));
       return; // a button's or link's insides are its name
     }
     if ((n.role === 'alert' || n.role === 'main' || n.role === 'region') && !allText(n).join('').trim()) return;
@@ -209,6 +229,11 @@ function outline(snapshot, opts = {}) {
   // drop lines that are the same text twice in a row (cards repeat titles in image alt + link)
   const lines = body.filter((l, i) => i === 0 || l.trim() !== body[i - 1].trim());
   let out = head.join('\n') + (head.length ? '\n\n' : '') + lines.join('\n');
+  /* after a click, the part that changed: on a long page (a Blackboard course with all its modules) a module
+     that opened was below the cut, so its items never showed. Start just above what was clicked. */
+  const at = opts.focus ? lines.findIndex((l) => l.includes('[' + opts.focus + ']')) : -1;
+  if (out.length > max && at > 0 && (head.join('\n') + lines.slice(0, at + 1).join('\n')).length > max * 0.6)
+    out = head.join('\n') + (head.length ? '\n\n' : '') + '… (top of the page left out: this starts at what you clicked)\n' + lines.slice(Math.max(0, at - 2)).join('\n');
   if (out.length > max) {
     const cut = out.slice(0, max);
     out = cut.slice(0, cut.lastIndexOf('\n')) + '\n… (rest of the page cut. Use browser_find with a word to see a part further down)';
@@ -239,7 +264,9 @@ function fixArgs(name, args, state) {
   const a = Object.assign({}, args && typeof args === 'object' ? args : {});
   delete a.filename; // never save page output to files
   const refs = (state && state.refs) || {};
-  const tgt = (x) => { const t = x.target != null ? x.target : x.ref != null ? x.ref : x.element_ref != null ? x.element_ref : x.id; delete x.ref; delete x.element_ref; if (t != null) x.target = resolveRef(t, state); else if (x.element) x.target = resolveRef(x.element, state); return x; };
+  // an empty ref ("target": "") went out as an empty CSS selector and failed: use the element's words then
+  const given = (v) => v != null && String(v).trim() !== '';
+  const tgt = (x) => { const t = given(x.target) ? x.target : given(x.ref) ? x.ref : given(x.element_ref) ? x.element_ref : given(x.id) ? x.id : null; delete x.ref; delete x.element_ref; if (t != null) x.target = resolveRef(t, state); else if (x.element) x.target = resolveRef(x.element, state); return x; };
   if (name === 'browser_navigate' || (name === 'browser_tabs' && a.url)) {
     if (a.url && !/^[a-z]+:/i.test(String(a.url))) a.url = 'https://' + String(a.url).replace(/^\/+/, '');
     return a;
@@ -302,19 +329,64 @@ function fixArgs(name, args, state) {
 
 // ---------- one browser step ----------
 // tools after which the page may look different, so we look again for the model
-const CHANGES_PAGE = new Set(['browser_navigate', 'browser_navigate_back', 'browser_click', 'browser_type', 'browser_fill_form', 'browser_select_option', 'browser_press_key']);
+const CHANGES_PAGE = new Set(['browser_navigate', 'browser_navigate_back', 'browser_click', 'browser_type', 'browser_fill_form', 'browser_select_option', 'browser_press_key', 'browser_file_upload']);
 const firstLines = (s, n) => String(s).split('\n').filter((l) => l.trim() && !/^```|^### (Ran Playwright code|Page|Events)$|^await |^- Page (URL|Title)|^- Console|^- New console|^Call log:|^\s*(\x1b\[\d+m)?\s*- (waiting for|navigating to)/.test(l)).slice(0, n).join('\n');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const tabLines = (text) => String(text).match(/^- \d+: /gm) || [];
+// Playwright lists the tabs in an answer when one changed ("### Open tabs", left out when there's only one)
+const tabsIn = (text) => { const m = String(text).match(/^### Open tabs\n((?:- \d+:.*\n?)+)/m); return m ? tabLines(m[1]).length : /^### Page$/m.test(text) ? 1 : null; };
 
-async function look(browser, state, max) {
+// a site's file box is open (after a click on Upload / Attach): Playwright answers nothing else until it's handled
+const FILE_BOX = 'A file-choosing box is open: the site is waiting for a file, and nothing else on the page works until it is closed. ' +
+  'Call upload_file with the name of one of his files to put it in, or upload_file with no file to close the box.';
+const fileBoxOpen = (text) => /does not handle the modal state/i.test(String(text)) && /file ?chooser/i.test(String(text));
+async function look(browser, state, max, focus) {
   let snap = await browser.call('browser_snapshot', {});
+  if (fileBoxOpen(snap)) return FILE_BOX;
   if (/^Refused or failed|^Browser error/.test(snap)) return snap;
-  let o = outline(snap, { max });
+  let o = outline(snap, { max, focus });
   // a page still loading shows almost nothing: give it a moment once
-  if (Object.keys(o.refs).length < 4) { await wait(1500); snap = await browser.call('browser_snapshot', {}); o = outline(snap, { max }); }
+  if (Object.keys(o.refs).length < 4) { await wait(1500); snap = await browser.call('browser_snapshot', {}); o = outline(snap, { max, focus }); }
   const moved = state.url && o.page.url && o.page.url !== state.url;
-  state.refs = o.refs; state.url = o.page.url || state.url;
+  state.refs = o.refs; state.url = o.page.url || state.url; state.title = o.page.title || '';
   return (moved ? '(now on a different page)\n' : '') + o.text;
+}
+
+/* browser_find's matches, each with the boxes it sits in. Read as one page, eight Blackboard modules that each
+   say "Contains weekly quiz…" filled the space before "Quiz, Ch 8 Quiz" (the link he needed) was reached,
+   and the model searched "Quiz" 15 times. Each match is read on its own, the ones it can click come first,
+   and the boxes already shown above aren't repeated. */
+function findResults(res, args, state) {
+  const found = String(res).match(/^(Found \d+ match(?:es)? for .*?):?\n\n([\s\S]*?)(?=\n### |(?![\s\S]))/m);
+  if (!found) {
+    const o = outline(res, { max: 3000 });
+    Object.assign(state.refs = state.refs || {}, o.refs);
+    return o.text.replace(/^Page:[^\n]*\n(URL:[^\n]*\n)?\n?/, '') || 'Not on this page.';
+  }
+  let hit;
+  try { hit = args.regex ? new RegExp(args.regex, 'i') : null; } catch (e) { hit = null; }
+  const needle = String(args.text || '').toLowerCase();
+  const matches = (l) => (hit ? hit.test(l) : needle && l.toLowerCase().includes(needle));
+  const parts = found[2].split(/\n+----\n+/).map((snip) => {
+    const o = outline(snip, { max: 800 });
+    Object.assign(state.refs = state.refs || {}, o.refs);
+    const lines = o.text.split('\n').filter((l) => l.trim());
+    // something it can click, with the words it searched for
+    const useful = lines.some((l) => matches(l) && /\[(?:f\d+)?e\d+\]/.test(l));
+    return { lines, useful };
+  });
+  const order = parts.filter((p) => p.useful).concat(parts.filter((p) => !p.useful));
+  const shown = new Set(), out = [];
+  let size = 0, left = 0;
+  for (const p of order) {
+    const lines = p.lines.filter((l) => !(/:$/.test(l) && shown.has(l)));
+    p.lines.forEach((l) => { if (/:$/.test(l)) shown.add(l); });
+    const text = lines.join('\n');
+    if (out.length && size + text.length > 3000) { left++; continue; }
+    out.push(text); size += text.length;
+  }
+  return found[1] + (order[0] && order[0].useful ? ' (the ones you can click first)' : '') + ':\n\n' + out.join('\n--\n') +
+    (left ? '\n… ' + left + ' more match(es) not shown: search for more exact words to see them.' : '');
 }
 
 async function step(browser, name, args0, state, opts = {}) {
@@ -330,6 +402,10 @@ async function step(browser, name, args0, state, opts = {}) {
   if (name === 'browser_snapshot') return { args, text: await look(browser, state, max) + (repeats >= 2 ? '\n\n(You already looked at this page and nothing changed. Act on it, or answer.)' : '') };
   // a third identical call in a row isn't run at all: a small model that loops there never gets out by itself
   if (repeats >= 3) return { args, text: 'Not done: this is the 3rd time in a row you asked for exactly this, and it isn\'t working. Do something different, or answer now with what is done and what is stuck.', failed: true, blocked: true };
+  // how many tabs are open before a click, so a link that opens a new tab can be followed (below)
+  if (name === 'browser_click' && state.tabs == null) state.tabs = tabLines(await browser.call('browser_tabs', { action: 'list' })).length || 1;
+  // a section that is already open (Blackboard's learning modules): clicking it again closes it
+  const wasOpen = name === 'browser_click' && state.refs && state.refs[args.target] && state.refs[args.target].attrs.expanded === true;
   let res;
   if (name === 'browser_fill_form' && args.fields.length > 1) {
     // one field at a time: a wrong ref in one field doesn't lose all the others
@@ -344,9 +420,7 @@ async function step(browser, name, args0, state, opts = {}) {
   } else res = await browser.call(name, args);
   if (name === 'browser_find') {
     if (/^Refused or failed|^Browser error/.test(res)) return { args, text: res.slice(0, 1500) };
-    const o = outline(res, { max: 3000 });
-    Object.assign(state.refs = state.refs || {}, o.refs);
-    return { args, text: o.text.replace(/^Page:[^\n]*\n(URL:[^\n]*\n)?\n?/, '') || 'Not on this page.' };
+    return { args, text: findResults(res, args, state) };
   }
   const failed = /^Refused or failed|^Browser error/.test(res);
   const locked = /^Refused or failed: (This browser is locked|Locked:)/.test(res);
@@ -354,11 +428,30 @@ async function step(browser, name, args0, state, opts = {}) {
   let text = failed || /^Partly done/.test(res) ? firstLines(res, name === 'browser_fill_form' ? 30 : 4).replace(/### Error\n?|(browserBackend\.callTool: )?Error: /g, '').replace(/\x1b\[\d+m/g, '').slice(0, 1200) : ('Done: ' + (firstLines(res.replace(/^### Result\n/, ''), name === 'browser_fill_form' ? 30 : 3) || name.replace('browser_', '')).slice(0, 400));
   if (stale) text += '\nThat ref isn\'t on the page as it is now. Here is the page now; use only refs shown below.';
   else if (failed && !locked) text += '\nLook at the page below and try another way.';
-  // clicks wait for the page to draw, and a locked or sleeping screen on the mini PC never draws
-  if (/Timeout \d+ms exceeded[\s\S]*attempting (click|check|uncheck)/.test(res)) text += '\n(Clicks are timing out: the mini PC\'s screen is probably locked or asleep. Typing still works. If clicks keep failing, answer "needs-you" and say his mini PC\'s screen needs unlocking.)';
+  // clicks wait for the page to draw, and a locked or sleeping screen on the mini PC never draws;
+  // a page that never finishes loading (a slow site, or the mini PC busy) is a different problem
+  const timedOut = failed && /Timeout \d+ms exceeded|timed out/i.test(res);
+  const clickTimeout = timedOut && (/attempting (click|check|uncheck)/.test(res) || name === 'browser_click' || name === 'browser_select_option');
+  const loadTimeout = timedOut && !clickTimeout;
+  if (clickTimeout) text += '\n(Clicks are timing out: the mini PC\'s screen is probably locked or asleep. Typing still works. If clicks keep failing, answer "needs-you" and say his mini PC\'s screen needs unlocking.)';
+  else if (loadTimeout) text += '\n(The page took too long to load: the site is slow or the mini PC is busy. It may have partly loaded: look at the page below. If it is empty, open it once more; if it keeps timing out, answer "needs-you" and say the site wouldn\'t load.)';
   if (repeats >= 2) text += '\n(You have now done exactly this twice. If it still isn\'t right, try another way: a third time won\'t be run.)';
-  if (CHANGES_PAGE.has(name) && !locked) text += '\n\nThe page now:\n' + await look(browser, state, max);
-  return { args, text, failed, locked };
+  if (wasOpen && !failed) text += '\n(That section was already open, so this click closed it. Its items were already on the page: use browser_find with words from them.)';
+  /* a link that opens in a new tab (Blackboard's discussions, McGraw Hill quizzes): Playwright stays on
+     the old tab, so the page looked the same and the model clicked again and again. Move to the new one. */
+  const tabs = tabsIn(res);
+  let movedTab = false;
+  if (tabs != null && state.tabs != null && !failed) {
+    if (tabs > state.tabs) {
+      movedTab = true;
+      await browser.call('browser_tabs', { action: 'select', index: tabs - 1 });
+      await wait(1500); // the new tab is still loading
+      text += '\n(That opened in a new tab. You are on the new tab now.)';
+    }
+    state.tabs = tabs;
+  }
+  if (CHANGES_PAGE.has(name) && !locked) text += '\n\nThe page now:\n' + await look(browser, state, max, name === 'browser_click' && !movedTab ? args.target : null);
+  return { args, text, failed, locked, clickTimeout, loadTimeout };
 }
 
 module.exports = { outline, fixArgs, step, parse, FINAL };

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- calendar sign-in tokens and links (CalAccountsPlugin) and Finance (FinanceVaultPlugin: its key can't leave the phone anyway) stay on this phone, out of Google backups -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="cal_accounts.xml" />
+    <exclude domain="sharedpref" path="finance_vault.xml" />
+    <exclude domain="file" path="finance.vault" />
+</full-backup-content>

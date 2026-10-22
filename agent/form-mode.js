@@ -10,7 +10,7 @@
      what was filled, what's still empty and what he needs to give
    Passwords, SSN, card and bank numbers are never filled, whatever it answers. The browser lock
    (agent/browser-proxy.js) still refuses final clicks: this only types and chooses.
-   No Electron here, so it can be tested on its own (main.js passes in `ask`, which calls Ollama). */
+   No Electron here, so it can be tested on its own (agent/local-lane.js passes in `ask`, which calls Ollama). */
 
 const pageReader = require('./page-reader');
 
@@ -73,7 +73,7 @@ function schemaFor(fields) {
     missing: { type: 'array', items: { type: 'string' } } }, required: ['values', 'missing'] };
 }
 
-const RULES = `You fill in web forms for James. You get the task, his details and the form's fields.
+const RULES = `You fill in web forms for the user. You get the task, his details and the form's fields.
 For every field, give the value to enter:
 - Use only what the task and his details say. If you don't have it, give "" (leave it empty). Never
   make anything up: no guessed dates, numbers, answers or experience.
