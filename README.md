@@ -1,6 +1,6 @@
 # Tasks
 
-A clean, minimal to-do app. Simple list with due dates, tags, subtasks, and drag-to-reorder.
+Think of it as an open-source Meta Muse: a clean, minimal to-do app with an agent in it. Simple list with due dates, tags, subtasks, and drag-to-reorder.
 
 **New here?** [docs/SETUP.md](docs/SETUP.md) walks through installing, connecting an AI (Claude, OpenRouter, ChatGPT, Gemini, a free tier, or your own local model), syncing with your phone and connecting calendars. The rest of this file is for people working on the code.
 
