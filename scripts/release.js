@@ -27,5 +27,7 @@ pkg.version = process.argv[2] || bump(pkg.version);
 fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
 console.log('Releasing ' + pkg.version);
 
+// the public repo's README (install steps, what the repo is) travels with each release
+try { require('./releases-readme').syncReadme(); } catch (e) { console.log('releases README not updated: ' + e.message); }
 run('npx electron-builder --win --publish always', { stdio: 'inherit', env: Object.assign({}, process.env, { GH_TOKEN: token }) });
 console.log(`Done: ${pkg.version} is on https://github.com/${owner}/${repo}/releases — installed copies update within a few hours.`);
