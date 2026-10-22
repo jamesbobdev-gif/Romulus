@@ -4,7 +4,7 @@
    agent uses, with no tools, no connectors and a bare system prompt, so a call is ~1-2k tokens. */
 const path = require('path');
 const os = require('os');
-const { claudeExe } = require('../agent/platform');
+const { claudeExe, claudeEnv } = require('../agent/platform');
 const calendars = require('../agent/calendars');
 const mailEvents = require('../agent/mail-events');
 
@@ -26,7 +26,7 @@ function claudeJson(messages, schema, opts = {}) {
   const args = ['-p', '--output-format', 'json', '--model', model, '--effort', opts.effort || 'low', '--tools', '', '--strict-mcp-config',
     '--max-turns', '3', '--system-prompt', messages[0].content, '--json-schema', JSON.stringify(schema)];
   return new Promise((resolve, reject) => {
-    const p = require('child_process').spawn(exe, args, { cwd: os.tmpdir(), windowsHide: true });
+    const p = require('child_process').spawn(exe, args, { cwd: os.tmpdir(), windowsHide: true, env: claudeEnv(cfg) });
     let out = '', err = '';
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} reject(new Error('Claude took over 3 minutes')); }, 3 * 60 * 1000);
     p.stdout.on('data', (d) => { out += d; });

@@ -8,7 +8,7 @@
    Its tools are agent/local-tools.js, its browser agent/qwen-browser.js. */
 const path = require('path');
 const fs = require('fs');
-const { claudeExe } = require('./platform');
+const { claudeExe, claudeEnv } = require('./platform');
 const os = require('os');
 const pageReader = require('./page-reader');
 const signinWatch = require('./signin-watch');
@@ -84,6 +84,37 @@ function staleMarked(history) {
 }
 let localHeardAt = 0; // last time the mini PC streamed part of an answer
 handle('local:status', () => localStatus());
+/* ⚙ Local model: any Ollama, on this computer (http://localhost:11434, the default) or another machine.
+   local:probe asks one for its models; local:save keeps {url, model, enabled} (the rest of localModel,
+   like the browser's ssh host, is left as it is). */
+const OLLAMA_DEFAULT = 'http://localhost:11434';
+const cleanUrl = (u) => { u = String(u || OLLAMA_DEFAULT).trim().replace(/\/+$/, ''); if (!/^https?:\/\//i.test(u)) u = 'http://' + u; return /^https?:\/\/[a-z0-9._-]+(:\d+)?$/i.test(u) ? u : null; };
+handle('local:get', () => { const c = readConfig().localModel || {}; return { url: c.url || '', model: c.model || '', enabled: c.enabled !== false, configured: !!localCfg(), defaultUrl: OLLAMA_DEFAULT }; });
+handle('local:probe', async (_e, url) => {
+  const u = cleanUrl(url);
+  if (!u) return { ok: false, error: 'use an address like http://localhost:11434' };
+  try {
+    const [tags, ps] = await Promise.all(['tags', 'ps'].map((p) => fetch(u + '/api/' + p, { signal: AbortSignal.timeout(5000) }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })));
+    const models = (tags.models || []).map((m) => m.name).sort();
+    return { ok: true, url: u, models, running: (ps.models || []).map((m) => m.name) };
+  } catch (e) { return { ok: false, url: u, error: /abort|timeout/i.test(e.message) ? 'nothing answered at ' + u : e.message }; }
+});
+// → {url, model, enabled} merged into localModel (pure, for tests)
+function mergeLocalModel(cfg, change) {
+  const l = Object.assign({}, (cfg && cfg.localModel) || {});
+  if (change.enabled === false) { l.enabled = false; return l; }
+  const u = cleanUrl(change.url); if (!u) throw new Error('use an address like http://localhost:11434');
+  const m = String(change.model || '').trim(); if (!m) throw new Error('pick a model');
+  l.url = u; l.model = m; delete l.enabled;
+  return l;
+}
+handle('local:save', async (_e, change) => {
+  const c = readConfig();
+  try { c.localModel = mergeLocalModel(c, change || {}); } catch (e) { return { ok: false, error: e.message }; }
+  ctx.writeConfig(c);
+  if (c.localModel.enabled !== false) ctx.scheduleLocalRun && ctx.scheduleLocalRun();
+  return { ok: true, status: await localStatus() };
+});
 async function localStatus() {
   const c = localCfg();
   if (!c) return { configured: false };
@@ -216,7 +247,7 @@ function runHelperOn(id, prompt) {
     let out = '', err = '', p;
     try {
       p = require('child_process').spawn(exe, ['-p', '--output-format', 'json', '--max-turns', '12', '--tools', 'WebSearch,WebFetch', '--strict-mcp-config',
-        '--allowedTools', 'WebSearch,WebFetch', '--disallowedTools', 'Bash,PowerShell,Write,Edit,NotebookEdit,Agent,Read'], { cwd: dir, windowsHide: true });
+        '--allowedTools', 'WebSearch,WebFetch', '--disallowedTools', 'Bash,PowerShell,Write,Edit,NotebookEdit,Agent,Read'], { cwd: dir, windowsHide: true, env: claudeEnv(cfg) });
     } catch (e) { return resolve({ why: 'could not start Claude' }); }
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, ms);
     p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
@@ -584,4 +615,4 @@ async function checkSignins(force) {
 }
 
 const isBusy = () => localBusy || howtoCompacting;
-module.exports = { init, handlers, localStatus, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins };
+module.exports = { init, handlers, localStatus, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins };

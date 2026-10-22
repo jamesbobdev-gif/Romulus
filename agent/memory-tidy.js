@@ -4,7 +4,7 @@
    It never guesses from task titles, and if he edited the list while it ran, his version wins. */
 const path = require('path');
 const fs = require('fs');
-const { claudeExe } = require('./platform');
+const { claudeExe, claudeEnv } = require('./platform');
 const os = require('os');
 const supabase = require('./supabase');
 const usage = require('./usage-limit');
@@ -81,7 +81,7 @@ async function maybeTidyMemory() {
       let p;
       try {
         p = require('child_process').spawn(exe, ['-p', '--output-format', 'json', '--max-turns', '3', '--strict-mcp-config',
-          '--disallowedTools', 'Bash,PowerShell,Write,Edit,NotebookEdit,Agent,Read,Glob,Grep,WebSearch,WebFetch'], { cwd: workDir, windowsHide: true });
+          '--disallowedTools', 'Bash,PowerShell,Write,Edit,NotebookEdit,Agent,Read,Glob,Grep,WebSearch,WebFetch'], { cwd: workDir, windowsHide: true, env: claudeEnv(readConfig()) });
       } catch (e) { resolve({ out: '', err: e.message, code: -1 }); return; }
       const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 5 * 60 * 1000);
       p.stdout.on('data', (d) => { out += d; });

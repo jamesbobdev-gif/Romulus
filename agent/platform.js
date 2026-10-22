@@ -8,11 +8,47 @@ const os = require('os');
 const isWin = process.platform === 'win32';
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } };
 
-// the signed-in Claude Code CLI (config agentRunner.command overrides)
+/* The Claude Code CLI: the command set in config (agentRunner.command), else the official installer's
+   place (~/.local/bin), else `claude` on the PATH, else an npm -g install. When none is there the
+   installer's path comes back anyway, so an error names where it was expected. */
+const CLAUDE_HOME = () => path.join(os.homedir(), '.local', 'bin', isWin ? 'claude.exe' : 'claude');
+let claudeOnPath; // undefined = not looked yet; null = none
+function claudeFromPath() {
+  if (claudeOnPath !== undefined) return claudeOnPath;
+  claudeOnPath = null;
+  try {
+    const out = require('child_process').execFileSync(isWin ? 'where' : 'which', ['claude'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+    const hit = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l && (!isWin || /\.(exe|cmd|bat)$/i.test(l)) && isFile(l));
+    if (hit) claudeOnPath = hit;
+  } catch (e) {}
+  return claudeOnPath;
+}
+function claudeFromNpm() {
+  for (const root of npmGlobalRoots()) {
+    const dir = path.join(root, '@anthropic-ai', 'claude-code');
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      const bin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin && (pkg.bin.claude || Object.values(pkg.bin)[0]);
+      if (bin && isFile(path.join(dir, bin))) return path.join(dir, bin);
+    } catch (e) {}
+  }
+  return null;
+}
 function claudeExe(cfg) {
   const own = cfg && cfg.agentRunner && cfg.agentRunner.command;
   if (own) return own;
-  return path.join(os.homedir(), '.local', 'bin', isWin ? 'claude.exe' : 'claude');
+  const home = CLAUDE_HOME();
+  if (isFile(home)) return home;
+  return claudeFromPath() || claudeFromNpm() || home;
+}
+// forget where claude was found (after an install)
+function forgetClaude() { claudeOnPath = undefined; }
+const claudeInstalled = (cfg) => isFile(claudeExe(cfg));
+/* The environment for a Claude run. With an Anthropic API key saved (config.json → ai.anthropicKey) the
+   CLI bills that key instead of a Claude subscription sign-in; without one, the CLI's own sign-in is used. */
+function claudeEnv(cfg, base = process.env) {
+  const key = cfg && cfg.ai && String(cfg.ai.anthropicKey || '').trim();
+  return key ? Object.assign({}, base, { ANTHROPIC_API_KEY: key }) : base;
 }
 
 function chromeCandidates(env = process.env, win = isWin) {
@@ -55,4 +91,4 @@ function chromeMajor(chrome) {
   return '140';
 }
 
-module.exports = { isWin, claudeExe, chromeCandidates, findChrome, findNode, npmGlobalRoots, chromeUA, chromeMajor };
+module.exports = { isWin, claudeExe, claudeEnv, claudeInstalled, forgetClaude, chromeCandidates, findChrome, findNode, npmGlobalRoots, chromeUA, chromeMajor };
