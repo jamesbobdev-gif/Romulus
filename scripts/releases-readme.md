@@ -1,5 +1,7 @@
 # Tasks
 
+**Think of it as an open-source Meta Muse.**
+
 **A to-do list with an agent in it.** Write a task the way you'd tell a person ("find me the cheapest flight to Denver the weekend of the 14th", "order the groceries", "apply to these three internships", "draft a reply to the landlord"), hand it to the Agent, and it goes and does it: searches the web, reads pages, fills forms, compares prices, builds the cart, drafts the email. It comes back to you only when it needs a decision, and it **never buys, sends, submits or books anything until you reply "yes"** to the exact thing it described.
 
 **Bring your own model.** The Agent is not tied to one AI company. Plug in whatever you already pay for or can run: your Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama, on this computer or a box in the closet. Connect several and the app tries them in your order, falling to the next when one is busy or out of credit. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model, never a cloud one.
