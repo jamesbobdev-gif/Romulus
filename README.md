@@ -1,4 +1,6 @@
-# Tasks
+# Romulus
+
+**Romulus killed Remus. This should kill your need for Meta Muse.**
 
 **A to-do list with an agent in it.** Write a task the way you'd tell a person ("find the cheapest flight to Denver the weekend of the 14th", "order the groceries", "apply to these three internships", "draft a reply to the landlord"), hand it to the Agent, and it goes and does it: searches the web, reads pages, fills forms, compares prices, builds the cart, drafts the email. It comes back only when it needs a decision, and it **never buys, sends, submits or books anything until you reply "yes"** to the exact thing it described.
 
@@ -12,7 +14,7 @@ Plus a School list that pulls due dates from course calendars, an Ideas board, a
 
 ## Install
 
-**Windows:** download `Tasks-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/tasks-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
+**Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/tasks-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
 
 **Linux and macOS:** installers are built by the release workflow and attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
