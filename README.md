@@ -24,6 +24,9 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 
 ## What's in the box
 
+<p align="center"><img src="docs/images/human.png" width="400" alt="The Human tab: a list of to-dos with due dates, times, tags and a weekly repeat"> <img src="docs/images/agent.png" width="400" alt="The Agent tab: tasks waiting, working and needing an answer, one opened to the Agent's question about which Denver flight to book"></p>
+<p align="center"><sub>Made-up demo data.</sub></p>
+
 | | |
 |---|---|
 | **Human** | Your own to-dos: due dates, times, tags, subtasks, repeats, drag to reorder, search. |
