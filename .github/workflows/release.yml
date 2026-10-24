@@ -1,8 +1,9 @@
 # Builds the installers for Windows, Linux and macOS and publishes them to the public releases repository
 # (package.json → build.publish) whenever a version tag is pushed, or by hand from the Actions tab.
 #
-# Needs one repository secret: RELEASES_TOKEN, a GitHub token with "contents: write" on the releases
-# repository (a fine-grained personal access token scoped to that one repo is enough).
+# Needs one repository secret: RELEASES_TOKEN, a classic personal access token with the "repo" scope.
+# (A fine-grained token with Contents: read and write passes the check below but GitHub still refuses
+# release-asset uploads from it with "Resource not accessible by personal access token".)
 #
 # The macOS build is unsigned and not notarized: macOS will ask the person to allow it in System Settings
 # until an Apple Developer certificate is added (CSC_LINK / CSC_KEY_PASSWORD secrets).
@@ -42,10 +43,6 @@ jobs:
           perms=$(gh api repos/jamesbobdev-gif/tasks-releases --jq '.permissions' 2>&1) || { echo "RELEASES_TOKEN can't read the releases repository: $perms"; exit 1; }
           echo "token permissions on tasks-releases: $perms"
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to tasks-releases"; exit 1; }
-          echo probe > token-probe.txt
-          gh release upload v1.0.3 token-probe.txt --repo jamesbobdev-gif/tasks-releases --clobber || { echo "RELEASES_TOKEN can't upload release assets"; exit 1; }
-          gh release delete-asset v1.0.3 token-probe.txt --repo jamesbobdev-gif/tasks-releases -y
-          echo "asset upload probe OK"
       - run: npm ci
       - run: npm test
       # the app's own Google / Microsoft sign-in clients, when the repository has them as a secret
