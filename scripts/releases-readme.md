@@ -67,9 +67,13 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 3. Tasks opens. From then on it starts when you log in and lives in the tray by the clock. Closing the window hides it there; right-click the tray icon to quit.
 4. Optional: Start menu → right-click **Tasks** → Pin to taskbar.
 
-**Mac and Linux**: no installer yet. Build from source (a few minutes): clone the code, `npm install`, `npm run dist`.
+**Mac**: download the `.dmg` and drag Romulus to Applications. The app isn't signed by Apple yet, so the first open is right-click → Open, then allow it in System Settings → Privacy & Security.
 
-**Updates** arrive by themselves. Installed copies check here every few hours and install the next version when your computer has been idle. The tray menu has **Restart to update** if you don't want to wait.
+**Linux**: download the `.AppImage`, make it executable (`chmod +x Romulus-*.AppImage`) and run it.
+
+**Android phone**: download `Romulus-<version>.apk` on the phone and open it (the phone asks once to allow installs from your browser). Then **⚙ Settings → Device sync** and paste the sync code copied from your computer's Settings; the lists appear.
+
+**Updates** arrive by themselves. Computers check here every few hours and install the next version when they've been idle; the tray menu has **Restart to update** if you don't want to wait. The phone shows an **Update** banner when a newer version is here; tap it, then open the finished download. (Macs can't install updates on their own until the app is signed by Apple; download the new `.dmg` meanwhile.)
 
 ---
 
@@ -121,7 +125,7 @@ Your lists are shared through a free [Supabase](https://supabase.com) project of
 
 **Connect the computer**: **⚙ Settings → Device sync**. Paste the URL and the anon key, press **Generate key** for a sync key, press **Save & sync**. The sync key is the password to your list; anyone with it can read and change it.
 
-**Connect the phone**: install the Android app, open the same Settings panel, enter the same three values. The sync key is long, so send it to yourself through something you trust (a password-manager note), not a group chat.
+**Connect the phone**: install the Android app (`Romulus-<version>.apk` from the releases page; open it on the phone), open the same Settings panel, enter the same three values. The sync key is long, so send it to yourself through something you trust (a password-manager note), not a group chat.
 
 That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
@@ -141,8 +145,11 @@ Everything you connect stays on the computer where you connected it, in the app'
 
 | File | What it is |
 |---|---|
-| `Romulus-Setup-<version>.exe` | The installer. The only file most people need. |
-| `latest.yml` | What installed copies read to find out a new version exists. |
+| `Romulus-Setup-<version>.exe` | The Windows installer. |
+| `Romulus-<version>.dmg`, `Romulus-<version>-mac.zip` | The Mac app (the zip is what Mac updates download). |
+| `Romulus-<version>.AppImage` | The Linux app. |
+| `Romulus-<version>.apk` | The Android phone app. |
+| `latest*.yml` | What installed copies read to find out a new version exists. |
 | `*.blockmap` | Lets an update download only the parts that changed. |
 
 ## If something doesn't work

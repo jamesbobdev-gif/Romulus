@@ -68,7 +68,20 @@ One-click Google and Microsoft sign-in needs the app's own OAuth clients in `oau
 
 ### Releases
 
-`npm run release` bumps the version, builds the Windows installer on this machine and publishes it to the public releases repository named in `package.json` → `build.publish`, where installed copies look for updates. Pushing a `v*` tag runs `.github/workflows/release.yml` instead, which builds Windows, Linux and macOS on GitHub's runners; it needs a `RELEASES_TOKEN` secret with write access to that repository (and optionally `OAUTH_CLIENTS_JSON`).
+One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule.
+
+**Releasing to every device:** bump the version in `package.json`, commit, and push a `v<version>` tag. That runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS installers and the signed Android APK on GitHub's runners and publishes them all to the public releases repository named in `package.json` → `build.publish`. It needs these repository secrets:
+
+| Secret | What |
+|---|---|
+| `RELEASES_TOKEN` | Classic personal access token with the `repo` scope, write access to the releases repository. |
+| `ANDROID_KEYSTORE_BASE64` | The Android signing keystore, base64-encoded (`base64 -w0 release.keystore`). Without it the phone build is skipped. |
+| `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Its password, key alias and key password. |
+| `OAUTH_CLIENTS_JSON` | Optional: the app's own Google / Microsoft sign-in clients. |
+
+Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The macOS installer is unsigned until an Apple Developer certificate is added, so Macs download updates but can't install them yet.
+
+`npm run release` is the quick path for Windows only: it bumps the version, builds the installer on this machine and publishes it. The phone and the other systems only get a version that went through the tag workflow.
 
 Never add `seed-config.json` or `oauth-clients.json` to a build you share, and never share an APK built with your own `mobile/sync-config.json`: both hold keys to your lists.
 
@@ -81,7 +94,7 @@ npx cap sync android
 cd android && ./gradlew assembleDebug
 ```
 
-Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/debug/`; it updates an installed copy in place.
+Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/debug/`; it updates an installed copy in place. Its version comes from the root `package.json`. Without a `mobile/sync-config.json` the build bakes in no keys, and the phone is connected by pasting the sync code into Settings → Device sync; that is how the public APK from the releases page is built (see Releases below).
 
 ### Where your data lives
 

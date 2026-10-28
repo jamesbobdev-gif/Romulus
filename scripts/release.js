@@ -32,4 +32,5 @@ try { require('./releases-readme').syncReadme(); } catch (e) { console.log('rele
 run('npx electron-builder --win --publish always', { stdio: 'inherit', env: Object.assign({}, process.env, { GH_TOKEN: token }) });
 // the release page: say which file to download (GitHub adds source archives of its own that hold only the README)
 try { require('./releases-readme').writeNotes(pkg.version); } catch (e) { console.log('release notes not written: ' + e.message); }
-console.log(`Done: ${pkg.version} is on https://github.com/${owner}/${repo}/releases — installed copies update within a few hours.`);
+console.log(`Done: ${pkg.version} is on https://github.com/${owner}/${repo}/releases — Windows copies update within a few hours.`);
+console.log(`For the phone, Mac and Linux too: git commit -am "v${pkg.version}" && git tag v${pkg.version} && git push origin main v${pkg.version} (runs the release workflow).`);

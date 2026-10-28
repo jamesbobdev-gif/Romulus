@@ -86,7 +86,7 @@ That's every list: Work, Agent and School sync through the same project under ke
 
 Open the same Settings panel on the phone and enter the same three values. Keep them handy: the sync key is a long random string, so send it to yourself through something you trust (a password manager note, not a group chat).
 
-The Android app is built from the `mobile/` folder; see the README for the build steps.
+The Android app is `Romulus-<version>.apk` on the [releases page](https://github.com/jamesbobdev-gif/tasks-releases/releases/latest): download it on the phone and open it. It updates itself from then on (an **Update** banner appears when a new version is out). To build it yourself instead, see the README.
 
 ## 4. Calendars
 

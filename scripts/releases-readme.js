@@ -27,12 +27,15 @@ function syncReadme() {
 // the notes on a release page: which of the files is the installer. `node scripts/releases-readme.js notes 1.0.2`
 function releaseNotes(version) {
   return [
-    `## Download **Romulus-Setup-${version}.exe** and run it`,
+    `## Windows: download **Romulus-Setup-${version}.exe** and run it`,
     '',
-    'That one file is the installer for Windows. It updates an existing copy in place; your tasks and settings stay.',
+    'It updates an existing copy in place; your tasks and settings stay.',
     'Windows shows an "unrecognized app" warning because the installer isn\'t code-signed yet: click **More info → Run anyway**.',
     '',
-    'The other files are not for you: `latest.yml` and the `.blockmap` are how installed copies update themselves, and the',
+    `**Mac**: \`Romulus-${version}.dmg\`. **Linux**: \`Romulus-${version}.AppImage\`. **Android**: \`Romulus-${version}.apk\` (open it on the phone).`,
+    'A file is missing here only when that build didn\'t run for this release.',
+    '',
+    'The other files are not for you: `latest*.yml` and the `.blockmap`s are how installed copies update themselves, and the',
     '"Source code" archives are added by GitHub and hold only this repository\'s README.',
     '',
     'Setup, what the app does and where your keys live: see the [README](../../#readme).',

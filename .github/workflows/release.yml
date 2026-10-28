@@ -1,5 +1,7 @@
-# Builds the installers for Windows, Linux and macOS and publishes them to the public releases repository
-# (package.json → build.publish) whenever a version tag is pushed, or by hand from the Actions tab.
+# Builds the installers for Windows, Linux and macOS, and the Android APK, and publishes them to the public
+# releases repository (package.json → build.publish) whenever a version tag is pushed, or by hand from the
+# Actions tab. Installed copies on every device then pick the new version up on their own (main/updater.js
+# on computers, mobile/update-phone.js on the phone).
 #
 # Needs one repository secret: RELEASES_TOKEN, a classic personal access token with the "repo" scope.
 # (A fine-grained token with Contents: read and write passes the check below but GitHub still refuses
@@ -68,3 +70,70 @@ jobs:
             dist/*.yml
             dist/*.blockmap
           if-no-files-found: ignore
+
+  # The Android app, signed and uploaded to the same release, so phones update too (mobile/update-phone.js
+  # shows "Update" when a newer APK is there). Needs four more secrets: ANDROID_KEYSTORE_BASE64 (the
+  # keystore file, base64), ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. Every
+  # release must be signed with the same key or Android refuses to install one over the other. Without the
+  # keystore secret this job says so and ends; the desktop installers are unaffected.
+  android:
+    runs-on: ubuntu-latest
+    needs: build # the release exists once the desktop builds have published to it
+    if: ${{ always() && needs.build.result != 'cancelled' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Signing key
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret is not set: no phone build for this release"
+            echo "present=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "present=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        if: steps.keystore.outputs.present == 'true'
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        if: steps.keystore.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build the APK
+        if: steps.keystore.outputs.present == 'true'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          cd mobile
+          npm ci
+          node prepare-www.js   # no sync-config.json here: the public build bakes in no keys
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.keystore" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          version=$(node -p "require('../../package.json').version")
+          mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Romulus-$version.apk"
+          echo "APK=$RUNNER_TEMP/Romulus-$version.apk" >> "$GITHUB_ENV"
+          echo "TAG=v$version" >> "$GITHUB_ENV"
+      - name: Upload to the release
+        if: steps.keystore.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        shell: bash
+        run: gh release upload "$TAG" "$APK" --repo jamesbobdev-gif/tasks-releases --clobber
+      - uses: actions/upload-artifact@v4
+        if: steps.keystore.outputs.present == 'true'
+        with:
+          name: android-apk
+          path: ${{ env.APK }}

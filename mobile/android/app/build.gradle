@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+// The phone app carries the same version as the desktop app (package.json at the repository root), so one
+// release tag covers both and the phone's update check (mobile/update-phone.js) can compare against it.
+// versionCode must grow with every release for Android to install a build over the previous one: 1.0.4 -> 1000004.
+def rootPkg = new groovy.json.JsonSlurper().parse(file("$rootDir/../../package.json"))
+def appVersionName = rootPkg.version.toString()
+def appVersionParts = appVersionName.tokenize('.').collect { it.toInteger() }
+def appVersionCode = appVersionParts[0] * 1000000 + appVersionParts[1] * 1000 + appVersionParts[2]
+
 android {
     namespace = "com.jartro.tasks"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +15,8 @@ android {
         applicationId "com.jartro.tasks"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // phones only: Vosk ("Hey Romulus") ships native code for x86 emulators too, which would ~double the APK
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }

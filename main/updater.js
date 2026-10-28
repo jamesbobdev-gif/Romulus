@@ -2,7 +2,10 @@
    (jamesbobdev-gif/tasks-releases, see "publish" in package.json; `npm run release` puts them there).
    A new version downloads quietly in the background. Since the app lives in the tray and is rarely
    quit, it installs itself once the computer has sat idle a while and no agent work is running —
-   or right away from the tray's "Restart to update". */
+   or right away from the tray's "Restart to update".
+   Runs on Windows, Linux (AppImage) and macOS alike. On a Mac the update only installs once the app is
+   code-signed (the release workflow builds it unsigned until an Apple certificate is added); until then
+   the check fails quietly and is logged. The phone updates itself through mobile/update-phone.js. */
 
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
 const IDLE_CHECK_MS = 10 * 60 * 1000;
@@ -19,7 +22,7 @@ function shouldInstallNow({ idleSec, busy }) {
 }
 
 function start() {
-  if (!ctx.isPackaged || process.platform !== 'win32') return; // dev runs and other systems update by hand
+  if (!ctx.isPackaged) return; // dev runs update by hand
   const { autoUpdater } = require('electron-updater');
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
