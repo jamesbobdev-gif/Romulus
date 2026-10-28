@@ -173,6 +173,7 @@ function mergeRemoteWs(remoteDoc,ws){
   const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw)||mergedTombs.length!==rTombs.length;
   state.tasks=others.concat(merged);
   state.tombstones=mergedTombs;
+  if(changedLocal&&typeof billAlerts==='function')billAlerts(); // a bill to-do came from the computer (bill-reminders.js)
   return {changedLocal:changedLocal,changedRemote:changedRemote};
 }
 

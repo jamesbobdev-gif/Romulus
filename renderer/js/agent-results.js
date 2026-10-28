@@ -126,6 +126,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       // and an order placed after his yes (Amazon): done, and its cart gone
       if((u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)||(u.status==='done'&&Array.isArray(t.cart)&&t.cart.length&&!(Array.isArray(u.cart)&&u.cart.length)))keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''));
       t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
+      // agent-draft.js: the words waiting on his yes, in full and editable (his edits start over with each answer)
+      t.draft=u.draft&&typeof u.draft.text==='string'&&u.draft.text.trim()?{text:u.draft.text,where:String(u.draft.where||'')}:null; if(typeof draftEdits!=='undefined')delete draftEdits[t.id];
       t.seats=u.seats&&Array.isArray(u.seats.rows)?u.seats:null; if(typeof seatDrafts!=='undefined')delete seatDrafts[t.id]; // seat-map.js: its pick, fresh each answer
       t.showtimes=u.showtimes&&Array.isArray(u.showtimes.days)?u.showtimes:null; if(typeof showDay!=='undefined')delete showDay[t.id]; // seat-map.js: days and times to tap
       t.theaters=u.theaters&&Array.isArray(u.theaters.theaters)?u.theaters:null; if(typeof theaterPick!=='undefined')delete theaterPick[t.id]; // seat-map.js: the theaters on a map

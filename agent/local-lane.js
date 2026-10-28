@@ -24,7 +24,7 @@ const { laneOf, routeTask, privateMatch } = routing;
 const { cloudOrder, couldntDo } = require('./ai-connections');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText,
-  agentRow, prefLine, claimAgentTasks, howtoFile } = require('./task-context');
+  agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
 const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const { formFiles } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
@@ -83,6 +83,12 @@ function staleMarked(history) {
   return history.map((h, i) => (i < lastYou && h.who !== 'you' ? Object.assign({}, h, { stale: true }) : h));
 }
 let localHeardAt = 0; // last time the mini PC streamed part of an answer
+// the mini PC didn't answer: for a couple of minutes, tasks go straight on to the cloud AIs without trying it again
+const LOCAL_DOWN_MS = 2 * 60 * 1000, UNREACHABLE = /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH/i;
+let localDownAt = 0;
+// an answer saying something went out, and the buttons that send something
+const SUBMIT_CLAIM = /\b(was|were|has been|have been|is now|got|I)\s+(already\s+|successfully\s+)?(submitted|posted|sent|placed|published|turned in)\b|\bsuccessfully (submitted|posted|sent|placed)\b/i;
+const FINAL_BUTTON = /submit|post|send|apply|place|pay|book|publish|reply|turn in|confirm/i;
 handle('local:status', () => localStatus());
 /* ⚙ Local model: any Ollama, on this computer (http://localhost:11434, the default) or another machine.
    local:probe asks one for its models; local:save keeps {url, model, enabled} (the rest of localModel,
@@ -133,7 +139,8 @@ function localApproved(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude' && h.lane === 'local').slice(-1)[0] || {}).text || '';
-  return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply)( it)?\b/i.test(lastYou) && /reply\s*\**\s*yes/i.test(asked);
+  // Holo4 writes the ask its own ways: Reply **yes**, Reply "yes", **Reply “yes” to submit it.**
+  return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply|post)( it)?\b/i.test(lastYou) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
 }
 const LOCAL_BROWSER_RULES = `
 
@@ -163,6 +170,10 @@ current value. Every button, link and field has a ref in brackets, like [f1e15]:
   says yes. When the form is filled, stop and answer "needs-you" with what you filled, what's
   missing, and "Reply **yes** to submit it." If his latest reply is already that yes, you may click the
   final button once, then report what happened.
+- **Words he'll post or send** (a discussion post, a message, a long answer): type them into the page,
+  then stop as above and put every word you typed in "draft" (he reads and edits it in the app). If his
+  yes comes with a new text ("yes, but first replace what you typed with exactly this text"), clear
+  that box, type his text exactly, check the page shows it, then click the final button once.
 - **Check before you report:** compare the latest page view with what you meant to enter ("Still
   empty" and each field's "= value"). Fix anything wrong. Only list in your note what the page
   actually shows.
@@ -298,7 +309,7 @@ async function startLocalRun() {
   if (!queued.length) return;
   localBusy = true;
   // a long run on the mini PC (10–30 min) must not be cut off by this computer idling to sleep. Closing
-  // the lid still sleeps it (Windows' lid setting), so a sleep during the run is noticed and reported as such
+  // the lid still sleeps it (Windows' lid setting), so a sleep during the run is noticed and the task starts over on waking
   const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
   let slept = false; const onSuspend = () => { slept = true; agentLog('local: this computer went to sleep mid-task'); };
   ctx.powerMonitor.on('suspend', onSuspend);
@@ -306,32 +317,50 @@ async function startLocalRun() {
     const tasks = await claimAgentTasks(queued, 'local');
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
-    for (const t of tasks) await runLocalTask(c, t).catch(async (e) => {
-      const msg = String(e && e.message || e);
-      agentLog('local task failed: ' + msg + (slept ? ' (after this computer slept)' : ''));
-      const where = c.url.replace(/^https?:\/\//, '');
-      const stuck = slept
-        ? { reason: 'This computer went to sleep while the local model worked, which cut the connection.', fix: 'Keep the lid open (or set closing the lid to do nothing when plugged in), then reply “try again”.' }
-        : /fetch failed|ECONNREFUSED|abort/i.test(msg)
-        ? { reason: 'The local model isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
-        : /timed? ?out/i.test(msg)
-        ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
-        : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
-      // it failed: the cloud AIs take over, unless he was asleep (that's on this computer) or it's private
-      if (!slept && cloudOrder().length && !privateMatch(t)) {
-        sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
-        return;
-      }
-      const shot = await miniPcScreenshot().catch(() => null);
-      sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
-        note: 'The local model couldn’t finish this one. ' + stuck.reason }]);
-    });
+    // the mini PC is off or off the network: one quick look (or one that failed just now) instead of
+    // waiting out a timeout on every task in turn; they all go to the cloud AIs at once
+    let down = Date.now() - localDownAt < LOCAL_DOWN_MS;
+    if (!down && !(await localStatus()).online) { down = true; localDownAt = Date.now(); }
+    if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
+    for (const t of tasks) {
+      // this computer slept (mid-task or before this one): not a failure, it starts over now it's awake
+      if (slept) { sendToRenderer('agent:waiting', { ids: [t.id], until: Date.now(), slept: true }); continue; }
+      if (down) { await localFailed(c, t, 'fetch failed (not reachable)'); continue; }
+      await runLocalTask(c, t).then(() => { localDownAt = 0; }).catch(async (e) => {
+        const msg = String(e && e.message || e);
+        if (slept) {
+          agentLog('local task cut off: ' + msg + ' (this computer slept): queued again');
+          sendToRenderer('agent:waiting', { ids: [t.id], until: Date.now(), slept: true });
+          return;
+        }
+        if (UNREACHABLE.test(msg)) { down = true; localDownAt = Date.now(); }
+        await localFailed(c, t, msg);
+      });
+    }
   } finally {
     localBusy = false;
     ctx.powerSaveBlocker.stop(awake);
     ctx.powerMonitor.removeListener('suspend', onSuspend);
     scheduleLocalRun(); // anything queued meanwhile
   }
+}
+// a local task that couldn't finish: the cloud AIs take over, unless it's private (then it waits for him)
+async function localFailed(c, t, msg) {
+  agentLog('local task failed: ' + msg);
+  const where = c.url.replace(/^https?:\/\//, '');
+  const unreachable = UNREACHABLE.test(msg) || /abort/i.test(msg);
+  const stuck = unreachable
+    ? { reason: 'The local model isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
+    : /timed? ?out/i.test(msg)
+    ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
+    : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
+  if (cloudOrder().length && !privateMatch(t)) {
+    sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
+    return;
+  }
+  const shot = unreachable ? null : await miniPcScreenshot().catch(() => null); // no screenshot from a mini PC that isn't there
+  sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
+    note: 'The local model couldn’t finish this one. ' + stuck.reason }]);
 }
 async function runLocalTask(c, t) {
   const [prefs, locked] = await Promise.all([agentRow(':prefs'), agentRow(':locked')]);
@@ -401,6 +430,8 @@ async function runLocalTask(c, t) {
   let seen = JSON.stringify(task); // everything it was shown: the task's own links, search results, pages
   const searchedLinks = new Set(), opened = new Set(); // links its searches returned, pages it read
   let looked = startSeen, checkedBlocker = false; // used the browser this run; sent back once to look before blaming a login
+  let submittedNow = false, checkedClaim = false; // a final button went through this run; sent back once to check a "submitted" it didn't do
+  let typed = null; // the last long text it typed into a page (a post, a message): what goes out on his yes
   const madeCalls = new Set(); let repeats = 0; // searches and page reads already made, and how often it repeated one
   const formsFilled = {}; // fill_form runs per page address
   const started = Date.now();
@@ -441,6 +472,16 @@ async function runLocalTask(c, t) {
         checkedBlocker = true; final = null;
         messages.push({ role: 'user', content: 'You haven\'t looked at the browser in this run, and things may have changed since earlier messages (he says it\'s ready). Call browser_snapshot (or open the page) first, then decide from what it actually shows.' });
         show('\n🔎 Checking the browser before saying it\'s blocked…\n', true);
+        continue;
+      }
+      // "it was submitted earlier" with nothing sent this run: Holo4 said so about a discussion post whose
+      // Submit had stayed locked, while the page showed a different discussion. Make it check first
+      if (!submittedNow && !checkedClaim && step < maxSteps - 2 && SUBMIT_CLAIM.test(String(final.note || ''))) {
+        checkedClaim = true; final = null;
+        messages.push({ role: 'user', content: 'Nothing was submitted, posted or sent in this run. Only say it was if a page shows it (' +
+          (browser ? 'open the post or submission page and look for it' : 'you have no browser, so say you can\'t confirm it') +
+          '). If you can\'t confirm it, say so plainly and tell him how to check.' });
+        show('\n🔎 Checking that it was really submitted…\n', true);
         continue;
       }
       break;
@@ -523,6 +564,8 @@ async function runLocalTask(c, t) {
             show('🔑 Signed out: a sign-in page\n', true);
             result = r.text + '\n\n(This is a sign-in page: he is signed out here. Don\'t try to sign in. Answer "needs-you" now and say he needs to sign in on the mini PC\'s browser; a to-do for that is already on his list.)';
           }
+          if (!r.locked && !r.failed && (name === 'browser_click' && FINAL_BUTTON.test(what) || name === 'browser_press_key' && /enter/i.test(a.key || ''))) submittedNow = true;
+          if (!r.locked && !r.failed && name === 'browser_type' && String(a.text || args.text || '').trim().length >= 120) typed = { text: String(a.text || args.text), where: String(what).slice(0, 120) };
           if (r.locked) show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true);
           else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (r.clickTimeout) clickTimeouts++; else if (r.loadTimeout) loadTimeouts++; }
           const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
@@ -589,9 +632,14 @@ async function runLocalTask(c, t) {
     final.note = String(final.note || '') + '\n\n(' + (offered.length - real.length) + ' suggestion(s) removed: their links weren’t on any page I read.)';
   }
   const opts = real.length ? (await Promise.all(real.slice(0, 6).map((o) => enrichOption(o, 'local')))).filter(Boolean) : [];
+  // words waiting on his yes, shown in full so he can read and edit them: what it really typed into the
+  // page beats what it says it typed (its draft field); its own draft when it typed nothing long
+  const ownDraft = cleanDraft(final.draft);
+  const toPost = final.status === 'done' || submittedNow ? null
+    : typed ? cleanDraft({ text: typed.text, where: (ownDraft && ownDraft.where) || typed.where }) : ownDraft || null;
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
-    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live,
+    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live, draft: toPost,
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
 

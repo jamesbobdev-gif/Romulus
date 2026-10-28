@@ -30,7 +30,7 @@ function stampChanges(){
 function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas,hours:state.hours}; }
 function persist(){
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(function(){ stampChanges(); store.save(currentDoc()); schedulePush(); },200);
+  saveTimer=setTimeout(function(){ stampChanges(); store.save(currentDoc()); schedulePush(); if(typeof billAlerts==='function')billAlerts(); },200);
 }
 function touch(){ persist(); renderActive(); }
 function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else if(state.activeTab==='hours') renderHours(); else if(state.activeTab==='finance') return; else render(); }

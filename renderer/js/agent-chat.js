@@ -70,7 +70,15 @@ function agentSay(t,who,text,extra){
   if(t.history.length>40)t.history=t.history.slice(-40);
 }
 /* photos attached to an agent reply: shrunk on the device, uploaded to the agent-attachments
-   bucket (under the agent sync key), then passed to Claude with the reply */
+   bucket, then passed to Claude with the reply. The bucket is public, so the folder must not be the agent
+   sync key itself (every other list's key is derived from it): it is a hash of the key, which the bucket's
+   upload policy accepts (it starts with tk_agent_) and which gives nothing away. The same formula lives in
+   agent/qwen-browser.js for the mini PC's screenshots. */
+async function attachFolder(syncKey){
+  if(!(window.crypto&&crypto.subtle))throw new Error('no secure hash available here');
+  const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(syncKey)));
+  return 'tk_agent_att_'+Array.from(new Uint8Array(d)).map(function(b){return b.toString(16).padStart(2,'0');}).join('').slice(0,40);
+}
 const pendingAtts={}; // task id → [{blob, preview}] picked but not sent yet
 const attachTargets={}; // task id → {add: addFiles(), el} of its open reply box
 const picTargets={};    // task id → {add: addPics(), el} of its open Screenshots section (any non-agent task)
@@ -138,7 +146,7 @@ async function shrinkImage(file){ // → JPEG blob, longest side ≤ 1600px
 }
 async function uploadAttachment(blob){
   const a=attachProfile(); if(!a)throw new Error('agent sync isn\u2019t set up');
-  const base=a.url.replace(/\/+$/,''), path=a.syncKey+'/'+uid()+'.jpg';
+  const base=a.url.replace(/\/+$/,''), path=(await attachFolder(a.syncKey))+'/'+uid()+'.jpg';
   const r=await fetch(base+'/storage/v1/object/agent-attachments/'+path,{method:'POST',headers:{apikey:a.key,Authorization:'Bearer '+a.key,'Content-Type':'image/jpeg'},body:blob});
   if(!r.ok)throw new Error('upload failed ('+r.status+')');
   return base+'/storage/v1/object/public/agent-attachments/'+path;

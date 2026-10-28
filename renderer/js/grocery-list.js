@@ -108,7 +108,7 @@ function groceryNextLine(){
 // on (even for something else first, like "add your EBT card, then reply done") always shows its items
 function asksYes(t){
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
-  return !!last&&/reply\s*\**\s*yes/i.test(String(last.text||''));
+  return !!last&&/reply\s*[*"“”'‘’]*\s*yes\b/i.test(String(last.text||'')); // Reply **yes**, Reply "yes" (as agent/local-lane.js localApproved)
 }
 function wantsYes(t){
   if(taskWs(t)!=='agent'||t.done||t.status!=='needs-you')return false;

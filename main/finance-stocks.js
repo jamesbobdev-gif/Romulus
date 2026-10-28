@@ -8,6 +8,6 @@
 const core = require('../renderer/js/finance-core');
 
 module.exports = {
-  cleanHoldings: core.cleanHoldings, holdingsOf: core.holdingsOf, fetchQuotes: core.fetchQuotes, readChart: core.readChart,
+  cleanHoldings: core.cleanHoldings, holdingsOf: core.holdingsOf, fetchQuotes: core.fetchQuotes, fetchSectors: core.fetchSectors, readChart: core.readChart,
   portfolio: core.portfolio, portfolioLine: core.portfolioLine, stocksView: core.stocksView, SYMBOL: core.SYMBOL,
 };

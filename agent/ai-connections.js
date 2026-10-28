@@ -204,7 +204,7 @@ const HANDOFF = /\b(hand(s|ing|ed)?|pass(es|ing|ed)?)\b[^.]{0,20}\b(over|off|on|
 function couldntDo(u) {
   if (!u || u.status === 'done') return false;
   const some = (x) => Array.isArray(x) ? x.length > 0 : !!(x && typeof x === 'object');
-  if (some(u.ask) || some(u.cart) || some(u.cards) || some(u.options) || some(u.seats) || some(u.showtimes) || some(u.theaters)) return false;
+  if (some(u.ask) || some(u.cart) || some(u.draft) || some(u.cards) || some(u.options) || some(u.seats) || some(u.showtimes) || some(u.theaters)) return false;
   if (typeof u.cant === 'string' && u.cant.trim()) return true;
   return CANT.test(String(u.note || '')) || HANDOFF.test(String(u.note || ''));
 }

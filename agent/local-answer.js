@@ -50,6 +50,7 @@ const ANSWER_SCHEMA = { type: 'object', properties: {
   pref: { type: ['object', 'null'], properties: { section: { type: 'string' }, text: { type: 'string' } } },
   stuck: { type: ['object', 'null'], properties: { reason: { type: 'string' }, fix: { type: 'string' } } },
   howto: { type: ['string', 'null'] },
+  draft: { type: ['object', 'null'], properties: { text: { type: 'string' }, where: { type: 'string' } } },
 }, required: ['status', 'note'] };
 const ASK_FOR_JSON = 'Now give that as the JSON answer only: {"status":"done" or "needs-you","note":"<the answer you just wrote, in full>","options":[],"site_tips":[]}';
 const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).length;

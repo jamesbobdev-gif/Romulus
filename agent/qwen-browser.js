@@ -131,7 +131,9 @@ async function miniPcScreenshot() {
   if (!out.jpeg) { agentLog('local: no screenshot (the mini PC\'s browser didn\'t draw one)'); return null; }
   const a = ((readConfig().sync) || {}).agent || {};
   if (!a.url || !a.key || !a.syncKey) return null;
-  const base = a.url.replace(/\/+$/, ''), file = a.syncKey + '/stuck-' + Date.now().toString(36) + '.jpg';
+  // the bucket is public: the folder is a hash of the agent key, never the key (same formula as renderer/js/agent-chat.js attachFolder)
+  const folder = 'tk_agent_att_' + require('crypto').createHash('sha256').update(String(a.syncKey)).digest('hex').slice(0, 40);
+  const base = a.url.replace(/\/+$/, ''), file = folder + '/stuck-' + Date.now().toString(36) + '.jpg';
   try {
     const r = await fetch(base + '/storage/v1/object/agent-attachments/' + file, { method: 'POST', body: Buffer.from(out.jpeg, 'base64'),
       headers: { apikey: a.key, Authorization: 'Bearer ' + a.key, 'Content-Type': 'image/jpeg' }, signal: AbortSignal.timeout(20000) });

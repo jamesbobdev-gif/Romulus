@@ -142,3 +142,13 @@ test('an order placed after his yes is kept, with the review that had its total'
   assert.ok(t.kept && t.kept.includes('$25.40'));
   assert.strictEqual(t.cart, null);
 });
+
+test('words it will post come with the answer, and go with the next one', () => {
+  const t = { id: 'p', ws: 'agent', lane: 'local', status: 'working', history: [] };
+  const { cb } = load([t]);
+  cb.results([{ id: 'p', lane: 'local', status: 'needs-you', note: 'Drafted your post. Reply yes to post it.', draft: { text: 'Hi, I’m James.', where: 'HIST 1700' } }]);
+  assert.deepStrictEqual([t.draft.text, t.draft.where], ['Hi, I’m James.', 'HIST 1700']);
+  t.status = 'working'; // his yes put it back to work
+  cb.results([{ id: 'p', lane: 'local', status: 'done', note: 'Posted.' }]);
+  assert.strictEqual(t.draft, null);
+});

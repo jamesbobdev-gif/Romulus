@@ -104,6 +104,7 @@ contextBridge.exposeInMainWorld('desktop', {
   financeSetKind: (payee, kind) => ipcRenderer.invoke('finance:setKind', payee, kind),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
+  financeBills: () => ipcRenderer.invoke('finance:bills'),
   onFinanceLocked: (cb) => ipcRenderer.on('finance:locked', (_event, why) => cb(why)),
   onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),
   // Speak on desktop: Windows dictation; partials stream in while listening

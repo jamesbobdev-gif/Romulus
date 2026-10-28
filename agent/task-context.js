@@ -131,6 +131,15 @@ function cleanAsk(a) {
   }).filter(Boolean);
   return out.length ? out : undefined;
 }
+// words it typed (or wrote) for him to post or send, waiting on his yes: shown in full on the task, where
+// he can edit them before he says yes (renderer/js/agent-draft.js). {text, where}
+function cleanDraft(d) {
+  if (!d || typeof d !== 'object') return undefined;
+  const text = String(d.text == null ? '' : d.text).replace(/\r\n/g, '\n').trim().slice(0, 20000);
+  if (!text) return undefined;
+  const where = String(d.where == null ? '' : d.where).replace(/\s+/g, ' ').trim().slice(0, 120);
+  return where ? { text, where } : { text };
+}
 // the order it built, shown as cards he can deselect (renderer/js/grocery-list.js): [{name, qty, price, unit, image,
 // swap, suggested, why, options: [{name, qty, price, unit, image, url}]}] — suggested = something new that goes with the rest, in the cart but unselected until he taps it
 function cleanCart(c) {
@@ -188,4 +197,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks };
+  siteNotesFor, skillText, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks };

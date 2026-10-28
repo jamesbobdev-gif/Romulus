@@ -22,7 +22,7 @@
   var AAD = new TextEncoder().encode('tasks-finance-phone-v1');
 
   var key = null, vault = null, idleTimer = null, native = false;
-  var lastQuotes = null, lastDaily = null;
+  var lastQuotes = null, lastDaily = null, sectorsKnown = {};
   var lockedCbs = [], updatedCbs = [];
 
   var b64 = function (bytes) { var s = ''; bytes = new Uint8Array(bytes); for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); };
@@ -50,7 +50,7 @@
 
   function lock(why) {
     var was = !!key;
-    key = null; vault = null; lastQuotes = null; lastDaily = null;
+    key = null; vault = null; lastQuotes = null; lastDaily = null; sectorsKnown = {};
     clearTimeout(idleTimer); idleTimer = null;
     if (was) lockedCbs.forEach(function (cb) { try { cb(why || 'asked'); } catch (e) {} });
   }
@@ -167,7 +167,14 @@
         try { var d = await C.fetchQuotes(symbols, doFetch, '1y'); if (key !== k) return { locked: true }; lastDaily = { at: Date.now(), quotes: d.quotes }; }
         catch (e) { if (key !== k) return { locked: true }; }
       }
-      return C.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning);
+      // sectors hardly change: asked once per ticker while unlocked (the Portfolio mix charts)
+      var missing = symbols.filter(function (s) { return !(s in sectorsKnown); });
+      if (missing.length) {
+        var sec = await C.fetchSectors(missing, doFetch).catch(function () { return {}; });
+        if (key !== k) return { locked: true };
+        missing.forEach(function (s) { sectorsKnown[s] = sec[s] || null; });
+      }
+      return C.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning, sectorsKnown);
     },
     // this phone only: the computer and SimpleFIN keep working
     financeForget: async function () { lock('forgotten'); await call('forget'); return { ok: true }; },

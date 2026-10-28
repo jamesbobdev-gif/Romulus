@@ -36,8 +36,19 @@ test('arrays of secrets are sealed item by item; plain values pass through open'
   assert.strictEqual(store.openValue('plain'), 'plain');
 });
 
-test('a missing or broken config reads as {}', () => {
-  fs.writeFileSync(path.join(dir, 'config.json'), '{not json');
+test('a broken config.json falls back to the last good copy; nothing at all reads as {}', () => {
+  const file = path.join(dir, 'config.json');
+  store.writeConfig({ theme: 'first' });
+  store.writeConfig({ theme: 'second', ai: { geminiKey: 'g' } }); // the first write is now config.json.bak
+  assert.strictEqual(JSON.parse(fs.readFileSync(file + '.bak', 'utf8')).theme, 'first');
+  fs.writeFileSync(file, '{not json'); // a crash mid-write, or a stray edit
+  assert.deepStrictEqual(store.readConfig(), { theme: 'first' });
+  // a write while the file is broken keeps the good .bak rather than copying the broken file over it
+  store.writeConfig({ theme: 'third' });
+  assert.strictEqual(JSON.parse(fs.readFileSync(file + '.bak', 'utf8')).theme, 'first');
+  assert.deepStrictEqual(store.readConfig(), { theme: 'third' });
+  assert.ok(!fs.existsSync(file + '.tmp'));
+  fs.unlinkSync(file); fs.unlinkSync(file + '.bak');
   assert.deepStrictEqual(store.readConfig(), {});
 });
 

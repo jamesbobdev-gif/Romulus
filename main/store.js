@@ -40,18 +40,41 @@ function mapSecrets(o, fn, inCalAccounts) {
   }
   return out;
 }
+/* config.json holds every sign-in, sync key and API key, and most callers read it, change one thing and
+   write it back. So a read must never come back empty just because the file was briefly locked (antivirus,
+   a backup tool) or half-written by a crash: that empty object would be written back and every secret lost.
+   The last good copy is kept as config.json.bak and read when config.json is missing or won't parse; a
+   write goes to a temp file first and is renamed into place. */
+const BAK = '.bak', TMP = '.tmp';
+// the parsed file (secrets still sealed), or null when it is missing or unreadable
+function readRaw(file) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') console.error('config: cannot read ' + file + ': ' + e.message); return null; }
+  try { const j = JSON.parse(text); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch (e) { console.error('config: ' + file + ' is not valid JSON'); return null; }
+}
+function readSealed() {
+  const main = readRaw(configFile());
+  if (main) return main;
+  const bak = readRaw(configFile() + BAK);
+  if (bak) console.error('config: using the last good copy (config.json' + BAK + ')');
+  return bak || {};
+}
 function readConfig() {
-  try { return mapSecrets(JSON.parse(fs.readFileSync(configFile(), 'utf8')), openValue); } catch (e) { return {}; }
+  try { return mapSecrets(readSealed(), openValue); } catch (e) { return {}; }
 }
 function writeConfig(cfg) {
+  const file = configFile();
   try {
-    fs.mkdirSync(path.dirname(configFile()), { recursive: true });
-    fs.writeFileSync(configFile(), JSON.stringify(mapSecrets(cfg, sealValue)));
-  } catch (e) {}
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file + TMP, JSON.stringify(mapSecrets(cfg, sealValue)));
+    // the file being replaced becomes the last good copy, but only if it parses: a broken one must not bury a good .bak
+    if (readRaw(file)) { try { fs.copyFileSync(file, file + BAK); } catch (e) {} }
+    fs.renameSync(file + TMP, file); // atomic: config.json is always whole
+  } catch (e) { console.error('config: write failed: ' + e.message); }
 }
 // encrypt any secrets still sitting in config.json as plain text (older versions, or typed in by hand)
 function sealPlainSecrets() {
-  try { const raw = JSON.parse(fs.readFileSync(configFile(), 'utf8')); if (canEncrypt()) writeConfig(mapSecrets(raw, openValue)); } catch (e) {}
+  try { const raw = readRaw(configFile()); if (raw && canEncrypt()) writeConfig(mapSecrets(raw, openValue)); } catch (e) {}
 }
 
 // small rolling diary of what the runner did, for "why didn't it answer?" questions

@@ -26,11 +26,14 @@ function buildRow(t,canDrag){
     meta.appendChild(el('span','progress'+(subLate?' sub-late':''),doneCount+'/'+t.subs.length));
   }
   let dueDiff=null;
+  const today=formatDate(new Date());
+  // swiped to tomorrow's deck; with a due date it rides on the date chip instead of a second chip
+  const movedLater=!t.done&&t.plan&&t.plan>today;
   if(t.due){
     const info=dateInfo(t.due,t.dueTime);
     dueDiff=info.diff;
-    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text);
-    dateBtn.title='View in calendar';
+    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text+(movedLater?' ↪ tomorrow':''));
+    dateBtn.title=movedLater?'You swiped this to tomorrow — it comes back in tomorrow’s deck. Click to view in calendar':'View in calendar';
     dateBtn.addEventListener('click',function(e){
       e.stopPropagation();
       const p=t.due.split('-').map(Number);
@@ -49,11 +52,10 @@ function buildRow(t,canDrag){
   }
   // what the morning swipe decided: picked for today, or pushed to tomorrow's deck
   if(!t.done&&t.plan){
-    const today=formatDate(new Date());
     // worded as a decision, not a date, so it can't read as a second due date; and nothing when
     // it would just repeat the due chip ("today · today")
     if(t.plan===today&&t.planSet===today&&t.due!==today){ const c=el('span','chip plan','doing today'); c.title='You picked this for today'; meta.appendChild(c); }
-    else if(t.plan>today){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; meta.appendChild(c); }
+    else if(movedLater&&!t.due){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; meta.appendChild(c); }
   }
   if(taskWs(t)==='school'){
     if(state.activeTab!=='school')meta.appendChild(el('span','chip school','school'));
@@ -366,7 +368,7 @@ function buildPanel(t){
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.seats&&Array.isArray(t.seats.rows))panel.appendChild(seatMap(t)); // seat-map.js: its pick, tap others
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.showtimes&&Array.isArray(t.showtimes.days))panel.appendChild(showtimesCard(t)); // seat-map.js: tap a day, then a time
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.theaters&&Array.isArray(t.theaters.theaters))panel.appendChild(theatersCard(t)); // seat-map.js: the theaters on a map, tap one
-  if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):yesButton(t)); // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
+  if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):hasDraft(t)?draftBox(t):yesButton(t)); // agent-draft.js: the words it will post, editable // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
     const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to the Agent');
@@ -642,10 +644,10 @@ function render(){
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
   const ae=document.activeElement;
-  if(ae&&ae.dataset&&ae.dataset.replyFor){
-    const id=ae.dataset.replyFor, s=ae.selectionStart, e=ae.selectionEnd;
+  if(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor)){
+    const attr=ae.dataset.replyFor?'data-reply-for':'data-draft-for', id=ae.dataset.replyFor||ae.dataset.draftFor, s=ae.selectionStart, e=ae.selectionEnd;
     queueMicrotask(function(){
-      const ta=document.querySelector('textarea[data-reply-for="'+id+'"]');
+      const ta=document.querySelector('textarea['+attr+'="'+id+'"]');
       if(ta&&document.activeElement!==ta){ ta.focus(); try{ ta.setSelectionRange(s,e); }catch(err){} }
     });
   }
@@ -763,7 +765,8 @@ function render(){
 
 /* On the Human tab: one card per Agent task waiting on a yes ("Reply yes to submit it"), with a line
    of what it's about and Yes / No. Tap the card itself to open the task on the Agent tab. An order
-   with its cart shows no Yes here: items can be left out there, so it opens the order instead. */
+   with its cart shows no Yes here: items can be left out there, so it opens the order instead. Same
+   for words it will post: he reads (and can edit) them there first. */
 function yesContext(t){
   const last=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
   let s=String((last&&last.text)||t.note||'');
@@ -784,8 +787,8 @@ function drawYesPrompts(needing){
     const ctx=yesContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
     const row=el('div','yes-btns');
     const cart=Array.isArray(t.cart)&&t.cart.length;
-    if(cart){
-      const r=el('button','btn-accent','Review the order');
+    if(cart||hasDraft(t)){
+      const r=el('button','btn-accent',cart?'Review the order':'Read what it will post');
       r.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(t.id); });
       row.appendChild(r);
     } else {

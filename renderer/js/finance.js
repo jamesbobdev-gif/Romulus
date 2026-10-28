@@ -19,7 +19,7 @@ if(finApi){
     if(state.activeTab==='finance'&&!fin.data&&!fin.invalidated&&!inFlight){ fin.autoAsked=false; renderFinance(); }
   });
 }
-function financeLeave(){ fin.allowCapture=false; if(finApi&&finApi.financeScreen&&fin.screen){ fin.screen=false; finApi.financeScreen(false); } if(typeof finStopStocks==='function')finStopStocks(); fin.autoAsked=false; fin.data=null; fin.query=''; fin.account=''; fin.shown=50; fin.msg=''; const v=$('financeView'); if(v)v.textContent=''; }
+function financeLeave(){ fin.allowCapture=false; if(finApi&&finApi.financeScreen&&fin.screen){ fin.screen=false; finApi.financeScreen(false); } if(typeof finStopStocks==='function')finStopStocks(); fin.autoAsked=false; fin.data=null; fin.query=''; fin.stockQuery=''; fin.account=''; fin.shown=50; fin.msg=''; const v=$('financeView'); if(v)v.textContent=''; }
 
 function finMoney(n,cur){
   try{ return new Intl.NumberFormat(undefined,{style:'currency',currency:cur||'USD'}).format(n); }catch(e){ return (n<0?'-':'')+'$'+Math.abs(n).toFixed(2); }
@@ -384,6 +384,7 @@ function finStocksTitle(box,s,cur){
   return t;
 }
 function finDrawStocks(box,s,cur,load){
+  const typing=document.activeElement&&document.activeElement.id==='finStockSearch'; // the minute's refresh keeps him typing
   box.textContent='';
   box.appendChild(finStocksTitle(box,s,cur));
   const body=el('div','fin-stocks-body'); body.hidden=!finStocksOpen(); box.appendChild(body);
@@ -427,26 +428,92 @@ function finDrawStocks(box,s,cur,load){
     host._draw=draw; setTimeout(draw,0);
     if(typeof ResizeObserver!=='undefined')new ResizeObserver(draw).observe(host);
   } else body.appendChild(el('p','fin-note','Yahoo Finance didn’t send prices for this yet.'));
-  // each holding
+  // each holding: searchable by ticker or name, sorted by size or by its move over the window above
   const holdBox=el('div','fin-holdings-fold');
-  const table=el('div','fin-holdings');
-  const headRow=el('div','fin-hold head');
-  ['','Shares','Price','Today','Value','Gain'].forEach(function(h){ headRow.appendChild(el('span','mono fin-label',h)); });
-  table.appendChild(headRow);
-  s.rows.forEach(function(r){
-    const row=el('div','fin-hold');
-    const who=el('span','fin-desc'); who.appendChild(el('b',null,r.symbol||r.name)); if(r.symbol&&r.name)who.appendChild(el('span','fin-sub',r.name));
-    row.appendChild(who);
-    row.appendChild(el('span','fin-amt',String(Math.round(r.shares*1000)/1000)));
-    row.appendChild(el('span','fin-amt',finMoney(r.price,cur)));
-    row.appendChild(el('span','fin-amt fin-delta '+(!r.live?'':r.changePct>=0?'up':'down'),r.live?(r.changePct>=0?'▲ ':'▼ ')+Math.abs(r.changePct).toFixed(2)+'%':'—'));
-    row.appendChild(el('span','fin-amt',finMoney(r.value,cur)));
-    row.appendChild(el('span','fin-amt fin-delta '+(r.gain==null?'':r.gain>=0?'up':'down'),r.gain==null?'—':finSigned(r.gain,cur)));
-    table.appendChild(row);
+  const short={'3m':'3M','6m':'6M','1y':'1Y'}[pick[0]];
+  const rows=s.rows.map(function(r){
+    const d=(r.days||[]).filter(function(p){ return p[0]>=from.getTime(); });
+    const first=d.length?d[0][1]:0, now=r.live?r.price:d.length?d[d.length-1][1]:0;
+    return {r:r,pct:first&&now?(now/first-1)*100:null};
   });
+  const filt=el('div','fin-row');
+  const q=finInput('search','Search tickers…'); q.value=fin.stockQuery||''; q.id='finStockSearch';
+  const sel=el('select','fin-input fin-select');
+  [['value','Largest position'],['gain','Biggest % gain ('+short+')'],['loss','Biggest % loss ('+short+')']].forEach(function(o){ const opt=el('option',null,o[1]); opt.value=o[0]; sel.appendChild(opt); });
+  let sort='value'; try{ sort=localStorage.getItem('finStockSort')||'value'; }catch(e){}
+  sel.value=sort; if(!sel.value)sel.value='value';
+  filt.appendChild(q); filt.appendChild(sel);
+  holdBox.appendChild(filt);
+  const table=el('div','fin-holdings');
   holdBox.appendChild(table);
+  const drawRows=function(){
+    table.textContent='';
+    const headRow=el('div','fin-hold head');
+    ['','Shares','Price','Today',short,'Value','Gain'].forEach(function(h){ headRow.appendChild(el('span','mono fin-label',h)); });
+    table.appendChild(headRow);
+    const words=(fin.stockQuery||'').toLowerCase();
+    const shown=rows.filter(function(x){ return !words||((x.r.symbol||'')+' '+(x.r.name||'')).toLowerCase().includes(words); });
+    // no prices for the window: last, whichever way it's sorted
+    const by=sel.value==='gain'?function(x){ return x.pct==null?-Infinity:x.pct; }:sel.value==='loss'?function(x){ return x.pct==null?-Infinity:-x.pct; }:function(x){ return x.r.value; };
+    shown.sort(function(a,b){ return by(b)-by(a); });
+    if(!shown.length)table.appendChild(el('p','fin-note','No holding matches “'+fin.stockQuery+'”.'));
+    shown.forEach(function(x){
+      const r=x.r, row=el('div','fin-hold');
+      const who=el('span','fin-desc'); who.appendChild(el('b',null,r.symbol||r.name)); if(r.symbol&&r.name)who.appendChild(el('span','fin-sub',r.name));
+      row.appendChild(who);
+      row.appendChild(el('span','fin-amt',String(Math.round(r.shares*1000)/1000)));
+      row.appendChild(el('span','fin-amt',finMoney(r.price,cur)));
+      row.appendChild(el('span','fin-amt fin-delta '+(!r.live?'':r.changePct>=0?'up':'down'),r.live?(r.changePct>=0?'▲ ':'▼ ')+Math.abs(r.changePct).toFixed(2)+'%':'—'));
+      row.appendChild(el('span','fin-amt fin-delta '+(x.pct==null?'':x.pct>=0?'up':'down'),x.pct==null?'—':(x.pct>=0?'▲ ':'▼ ')+Math.abs(x.pct).toFixed(1)+'%'));
+      row.appendChild(el('span','fin-amt',finMoney(r.value,cur)));
+      row.appendChild(el('span','fin-amt fin-delta '+(r.gain==null?'':r.gain>=0?'up':'down'),r.gain==null?'—':finSigned(r.gain,cur)));
+      table.appendChild(row);
+    });
+  };
+  drawRows();
+  q.addEventListener('input',function(){ fin.stockQuery=q.value.trim(); drawRows(); });
+  sel.addEventListener('change',function(){ try{ localStorage.setItem('finStockSort',sel.value); }catch(e){} drawRows(); });
+  if(typing)setTimeout(function(){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); },0);
   body.appendChild(finFoldable(holdBox,'holdings','Holdings',s.rows.length+(s.rows.length===1?' holding':' holdings')));
+  const mix=portfolioMix(s.rows);
+  if(mix.total>0)body.appendChild(finMixFold(mix,cur));
   body.appendChild(el('p','fin-note','Prices from Yahoo Finance. Only the ticker symbols (like AAPL) are sent to it, never your shares or amounts.'));
+}
+/* Portfolio mix (finance-insights.js): what the stocks add up to by sector, industry, holding, or stocks vs
+   funds, as bars with each one's share. Sectors come from Yahoo's search, sent only the ticker */
+function finMixFold(mix,cur){
+  const box=el('div','fin-holdings-fold');
+  const views=[['sectors','Sector'],['industries','Industry'],['holdings','Holding'],['types','Stocks vs funds']];
+  let pick='sectors'; try{ pick=localStorage.getItem('finMixView')||'sectors'; }catch(e){}
+  if(!mix[pick])pick='sectors';
+  const bar=el('div','fin-views'), note=el('p','fin-note'), bars=el('div','fin-mix');
+  const draw=function(){
+    bar.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on',b.dataset.v===pick); });
+    const list=mix[pick], rows=list.slice(0,10);
+    if(list.length>10){ const rest=list.slice(10); rows.push({name:rest.length+' more',value:rest.reduce(function(s,x){ return s+x.value; },0),pct:rest.reduce(function(s,x){ return s+x.pct; },0),many:rest}); }
+    const top=list[0];
+    note.textContent=pick==='holdings'?'Your biggest holding, '+top.name+', is '+top.pct.toFixed(0)+'% of your stocks.'
+      :pick==='types'?'Funds (ETFs, mutual funds) hold many companies each, so they spread out more than a single stock.'
+      :'Funds don’t say which sectors they hold, so they show as their own bar. “Unknown” is a ticker Yahoo had nothing for.';
+    bars.textContent='';
+    rows.forEach(function(x){
+      const r=el('div','fin-hbar');
+      r.title=x.many?x.many.map(function(m){ return m.name+': '+finMoney(m.value,cur)+' ('+m.pct.toFixed(1)+'%)'; }).join('\n'):x.name+': '+finMoney(x.value,cur);
+      r.appendChild(el('span','fin-hbar-name',x.name));
+      const track=el('span','fin-hbar-track'), f=el('span','fin-hbar-fill');
+      f.style.width=Math.max(2,x.value/top.value*100)+'%'; track.appendChild(f); r.appendChild(track);
+      r.appendChild(el('span','fin-amt',x.pct.toFixed(1)+'%'));
+      bars.appendChild(r);
+    });
+  };
+  views.forEach(function(v){
+    const b=el('button','ghost mono',v[1]); b.dataset.v=v[0];
+    b.addEventListener('click',function(){ pick=v[0]; try{ localStorage.setItem('finMixView',pick); }catch(e){} draw(); });
+    bar.appendChild(b);
+  });
+  box.appendChild(bar); box.appendChild(note); box.appendChild(bars);
+  draw();
+  return finFoldable(box,'mix','Portfolio mix',mix.sectors.length+(mix.sectors.length===1?' sector':' sectors'));
 }
 // one line, its range zoomed to the values (a portfolio moves a little in a day), with a hover readout
 function finStockLine(host,tip,pts,width,cur,today){
@@ -642,6 +709,61 @@ function finVariableChart(c,cur){
   box.appendChild(cols);
   return finFoldable(box,'variable','Variable costs',avg?finMoney(avg,cur)+'/mo':'');
 }
+/* Debts (finance-insights.js debtPlan): each card and loan, what it charged in interest, the yearly rate that
+   works out to, and how long the usual payment takes to clear it. Highest rate first: extra money there saves
+   the most interest. Only arithmetic on what the bank sent, so the rate and months are "about" */
+function finDebtsCard(d,cur){
+  const p=debtPlan(d.accounts,d.kinds);
+  if(!p.debts.length)return null;
+  const box=el('div','fin-card fin-chart');
+  box.appendChild(el('h3',null,'Debts'));
+  box.appendChild(el('p','fin-note',p.interestMonth>0
+    ?'You paid '+finMoney(p.interestMonth,cur)+' in interest last month ('+finMoney(p.interestYear,cur)+' over the last year).'
+      +(p.first?' '+p.first+' costs the most: any extra you pay there saves the most interest.':'')
+    :'No interest charged in the last month.'+(p.interestYear>0?' '+finMoney(p.interestYear,cur)+' over the last year.':'')));
+  p.debts.forEach(function(x){
+    const r=el('div','fin-debt');
+    const who=el('span','fin-desc'); who.appendChild(el('b',null,x.name));
+    const bits=[];
+    if(x.rate)bits.push('about '+x.rate.toFixed(1)+'% a year');
+    if(x.interestMonth>0)bits.push(finMoney(x.interestMonth,cur)+' interest last month');
+    else if(x.interest)bits.push('accrues interest');
+    if(x.due)bits.push('due '+finDate(new Date(x.due+'T12:00:00').getTime()/1000));
+    if(bits.length)who.appendChild(el('span','fin-sub',bits.join(' · ')));
+    who.appendChild(el('span','fin-sub',x.monthlyPay?(x.months?'At your usual '+finMoney(x.monthlyPay,cur)+' a month: paid off in about '+x.months+(x.months===1?' month':' months')+(x.interestLeft>0?', about '+finMoney(x.interestLeft,cur)+' more interest':''):'Your usual '+finMoney(x.monthlyPay,cur)+' a month doesn’t keep up with the interest.'):'No payments in the last 3 months.'));
+    r.appendChild(who);
+    r.appendChild(el('span','fin-amt neg',finMoney(x.owed,cur)));
+    box.appendChild(r);
+  });
+  box.appendChild(el('p','fin-note','The rate is worked out from the interest actually charged, so it’s rough. On a card, paying the full statement balance by the due date stops new interest.'));
+  const owed=p.debts.reduce(function(s,x){ return s+x.owed; },0);
+  return finFoldable(box,'debts','Debts',finMoney(owed,cur)+(p.interestMonth>0?' · '+finMoney(p.interestMonth,cur)+' interest/mo':''));
+}
+/* Subscriptions (finance-insights.js subscriptionCheck): price rises first, then ones that just started (a free
+   trial turning paid looks like that), then everything that charges each month and since when */
+function finSubsCard(s,cur){
+  const box=el('div','fin-card fin-chart');
+  box.appendChild(el('h3',null,'Subscriptions'));
+  const since=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',year:'numeric'}); };
+  s.raised.forEach(function(x){
+    box.appendChild(el('p','fin-alert','▲ '+x.name+' went from '+finMoney(x.from,cur)+' to '+finMoney(x.to,cur)+' ('+finDate(x.when/1000)+')'));
+  });
+  s.fresh.forEach(function(x){
+    box.appendChild(el('p','fin-alert','New: '+x.name+' started charging '+finMoney(x.amount,cur)+' on '+finDate(x.when/1000)+'. If it was a free trial, it’s paid now.'));
+  });
+  if(!s.subs.length)box.appendChild(el('p','fin-note','No subscriptions found. Tag a charge as fixed in Transactions and it shows here.'));
+  else box.appendChild(el('p','fin-note','About '+finMoney(s.total,cur)+' a month across '+s.subs.length+(s.subs.length===1?' subscription.':' subscriptions.')+' Hover one to see how long it’s been charging.'));
+  s.subs.forEach(function(x){
+    const r=el('div','fin-acct');
+    r.title=x.name+': charging since '+since(x.since)+', last on '+finDate(x.last/1000);
+    const who=el('span','fin-desc'); who.appendChild(el('span',null,x.name)); who.appendChild(el('span','fin-sub','since '+since(x.since)+(x.months>=12?' · over a year':'')));
+    r.appendChild(who);
+    r.appendChild(el('span','fin-amt',finMoney(x.monthly,cur)+'/mo'));
+    box.appendChild(r);
+  });
+  const flags=s.raised.length+s.fresh.length;
+  return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo');
+}
 // on a charge: how it counts; a tap moves every charge from that payee to the next kind
 function finKindTag(t,kind,redraw){
   const b=el('button','mono fin-kind '+kind,FIN_KINDS[kind]);
@@ -778,15 +900,20 @@ function drawFinMain(v){
   });
   v.appendChild(finFoldable(accts,'accounts','Accounts',d.accounts.length+(d.accounts.length===1?' account':' accounts')));
   v.appendChild(finWorthChart(d.accounts,cur));
+  const debts=finDebtsCard(d,cur); if(debts)v.appendChild(debts);
   v.appendChild(finStocksCard(cur));
 
   // fixed and variable costs (finance-costs.js): drawn again when he corrects a payee below
   const costBox=el('div','fin-charts');
   v.appendChild(costBox);
+  const subsBox=el('div'); v.appendChild(subsBox);
   const allTxs=[];
   d.accounts.forEach(function(a){ a.transactions.forEach(function(t){ allTxs.push(t); }); });
   let costs=null;
-  const drawCosts=function(){ costs=costsOf(allTxs,d.kinds); costBox.textContent=''; costBox.appendChild(finFixedChart(costs,cur)); costBox.appendChild(finVariableChart(costs,cur)); };
+  const drawCosts=function(){
+    costs=costsOf(allTxs,d.kinds); costBox.textContent=''; costBox.appendChild(finFixedChart(costs,cur)); costBox.appendChild(finVariableChart(costs,cur));
+    subsBox.textContent=''; subsBox.appendChild(finSubsCard(subscriptionCheck(allTxs,d.kinds),cur));
+  };
   drawCosts();
 
   let stmtCard=null;

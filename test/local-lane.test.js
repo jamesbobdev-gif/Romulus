@@ -17,6 +17,12 @@ test('localApproved: his yes to what the mini PC asked', () => {
   assert.ok(lane.localApproved({ reply: 'yes', history: asked }));
   assert.ok(!lane.localApproved({ reply: 'yes', history: [{ who: 'claude', text: 'Reply yes to submit it.' }] })); // Claude asked, not the mini PC
   assert.ok(!lane.localApproved({ reply: 'wait', history: asked }));
+  // Holo4 quotes the yes instead of bolding it (the Chapter 8 post asked twice for that)
+  for (const text of ['The post is typed. **Reply "yes" to submit it.**', 'Reply “yes” to post it.', '**Reply \'yes\'** to send it'])
+    assert.ok(lane.localApproved({ reply: 'yes', history: [{ who: 'claude', lane: 'local', text }] }), text);
+  assert.ok(!lane.localApproved({ reply: 'yes', history: [{ who: 'claude', lane: 'local', text: 'Reply yesterday’s date and I’ll look.' }] }));
+  // his yes with his own version of the post (renderer/js/agent-draft.js) still unlocks the final click
+  assert.ok(lane.localApproved({ reply: 'yes, but first replace what you typed with exactly this text, then post it:\n\nHi all', history: asked }));
 });
 
 test('cleanStuck trims and fills in the missing half', () => {

@@ -44,6 +44,35 @@ test('after his yes, Submit goes through; signing out never does', () => {
   lock(false);
 });
 
+test('only web addresses open, in every mode: no file://, javascript: or chrome://', () => {
+  assert.strictEqual(proxy.schemeRefusal(call('browser_navigate', { url: 'https://jobs.example.com/apply' })), null);
+  assert.strictEqual(proxy.schemeRefusal(call('browser_navigate', { url: 'http://localhost:8080/' })), null);
+  assert.strictEqual(proxy.schemeRefusal(call('browser_navigate', { url: 'about:blank' })), null);
+  assert.strictEqual(proxy.schemeRefusal(call('browser_tabs', { action: 'list' })), null);
+  assert.match(proxy.schemeRefusal(call('browser_navigate', { url: 'file:///C:/Users/x/AppData/Roaming/Tasks/config.json' })), /Only web addresses/);
+  assert.match(proxy.schemeRefusal(call('browser_navigate', { url: ' JavaScript:alert(1)' })), /Only web addresses/);
+  assert.match(proxy.schemeRefusal(call('browser_tabs', { action: 'new', url: 'chrome://settings' })), /Only web addresses/);
+  assert.match(proxy.schemeRefusal(call('browser_navigate', { url: '' })), /Only web addresses/);
+});
+
+test('Enter on a checkout or application page waits for his yes like the button does', () => {
+  // Claude's lane, no lock file: the buy guard alone
+  const enter = call('browser_press_key', { key: 'Enter' });
+  assert.match(proxy.buyRefusal(enter, 'https://www.walmart.com/checkout'), /Not without a yes: pressing Enter/);
+  assert.match(proxy.buyRefusal(call('browser_press_key', { key: 'Control+Enter' }), 'https://www.amazon.com/gp/buy/spc/handlers/display.html'), /Not without a yes/);
+  assert.match(proxy.buyRefusal(call('browser_type', { ref: 'e8', text: 'Smith', submit: true }), here), /Not without a yes/); // …/apply
+  // the order button itself, however the page is named
+  assert.match(proxy.buyRefusal(call('browser_type', { ref: 'e6', text: '', submit: true }), 'https://shop.example.com/anything'), /Not without a yes/);
+  // searching is still Enter as usual
+  assert.strictEqual(proxy.buyRefusal(enter, 'https://www.walmart.com/search?q=checkout'), null);
+  assert.strictEqual(proxy.buyRefusal(enter, 'https://www.google.com/'), null);
+  assert.strictEqual(proxy.buyRefusal(call('browser_type', { ref: 'e8', text: 'milk', submit: true }), 'https://www.walmart.com/'), null);
+  // after his yes (the lock file is the local lane's way of saying so) Enter goes through
+  lock(true);
+  assert.strictEqual(proxy.buyRefusal(enter, 'https://www.walmart.com/checkout'), null);
+  lock(false);
+});
+
 test('uploads: only his files for forms, by their exact path', () => {
   assert.strictEqual(proxy.fileRefusal(call('browser_file_upload', { paths: [resume] })), null);
   assert.strictEqual(proxy.fileRefusal(call('browser_file_upload', {})), null); // closes the file box

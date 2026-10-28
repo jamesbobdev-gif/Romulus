@@ -28,6 +28,8 @@ const scrypt = require('util').promisify(crypto.scrypt);
 const financeMail = require('./finance-mail');
 const stocks = require('./finance-stocks');
 const hello = require('./finance-hello');
+const billsLib = require('../renderer/js/finance-bills');
+const insights = require('../renderer/js/finance-insights');
 // the SimpleFIN reading the phone shares (renderer/js/finance-core.js)
 const { checkSimplefinUrl, cleanAccounts, mergeAccounts: mergeWith, downloadAccounts, txt } = require('../renderer/js/finance-core');
 
@@ -109,7 +111,7 @@ async function rememberForHello() {
 function lock(why) {
   const was = !!key;
   if (key) key.fill(0);
-  key = null; vault = null; salt = null; lastQuotes = null; lastDaily = null;
+  key = null; vault = null; salt = null; lastQuotes = null; lastDaily = null; sectorsKnown = {};
   clearTimeout(idleTimer); idleTimer = null;
   if (was) { log('locked (' + (why || 'asked') + ')'); if (ctx.sendToRenderer) ctx.sendToRenderer('finance:locked', why || 'asked'); }
 }
@@ -222,6 +224,7 @@ const QUOTE_MS = 55 * 1000;
 const DAILY_MS = 3 * 60 * 60 * 1000;
 let lastQuotes = null; // {at, quotes, warning}: today's prices, while unlocked (prices aren't saved)
 let lastDaily = null; // {at, quotes}: a year of daily closes (the chart shows 3 months, 6 months or the year)
+let sectorsKnown = {}; // {SYMBOL: {type, sector, industry} | null}: the Portfolio mix charts, while unlocked
 async function stocksNow(force) {
   const held = stocks.holdingsOf((vault.cache && vault.cache.accounts) || []);
   if (!held.length) return { held: 0, rows: [] };
@@ -242,7 +245,14 @@ async function stocksNow(force) {
       lastDaily = { at: Date.now(), quotes: got.quotes };
     } catch (e) { if (key !== k) return { locked: true }; }
   }
-  return stocks.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning);
+  // sectors hardly change: asked once per ticker while unlocked
+  const missing = symbols.filter((s) => !(s in sectorsKnown));
+  if (missing.length) {
+    const got = await stocks.fetchSectors(missing, doFetch).catch(() => ({}));
+    if (key !== k) return { locked: true };
+    missing.forEach((s) => { sectorsKnown[s] = got[s] || null; });
+  }
+  return stocks.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning, sectorsKnown);
 }
 
 // "tasks-finance:1:" + the link and (when they fit in a scannable code) his corrections, as base64url JSON
@@ -259,7 +269,69 @@ async function afterUnlock() {
     try { await refresh(false); } catch (e) { warning = e.message; }
   }
   lookAtMail(false);
+  keepBills();
   return warning;
+}
+
+/* ── bill reminders (renderer/js/finance-bills.js) ──
+   Each unlock and refresh works the bills out again and keeps a small list outside the vault, sealed by
+   Windows: names, due days and dates, the interest flag, and the last due date the bank shows paid. No amounts,
+   no link. That's what lets the Human list get its "Pay …" to-dos while Finance is locked; whether one's paid is
+   only learned again when he unlocks. */
+const BILLS = 'finance-bills.json';
+const REMIND_DAYS = 3; // the to-do arrives 3 days ahead; the phone reminds again on the day (renderer/js/bill-reminders.js)
+const DAY_MS = 86400000;
+const billsFile = () => path.join(ctx.userData(), BILLS);
+function readBills() {
+  try {
+    const text = fs.readFileSync(billsFile(), 'utf8');
+    const b = JSON.parse(ctx.unseal ? ctx.unseal(text) : text);
+    return { bills: Array.isArray(b.bills) ? b.bills : [], odd: Array.isArray(b.odd) ? b.odd : [], reminded: b.reminded || {} };
+  } catch (e) { return { bills: [], odd: [], reminded: {} }; }
+}
+function writeBills(b) {
+  const tmp = billsFile() + '.tmp';
+  fs.writeFileSync(tmp, ctx.seal ? ctx.seal(JSON.stringify(b)) : JSON.stringify(b), { mode: 0o600 });
+  fs.renameSync(tmp, billsFile());
+}
+function keepBills() {
+  if (!key) return;
+  try {
+    const list = billsLib.billsOf((vault.cache && vault.cache.accounts) || [], vault.kinds);
+    const old = readBills(), cutoff = Date.now() - 90 * DAY_MS;
+    const reminded = {};
+    Object.keys(old.reminded).forEach((id) => { if (old.reminded[id] > cutoff) reminded[id] = old.reminded[id]; });
+    // and charges worth a second look (renderer/js/finance-insights.js): the to-do's words only, no amount
+    const odd = insights.oddCharges((vault.cache && vault.cache.accounts) || [], vault.kinds, Date.now(), 7)
+      .map((o) => ({ id: o.id, title: insights.oddTitle(o) }));
+    writeBills({ bills: list.map((b) => ({ key: b.key, name: b.name, day: b.day, due: b.due, paidThrough: b.paidThrough, interest: b.interest })), odd, reminded });
+    if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'bills');
+  } catch (e) { log('bills: couldn’t work them out (' + txt(e.message, 80) + ')'); }
+}
+/* for the Human list, locked or not: the bills due within 3 days (or overdue) not handed out before, and the
+   ones the bank shows paid, whose to-dos get checked off. Handing one out counts as reminding him. */
+function billsNow() {
+  const b = readBills();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = [], paid = [];
+  b.bills.forEach((x) => {
+    if (x.paidThrough) paid.push({ prefix: 'Pay ' + x.name, through: x.paidThrough });
+    let d = new Date(x.due + 'T00:00:00');
+    // long past and he hasn't unlocked since to say it's paid: next month's is coming either way
+    while (d.getTime() < today.getTime() - 10 * DAY_MS) d = billsLib.billMonthAfter(d, x.day);
+    if (d.getTime() - today.getTime() > REMIND_DAYS * DAY_MS) return;
+    const id = x.key + '|' + billsLib.billYmd(d);
+    if (b.reminded[id]) return;
+    b.reminded[id] = Date.now();
+    due.push({ title: billsLib.billTitle(x), prefix: 'Pay ' + x.name, due: billsLib.billYmd(d) });
+  });
+  b.odd.forEach((o) => {
+    if (b.reminded['odd|' + o.id]) return;
+    b.reminded['odd|' + o.id] = Date.now();
+    due.push({ title: o.title, prefix: o.title, due: billsLib.billYmd(today), kind: 'charge' });
+  });
+  if (due.length) { writeBills(b); log('bills: ' + due.length + ' reminder(s) or charge check(s) to the Human list'); }
+  return { due, paid };
 }
 
 /* ── the local model (agent/local-lane.js my_finances): his own model reading it, as plain text ── */
@@ -336,6 +408,7 @@ const handlers = {
     rememberForHello().catch(() => false);
     lookAtMail(true);
     try { await refresh(false); } catch (e) { return { ok: true, warning: e.message }; }
+    keepBills();
     return { ok: true };
   },
   'finance:unlock': async (_e, passphrase) => {
@@ -388,6 +461,8 @@ const handlers = {
     return { ok: true, hello: helloReady() };
   },
   'finance:lock': () => { lock('asked'); return true; },
+  // the Human list asks hourly, locked or not (renderer/js/bill-reminders.js)
+  'finance:bills': () => billsNow(),
   // the tab is (or stops being) on screen: no screenshots, screen sharing or screen-reading AI of it
   'finance:screen': (_e, on) => { if (ctx.protectWindow) ctx.protectWindow(!!on); return true; },
   'finance:data': () => {
@@ -410,6 +485,7 @@ const handlers = {
     if (Object.keys(kinds).length > 2000) return { ok: false, error: 'too many' };
     vault.kinds = kinds;
     writeVault();
+    keepBills();
     return { ok: true, kinds };
   },
   // the tab's minute-by-minute check doesn't count as using it (it still locks after 10 idle minutes)
@@ -433,13 +509,14 @@ const handlers = {
     if (!key) return { ok: false, error: 'locked' };
     stillHere();
     lookAtMail(true);
-    try { return await refresh(true); } catch (e) { return { ok: false, error: e.message }; }
+    try { const r = await refresh(true); if (r.ok) keepBills(); return r; } catch (e) { return { ok: false, error: e.message }; }
   },
   // deletes the local file only; the connection itself is turned off on bridge.simplefin.org
   'finance:forget': () => {
     lock('forgotten');
     try { fs.unlinkSync(file()); } catch (e) {}
     forgetHello();
+    try { fs.unlinkSync(billsFile()); } catch (e) {}
     log('forgotten');
     return { ok: true };
   },

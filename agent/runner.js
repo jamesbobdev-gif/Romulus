@@ -21,7 +21,7 @@ const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, claimAgentTasks } = require('./task-context');
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -160,13 +160,19 @@ async function startAgentRun() {
   const attDir = path.join(workDir, 'attachments');
   try { fs.rmSync(attDir, { recursive: true, force: true }); } catch (e) {}
   const a = supabase.channel(readConfig()) || {};
-  const allowedPrefix = a.url ? a.url.replace(/\/+$/, '') + '/storage/v1/object/public/agent-attachments/' : null;
+  // the address is parsed, not prefix-matched, so ".." can't walk out of the bucket
+  const ownAttachment = (u) => {
+    try {
+      const x = new URL(String(u)), base = new URL(a.url);
+      return x.protocol === 'https:' && x.host === base.host && /^\/storage\/v1\/object\/public\/agent-attachments\/[\w.-]+\/[\w.-]+$/.test(x.pathname);
+    } catch (e) { return false; }
+  };
   const photos = {};
   for (const t of tasks) {
     const urls = [];
     (Array.isArray(t.replyImages) ? t.replyImages : []).forEach((u) => urls.push(u));
     (Array.isArray(t.history) ? t.history : []).slice().reverse().forEach((h) => (Array.isArray(h.images) ? h.images : []).forEach((u) => urls.push(u)));
-    const keep = [...new Set(urls)].filter((u) => allowedPrefix && String(u).startsWith(allowedPrefix)).slice(0, 6);
+    const keep = [...new Set(urls)].filter((u) => a.url && ownAttachment(u)).slice(0, 6);
     const files = [];
     for (let i = 0; i < keep.length; i++) {
       try {
@@ -371,6 +377,7 @@ async function startAgentRun() {
     u.list = sawMail ? undefined : groceryChanges(u.list);
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
+    u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
     u.seats = sawMail ? null : (cleanSeats(u.seats) || null); // a seat map with its pick, he can tap other seats
     u.showtimes = sawMail ? null : (cleanShowtimes(u.showtimes) || null); // days and times he taps to pick one
     u.theaters = sawMail ? null : (cleanTheaters(u.theaters) || null); // a map of the theaters, he taps one

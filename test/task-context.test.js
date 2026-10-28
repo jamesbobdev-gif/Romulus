@@ -119,3 +119,11 @@ test('tickets skill: flights and event tickets match it, and it is a browsing sk
     assert.ok(!tk.match.test(title), title);
   assert.strictEqual(tk.nearby, false);
 });
+
+test('cleanDraft: the words to post, kept whole; where is one line; empty is nothing', () => {
+  const d = ctx.cleanDraft({ text: '  Hi everyone,\r\n\r\nI live near Springfield.  ', where: 'HIST 1700\n· Week One' });
+  assert.deepStrictEqual(d, { text: 'Hi everyone,\n\nI live near Springfield.', where: 'HIST 1700 · Week One' });
+  assert.deepStrictEqual(ctx.cleanDraft({ text: 'Just this' }), { text: 'Just this' });
+  assert.strictEqual(ctx.cleanDraft({ text: '  ' }), undefined);
+  assert.strictEqual(ctx.cleanDraft(null), undefined);
+});

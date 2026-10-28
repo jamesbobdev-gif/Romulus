@@ -1,68 +1,30 @@
--- Tasks: everything the device-sync project needs, in one paste.
+-- Romulus: everything a new sync project needs, in one paste.
 -- Supabase dashboard → SQL Editor → New query → paste this whole file → Run.
--- Safe to run again (it only creates what is missing). Assembled from supabase/migrations/*.sql.
+-- Safe to run again: it only creates what is missing and re-applies the same functions and rights.
+--
+-- How it works: one table, tasks_sync, holds every list as a JSON document under its sync key (the key is
+-- the password to the list). The table itself is closed to the app's anon key; lists are reached only through
+-- the functions below, each of which needs the row's key. The service role (edge functions) reads the table
+-- directly. supabase/migrations/*.sql is the history of how the live project got here; this file is the
+-- current state, assembled by hand, so a fresh project needs nothing else.
 
+-- ───────────── tables ─────────────
 create table if not exists public.tasks_sync (
   sync_key   text primary key,
   doc        jsonb not null,
   updated_at timestamptz not null default now()
 );
--- the table itself is closed to the anon key: lists are reached only through the functions below
 alter table public.tasks_sync enable row level security;
 
--- ───────────── 20261007_agent_claim_task.sql ─────────────
--- A worker (the home PC's Claude runner, or the mini PC's local lane) claims a queued Agent task
--- before starting it. Atomic: the row lock + re-checked WHERE mean only one worker can win.
--- p_lane: the lane the worker serves ('claude' | 'local'). A task with no lane yet is claimable
--- by either and gets stamped with the claimer's lane. (Applied to the live project 2026-10-07.)
-create or replace function public.agent_claim_task(p_sync_key text, p_task_id text, p_worker text, p_lane text)
-returns boolean
-language plpgsql
-set search_path to 'public'
-as $function$
-declare n int;
-begin
-  if p_sync_key not like 'tk_agent_%' or p_lane not in ('claude', 'local') then return false; end if;
-  update tasks_sync
-     set doc = jsonb_set(doc, '{tasks}', (
-           select jsonb_agg(case when t->>'id' = p_task_id
-             then t || jsonb_build_object('status', 'working', 'lane', p_lane,
-                                          'claimedBy', left(p_worker, 60),
-                                          'claimedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint,
-                                          'updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint)
-             else t end)
-           from jsonb_array_elements(doc->'tasks') t)),
-         updated_at = now()
-   where sync_key = p_sync_key
-     and exists (select 1 from jsonb_array_elements(doc->'tasks') t
-                  where t->>'id' = p_task_id
-                    and coalesce((t->>'done')::boolean, false) = false
-                    and coalesce(t->>'status', 'queued') = 'queued'
-                    and coalesce(t->>'lane', p_lane) = p_lane);
-  get diagnostics n = row_count;
-  return n > 0;
-end $function$;
+-- secrets the edge functions read (their access tokens, the lists' keys for the MCP server). Row-level
+-- security with no policies: only the service role can read it.
+create table if not exists public.app_secrets (
+  name  text primary key,
+  value text not null
+);
+alter table public.app_secrets enable row level security;
 
-revoke all on function public.agent_claim_task(text, text, text, text) from public;
-grant execute on function public.agent_claim_task(text, text, text, text) to anon, authenticated, service_role;
-
--- ───────────── 20261019_tasks_sync_realtime.sql ─────────────
--- Devices hear about list changes the moment they happen (renderer/js/sync.js → Realtime),
--- instead of waiting for the next 30-second check.
-do $ begin
-  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'tasks_sync') then
-    alter publication supabase_realtime add table public.tasks_sync;
-  end if;
-end $;
-
--- ───────────── 20261021_sync_rpc_lockdown.sql ─────────────
--- Lists are reached only through these functions, each of which needs the row's sync key. Before this,
--- the one policy on tasks_sync was "ALL for public, true": anyone with the project's anon key (it's in
--- the phone build and every config file) could read, change or delete every list without a sync key.
--- Now the anon role can't touch the table at all; the functions run as their owner and look up one row
--- by its key. The service role (edge functions) still reads the table directly.
--- (Applied to the live project 2026-10-21.)
-
+-- ───────────── reading and writing a list ─────────────
 -- a list's live-update channel: a hash of its key, so hearing "changed" needs the key but never shows it
 create or replace function public.sync_topic_of(p_sync_key text)
 returns text
@@ -113,8 +75,65 @@ begin
   return true;
 end $$;
 
--- live updates: every write says "changed" on the list's channel (renderer/js/sync.js listens).
--- No data goes with it: the app syncs the normal way when it hears this.
+-- the phone widget ticks a task off by its id
+create or replace function public.widget_complete_task(p_sync_key text, p_task_id text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare n int;
+begin
+  update public.tasks_sync
+     set doc = jsonb_set(doc, '{tasks}', (
+           select jsonb_agg(case when t->>'id' = p_task_id
+             then t || jsonb_build_object('done', true,
+                                          'updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint)
+                    || case when p_sync_key like 'tk_agent_%' then '{"status":"done"}'::jsonb else '{}'::jsonb end
+             else t end)
+           from jsonb_array_elements(doc->'tasks') t)),
+         updated_at = now()
+   where sync_key = p_sync_key
+     and exists (select 1 from jsonb_array_elements(doc->'tasks') t where t->>'id' = p_task_id);
+  get diagnostics n = row_count;
+  return n > 0;
+end $$;
+
+-- A worker (the home PC's Claude runner, or the mini PC's local lane) claims a queued Agent task before
+-- starting it. Atomic: the row lock + re-checked WHERE mean only one worker can win. p_lane: the lane the
+-- worker serves ('claude' | 'local'). A task with no lane yet is claimable by either and gets stamped with
+-- the claimer's lane.
+create or replace function public.agent_claim_task(p_sync_key text, p_task_id text, p_worker text, p_lane text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare n int;
+begin
+  if p_sync_key not like 'tk_agent_%' or p_lane not in ('claude', 'local') then return false; end if;
+  update public.tasks_sync
+     set doc = jsonb_set(doc, '{tasks}', (
+           select jsonb_agg(case when t->>'id' = p_task_id
+             then t || jsonb_build_object('status', 'working', 'lane', p_lane,
+                                          'claimedBy', left(p_worker, 60),
+                                          'claimedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint,
+                                          'updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint)
+             else t end)
+           from jsonb_array_elements(doc->'tasks') t)),
+         updated_at = now()
+   where sync_key = p_sync_key
+     and exists (select 1 from jsonb_array_elements(doc->'tasks') t
+                  where t->>'id' = p_task_id
+                    and coalesce((t->>'done')::boolean, false) = false
+                    and coalesce(t->>'status', 'queued') = 'queued'
+                    and coalesce(t->>'lane', p_lane) = p_lane);
+  get diagnostics n = row_count;
+  return n > 0;
+end $$;
+
+-- ───────────── live updates ─────────────
+-- every write says "changed" on the list's channel (renderer/js/sync.js listens). No data goes with it: the
+-- app syncs the normal way when it hears this. The table itself is not in the realtime publication, so no
+-- row ever reaches a client that way.
 create or replace function public.tasks_sync_broadcast()
 returns trigger
 language plpgsql security definer
@@ -128,14 +147,16 @@ drop trigger if exists tasks_sync_changed on public.tasks_sync;
 create trigger tasks_sync_changed after insert or update on public.tasks_sync
   for each row execute function public.tasks_sync_broadcast();
 
--- the older functions (widget tick-off, agent claim) ran as the caller; they need to own their access now
-alter function public.widget_complete_task(text, text) security definer;
-alter function public.agent_claim_task(text, text, text, text) security definer;
+-- ───────────── who may do what ─────────────
+-- no policy and no table rights for the API roles: the anon key reaches lists only through the functions
+drop policy if exists "sync read write" on public.tasks_sync;
+revoke all on table public.tasks_sync from anon, authenticated;
+revoke all on table public.app_secrets from anon, authenticated;
 
+revoke all on function public.sync_topic_of(text) from public;
 revoke all on function public.sync_get(text) from public;
 revoke all on function public.sync_put(text, jsonb, timestamptz) from public;
 revoke all on function public.sync_set(text, jsonb) from public;
-revoke all on function public.sync_topic_of(text) from public;
 revoke all on function public.widget_complete_task(text, text) from public;
 revoke all on function public.agent_claim_task(text, text, text, text) from public;
 revoke all on function public.tasks_sync_broadcast() from public;
@@ -144,9 +165,13 @@ revoke execute on function public.tasks_sync_broadcast(), public.sync_topic_of(t
 grant execute on function public.sync_get(text), public.sync_put(text, jsonb, timestamptz), public.sync_set(text, jsonb),
   public.widget_complete_task(text, text), public.agent_claim_task(text, text, text, text) to anon, authenticated, service_role;
 
--- the lockdown itself: no policy, no table rights for the API roles, no row-change feed
-drop policy if exists "sync read write" on public.tasks_sync;
-revoke all on table public.tasks_sync from anon, authenticated;
-revoke all on table public.app_secrets from anon, authenticated;
-alter publication supabase_realtime drop table public.tasks_sync;
-
+-- ───────────── photo attachments ─────────────
+-- Photos attached to Agent tasks (renderer/js/agent-chat.js) and the mini PC's "I'm stuck" screenshots
+-- (agent/qwen-browser.js) go in a public bucket, small images only. Uploads land in a folder named by a hash
+-- of the agent key (tk_agent_att_…), never the key itself: the addresses end up in task history.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('agent-attachments', 'agent-attachments', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+  on conflict (id) do nothing;
+drop policy if exists "agent attachments: app can upload" on storage.objects;
+create policy "agent attachments: app can upload" on storage.objects for insert to anon
+  with check (bucket_id = 'agent-attachments' and (storage.foldername(name))[1] like 'tk_agent_att_%');

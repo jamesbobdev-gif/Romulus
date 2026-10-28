@@ -138,6 +138,30 @@
     if (failed && !Object.keys(out).length) throw new Error(failed);
     return { quotes: out, warning: failed };
   }
+  /* what kind of thing each ticker is, for the Portfolio mix charts: Yahoo's public search, sent only the symbol.
+     → {SYMBOL: {type: 'Stock' | 'ETF' | 'Mutual fund' | …, sector, industry}}; a fund has no sector of its own */
+  const SEARCH = 'https://query1.finance.yahoo.com/v1/finance/search?quotesCount=3&newsCount=0&q=';
+  const TYPES = { EQUITY: 'Stock', ETF: 'ETF', MUTUALFUND: 'Mutual fund', CRYPTOCURRENCY: 'Crypto', INDEX: 'Index', MONEYMARKET: 'Money market' };
+  async function fetchSectors(symbols, doFetch) {
+    const out = {};
+    const list = Array.from(new Set(symbols.filter((s) => SYMBOL.test(s)))).slice(0, MAX_SYMBOLS);
+    for (let i = 0; i < list.length; i += 5) {
+      await Promise.all(list.slice(i, i + 5).map(async (s) => {
+        try {
+          const r = await doFetch(SEARCH + encodeURIComponent(s.replace(/\./g, '-')),
+            { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }, redirect: 'error', signal: timeout(15000) });
+          if (!r.ok) return;
+          const body = await r.json().catch(() => null);
+          const want = s.replace(/\./g, '-').toUpperCase();
+          const q = ((body && body.quotes) || []).find((x) => x && String(x.symbol || '').toUpperCase() === want);
+          if (!q) return;
+          const type = TYPES[q.quoteType] || txt(q.typeDisp || 'Other', 40);
+          out[s] = { type, sector: txt(q.sectorDisp || q.sector || '', 60) || null, industry: txt(q.industryDisp || q.industry || '', 80) || null };
+        } catch (e) { /* offline or not a symbol Yahoo knows: left out */ }
+      }));
+    }
+    return out;
+  }
   // what it's all worth now: each holding at its live price (else SimpleFIN's value), today's change, gain on cost
   function portfolio(holdings, quotes) {
     const rows = holdings.map((h) => {
@@ -177,7 +201,7 @@
   }
   /* the Stocks card's numbers from the latest prices: today's (every 5 min) and a year of closes, with
      today's live total ending the daily line */
-  function stocksView(held, today, daily, error, warning) {
+  function stocksView(held, today, daily, error, warning, sectors) {
     const quotes = error ? {} : today || {};
     const p = portfolio(held, quotes);
     const days = daily ? portfolioLine(held, daily) : [];
@@ -186,11 +210,15 @@
       while (days.length && days[days.length - 1][0] >= d.getTime()) days.pop();
       days.push([p.at, Math.round(p.total * 100) / 100]);
     }
+    // each holding's own daily closes, for its move over the chart's window
+    p.rows.forEach((r) => { const q = daily && r.symbol && daily[r.symbol]; r.days = q ? q.series : []; });
+    // and what kind of thing it is (the Portfolio mix charts)
+    p.rows.forEach((r) => { const k = sectors && r.symbol && sectors[r.symbol]; r.type = k ? k.type : null; r.sector = k ? k.sector : null; r.industry = k ? k.industry : null; });
     return Object.assign({ held: held.length }, p, { today: portfolioLine(held, quotes), days, warning: error ? null : warning || null, error: error || null });
   }
 
   const FinCore = { FETCH_DAYS, KEEP_DAYS, num, txt, checkSimplefinUrl, bankText, cleanAccounts, errorsOf, mergeAccounts, downloadAccounts,
-    SYMBOL, cleanHoldings, holdingsOf, readChart, fetchQuotes, portfolio, portfolioLine, stocksView };
+    SYMBOL, cleanHoldings, holdingsOf, readChart, fetchQuotes, fetchSectors, portfolio, portfolioLine, stocksView };
   if (typeof module !== 'undefined' && module.exports) module.exports = FinCore;
   else window.FinCore = FinCore;
 })();
