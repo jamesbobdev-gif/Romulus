@@ -40,3 +40,7 @@ mobile/picovoice-key.txt
 
 # the app's own Google / Microsoft sign-in clients (bundled into builds; see oauth-clients.example.json)
 oauth-clients.json
+
+# Android release signing key (goes in the ANDROID_KEYSTORE_BASE64 secret; never commit)
+*.keystore
+*.jks
