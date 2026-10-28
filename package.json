@@ -38,7 +38,7 @@
     "publish": {
       "provider": "github",
       "owner": "jamesbobdev-gif",
-      "repo": "tasks-releases",
+      "repo": "romulus-releases",
       "releaseType": "release"
     },
     "nsis": {

@@ -11,7 +11,7 @@ Tasks works the moment you install it: a to-do list on your computer, nothing to
 
 ## 1. Install
 
-**Windows:** download `Romulus-Setup-<version>.exe` from the [releases page](https://github.com/jamesbobdev-gif/tasks-releases/releases) and run it. The installer is not code-signed yet, so Windows shows an "unrecognized app" warning: click **More info → Run anyway**. Tasks starts when you log in and lives in the tray near the clock; closing the window hides it there. To pin it: Start menu → right-click **Tasks** → Pin to taskbar.
+**Windows:** download `Romulus-Setup-<version>.exe` from the [releases page](https://github.com/jamesbobdev-gif/romulus-releases/releases) and run it. The installer is not code-signed yet, so Windows shows an "unrecognized app" warning: click **More info → Run anyway**. Romulus starts when you log in and lives in the tray near the clock; closing the window hides it there. To pin it: Start menu → right-click **Romulus** → Pin to taskbar.
 
 **Mac / Linux:** build it yourself for now (`npm install && npm run dist`; see the [README](../README.md)).
 
@@ -86,7 +86,7 @@ That's every list: Work, Agent and School sync through the same project under ke
 
 Open the same Settings panel on the phone and enter the same three values. Keep them handy: the sync key is a long random string, so send it to yourself through something you trust (a password manager note, not a group chat).
 
-The Android app is `Romulus-<version>.apk` on the [releases page](https://github.com/jamesbobdev-gif/tasks-releases/releases/latest): download it on the phone and open it. It updates itself from then on (an **Update** banner appears when a new version is out). To build it yourself instead, see the README.
+The Android app is `Romulus-<version>.apk` on the [releases page](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest): download it on the phone and open it. It updates itself from then on (an **Update** banner appears when a new version is out). To build it yourself instead, see the README.
 
 ## 4. Calendars
 
@@ -100,15 +100,15 @@ Then choose, per calendar, whether its events become to-dos and whether your tas
 
 ## 5. Where your keys live
 
-Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Tasks\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless if copied to another account or machine. The Settings page only ever shows a key's first and last characters.
+Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Romulus\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless if copied to another account or machine. The Settings page only ever shows a key's first and last characters.
 
 Keys are never synced between devices and never leave the app except to the service they belong to. The one thing you do share by hand is the sync key, which is meant to be the same on every device.
 
 ## 6. If something doesn't work
 
-- **The Claude card says "not installed" after installing.** Press **I already have it**: the app looks again. If `claude` works in a terminal but not here, restart Tasks so it sees the new PATH.
-- **Sign in to Claude never finishes.** Close the terminal window it opened, run `claude auth login` yourself in any terminal, then press Sign in again (or just restart Tasks: it checks on start).
+- **The Claude card says "not installed" after installing.** Press **I already have it**: the app looks again. If `claude` works in a terminal but not here, restart Romulus so it sees the new PATH.
+- **Sign in to Claude never finishes.** Close the terminal window it opened, run `claude auth login` yourself in any terminal, then press Sign in again (or just restart Romulus: it checks on start).
 - **"not reachable" on the Local model panel.** Ollama isn't running or isn't allowed from this computer. On the machine running it, `ollama serve` should be up; for another computer, Ollama must listen on the network (`OLLAMA_HOST=0.0.0.0`).
 - **Device sync says "fill in the three personal fields".** All three are needed: URL, anon key, sync key.
 - **The phone and computer show different lists.** Check the sync key matches exactly on both; one character off is a different (empty) list.
-- **Something else.** The app keeps a short diary at `%APPDATA%\Tasks\agent-runner.log`; it usually names the problem. Open an issue with the relevant lines (strip anything personal).
+- **Something else.** The app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log`; it usually names the problem. Open an issue with the relevant lines (strip anything personal).

@@ -2,7 +2,7 @@
    (main/updater.js). Bumps the patch version first (1.0.1 → 1.0.2), since the installed copies only
    take a version newer than theirs. Pass a version to set it instead: npm run release -- 1.2.0
    Needs `gh auth login` once on this computer. The installer goes to a public repo of its own
-   (jamesbobdev-gif/tasks-releases): it holds no personal data, the code stays in the private one. */
+   (jamesbobdev-gif/romulus-releases): it holds no personal data, the code stays in the private one. */
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');

@@ -1,5 +1,5 @@
 /* Updates for the installed app. New versions come from the public releases repo on GitHub
-   (jamesbobdev-gif/tasks-releases, see "publish" in package.json; `npm run release` puts them there).
+   (jamesbobdev-gif/romulus-releases, see "publish" in package.json; `npm run release` puts them there).
    A new version downloads quietly in the background. Since the app lives in the tray and is rarely
    quit, it installs itself once the computer has sat idle a while and no agent work is running —
    or right away from the tray's "Restart to update".

@@ -14,7 +14,7 @@ Plus a School list that pulls due dates from course calendars, an Ideas board, a
 
 ## Install
 
-**Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/tasks-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
+**Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
 
 **Linux and macOS:** installers are built by the release workflow and attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
@@ -98,7 +98,7 @@ Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/
 
 ### Where your data lives
 
-Tasks are in `tasks.json` in the app's user-data folder (`%APPDATA%\Tasks` on Windows, `~/Library/Application Support/Tasks` on macOS, `~/.config/Tasks` on Linux). Back up that one file. Config and keys are in `config.json` next to it, secrets encrypted.
+Tasks are in `tasks.json` in the app's user-data folder (`%APPDATA%\Romulus` on Windows, `~/Library/Application Support/Romulus` on macOS, `~/.config/Romulus` on Linux; copies before 1.0.3 used a `Tasks` folder, moved on first start). Back up that one file. Config and keys are in `config.json` next to it, secrets encrypted.
 
 ### Desktop behaviour
 

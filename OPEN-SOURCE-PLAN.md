@@ -16,4 +16,4 @@ What remains after the public launch, in rough order of effect on a new user. Do
 
 - `oauth-clients.json`, `seed-config.json`, `mobile/sync-config.json` and the `.backup-*` folders stay git-ignored. Git history was checked clean of secrets before launch.
 - The "Hey Romulus" wake word stays until the phone's recognizer is retrained on a new phrase.
-- Releases live on `tasks-releases` so installed copies keep updating; moving them to the main repo means one re-release and a change to `build.publish`.
+- Releases live on `romulus-releases` so installed copies keep updating; moving them to the main repo means one re-release and a change to `build.publish`.

@@ -64,8 +64,8 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 **Windows**
 1. Download `Romulus-Setup-<version>.exe` from the [latest release](../../releases/latest).
 2. Run it. Windows shows an "unrecognized app" warning because the installer isn't code-signed yet: click **More info → Run anyway**.
-3. Tasks opens. From then on it starts when you log in and lives in the tray by the clock. Closing the window hides it there; right-click the tray icon to quit.
-4. Optional: Start menu → right-click **Tasks** → Pin to taskbar.
+3. Romulus opens. From then on it starts when you log in and lives in the tray by the clock. Closing the window hides it there; right-click the tray icon to quit.
+4. Optional: Start menu → right-click **Romulus** → Pin to taskbar.
 
 **Mac**: download the `.dmg` and drag Romulus to Applications. The app isn't signed by Apple yet, so the first open is right-click → Open, then allow it in System Settings → Privacy & Security.
 
@@ -120,7 +120,7 @@ Your lists are shared through a free [Supabase](https://supabase.com) project of
 
 **Make the project**
 1. Sign up at supabase.com, press **New project**. Any name and region. Keep the database password it asks for.
-2. When it's ready, open **SQL Editor → New query**, paste the whole of [`supabase/setup.sql`](https://github.com/jamesbobdev-gif/tasks-app/blob/main/supabase/setup.sql) from the source repository, press **Run**. It makes the one table the app uses and the functions that guard it. Safe to run again.
+2. When it's ready, open **SQL Editor → New query**, paste the whole of [`supabase/setup.sql`](https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/setup.sql) from the source repository, press **Run**. It makes the one table the app uses and the functions that guard it. Safe to run again.
 3. Open **Project Settings → API**. Copy the **Project URL** (`https://xxxx.supabase.co`) and the **anon / publishable** key. Never the secret or service_role key.
 
 **Connect the computer**: **⚙ Settings → Device sync**. Paste the URL and the anon key, press **Generate key** for a sync key, press **Save & sync**. The sync key is the password to your list; anyone with it can read and change it.
@@ -139,7 +139,7 @@ Open the **Finance** tab; the first visit is the setup. Make an account at bridg
 
 ## Where your keys live
 
-Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Tasks\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless copied elsewhere. Settings only ever shows a key's first and last characters. Keys are never synced between devices and never leave the app except to the service they belong to.
+Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Romulus\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless copied elsewhere. Settings only ever shows a key's first and last characters. Keys are never synced between devices and never leave the app except to the service they belong to.
 
 ## What's in a release
 
@@ -154,12 +154,12 @@ Everything you connect stays on the computer where you connected it, in the app'
 
 ## If something doesn't work
 
-- **Claude card says "not installed" after installing**: press **I already have it**, or restart Tasks so it sees the new PATH.
-- **Sign in to Claude never finishes**: close its window, run `claude auth login` in any terminal, then restart Tasks.
+- **Claude card says "not installed" after installing**: press **I already have it**, or restart Romulus so it sees the new PATH.
+- **Sign in to Claude never finishes**: close its window, run `claude auth login` in any terminal, then restart Romulus.
 - **Local model "not reachable"**: Ollama isn't running, or on another machine it isn't listening on the network (`OLLAMA_HOST=0.0.0.0`).
 - **Phone and computer show different lists**: the sync key differs by a character.
-- **Anything else**: the app keeps a short diary at `%APPDATA%\Tasks\agent-runner.log` that usually names the cause. Open an issue here with the relevant lines (strip anything personal).
+- **Anything else**: the app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log` that usually names the cause. Open an issue here with the relevant lines (strip anything personal).
 
 ## Source code
 
-The code lives at [jamesbobdev-gif/tasks-app](https://github.com/jamesbobdev-gif/tasks-app), which is being prepared for an open-source release. Until it is public, report problems in this repository's Issues.
+The code lives at [jamesbobdev-gif/Romulus](https://github.com/jamesbobdev-gif/Romulus), which is being prepared for an open-source release. Until it is public, report problems in this repository's Issues.
