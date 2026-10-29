@@ -109,6 +109,12 @@ function buildRow(t,canDrag){
   const del=iconBtn(I.x,'Delete task');
   del.addEventListener('click',function(e){ e.stopPropagation(); deleteTask(t); });
   acts.appendChild(pen);
+  // ⚔ send an Agent task out as a legion: Lupa splits it so no cloud AI sees the whole of it (agent/legion.js)
+  if(isAgentTask&&!t.done&&t.status!=='working'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
+    const lg=iconBtn(I.legion,'Send out as a legion'); lg.title='Deep research led by Lupa: each AI you connected researches one piece without seeing the whole, then Lupa writes the report';
+    lg.addEventListener('click',function(e){ e.stopPropagation(); sendAsLegion(t); });
+    acts.appendChild(lg);
+  }
   if(agentAvailable()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
     const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';

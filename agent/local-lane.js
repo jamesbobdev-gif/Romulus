@@ -17,6 +17,8 @@ const formMode = require('./form-mode');
 const localAnswer = require('./local-answer');
 const providers = require('./providers');
 const helpers = require('./helpers');
+const legion = require('./legion');
+const { makeDocx } = require('./docx-writer');
 const usage = require('./usage-limit');
 const { parseUsageLimit, holdForUsage } = usage;
 const siteNotes = require('./site-notes');
@@ -328,7 +330,7 @@ async function startLocalRun() {
       // this computer slept (mid-task or before this one): not a failure, it starts over now it's awake
       if (slept) { sendToRenderer('agent:waiting', { ids: [t.id], until: Date.now(), slept: true }); continue; }
       if (down) { await localFailed(c, t, 'fetch failed (not reachable)'); continue; }
-      await runLocalTask(c, t).then(() => { localDownAt = 0; }).catch(async (e) => {
+      await (legion.isLegion(t) ? runLegionTask(c, t) : runLocalTask(c, t)).then(() => { localDownAt = 0; }).catch(async (e) => {
         const msg = String(e && e.message || e);
         if (slept) {
           agentLog('local task cut off: ' + msg + ' (this computer slept): queued again');
@@ -356,13 +358,68 @@ async function localFailed(c, t, msg) {
     : /timed? ?out/i.test(msg)
     ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
     : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
-  if (cloudOrder().length && !privateMatch(t)) {
+  if (cloudOrder().length && !privateMatch(t) && !legion.isLegion(t)) { // a legion never goes to the cloud whole
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
     return;
   }
   const shot = unreachable ? null : await miniPcScreenshot().catch(() => null); // no screenshot from a mini PC that isn't there
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
     note: 'The local model couldn’t finish this one. ' + stuck.reason }]);
+}
+/* ⚔ a #legion task (agent/legion.js): Lupa splits it into general questions, each cloud AI in his pool gets one
+   (so none can tell what he is researching), and Lupa puts the answers together into the report. The report is
+   also saved as Word + Markdown in Documents/Claude Agent/Research. A reply afterwards is answered by Lupa from that
+   report; a reply with #legion (or "dig deeper") sends the legion out again. */
+const LEGION_LEAD = 'Lupa Au Palatine';
+const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replace(/[^\w-]/g, '') + '.md');
+// one prompt to Lupa's model → its whole answer (JSON when a schema is given)
+function lupaThink(c, prompt, { schema, ms } = {}) {
+  let out = '';
+  return ollamaChat(c, { model: c.model, stream: true, think: false, messages: [{ role: 'user', content: prompt }], ...(schema ? { format: schema } : {}),
+    options: { temperature: 0.2, num_predict: 4000 } }, (m) => { if (m.content) out += m.content; }, ms)
+    .then(() => { if (!out.trim()) throw new Error('the model gave no answer'); return out; });
+}
+async function runLegionTask(c, t) {
+  const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
+  const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
+  let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
+  const again = !before || !reply || /(^|\s)#(legion|research)\b|\b(dig deeper|research (it )?(again|more)|send the legion)\b/i.test(reply);
+  let live = '';
+  const show = (s) => { live = (live + s).slice(-6000); sendToRenderer('agent:live', { id, text: live }); };
+  const think = (prompt, o) => lupaThink(c, prompt, o);
+  let note, options = [];
+  if (!again) {
+    show('💬 ' + LEGION_LEAD + ' is answering from the report…\n');
+    note = (await legion.followUp(topic, before, reply, { think })).trim();
+  } else {
+    const extra = [t.notes, reply].filter(Boolean).join('\n').slice(0, 1500);
+    agentLog('legion: ' + topic.slice(0, 80) + ' (' + order.join(', ') + ')');
+    const started = Date.now();
+    const r = await legion.research(topic, { order, run: runHelperOn, think, names, lead: LEGION_LEAD, extra,
+      privateWords: routing.getRouting().private, locked: await agentRow(':locked'), onStep: show });
+    if (r.error) {
+      // Lupa itself not answering is a failure like any other local task's (it waits for him: never handed to the cloud)
+      if (UNREACHABLE.test(r.error) || /timed? ?out/i.test(r.error)) throw new Error(r.error);
+      note = 'The legion couldn’t finish: ' + r.error + '. Reply to try again.';
+    } else {
+      const full = r.report + '\n\n' + legion.credits(r, names, LEGION_LEAD);
+      const dir = path.join(ctx.documents(), 'Claude Agent', 'Research');
+      const base = (topic.replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
+      let saved = '';
+      try {
+        fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(path.dirname(legionFile(id)), { recursive: true });
+        fs.writeFileSync(path.join(dir, base + '.md'), full);
+        fs.writeFileSync(path.join(dir, base + '.docx'), makeDocx(topic.slice(0, 200), full));
+        fs.writeFileSync(legionFile(id), full);
+        saved = '\n\n📄 Saved: ' + path.join(dir, base + '.docx');
+      } catch (e) { agentLog('legion: saving the report failed: ' + e.message); }
+      note = full.slice(0, 11000) + saved;
+      options = (await Promise.all(r.options.map((o) => enrichOption(o).catch(() => o)))).filter(Boolean);
+      agentLog('legion: done in ' + Math.round((Date.now() - started) / 1000) + 's, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' pieces answered');
+    }
+  }
+  sendToRenderer('agent:results', [{ id, lane: 'local', status: 'needs-you', note: note || 'Lupa gave no answer. Reply to try again.',
+    options: options.length ? options : null, pref: null, thoughts: live || undefined }]);
 }
 async function runLocalTask(c, t) {
   const [prefs, locked, standingText] = await Promise.all([agentRow(':prefs'), agentRow(':locked'), agentRow(':standing')]);

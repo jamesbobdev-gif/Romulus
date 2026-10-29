@@ -12,7 +12,7 @@ const providers = require('./providers');
 const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
-const { routeTask, isClaudeLane, decided, getRouting } = require('./routing');
+const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog } = require('./helpers');
@@ -27,10 +27,8 @@ const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./
 const where = require('./where');
 const siteNotes = require('./site-notes');
 const { enrichOption, pagePreviewImage } = require('./previews');
-const legion = require('./legion');
 const standing = require('./standing');
 const goals = require('./goals');
-const { makeDocx } = require('./docx-writer');
 
 // Claude comes after the AI being asked: what it can't do goes to Claude, rather than back to him as needs-you
 const CLAUDE_AFTER_NOTE = '\n\n## Handing over\nClaude (with a full browser, his inbox and his photos) comes after you in this run. If a ' +
@@ -132,20 +130,18 @@ async function startAgentRun() {
   // doesn't hop between them: it only moves on when that AI is out of usage (see the loop below).
   const on = cloudOrder(), saveClaude = claudeLast();
   const kindOf = (t) => {
-    if (legion.isLegion(t)) return 'legion'; // deep research: every AI in his pool at once (runLegion below)
     if (PINNED_CLOUDS.includes(t.cloud)) return t.cloud;
     if (cfg.gmail === true || wantsInbox(t)) return 'mail';
     const home = homeCloud(t, saveClaude);
     return home && on.includes(home) ? home : 'web'; // an AI he has since turned off: his order instead
   };
-  const kind = ['legion', 'mail', 'web', 'claude', ...PINNED_CLOUDS].find((k) => all.some((t) => kindOf(t) === k));
+  const kind = ['mail', 'web', 'claude', ...PINNED_CLOUDS].find((k) => all.some((t) => kindOf(t) === k));
   const mailRun = kind === 'mail', pinned = kind === 'mail' || kind === 'web' ? null : kind;
   let queued = all.filter((t) => kindOf(t) === kind);
   // a yes unlocks final clicks (placing an order) for the whole run, so a task he said yes to runs on
   // its own: his yes on one task never lets the browser buy or send for another. The rest go next run.
   const yesTask = queued.find(saidYes);
   if (yesTask && queued.length > 1) queued = [yesTask];
-  if (kind === 'legion') queued = queued.slice(0, 1); // a legion keeps the whole pool busy: one at a time
   // same queue as the last run and nothing moved: that run failed — don't hammer it. Checked before
   // claiming: a claimed task we then skip would sit as "working" on the server with nobody on it
   const queuedKey = queued.map((t) => t.id).sort().join(',');
@@ -156,7 +152,6 @@ async function startAgentRun() {
   if (!tasks.length) { agentLog('skip: every queued task was taken by another worker'); return; }
   const ids = tasks.map((t) => t.id).sort();
   agentLastKey = ids.join(','); agentLastAt = Date.now();
-  if (kind === 'legion') return runLegion(tasks[0]);
 
   const exe = claudeExe({ agentRunner: cfg });
   let rules;
@@ -428,63 +423,6 @@ async function startAgentRun() {
     else failAgentTasks(pending, lastWhy);
   }
   if (!claudeResetAt || !pending.length) scheduleAgentRun(); // anything queued while this run was going
-}
-/* ⚔ a #legion task (agent/legion.js): its angles go out to every AI in his pool at once, the lead writes the report,
-   another checks it. The report is also saved as Word + Markdown in Documents/Claude Agent/Research. A reply
-   afterwards is answered from that report by one AI; a reply with #legion (or "dig deeper") sends the legion out again. */
-const LEGION_MS = 45 * 60 * 1000;
-const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replace(/[^\w-]/g, '') + '.md');
-async function runLegion(t) {
-  const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
-  if (!order.length) { failAgentTasks([id], 'no cloud AI is connected: turn some on in Settings → AI connections'); agentLastKey = ''; return; }
-  const { runHelperOn } = require('./local-lane'); // required here: local-lane requires this file
-  const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
-  let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
-  const again = !before || !reply || /(^|\s)#(legion|research)\b|\b(dig deeper|research (it )?(again|more)|send the legion)\b/i.test(reply);
-  let text = '';
-  const show = (s) => { text = (text + s).slice(-6000); sendToRenderer('agent:live', { id, text }); };
-  sendToRenderer('agent:working', { ids: [id], lane: 'claude', reasons: t.lane ? {} : { [id]: routeTask(t).reason }, limitMs: LEGION_MS });
-  agentProc = 'legion'; runIds = [id]; runRetried = false;
-  const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
-  let u = null;
-  try {
-    if (!again) {
-      show('💬 Answering from the legion\'s report…\n');
-      const r = await legion.followUp(topic, before, reply, { order, run: runHelperOn });
-      u = r ? { note: r.text, via: r.via } : { note: 'None of the AIs could answer that (' + order.map((x) => names[x]).join(', ') + '). Reply to try again.' };
-    } else {
-      const extra = [t.notes, reply].filter(Boolean).join('\n').slice(0, 1500);
-      agentLog('legion: ' + topic.slice(0, 80) + ' (' + order.join(', ') + ')');
-      const r = await legion.research(topic, { order, run: runHelperOn, names, extra, privateWords: getRouting().private,
-        locked: await agentRow(':locked'), onStep: show });
-      if (r.error) u = { note: 'The legion couldn’t finish: ' + r.error + '. Reply to try again.' };
-      else {
-        const full = r.report + '\n\n' + legion.credits(r, names);
-        const dir = path.join(ctx.documents(), 'Claude Agent', 'Research');
-        const base = (topic.replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
-        let saved = '';
-        try {
-          fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(path.dirname(legionFile(id)), { recursive: true });
-          fs.writeFileSync(path.join(dir, base + '.md'), full);
-          fs.writeFileSync(path.join(dir, base + '.docx'), makeDocx(topic.slice(0, 200), full));
-          fs.writeFileSync(legionFile(id), full);
-          saved = '\n\n📄 Saved: ' + path.join(dir, base + '.docx');
-        } catch (e) { agentLog('legion: saving the report failed: ' + e.message); }
-        u = { note: full.slice(0, 11000) + saved, via: r.lead, options: r.options };
-        agentLog('legion: done, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' scouts, written by ' + r.lead);
-      }
-    }
-  } catch (e) {
-    agentLog('legion crashed: ' + (e && e.stack || e));
-    u = { note: 'The legion crashed (' + String(e && e.message || e).slice(0, 120) + '). Reply to try again.' };
-  } finally { agentProc = null; runIds = []; ctx.powerSaveBlocker.stop(awake); }
-  agentLastKey = '';
-  if (!runRetried) {
-    const options = (await Promise.all((u.options || []).map((o) => enrichOption(o).catch(() => o)))).filter(Boolean);
-    sendToRenderer('agent:results', [{ id, status: 'needs-you', note: u.note, options: options.length ? options : null, pref: null,
-      via: u.via && u.via !== 'claude' ? u.via : undefined, thoughts: text || undefined }]);
-  }
-  scheduleAgentRun();
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
 function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {

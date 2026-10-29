@@ -29,6 +29,21 @@
       ],
       "port": 8751,
       "autoPort": false
+    },
+    {
+      "name": "renderer-preview-3",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8761",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "renderer"
+      ],
+      "port": 8761,
+      "autoPort": false
     }
   ]
 }

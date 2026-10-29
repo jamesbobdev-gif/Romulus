@@ -13,7 +13,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){
         t.status='working'; t.runFrom=Date.now(); // what he writes after this, the run can't see: it goes next
-        if(!t.lane){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'); }
+        // a #legion title (typed in later with the pencil) goes to Lupa whoever had it before (agent/routing.js laneOf)
+        if(!t.lane||(lane==='local'&&t.lane!=='local'&&/(^|\s)#(legion|research)\b/i.test(t.title))){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'); }
         changed=true;
       }
       // the AI the runner is asking now: the pill shows it, and the task stays with it from here on

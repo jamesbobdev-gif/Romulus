@@ -115,11 +115,12 @@ function routeTask(t) {
   if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
   if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
   if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: The local model reads Finance' };
+  // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js)
+  if (isLegion(t)) return { lane: 'local', reason: 'deep research: Lupa leads a legion of cloud AIs' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
   if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
-  if (isLegion(t)) return { lane: 'claude', reason: 'deep research: a legion of cloud AIs' }; // agent/legion.js
   // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
   const answered = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
   if (answered) return { lane: answered.lane === 'local' ? 'local' : 'claude', reason: 'continuing the conversation' };
@@ -134,7 +135,8 @@ function routeTask(t) {
   return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
 }
 // a task the local model read his Finance for stays on the mini PC even if it was switched to Claude by hand
-const laneOf = (t) => t.financeSeen ? 'local' : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
+// a #legion task is Lupa's even if it was on Claude before (its title was edited): only Lupa may see the whole request
+const laneOf = (t) => t.financeSeen || isLegion(t) ? 'local' : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
 // unassigned tasks whose route is 'ask': the user picks (the renderer turns them into a question with two buttons)
 const askedRoute = new Set();

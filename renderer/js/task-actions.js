@@ -6,6 +6,13 @@
 let addingTask=false;
 /* ⚔ Legion (Agent tab): the task goes out as deep research, every connected AI on a different angle (agent/legion.js) */
 let legionOn=false;
+// an Agent task already on the list → a legion: Lupa (the local lane) takes it, from the start
+function sendAsLegion(t){
+  t.title='#legion '+t.title; t.lane='local'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
+  t.status='queued'; t.waitUntil=null; t.stuck=null; t.reply=null;
+  agentSay(t,'sys','Sent out as a legion: Lupa splits it into pieces for the other AIs, then writes the report');
+  touch();
+}
 function setLegion(on){
   legionOn=!!on; const b=$('legionBtn'); b.classList.toggle('on',legionOn); b.setAttribute('aria-pressed',String(legionOn));
   if(state.activeTab==='agent')$('newTitle').placeholder=legionOn?'What should the legion research?':'Add a task for the Agent…';
