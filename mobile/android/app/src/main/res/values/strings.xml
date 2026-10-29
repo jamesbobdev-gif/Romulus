@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Tasks</string>
-    <string name="title_activity_main">Tasks</string>
+    <string name="app_name">Romulus</string>
+    <string name="title_activity_main">Romulus</string>
     <string name="package_name">com.jartro.tasks</string>
     <string name="custom_url_scheme">com.jartro.tasks</string>
     <string name="widget_today_desc">Today: due today and overdue. Tap the circle to check it off.</string>

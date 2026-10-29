@@ -18,7 +18,7 @@ Plus a School list that pulls due dates from course calendars, an Ideas board, a
 
 **Linux and macOS:** installers are built by the release workflow and attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
-**From source:** Node 18 or newer, then `npm install` and `npm start`.
+**From source:** Node 22 or newer, then `npm install` and `npm start`.
 
 Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.
 
@@ -36,11 +36,11 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 | **Calendar · Ideas · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
 | **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never leaves the computer. |
 
-What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
+What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
 
 ## Privacy, in short
 
-Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
+Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
 
 ---
 

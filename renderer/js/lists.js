@@ -68,11 +68,14 @@ function buildRow(t,canDrag){
   const isAgentTask=taskWs(t)==='agent';
   if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; meta.appendChild(rc); }
   if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); meta.appendChild(rc); }
+  if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st','⚡ '+(TRIGGER_LABELS[t.trigger.kind]||'trigger')); tc.title='Starts '+triggerText(t.trigger); meta.appendChild(tc); }
+  if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; meta.appendChild(gc); }
+  if(isAgentTask&&t.goalId){ const sc2=el('span','chip st','step '+(t.goalStep||'?')); const gl=state.tasks.find(function(x){ return x.id===t.goalId; }); sc2.title=gl?'Step '+t.goalStep+' of the goal “'+gl.title+'”':'A step of a goal'; if(gl){ sc2.classList.add('tap'); sc2.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(gl.id); }); } meta.appendChild(sc2); }
   if(isAgentTask&&!t.done){
-    const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?['ready','finished']:(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
+    const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?(t.goalWait?['','next up']:t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?['working','in steps']:t.trigger&&t.trigger.kind?['','watching']:['ready','finished']):(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
     if(t.status==='working')sc.insertBefore(el('span','spin'),sc.firstChild); // a spinner so you can see it's going
-    sc.title=t.status==='needs-you'&&t.parked?'You parked this — the Agent’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'The Agent got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?'Claude finished — check it off when you’re happy with it':'Queued for Claude’s next run';
+    sc.title=t.status==='needs-you'&&t.parked?'You parked this — the Agent’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'The Agent got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?(t.goalWait?'Waits for the step before it to finish':t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?'Its steps are running one after another':t.trigger&&t.trigger.kind?'Waiting for it to happen: starts '+triggerText(t.trigger):'Claude finished — check it off when you’re happy with it'):'Queued for Claude’s next run';
     // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
     if(t.status==='needs-you'){
       sc.classList.add('tap'); sc.setAttribute('role','button'); sc.tabIndex=0;
@@ -148,6 +151,9 @@ function buildPanel(t){
         b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
+        if(Array.isArray(h.prefs)&&h.prefs.length&&typeof prefsBox==='function')b.appendChild(prefsBox(t,h)); // agent-results.js: Keep / Forget
+        if(h.allow&&typeof allowBox==='function')b.appendChild(allowBox(t,h)); // standing.js: Allow / Keep asking
+        if(Array.isArray(h.plan)&&h.plan.length&&typeof planBox==='function')b.appendChild(planBox(t,h)); // goals.js: Start these steps
         if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
         th.appendChild(b);
@@ -476,6 +482,34 @@ function buildPanel(t){
     rr.appendChild(sel); rr.appendChild(tm);
     if(t.repeat&&t.nextRun)rr.appendChild(el('span','next','next: '+fmtWhen(t.nextRun)));
     panel.appendChild(rr);
+    // starts when: the task waits for an email, a calendar event or a web page (triggers.js; the desktop app does the looking)
+    const tw=el('div','panel-meta repeat-row trigger-row');
+    tw.appendChild(el('span','lbl','Starts when'));
+    const ks=document.createElement('select'); ks.className='sm'; ks.setAttribute('aria-label','Starts when');
+    [['','You queue it'],['mail','An email arrives about…'],['calendar','Hours before a calendar event…'],['page','A web page says…']].forEach(function(p){ const o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; ks.appendChild(o); });
+    ks.value=t.trigger&&t.trigger.kind?t.trigger.kind:'';
+    const hrs=el('input','sm hours'); hrs.type='number'; hrs.min='0'; hrs.max='336'; hrs.value=t.trigger&&t.trigger.before!=null?t.trigger.before:24; hrs.setAttribute('aria-label','Hours before');
+    const url=el('input','sm url'); url.type='url'; url.placeholder='https://… the page to watch'; url.value=t.trigger&&t.trigger.url?t.trigger.url:''; url.setAttribute('aria-label','Page to watch');
+    const what=el('input','sm what'); what.type='text'; what.value=t.trigger&&t.trigger.what?t.trigger.what:''; what.setAttribute('aria-label','What to wait for');
+    const hint=el('span','next','');
+    function showTrigger(){ const k=ks.value; hrs.hidden=k!=='calendar'; url.hidden=k!=='page'; what.hidden=!k; what.placeholder=TRIGGER_HINTS[k]||'';
+      hint.textContent=!k?'':t.triggered&&t.triggered.at&&!triggerArmed(t)?'set off '+fmtWhen(t.triggered.at):triggerArmed(t)?(triggerChecked?'watching · last looked '+fmtWhen(triggerChecked):'watching'):''; }
+    function applyTrigger(){
+      const k=ks.value;
+      if(!k){ if(t.trigger){ t.trigger=null; t.triggered=null; agentSay(t,'sys','Starts when: off — queue it yourself'); touch(); } showTrigger(); return; }
+      const tr={kind:k,what:what.value.replace(/\s+/g,' ').trim().slice(0,200),since:t.trigger&&t.trigger.since?t.trigger.since:Date.now()};
+      if(k==='page')tr.url=url.value.trim().slice(0,500); if(k==='calendar')tr.before=Math.min(336,Math.max(0,Number(hrs.value)||0));
+      showTrigger();
+      if(!tr.what||(k==='page'&&!/^https?:\/\/\S+\.\S+/i.test(tr.url)))return; // half filled: nothing yet
+      const same=function(x){ return x?JSON.stringify([x.kind,x.what,x.url||'',x.before||0]):''; };
+      if(same(t.trigger)===same(tr))return;
+      t.trigger=tr; t.triggered=null;
+      if(t.status==='queued'&&!t.done)t.status='done'; // not now: when it happens
+      agentSay(t,'sys','Starts '+triggerText(tr)); touch();
+    }
+    ks.addEventListener('change',applyTrigger); [what,url,hrs].forEach(function(i){ i.addEventListener('change',applyTrigger); });
+    tw.appendChild(ks); tw.appendChild(hrs); tw.appendChild(url); tw.appendChild(what); tw.appendChild(hint); showTrigger();
+    panel.appendChild(tw);
   }
 
   // Task-level date + tag
@@ -701,7 +735,8 @@ function render(){
   });
   fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
-  $('newTitle').placeholder=onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
+  $('legionBtn').hidden=!onAgent; if(!onAgent)setLegion(false);
+  $('newTitle').placeholder=onAgent&&legionOn?'What should the legion research?':onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
 
   // workspace filter chips (only when a work list is connected; not on the Agent tab)
   const wsf=$('wsFilters'); wsf.innerHTML='';

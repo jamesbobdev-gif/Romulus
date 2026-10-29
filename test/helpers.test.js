@@ -2,6 +2,35 @@ const test = require('node:test');
 const assert = require('node:assert');
 const helpers = require('../agent/helpers');
 
+test('isYes: a yes that stands, not one taken back', () => {
+  for (const t of ['yes', 'Yes please', 'yep', 'Y', 'ok go ahead', 'yes, place it', 'go ahead and submit it', 'Order it.',
+    'yes, but first replace what you typed with exactly this text, then post it:\n\nHi all']) assert.ok(helpers.isYes(t), t);
+  for (const t of ['yes, but don\'t order yet', 'yes but wait', 'yesterday was fine', 'no', 'not yet', 'yes, hold on', 'sure, but check the total first',
+    'yes to the second one? actually stop', 'Yes. Never mind, cancel it', '', null]) assert.ok(!helpers.isYes(t), String(t));
+});
+
+test('isPublicUrl: the web, not this computer or its network', () => {
+  for (const u of ['https://www.walmart.com/checkout', 'http://example.org/', 'https://8.8.8.8/x', 'https://[2606:4700::1111]/'])
+    assert.ok(helpers.isPublicUrl(u), u);
+  for (const u of ['http://localhost:9334/json/list', 'http://127.0.0.1:11434/api/tags', 'http://10.0.0.5/', 'http://192.168.1.1/', 'http://172.20.0.1/',
+    'http://169.254.169.254/latest/meta-data', 'http://100.64.0.1/', 'http://[::1]:8790/', 'http://[fd00::1]/', 'http://lupa/', 'http://hub.local/',
+    'file:///C:/x', 'javascript:alert(1)', 'ftp://example.org/', 'not a url', ''])
+    assert.ok(!helpers.isPublicUrl(u), u);
+});
+
+test('trimRunLog: tool calls stay, long strings are cut, the tail is kept', () => {
+  const page = 'x'.repeat(5000);
+  const log = [JSON.stringify({ type: 'tool', name: 'browser_snapshot', result: page }), 'short line', 'y'.repeat(1000)].join('\n');
+  const out = helpers.trimRunLog(log);
+  assert.ok(out.includes('"name":"browser_snapshot"'));
+  assert.ok(!out.includes('x'.repeat(401)));
+  assert.ok(out.includes('[4600 more]'));
+  assert.ok(out.includes('short line'));
+  assert.ok(/y{400}…\[600 more\]/.test(out));
+  const big = helpers.trimRunLog('a\n'.repeat(200000), { maxTotal: 1000 });
+  assert.ok(big.startsWith('…[') && big.length <= 1100);
+});
+
 test('questions spread over the pool, each starting on a different AI', async () => {
   const started = [];
   const res = await helpers.askPool(['a', 'b', 'c'], { order: ['claude', 'gemini'], run: async (id, prompt) => { started.push(id); return { text: id + ':' + prompt.slice(-1) }; } });

@@ -54,7 +54,29 @@ function normalizeSyncCfg(raw){
   if(p&&p.url&&p.key&&p.syncKey)['work','agent','school'].forEach(function(k){ if(!out[k])out[k]={url:p.url,key:p.key,syncKey:deriveSyncKey(p.syncKey,k),derived:true}; });
   return (out.personal||out.work)?out:null;
 }
-try{ syncState.cfg=normalizeSyncCfg(JSON.parse(localStorage.getItem(SYNC_CFG_KEY))); }catch(e){}
+/* Where the config lives. The sync key is the password to every list, so on the desktop it stays in
+   config.json (main/store.js keeps it encrypted with the OS; reached through syncGetCfg/syncSaveCfg) and
+   only in memory here. The phone and plain web have no such store: there it stays in localStorage. */
+function syncCfgDesktop(){ return !!(window.desktop&&window.desktop.syncGetCfg&&window.desktop.syncSaveCfg); }
+function syncCfgLocalRead(){ try{ return normalizeSyncCfg(JSON.parse(localStorage.getItem(SYNC_CFG_KEY))); }catch(e){ return null; } }
+function syncCfgPersist(cfg){ // cfg null = sync turned off
+  if(syncCfgDesktop()){ try{ localStorage.removeItem(SYNC_CFG_KEY); }catch(e){} return window.desktop.syncSaveCfg(cfg||null); }
+  try{ if(cfg)localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(cfg)); else localStorage.removeItem(SYNC_CFG_KEY); }catch(e){}
+  return Promise.resolve(true);
+}
+if(syncCfgDesktop()){
+  // init.js waits for this before the first sync. A config left in localStorage by an older build is moved
+  // into config.json (when that has none) and removed from localStorage either way.
+  syncState.ready=(async function(){
+    let n=null; try{ n=normalizeSyncCfg(await window.desktop.syncGetCfg()); }catch(e){}
+    const legacy=syncCfgLocalRead();
+    if(!n&&legacy){ n=legacy; try{ await window.desktop.syncSaveCfg(n); }catch(e){} }
+    // config.json with only a personal profile (an older setup, or a seed file): the lists made from it go back, so the runner sees the agent list
+    else if(n&&['work','agent','school'].some(function(k){ return n[k]&&n[k].derived; })){ try{ window.desktop.syncSaveCfg(n); }catch(e){} }
+    if(!syncState.cfg)syncState.cfg=n; // Settings may have saved one while this was in flight
+    try{ localStorage.removeItem(SYNC_CFG_KEY); }catch(e){}
+  })();
+} else syncState.cfg=syncCfgLocalRead();
 
 function validProfile(p){ return !!(p&&p.url&&p.key&&p.syncKey); }
 function profileList(){

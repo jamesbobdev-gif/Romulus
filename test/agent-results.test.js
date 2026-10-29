@@ -20,6 +20,22 @@ function load(tasks) {
   return { cb, ctx };
 }
 
+test('what it wants to remember waits in the conversation for his Keep; nothing is saved by itself', () => {
+  const t = { id: 'p', ws: 'agent', status: 'working', history: [] };
+  const { cb, ctx } = load([t]);
+  let appended = 0; ctx.appendPrefs = () => { appended++; };
+  cb.results([{ id: 'p', status: 'done', note: 'Done.', pref: ['Shopping|Prefers 2% milk', 'Shopping|Walmart, not Instacart'] }]);
+  const ask = t.history.find((h) => Array.isArray(h.prefs));
+  assert.deepStrictEqual(ask.prefs, ['Shopping|Prefers 2% milk', 'Shopping|Walmart, not Instacart']);
+  assert.strictEqual(ask.who, 'sys');
+  assert.strictEqual(appended, 0);
+  // an inbox run's answer leaves nothing to remember (agent/runner.js blanks pref), and an empty one asks nothing
+  const t2 = { id: 'q', ws: 'agent', status: 'working', history: [] };
+  const r2 = load([t2]);
+  r2.cb.results([{ id: 'q', status: 'done', note: 'Done.', pref: null }]);
+  assert.ok(!t2.history.some((h) => Array.isArray(h.prefs)));
+});
+
 test('a reply sent while the mini PC works: its answer is kept, and the reply goes next', () => {
   const t = { id: 'a', ws: 'agent', lane: 'local', status: 'queued', reply: 'you answer', history: [] };
   const { cb, ctx } = load([t]);

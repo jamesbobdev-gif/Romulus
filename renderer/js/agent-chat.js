@@ -302,13 +302,13 @@ function moveTask(t,toWs,id){ // id: keep a known one (holoBackToSchool); otherw
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   const now=Date.now();
   const c=Object.assign({},t,{id:id||uid(),ws:toWs,googleEventId:null,calRef:null,updatedAt:now,subs:t.subs.map(function(s){ return Object.assign({},s); })});
-  if(toWs==='agent'){ c.fromWs=taskWs(t); c.status='queued'; c.note=null; c.reply=null; c.options=null; c.done=false; c.repeat=null; c.nextRun=null; c.repeatDue=false; delete c.recur; delete c.recurNext;
+  if(toWs==='agent'){ c.fromWs=taskWs(t); c.status='queued'; c.note=null; c.reply=null; c.options=null; c.done=false; c.repeat=null; c.nextRun=null; c.repeatDue=false; c.trigger=null; c.triggered=null; delete c.recur; delete c.recurNext;
     // carry any screenshots into Claude's view: as reply images + a conversation entry
     const imgs=Array.isArray(t.images)?t.images.slice(0,6):[];
     c.replyImages=imgs.length?imgs:null;
     c.history=imgs.length?[{who:'you',text:'Screenshot(s) from the task',at:now,images:imgs}]:[];
   }
-  else { ['status','note','reply','replyImages','options','history','repeat','nextRun','repeatDue','fromWs','waitUntil','useInbox'].forEach(function(k){ delete c[k]; }); }
+  else { ['status','note','reply','replyImages','options','history','repeat','nextRun','repeatDue','trigger','triggered','goalPlan','goalStarted','goalDone','goalId','goalStep','goalWait','fromWs','waitUntil','useInbox'].forEach(function(k){ delete c[k]; }); }
   ['lane','claimedBy','claimedAt'].forEach(function(k){ delete c[k]; }); // routed and claimed afresh
   // only school tasks carry a type + instructions; the old office build drops unknown fields on work tasks
   if(toWs!=='school'&&toWs!=='agent'){ delete c.kind; delete c.notes; }

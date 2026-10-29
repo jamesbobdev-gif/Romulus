@@ -140,7 +140,7 @@ function localApproved(t) {
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude' && h.lane === 'local').slice(-1)[0] || {}).text || '';
   // Holo4 writes the ask its own ways: Reply **yes**, Reply "yes", **Reply “yes” to submit it.**
-  return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply|post)( it)?\b/i.test(lastYou) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
+  return helpers.isYes(lastYou) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
 }
 const LOCAL_BROWSER_RULES = `
 
@@ -244,8 +244,8 @@ function helpersFor(t) {
   return !privateMatch(t);
 }
 // one helper answer from one cloud AI → {text} or {why}. Search and page reading only: no browser, files or mail
-function runHelperOn(id, prompt) {
-  const cfg = readConfig(), ms = 4 * 60 * 1000;
+function runHelperOn(id, prompt, ms = 4 * 60 * 1000) { // also the legion's scouts and writers (agent/legion.js)
+  const cfg = readConfig();
   if (id === 'gemini') return providers.runGeminiApi(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
@@ -363,7 +363,7 @@ async function localFailed(c, t, msg) {
     note: 'The local model couldn’t finish this one. ' + stuck.reason }]);
 }
 async function runLocalTask(c, t) {
-  const [prefs, locked] = await Promise.all([agentRow(':prefs'), agentRow(':locked')]);
+  const [prefs, locked, standingText] = await Promise.all([agentRow(':prefs'), agentRow(':locked'), agentRow(':standing')]);
   let rules = ''; try { rules = fs.readFileSync(path.join(__dirname, 'local-prompt.md'), 'utf8'); } catch (e) {}
   const skills = loadSkills().filter((s) => s.match && s.match.test(skillText(t))).slice(0, 2);
   // his schedule (classes, plans) from the app's own Google Calendar connection, when the task is about it
@@ -381,7 +381,7 @@ async function runLocalTask(c, t) {
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
     fs.writeFileSync(lockFile, JSON.stringify({ allow, approved: localApproved(t) }));
-    browser = await startBrowserTools(lockFile).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
+    browser = await startBrowserTools(lockFile, t.title).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
   const canAsk = !money && helpersFor(t);
@@ -404,7 +404,7 @@ async function runLocalTask(c, t) {
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
-    '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') +
+    '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') + require('./standing').show(standingText) +
     '\n\n## Locked profile (private: use for his tasks, never quote in the note)\n' + (locked.trim() || '(empty)') +
     '\n\nToday is ' + new Date().toDateString() + '.';
   const task = { title: t.title, due: t.due || null, reply: t.reply || null, instructions: t.notes || null,
@@ -663,4 +663,4 @@ async function checkSignins(force) {
 }
 
 const isBusy = () => localBusy || howtoCompacting;
-module.exports = { init, handlers, localStatus, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins };
+module.exports = { init, handlers, runHelperOn, localStatus, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins };

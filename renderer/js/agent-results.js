@@ -82,7 +82,6 @@ if(window.desktop&&window.desktop.onAgentResults){
     if(changed)touch();
   });
   window.desktop.onAgentResults(function(updates){
-    const prefLines=[];
     updates.forEach(function(u){
       const t=state.tasks.find(function(x){ return x.id===u.id; });
       // only answer tasks still waiting on this run (not ones the user moved, finished or deleted meanwhile).
@@ -118,7 +117,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
       t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;
       t.page=u.page&&/^https:\/\//i.test(String(u.page))?String(u.page):null; // ◉ Watch opens it
-      t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null;
+      t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null; delete t.triggered;
       if('options' in u)t.options=u.options;
       // questions to tap through, and an order to deselect from: each answer brings its own (or none)
       t.ask=Array.isArray(u.ask)&&u.ask.length?u.ask:null; if(typeof askDrafts!=='undefined')delete askDrafts[t.id];
@@ -144,6 +143,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(['gemini','openai','openrouter','xai','groq','cloudflare','nvidia'].indexOf(u.via)!==-1)extra.via=u.via; // agent-chat.js PINNED_CLOUDS
       if(u.lane!=='local'&&typeof u.model==='string'&&u.model)extra.model=u.model.slice(0,80); // which model wrote it (lists.js shows it by the name)
       if(t.shot)extra.images=[t.shot];
+      if(Array.isArray(u.plan)&&u.plan.length>=2){ t.goalPlan=u.plan; extra.plan=u.plan; } // a goal's steps: Start button (goals.js planBox)
       if(thoughts){
         extra.thoughts=thoughts;
         // only the newest few keep theirs: each is up to 6000 characters, synced with the task
@@ -154,11 +154,14 @@ if(window.desktop&&window.desktop.onAgentResults){
         t.status='queued'; t.reply=lateReply; t.replyImages=lateImages&&lateImages.length?lateImages:null; t.stuck=null; t.shot=null;
         agentSay(t,'sys','You wrote while it was working: going again with that');
       }
-      if(Array.isArray(u.pref))u.pref.forEach(function(l){ if(l)prefLines.push(l); }); // a setup saves several at once
-      else if(u.pref)prefLines.push(u.pref);
+      // what it would like to remember for later (its `pref` lines): shown in the conversation with Keep / Forget
+      // (lists.js prefsBox), never saved by itself. A page the run read could have planted the line.
+      const lines=(Array.isArray(u.pref)?u.pref:[u.pref]).filter(function(l){ return typeof l==='string'&&l.trim(); }).slice(0,6);
+      if(lines.length)agentSay(t,'sys','It would like to remember '+(lines.length>1?'these':'this')+' for next time. Keep?',{prefs:lines});
+      // a step he said it needn't ask about again (its `allow`): Allow / Keep asking (standing.js), never saved by itself
+      if(typeof u.allow==='string'&&u.allow.trim())agentSay(t,'sys','It would like to stop asking before this step. Allow it from now on? (Buying, sending, submitting and booking still wait for your yes.)',{allow:u.allow.trim().slice(0,160)});
     });
     touch();
-    if(prefLines.length)appendPrefs(prefLines);
   });
 }
 function fmtWhen(ms){
@@ -201,6 +204,25 @@ if(window.desktop&&window.desktop.onAgentResults){
     });
     if(changed)touch();
   },60*1000);
+}
+// The conversation line for what the Agent asked to remember (agent-results.js, extra.prefs): the lines, and
+// Keep / Forget until he has chosen. Keep is what writes them to its memory (appendPrefs); the choice syncs with the task.
+function prefsBox(t,h){
+  const box=el('div','conv-opts');
+  h.prefs.forEach(function(l){
+    const bar=String(l).indexOf('|');
+    box.appendChild(el('div',null,'• '+(bar>0?String(l).slice(0,bar).trim()+': ':'')+String(bar>0?String(l).slice(bar+1):l).replace(/^\s*-\s*/,'').trim()));
+  });
+  if(h.prefsKept)box.appendChild(el('div',null,'Kept.'));
+  else if(h.prefsDropped)box.appendChild(el('div',null,'Not kept.'));
+  else{
+    const row=el('div','conv-pref-btns');
+    const keep=el('button','ghost mono','Keep'), drop=el('button','ghost mono','Forget');
+    keep.addEventListener('click',function(e){ e.stopPropagation(); h.prefsKept=true; appendPrefs(h.prefs); touch(); render(); });
+    drop.addEventListener('click',function(e){ e.stopPropagation(); h.prefsDropped=true; touch(); render(); });
+    row.appendChild(keep); row.appendChild(drop); box.appendChild(row);
+  }
+  return box;
 }
 // New things Claude learned: "Section|text" goes under "## Section" (made if missing); a line that's
 // already there (same words, any case) is skipped, so the memory doesn't fill with repeats

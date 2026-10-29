@@ -77,7 +77,7 @@ Your lists can be shared between your computer and your phone through a free [Su
 In **⚙ Settings → Device sync**:
 
 1. Paste the Project URL and the anon key.
-2. Press **Generate key** to make a sync key. This is the password to your list: anyone with it can read and change the list, so treat it like one.
+2. Press **Generate key** to make a sync key. This is the password to your list: anyone with it can read and change the list, so treat it like one. (If it ever gets out, **Rotate sync key** in the same panel makes a new one, moves every list over and blanks the old rows; you then pair the other devices again with the new sync code.)
 3. Press **Save & sync**.
 
 That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
@@ -98,9 +98,17 @@ The Android app is `Romulus-<version>.apk` on the [releases page](https://github
 
 Then choose, per calendar, whether its events become to-dos and whether your tasks appear on it.
 
+**Agent tasks that start on their own.** Open an Agent task and set **Starts when**: *an email arrives about…* (needs Gmail ticked on the Google sign-in), *hours before a calendar event…*, or *a web page says…* (a public page the app can fetch; shops that block plain fetches won't work). The task shows as *watching* and runs when it happens, with what set it off in its conversation. The computer that runs the Agent does the looking, every few minutes; a page is fetched every six hours.
+
+**Steps it stops asking about.** Reply “always” or “don’t ask next time” when the Agent checks before an ordinary step (logging in, building a cart, opening a seat map) and it offers to remember that; press **Allow**. The list is in **⚙ Settings → The Agent → Doesn’t ask again**, where you can add or remove lines. Buying, paying, sending, submitting and booking can’t go on it: those always wait for your yes.
+
+**Goals.** Title an Agent task “Goal: …” (or add `#goal`) for something that takes weeks: getting an internship, planning a move. The first run only plans it: steps in order, with an estimate of the Agent’s time, and what it would need from you. Reply with changes to get a new plan, or press **Start these steps**: each step becomes its own Agent task, run one after another on the computer that runs the Agent, and the goal shows how far along it is. Anything final inside a step (applying, sending, booking) still waits for your yes there. The goal task’s instructions go to every step.
+
 ## 5. Where your keys live
 
 Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Romulus\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless if copied to another account or machine. The Settings page only ever shows a key's first and last characters.
+
+The sync key is a bearer secret: whoever has it can read and change the lists it opens, with nothing else to prove. On the computer it lives only in that encrypted config file (nothing is kept in the page's browser storage); on the phone it lives in the app's own storage, which is excluded from Google backups and device transfers, so a restored phone is paired again by hand. The Locked profile is encrypted on your device with a key made from the agent sync key before it is uploaded, so the sync project only ever holds ciphertext for it.
 
 Keys are never synced between devices and never leave the app except to the service they belong to. The one thing you do share by hand is the sync key, which is meant to be the same on every device.
 

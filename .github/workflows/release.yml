@@ -9,12 +9,19 @@
 #
 # The macOS build is unsigned and not notarized: macOS will ask the person to allow it in System Settings
 # until an Apple Developer certificate is added (CSC_LINK / CSC_KEY_PASSWORD secrets).
+#
+# Supply chain: every action below is pinned to a commit SHA (the version is in the trailing comment;
+# Dependabot keeps them current), the workflow's own GITHUB_TOKEN can only read this repository, and each
+# OS job attaches a SHA256SUMS-<os>.txt to the release so a download can be checked (SECURITY.md).
 name: Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -23,15 +30,22 @@ jobs:
       matrix:
         include:
           - os: windows-latest
+            name: windows
             target: --win
           - os: ubuntu-latest
+            name: linux
             target: --linux
           - os: macos-latest
+            name: mac
             target: --mac
     runs-on: ${{ matrix.os }}
+    env:
+      # the app's own Google / Microsoft sign-in clients, when the repository has them as a secret
+      # (job-level so the step's `if` below can see it: a step's own env isn't set when its `if` is evaluated)
+      OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -46,12 +60,19 @@ jobs:
           echo "token permissions on romulus-releases: $perms"
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to romulus-releases"; exit 1; }
       - run: npm ci
+      # Known vulnerabilities. Critical only for now: electron and electron-builder still carry known highs
+      # until they're upgraded; raise this to --audit-level=high once Electron is current. What ships in the
+      # app (dependencies) is checked strictly; the build tooling (devDependencies: electron-builder pulls in
+      # an old tar with a critical advisory, fixed only in electron-builder 26) is reported as a warning
+      # until that upgrade lands, after which the second line can go and the first can drop --omit=dev.
+      - name: npm audit
+        shell: bash
+        run: |
+          npm audit --audit-level=critical --omit=dev
+          npm audit --audit-level=critical || echo "::warning::npm audit found critical advisories in the build tooling (devDependencies); upgrade electron-builder"
       - run: npm test
-      # the app's own Google / Microsoft sign-in clients, when the repository has them as a secret
       - name: OAuth clients
         if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
-        env:
-          OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
         shell: bash
         run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
       - name: Build and publish
@@ -59,7 +80,24 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder ${{ matrix.target }} --publish always
-      - uses: actions/upload-artifact@v4
+      # SHA-256 of every installer this job built, so a download can be checked against the release page
+      # (SECURITY.md and the releases repository's README say how). One file per OS: SHA256SUMS-<os>.txt.
+      - name: Checksums
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          SUMS: SHA256SUMS-${{ matrix.name }}.txt
+        shell: bash
+        run: |
+          shopt -s nullglob
+          cd dist
+          files=(*.exe *.AppImage *.dmg *.zip)
+          if [ ${#files[@]} -eq 0 ]; then echo "no installers in dist/"; exit 1; fi
+          if command -v sha256sum >/dev/null; then sha256sum "${files[@]}" > "$SUMS"; else shasum -a 256 "${files[@]}" > "$SUMS"; fi
+          cat "$SUMS"
+          # the release this run publishes to: the pushed tag, or v<package.json version> when started by hand
+          if [ "$GITHUB_REF_TYPE" = tag ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('../package.json').version")"; fi
+          gh release upload --repo jamesbobdev-gif/romulus-releases "$TAG" "$SUMS" --clobber
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: installers-${{ matrix.os }}
           path: |
@@ -69,6 +107,7 @@ jobs:
             dist/*.zip
             dist/*.yml
             dist/*.blockmap
+            dist/SHA256SUMS-*.txt
           if-no-files-found: ignore
 
   # The Android app, signed and uploaded to the same release, so phones update too (mobile/update-phone.js
@@ -81,7 +120,7 @@ jobs:
     needs: build # the release exists once the desktop builds have published to it
     if: ${{ always() && needs.build.result != 'cancelled' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Signing key
         id: keystore
         env:
@@ -94,11 +133,11 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           echo "present=true" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.keystore.outputs.present == 'true'
         with:
           node-version: 22
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         if: steps.keystore.outputs.present == 'true'
         with:
           distribution: temurin
@@ -131,9 +170,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         shell: bash
-        run: gh release upload "$TAG" "$APK" --repo jamesbobdev-gif/romulus-releases --clobber
-      - uses: actions/upload-artifact@v4
+        run: |
+          gh release upload "$TAG" "$APK" --repo jamesbobdev-gif/romulus-releases --clobber
+          # its checksum too, in the same form as the desktop ones
+          (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > SHA256SUMS-android.txt && cat SHA256SUMS-android.txt)
+          gh release upload "$TAG" "$(dirname "$APK")/SHA256SUMS-android.txt" --repo jamesbobdev-gif/romulus-releases --clobber
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.keystore.outputs.present == 'true'
         with:
           name: android-apk
-          path: ${{ env.APK }}
+          path: |
+            ${{ env.APK }}
+            ${{ runner.temp }}/SHA256SUMS-android.txt

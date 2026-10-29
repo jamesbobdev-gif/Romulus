@@ -33,6 +33,8 @@ log "2/8 Keeping it awake (no suspend or hibernate)"
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null
 
 log "3/8 Tailscale"
+# Tailscale's official installer (https://tailscale.com/download/linux): adds Tailscale's signed apt/dnf repository
+# and installs the package from it. There is no versioned URL or checksum for the script itself.
 if ! command -v tailscale >/dev/null; then curl -fsSL https://tailscale.com/install.sh | sh; fi
 systemctl enable --now tailscaled
 tailscale set --hostname="$HUB_NAME" 2>/dev/null || true
@@ -72,11 +74,15 @@ fi
 
 log "5/8 Node 22 and Google Chrome (the agent browser)"
 if ! node -v 2>/dev/null | grep -qE '^v(2[2-9]|[3-9][0-9])'; then
+  # NodeSource's official setup script (https://github.com/nodesource/distributions): adds their signed apt repository
+  # for the Node 22 line; the script has no versioned URL or checksum. AlmaLinux uses the distribution's own module.
   if [ $OS = ubuntu ]; then curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get -y -q install nodejs
   else dnf -y -q module reset nodejs || true; dnf -y -q module enable nodejs:22 || true; dnf -y -q install nodejs npm; fi
 fi
 if [ ! -x /opt/google/chrome/chrome ]; then
   if [ $OS = ubuntu ]; then
+    # Google's official package (https://www.google.com/chrome/): Google publishes only this "current" URL, no
+    # versioned one or checksum; the package itself is signed and installs Google's signed apt repository for updates.
     curl -fsSLo /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
     apt-get -y -q install /tmp/chrome.deb && rm -f /tmp/chrome.deb
   else dnf -y -q install https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm; fi
@@ -86,6 +92,8 @@ node -v; /opt/google/chrome/chrome --version
 log "6/8 Claude Code and the Gemini CLI (for your user)"
 as_user mkdir -p "$HOME_DIR/.npm-global"
 as_user npm config set prefix "$HOME_DIR/.npm-global"
+# Anthropic's official Claude Code installer (https://docs.anthropic.com/en/docs/claude-code/setup): no versioned
+# URL or checksum for the script; it fetches the current release and verifies that download itself.
 [ -x "$HOME_DIR/.local/bin/claude" ] || as_user bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
 as_user npm install -g --no-audit --no-fund @google/gemini-cli >/dev/null || echo "!! Gemini CLI install failed (the Gemini API key still works without it)"
 
@@ -117,7 +125,12 @@ WantedBy=default.target
 EOF
 chown -R "$USER_NAME:" "$HOME_DIR/.config/systemd"
 loginctl enable-linger "$USER_NAME"   # user services run from boot, without logging in
-# Ubuntu 24.04+ blocks the sandbox Electron uses unless its binary has an AppArmor profile (like Chrome's)
+# Ubuntu 24.04+ (kernel.apparmor_restrict_unprivileged_userns=1) lets a program create the user namespace Electron's
+# sandbox needs only when its binary has an AppArmor profile with the "userns" permission. This is Ubuntu's own
+# recipe, the same as the profile Ubuntu ships for Chrome (/etc/apparmor.d/chrome): flags=(unconfined) keeps the
+# profile from mediating anything else, so the only effect is to grant userns to this one binary (an enforced
+# profile with just "userns," would deny Electron every file and network access). Writing a confining profile for
+# Electron is the follow-up; in the meantime the sandbox stays on, which is the point.
 if [ $OS = ubuntu ] && [ -d /etc/apparmor.d ]; then
   cat > /etc/apparmor.d/tasks-hub-electron <<EOF
 abi <abi/4.0>,

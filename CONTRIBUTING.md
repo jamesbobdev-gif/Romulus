@@ -9,7 +9,7 @@ npm install
 npm start
 ```
 
-Node 18 or newer. `npm test` runs the unit tests (Node's built-in runner, files in `test/`). `npm run dist` builds an installer into `dist/`.
+Node 22 or newer (`npm test` uses Node's built-in test runner with a file glob, which needs 21+; the release workflow builds on 22). `npm test` runs the unit tests (files in `test/`). `npm run dist` builds an installer into `dist/`.
 
 ## Where things are
 

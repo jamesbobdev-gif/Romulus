@@ -68,35 +68,35 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".TodayWidgetProvider" android:label="Tasks: Today" android:exported="false">
+        <receiver android:name=".TodayWidgetProvider" android:label="Romulus: Today" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
         </receiver>
-        <receiver android:name=".AgentWidgetProvider" android:label="Tasks: Claude needs you" android:exported="false">
+        <receiver android:name=".AgentWidgetProvider" android:label="Romulus: Claude needs you" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_agent_info" />
         </receiver>
-        <receiver android:name=".AgentStatusWidgetProvider" android:label="Tasks: Agent status" android:exported="false">
+        <receiver android:name=".AgentStatusWidgetProvider" android:label="Romulus: Agent status" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_status_info" />
         </receiver>
-        <receiver android:name=".SchoolWidgetProvider" android:label="Tasks: School" android:exported="false">
+        <receiver android:name=".SchoolWidgetProvider" android:label="Romulus: School" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_school_info" />
         </receiver>
-        <receiver android:name=".QuickAddWidgetProvider" android:label="Tasks: Quick add" android:exported="false">
+        <receiver android:name=".QuickAddWidgetProvider" android:label="Romulus: Quick add" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -110,7 +110,7 @@
 
         <receiver
             android:name=".TasksWidgetProvider"
-            android:label="Tasks: Personal list"
+            android:label="Romulus: Personal list"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

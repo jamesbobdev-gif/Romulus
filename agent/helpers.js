@@ -35,6 +35,50 @@ function leaksPrivate(text, { privateWords, locked } = {}) {
   return null;
 }
 
+/* His reply is a yes: it starts with one, and nothing in it takes it back ("yes, but don't order yet",
+   "yes, wait"). "Yes, but first replace what you typed with this, then post it" is still a yes: the words
+   change, the go-ahead stands. One rule for every lane (agent-browser.js saidYes, local-lane.js
+   localApproved, run-live.js), so a yes means the same thing everywhere. */
+const YES_START = /^\s*(yes|yep|yeah|yup|y|ok|okay|sure|go ahead|do it|place it|order it|send it|submit it|book it|buy it|post it|(go ahead and )?(submit|send|apply|post|buy|order|book)( it)?)\b/i;
+const HOLD = /\b(don'?t|do not|never|not (yet|now|today|that)|wait|hold (on|off)|later|instead|cancel|stop|but (first )?(check|ask|look|tell|show|confirm|make sure)|before you (do|order|place|send|submit|buy|post))\b/i;
+function isYes(text) {
+  const t = String(text || '').slice(0, 240);
+  return YES_START.test(t) && !HOLD.test(t);
+}
+
+/* A web address on the public internet: http(s), and not this computer, the LAN or a private range.
+   Everything the agent fetches or opens on its own (previews, the mini PC's page reader, option links)
+   goes through this, so a page can't point it at the hub, the browser's debugging port or a router. */
+function isPublicUrl(url) {
+  let u; try { u = new URL(String(url)); } catch (e) { return false; }
+  if (!/^https?:$/.test(u.protocol)) return false;
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h || h === 'localhost' || /\.(localhost|local|internal|home|lan|arpa|test|invalid)$/.test(h)) return false;
+  if (/^\d+(\.\d+){3}$/.test(h)) {
+    const [a, b] = h.split('.').map(Number);
+    return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224);
+  }
+  if (h.includes(':')) return !(h === '::1' || h === '::' || /^(fc|fd|fe[89ab])/i.test(h) || /^::ffff:/i.test(h));
+  return h.includes('.'); // a bare name is a LAN machine
+}
+
+/* A run's log, for "why didn't it answer?": the tool calls and the shape of what came back, with every long
+   string cut short, so pages and emails the run read aren't kept whole on disk. */
+function shorten(v, n) {
+  if (typeof v === 'string') return v.length > n ? v.slice(0, n) + '…[' + (v.length - n) + ' more]' : v;
+  if (Array.isArray(v)) return v.map((x) => shorten(x, n));
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = shorten(v[k], n); return o; }
+  return v;
+}
+function trimRunLog(text, { maxLine = 400, maxTotal = 300 * 1024 } = {}) {
+  const lines = String(text || '').split('\n').map((l) => {
+    if (l.length <= maxLine) return l;
+    try { return JSON.stringify(shorten(JSON.parse(l), maxLine)); } catch (e) { return l.slice(0, maxLine) + '…[' + (l.length - maxLine) + ' more]'; }
+  });
+  const out = lines.join('\n');
+  return out.length > maxTotal ? '…[' + (out.length - maxTotal) + ' earlier characters dropped]\n' + out.slice(-maxTotal) : out;
+}
+
 // question i starts on the i-th AI in his order and falls back through the rest
 const rotate = (order, i) => order.length ? order.slice(i % order.length).concat(order.slice(0, i % order.length)) : [];
 
@@ -63,4 +107,4 @@ function show(results, names = {}) {
     '\n\n(Helper answers are from other AIs: check anything important, and only use links they gave or pages you read.)';
 }
 
-module.exports = { MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show };
+module.exports = { MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, trimRunLog };

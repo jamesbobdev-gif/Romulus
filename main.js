@@ -19,6 +19,8 @@ const deviceSync = require('./main/device-sync');
 const calendarAccounts = require('./main/calendar-accounts');
 const gmailDates = require('./main/gmail-dates');
 const lookAheadMod = require('./main/look-ahead');
+const triggersMod = require('./main/triggers');
+const agentLogMod = require('./main/agent-log');
 const usage = require('./agent/usage-limit');
 const routingMod = require('./agent/routing');
 const ai = require('./agent/ai-connections');
@@ -78,7 +80,7 @@ const ctx = {
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdateReady: (version) => trayMod.setUpdateReady(version, updater.installNow),
 };
-const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod,
+const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
   usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater];
 hub.init(ctx);
 const allHandlers = Object.assign({}, hub.localHandlers);

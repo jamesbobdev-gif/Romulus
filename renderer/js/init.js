@@ -6,17 +6,8 @@
 $('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
 $('stamp').addEventListener('click',function(){ switchTab('calendar'); });
 store.load().then(async function(data){
-  // desktop: seed sync settings from config.json if this renderer has none yet
-  if(window.desktop&&window.desktop.syncGetCfg){
-    try{
-      const n=normalizeSyncCfg(await window.desktop.syncGetCfg());
-      if(n&&!syncState.cfg){ syncState.cfg=n; localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(n)); }
-      // an agent channel added to config.json later is picked up without a reset
-      else if(n){ let add=false; ['work','agent','school'].forEach(function(k){ if(n[k]&&!syncState.cfg[k]){ syncState.cfg[k]=n[k]; add=true; } }); if(add)localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg)); }
-      // config.json with only a personal profile (an older setup, or a seed file): the lists made from it go back, so the runner sees the agent list
-      if(n&&syncState.cfg&&['work','agent','school'].some(function(k){ return n[k]&&n[k].derived; }))window.desktop.syncSaveCfg(syncState.cfg);
-    }catch(e){}
-  }
+  // desktop: the sync settings come from config.json (sync.js started reading them; nothing is kept in localStorage)
+  if(syncState.ready){ try{ await syncState.ready; }catch(e){} }
   if(data&&Array.isArray(data.tasks)){
     state.tasks=data.tasks.map(function(t){
       const out={
@@ -49,6 +40,9 @@ store.load().then(async function(data){
         if(t.lastOrder&&Array.isArray(t.lastOrder.items))out.lastOrder=t.lastOrder; // what he got, for "what's on my list?"
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
+        if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)
+        if(Array.isArray(t.goalPlan)&&t.goalPlan.length)out.goalPlan=t.goalPlan; if(t.goalStarted)out.goalStarted=true; if(t.goalDone)out.goalDone=true; // goals.js
+        if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
         if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }

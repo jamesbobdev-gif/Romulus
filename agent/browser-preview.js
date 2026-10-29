@@ -19,10 +19,13 @@ async function main() {
   });
   // (Amazon product pages often have no og:image: their main photo is #landingImage)
   const READ = `(()=>{const m=s=>{const e=document.querySelector(s);return e&&e.content};const a=()=>{const e=document.querySelector('#landingImage,#imgBlkFront');return e&&(e.getAttribute('data-old-hires')||e.src)};return m('meta[property="og:image"]')||m('meta[name="og:image"]')||m('meta[property="og:image:url"]')||m('meta[name="twitter:image"]')||m('meta[property="twitter:image"]')||a()||''})()`;
+  // Pages open in a browser context of their own: none of the user's logins (the stores, Google) go with the
+  // request, so a link an answer carries can't act on his accounts, and the context is thrown away after.
+  const contextId = ((await send('Target.createBrowserContext', { disposeOnDetach: true })).result || {}).browserContextId;
   async function one(url) {
     let targetId = null;
     try {
-      targetId = ((await send('Target.createTarget', { url, background: true })).result || {}).targetId;
+      targetId = ((await send('Target.createTarget', Object.assign({ url, background: true }, contextId ? { browserContextId: contextId } : {}))).result || {}).targetId;
       if (!targetId) return null;
       const sessionId = ((await send('Target.attachToTarget', { targetId, flatten: true })).result || {}).sessionId;
       const end = Date.now() + 20000; // a bot check takes a few seconds to wave the page through
@@ -42,6 +45,7 @@ async function main() {
     const batch = urls.slice(i, i + 4);
     (await Promise.all(batch.map(one))).forEach((img, k) => { out[batch[k]] = img; });
   }
+  if (contextId) await send('Target.disposeBrowserContext', { browserContextId: contextId });
   ws.close();
   return out;
 }

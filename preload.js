@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld('desktop', {
   howtosList: () => ipcRenderer.invoke('howtos:list'),
   howtosDelete: (id) => ipcRenderer.invoke('howtos:delete', id),
   howtosCompact: () => ipcRenderer.invoke('howtos:compact'),
+  // what the Agent did in its browser (orders placed, applications sent, mail opened, files uploaded): Settings
+  agentActions: () => ipcRenderer.invoke('agent:actions'),
+  agentLogTail: () => ipcRenderer.invoke('agent:log'), // the runner's own log, for Settings → What the Agent did
   feedsGet: () => ipcRenderer.invoke('feeds:get'),
   feedsSave: (urls) => ipcRenderer.invoke('feeds:save', urls),
   feedsFetch: () => ipcRenderer.invoke('feeds:fetch'),
@@ -90,6 +93,8 @@ contextBridge.exposeInMainWorld('desktop', {
   lookAheadStatus: () => ipcRenderer.invoke('lookahead:status'),
   lookAheadSetEnabled: (on) => ipcRenderer.invoke('lookahead:set-enabled', on),
   lookAheadTick: (force) => ipcRenderer.invoke('lookahead:tick', force),
+  // triggers: what the armed Agent tasks wait for (an email, a calendar event, a web page) — did any happen?
+  triggersTick: () => ipcRenderer.invoke('triggers:tick'),
   // Finance tab (main/finance.js): his bank data through SimpleFIN, read-only, locked behind his passphrase
   financeStatus: () => ipcRenderer.invoke('finance:status'),
   financeSetup: (token, passphrase) => ipcRenderer.invoke('finance:setup', token, passphrase),

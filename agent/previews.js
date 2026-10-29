@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { AGENT_BROWSER_PORT, agentBrowserDir, findNode, ensureAgentBrowser } = require('./agent-browser');
 const { QWEN_BROWSER_LOCAL_PORT, ensureQwenBrowser } = require('./qwen-browser');
+const { isPublicUrl } = require('./helpers');
 
 let ctx = null; // { readConfig, agentLog, newHiddenWindow }
 function init(c) { ctx = c; }
@@ -18,6 +19,7 @@ function absHttps(img, pageUrl) {
   try { const u = new URL(String(img).replace(/&amp;/g, '&'), pageUrl).href; return /^https:\/\//i.test(u) ? u : null; } catch (e) { return null; }
 }
 async function pagePreviewImage(url, lane) {
+  if (!isPublicUrl(url)) return null; // never this computer, the hub or the LAN, whatever link an answer carries
   try {
     const r = await fetch(url, { headers: { 'User-Agent': PREVIEW_UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(10000) });
     if (r.ok) {
@@ -40,7 +42,8 @@ let previewWindows = 0;
 async function hiddenWindowPreview(url) {
   while (previewWindows >= 3) await new Promise((r) => setTimeout(r, 300)); // at most 3 hidden pages at once
   previewWindows++;
-  const w = ctx.newHiddenWindow({ show: false, width: 1200, height: 900, webPreferences: { sandbox: true, contextIsolation: true } });
+  // its own throwaway session: no cookies or storage shared with the app's window or with other previews
+  const w = ctx.newHiddenWindow({ show: false, width: 1200, height: 900, webPreferences: { sandbox: true, contextIsolation: true, partition: 'preview-' + Date.now() + '-' + previewWindows } });
   w.webContents.setAudioMuted(true);
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   try {
@@ -61,7 +64,7 @@ async function enrichOption(o, lane) {
   const base = { label: String(o.label || '').slice(0, 80), desc: String(o.desc || '').slice(0, 200) };
   const m = url.match(/^https:\/\/(?:www\.)?amazon\.com\/(?:.*\/)?dp\/([A-Z0-9]{10})/i);
   if (!m) {
-    if (!/^https:\/\//i.test(url)) return null;
+    if (!/^https:\/\//i.test(url) || !isPublicUrl(url)) return null;
     const image = await pagePreviewImage(url, lane).catch(() => null);
     return Object.assign(base, { url }, image ? { image } : {});
   }

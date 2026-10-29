@@ -552,6 +552,67 @@ if(window.desktop&&window.desktop.howtosList){
     drawHowtos();
   });
 }
+// Settings: what the Agent did — one searchable log across tasks. Three sources, newest first:
+//  - actions its browser let through (agent/agent-browser.js keeps <userData>/agent-actions.log; browser-proxy.js writes it)
+//  - every Agent task's conversation (its answers, your replies, the app's notes: runs, triggers, retries)
+//  - the runner's own log (main/agent-log.js): which AI answered, what failed and why — the "Runner" filter
+const LOG_MAX=300, LOG_KINDS={action:'action',answer:'answer',you:'you',system:'system',runner:'runner'};
+let logKind='', logActions=[], logRunner=[], logTimer=null;
+function logEntries(){
+  const rows=[];
+  logActions.forEach(function(a){
+    let what=String(a.what||''); if(a.label)what+=' “'+a.label+'”'; if(Array.isArray(a.files))what+=' '+a.files.join(', ');
+    const site=a.url?String(a.url).replace(/^https?:\/\/(www\.)?/,'').slice(0,60):'';
+    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:''),task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
+  });
+  state.tasks.forEach(function(t){
+    if(taskWs(t)!=='agent'||!Array.isArray(t.history))return;
+    t.history.forEach(function(h){
+      if(!h||!h.text)return;
+      const kind=h.who==='you'?'you':h.who==='sys'?'system':'answer';
+      rows.push({at:h.at||0,kind:kind,text:String(h.text).replace(/\s+/g,' ').slice(0,220),task:t.title,id:t.id});
+    });
+  });
+  logRunner.forEach(function(l){ rows.push({at:l.at||0,kind:'runner',text:String(l.text).slice(0,300),task:''}); });
+  return rows.sort(function(a,b){ return b.at-a.at; });
+}
+function drawActions(){
+  const box=$('actionsList'); if(!box)return;
+  const q=String($('logSearch').value||'').trim().toLowerCase();
+  const rows=logEntries().filter(function(r){
+    if(logKind?r.kind!==logKind:r.kind==='runner'&&!q)return false; // the runner's notes only when asked for, or searched
+    return !q||(r.text+' '+r.task).toLowerCase().indexOf(q)!==-1;
+  }).slice(0,LOG_MAX);
+  box.innerHTML='';
+  if(!rows.length){ box.appendChild(el('p','settings-hint',q?'Nothing in the log matches that.':'Nothing yet. Lines appear here as the Agent works: what it did, what it answered, what you told it.')); return; }
+  rows.forEach(function(r){
+    const row=el('div','howto log-row'), head=el('div','howto-head');
+    head.appendChild(el('span','log-kind '+r.kind,LOG_KINDS[r.kind]));
+    const t=el('span','howto-task',(r.task&&r.kind!=='runner'?r.task+' — ':'')+r.text); t.title=r.title||r.text;
+    head.appendChild(t);
+    head.appendChild(el('span','howto-date',r.at?new Date(r.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''));
+    if(r.id){ head.addEventListener('click',function(){ setSettingsOpen(false); openTaskById(r.id); }); }
+    else head.style.cursor='default';
+    row.appendChild(head); box.appendChild(row);
+  });
+}
+// the desktop's two files are fetched now and then; the tasks' conversations are already here
+function loadLog(){
+  if(!window.desktop||!window.desktop.agentActions)return drawActions();
+  Promise.all([window.desktop.agentActions().catch(function(){ return []; }),
+    window.desktop.agentLogTail?window.desktop.agentLogTail().catch(function(){ return []; }):[]]).then(function(r){
+    logActions=Array.isArray(r[0])?r[0]:[]; logRunner=Array.isArray(r[1])?r[1]:[]; drawActions();
+  });
+}
+if($('actionsSection')){
+  if(window.desktop&&window.desktop.agentLogTail)$('logFilters').querySelector('[data-kind="runner"]').hidden=false;
+  $('logFilters').addEventListener('click',function(e){
+    const b=e.target.closest('button[data-kind]'); if(!b)return;
+    logKind=b.dataset.kind; $('logFilters').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on',x===b); }); drawActions();
+  });
+  $('logSearch').addEventListener('input',function(){ clearTimeout(logTimer); logTimer=setTimeout(drawActions,150); });
+  loadLog(); setInterval(loadLog,60*1000);
+}
 if(window.desktop&&window.desktop.feedsFetch){
   $('feedsSection').hidden=false;
   window.desktop.feedsGet().then(function(urls){ $('feedsText').value=(urls||[]).join('\n'); }).catch(function(){});
@@ -604,6 +665,7 @@ if(window.desktop&&window.desktop.feedsFetch){
   refresh();
 })();
 $('newAttBtn').addEventListener('click',function(){ $('newAttFile').click(); });
+$('legionBtn').addEventListener('click',function(){ setLegion(!legionOn); $('newTitle').focus(); });
 $('micBtn').innerHTML=MIC_LABEL;
 $('micBtn').addEventListener('click',voiceAdd);
 if(voiceEngine())$('micBtn').hidden=false;

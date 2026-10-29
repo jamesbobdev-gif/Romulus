@@ -14,6 +14,7 @@
 const fs = require('fs');
 const supabase = require('./supabase');
 const decider = require('./decider');
+const { isLegion } = require('./legion');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer, scheduleAgentRun, scheduleLocalRun }
 function init(c) { ctx = c; decider.init(c); }
@@ -118,6 +119,7 @@ function routeTask(t) {
   if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
+  if (isLegion(t)) return { lane: 'claude', reason: 'deep research: a legion of cloud AIs' }; // agent/legion.js
   // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
   const answered = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'claude').slice(-1)[0];
   if (answered) return { lane: answered.lane === 'local' ? 'local' : 'claude', reason: 'continuing the conversation' };

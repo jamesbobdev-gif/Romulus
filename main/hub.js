@@ -19,7 +19,7 @@ const CDP_PORT = 9334; // agent/agent-browser.js AGENT_BROWSER_PORT
 const REMOTE = ['ai:status', 'ai:save', 'ai:gemini-install', 'ai:codex-install', 'ai:codex-login', 'ai:openrouter-check', 'ai:compat-check', 'ai:usage',
   'agent:retry', 'agent:open-browser', 'live:pages', 'live:open', 'live:start', 'local:status', 'routing:changed',
   'howtos:list', 'howtos:delete', 'howtos:compact', 'feeds:get', 'feeds:save', 'feeds:fetch',
-  'mail:status', 'mail:set-enabled', 'mail:check', 'lookahead:status', 'lookahead:set-enabled', 'lookahead:tick',
+  'mail:status', 'mail:set-enabled', 'mail:check', 'lookahead:status', 'lookahead:set-enabled', 'lookahead:tick', 'triggers:tick', 'agent:actions', 'agent:log',
   'cal:overview', 'cal:add-link', 'cal:remove', 'cal:set-prefs', 'cal:pull', 'gcal:sync-now', 'gcal:delete-event'];
 // what the server's main process tells its window that the client's window shows too (display only:
 // anything that changes tasks is applied by the server's window and reaches the laptop through sync)

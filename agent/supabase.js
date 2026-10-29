@@ -5,6 +5,8 @@
    supabase/migrations/20261021_sync_rpc_lockdown.sql): the table itself is closed to the anon key.
    No Electron here, so it can be tested on its own. */
 
+const crypto = require('crypto');
+
 const base = (a) => String(a.url).replace(/\/+$/, '') + '/rest/v1';
 const headers = (a, extra) => Object.assign({ apikey: a.key, Authorization: 'Bearer ' + a.key }, extra);
 const rpcUrl = (a, fn) => base(a) + '/rpc/' + fn;
@@ -39,11 +41,35 @@ async function readRow(a, suffix, opts = {}) {
   return row && row.doc != null ? { doc: row.doc, updated_at: row.updated_at } : undefined;
 }
 
-// The text of a {v, text} doc row, '' when it's missing or unreachable
+/* The Locked profile row (':locked') is encrypted by the app before it goes up (renderer/js/settings.js
+   lockedEncrypt): AES-256-GCM under a key made from the agent sync key by HKDF-SHA256 with
+   'romulus-locked-v1' as both salt and info; the row is {v:2, iv, ct}, base64, the GCM tag at the end of
+   ct (as WebCrypto writes it). The same derivation here undoes it. A {v:1, text} row (from before) still
+   reads as is; the app re-saves it encrypted the next time Settings opens it. */
+const LOCKED_INFO = 'romulus-locked-v1';
+function lockedKey(syncKey) {
+  const s = Buffer.from(LOCKED_INFO, 'utf8');
+  return Buffer.from(crypto.hkdfSync('sha256', Buffer.from(String(syncKey), 'utf8'), s, s, 32));
+}
+function decryptLocked(syncKey, doc) {
+  const iv = Buffer.from(String(doc.iv), 'base64'), ct = Buffer.from(String(doc.ct), 'base64');
+  if (iv.length !== 12 || ct.length < 16) throw new Error('bad locked row');
+  const d = crypto.createDecipheriv('aes-256-gcm', lockedKey(syncKey), iv);
+  d.setAuthTag(ct.subarray(ct.length - 16));
+  return Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]).toString('utf8');
+}
+// the text of a doc row: {v:1, text} as is, {v:2, iv, ct} decrypted with the channel's key
+function docText(syncKey, doc) {
+  if (!doc || typeof doc !== 'object') return '';
+  if (doc.v === 2 && doc.ct) return decryptLocked(syncKey, doc);
+  return doc.text || '';
+}
+
+// The text of a {v, text} doc row (decrypted when it is a v:2 row), '' when it's missing, unreachable or unreadable
 async function readText(a, suffix, opts) {
   try {
     const row = await readRow(a, suffix, opts);
-    return (row && row.doc && row.doc.text) || '';
+    return docText(a.syncKey, row && row.doc) || '';
   } catch (e) { return ''; }
 }
 
@@ -53,4 +79,4 @@ async function writeRow(a, suffix, doc, prev, opts) {
   return (await rpc(a, 'sync_put', { p_sync_key: a.syncKey + suffix, p_doc: doc, p_prev: prev || null }, opts)) === true;
 }
 
-module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow };
+module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow, lockedKey, decryptLocked, docText, LOCKED_INFO };

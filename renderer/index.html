@@ -101,6 +101,16 @@
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
+      <div class="settings-sub" id="standingSection" hidden>
+        <h3 class="settings-subhead">Doesn’t ask again</h3>
+        <p class="settings-hint">Steps you’ve said yes to once and for all, so the Agent stops asking on every task: logging in to a site, building a cart, opening a seat map. Buying, paying, sending, submitting and booking are never on this list: those always wait for your yes.</p>
+        <div id="standingList"></div>
+        <div class="settings-row" style="margin-top:8px">
+          <input id="standingAdd" class="sm" type="text" style="flex:1;min-width:200px" placeholder="e.g. walmart.com: add items to the cart without asking" aria-label="A step it may do without asking">
+          <button id="standingAddBtn" class="ghost mono">Add</button>
+          <span id="standingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
       <div class="settings-sub" id="howtosSection" hidden>
         <h3 class="settings-subhead">What worked before</h3>
         <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
@@ -109,6 +119,15 @@
           <button id="howtosCompactBtn" class="ghost mono">Compact now</button>
           <span id="howtosStatus" class="mono" style="font-size:11px;color:var(--muted)">Notes that overlap are merged on their own</span>
         </div>
+      </div>
+      <div class="settings-sub" id="actionsSection">
+        <h3 class="settings-subhead">What the Agent did</h3>
+        <p class="settings-hint">One log across every task: orders placed, applications sent, mail opened and files handed over (as its browser let each through), its answers, your replies, and the runner's own notes on what went wrong. Tap a line to open its task.</p>
+        <input id="logSearch" class="settings-inp" type="search" placeholder="Search the log… (a site, a word, a task)" aria-label="Search the log">
+        <div class="log-filters" id="logFilters" role="tablist">
+          <button class="chip st tap on" data-kind="">All</button><button class="chip st tap" data-kind="action">Actions</button><button class="chip st tap" data-kind="answer">Answers</button><button class="chip st tap" data-kind="you">You</button><button class="chip st tap" data-kind="system">System</button><button class="chip st tap" data-kind="runner" hidden>Runner</button>
+        </div>
+        <div id="actionsList"></div>
       </div>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
@@ -274,6 +293,7 @@
       <input type="time" id="newTime" class="sm" aria-label="Due time">
       <input id="newTag" class="sm" list="tagOptions" placeholder="tag" aria-label="Tag" autocomplete="off">
       <datalist id="tagOptions"></datalist>
+      <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Deep research: every AI you connected researches a different angle, then they compile one report with options (#legion)" hidden>⚔ Legion</button>
       <button id="newAttBtn" class="att-btn" type="button" title="Add photos — or just paste a screenshot" hidden>+ Photo</button>
       <input id="newAttFile" type="file" accept="image/*" multiple hidden>
       <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
@@ -401,6 +421,9 @@
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/look-ahead.js"></script>
+<script src="js/triggers.js"></script>
+<script src="js/standing.js"></script>
+<script src="js/goals.js"></script>
 <script src="js/swipe.js"></script>
 <script src="js/init.js"></script>
 </body>

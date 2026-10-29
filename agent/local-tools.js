@@ -4,6 +4,7 @@ const fs = require('fs');
 const siteNotes = require('./site-notes');
 const { loadSkills, siteNoteDirs } = require('./task-context');
 const { PREVIEW_UA } = require('./previews');
+const { isPublicUrl } = require('./helpers');
 
 let ctx = null; // { readConfig, dataFile, agentLog }
 function init(c) { ctx = c; }
@@ -45,6 +46,7 @@ async function localWebSearch(query) {
 }
 async function localReadPage(url) {
   if (!/^https?:\/\//i.test(String(url))) return 'Not a web address.';
+  if (!isPublicUrl(url)) return 'Not available: that address is on this computer or its network, not the web.';
   const r = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': PREVIEW_UA, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' } });
   if (!r.ok) return 'Could not open the page (HTTP ' + r.status + (r.status === 403 ? ', probably a bot check' : '') + ').';
   const h = (await r.text()).slice(0, 800000);

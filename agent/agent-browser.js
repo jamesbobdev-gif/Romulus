@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const platform = require('./platform');
 const { findChrome, findNode } = platform;
+const { isYes } = require('./helpers');
 
 let ctx = null; // { userData, readConfig, agentLog }
 function init(c) { ctx = c; }
@@ -102,10 +103,28 @@ async function prepareAgentBrowser() {
    Gemini's runs: mail is off limits (its own web tools can't be stopped mid-run). */
 const mailSeenFile = () => path.join(agentBrowserDir(), 'mail-seen.json');
 const mailSeen = () => fs.existsSync(mailSeenFile());
-function browserCfgFor(baseCfg, mode, approved, startTab) { // → this run's MCP config (startTab: see agent/task-tabs.js)
+/* What the agent did that matters (an order placed, an application sent, mail opened, a file uploaded):
+   one JSON line each in <userData>/agent-actions.log, written by the browser launcher as it lets the
+   action through, and shown in Settings → What the Agent did. */
+const actionsLogFile = () => path.join(ctx.userData(), 'agent-actions.log');
+function readActions(max = 200) {
+  let text = ''; try { text = fs.readFileSync(actionsLogFile(), 'utf8'); } catch (e) { return []; }
+  return text.split('\n').filter(Boolean).slice(-max).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean).reverse();
+}
+handle('agent:actions', () => readActions());
+
+/* opts (all optional):
+   approvedHosts: his yes was to an order or application on these sites, so the order button is unlocked
+     there only (another site's "Place order" in the same run still waits)
+   hosts: a shopping run is kept to these sites (and links shown on their pages): the stores and the task's own links
+   task: the task's title, for the actions log */
+function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → this run's MCP config (startTab: see agent/task-tabs.js)
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
-    TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)) }; // the only things an upload may send
+    TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // the only things an upload may send
+    TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120) };
+  if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
+  if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
   // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
   // never a yes (they only look) and never a file
@@ -126,8 +145,21 @@ function saidYes(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  return /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply)( it)?\b/i.test(lastYou) && /reply\s*\**\s*yes/i.test(asked);
+  return isYes(lastYou) && /reply\s*\**\s*yes/i.test(asked);
 }
+const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
+// the sites his yes was about: where the run stopped to ask, the links in the ask, and the cart's or options' links.
+// Empty when none is known (then the yes unlocks the order button anywhere, as before).
+function approvedHostsFor(t) {
+  const hist = Array.isArray(t.history) ? t.history : [];
+  const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
+  const urls = [t.page].concat(asked.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
+    (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url), (Array.isArray(t.options) ? t.options : []).map((o) => o && o.url));
+  return [...new Set(urls.map(hostOf).filter(Boolean))];
+}
+// the stores a shopping run may use (agent/runner.js keeps such a run to these plus the task's own links)
+const STORE_HOSTS = ['instacart.com', 'walmart.com', 'amazon.com', 'aldi.us', 'kroger.com', 'gianteagle.com', 'marcs.com', 'wholefoodsmarket.com',
+  'target.com', 'costco.com', 'doordash.com', 'ubereats.com', 'samsclub.com', 'meijer.com', 'shipt.com'];
 // ⚙ "Open the Agent’s browser": make sure it's running; the page then shows it in the live view
 async function openAgentBrowser() {
   if (!findChrome()) return { ok: false, error: 'Chrome isn’t installed' };
@@ -173,4 +205,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

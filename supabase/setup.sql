@@ -43,6 +43,10 @@ as $$
   where length(p_sync_key) >= 16;
 $$;
 
+-- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :ideas, :hours;
+-- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
+-- can't fill the table (supabase/migrations/20261028_sync_limits.sql).
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
 -- still the version read (updated_at unchanged). false = someone else wrote in between: read and merge again.
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
@@ -52,7 +56,8 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if length(p_sync_key) < 16 or p_doc is null then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|ideas|hours))?$' then return false; end if;
+  if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if p_prev is null then
     insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now()) on conflict (sync_key) do nothing;
   else
@@ -62,14 +67,15 @@ begin
   return n > 0;
 end $$;
 
--- plain write (the settings pages: routing rules, locked words)
+-- plain write (the settings pages: routing rules, the Locked profile, which the app encrypts before it comes here)
 create or replace function public.sync_set(p_sync_key text, p_doc jsonb)
 returns boolean
 language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if length(p_sync_key) < 16 or p_doc is null then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|ideas|hours))?$' then return false; end if;
+  if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now())
     on conflict (sync_key) do update set doc = excluded.doc, updated_at = now();
   return true;

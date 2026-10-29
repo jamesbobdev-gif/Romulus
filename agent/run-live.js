@@ -12,8 +12,9 @@
 const fs = require('fs');
 const path = require('path');
 
+const { isYes } = require('./helpers');
+
 const MAX_TEXT = 6000;
-const YES_RE = /^\s*(yes|yep|yeah|yup|y)\b|^\s*(go ahead and )?(submit|send|apply|buy|order|book)( it)?\b/i;
 
 const short = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 function where(u) {
@@ -150,7 +151,7 @@ function start({ dir, tasks, send, node }) {
         if (sent.has(name)) continue;
         const photos = Array.isArray(h.images) ? h.images.length : 0;
         const text = short(h.text, 2000);
-        sent.set(name, { id: t.id, at: h.at, again: !!photos || YES_RE.test(text) });
+        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYes(text) });
         try {
           const tmp = path.join(dir, name + '.tmp');
           fs.writeFileSync(tmp, JSON.stringify({ id: tasks.length > 1 ? String(ids.indexOf(t.id) + 1) : t.id, title: short(t.title, 80), text, at: h.at, photos: photos || undefined }));

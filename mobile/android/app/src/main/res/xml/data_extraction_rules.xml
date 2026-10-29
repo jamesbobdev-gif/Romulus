@@ -1,14 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- calendar sign-in tokens and links (CalAccountsPlugin) and Finance (FinanceVaultPlugin: its key can't leave the phone anyway) stay on this phone, out of backups and transfers -->
+<!-- Out of backups and device transfers: calendar sign-in tokens and links (CalAccountsPlugin), Finance (FinanceVaultPlugin:
+     its key can't leave the phone anyway) and the WebView's storage (app_webview holds the page's localStorage: the sync key
+     and anon key under tasks.sync.v1, plus the lists themselves, which sync back from the project). widget_state.xml holds
+     only ids of tasks ticked off on a widget, so it may go. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="cal_accounts.xml" />
         <exclude domain="sharedpref" path="finance_vault.xml" />
         <exclude domain="file" path="finance.vault" />
+        <exclude domain="root" path="app_webview" />
+        <exclude domain="root" path="app_textures" />
+        <exclude domain="database" path="webview.db" />
+        <exclude domain="database" path="webviewCookiesChromium.db" />
+        <exclude domain="sharedpref" path="WebViewChromiumPrefs.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="cal_accounts.xml" />
         <exclude domain="sharedpref" path="finance_vault.xml" />
         <exclude domain="file" path="finance.vault" />
+        <exclude domain="root" path="app_webview" />
+        <exclude domain="root" path="app_textures" />
+        <exclude domain="database" path="webview.db" />
+        <exclude domain="database" path="webviewCookiesChromium.db" />
+        <exclude domain="sharedpref" path="WebViewChromiumPrefs.xml" />
     </device-transfer>
 </data-extraction-rules>

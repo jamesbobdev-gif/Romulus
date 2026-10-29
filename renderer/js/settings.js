@@ -12,6 +12,7 @@ function syncFillForm(){
   // a list's own key shows; one made from the personal key shows as blank ("automatic")
   [['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']].forEach(function(x){ const l=c[x[0]]; $(x[1]).value=l&&!l.derived?l.syncKey||'':''; });
   $('syncOffBtn').hidden=!syncEnabled();
+  const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
 const SETTINGS_OPEN_KEY='tasks.settingsOpen';
@@ -90,18 +91,52 @@ function prefsProfile(){
 // the locked profile: its own row; only the mini PC's local lane reads it (nothing on the Claude side does)
 function lockedProfile(){
   const a=syncState.cfg&&syncState.cfg.agent;
-  return validProfile(a)?{url:a.url,key:a.key,syncKey:a.syncKey+':locked'}:null;
+  return validProfile(a)?{url:a.url,key:a.key,syncKey:a.syncKey+':locked',baseKey:a.syncKey}:null;
+}
+/* The Locked profile is encrypted here before it goes to Supabase, so the row is unreadable without the
+   agent sync key, even to whoever can see the database: AES-256-GCM, its key made from the agent sync key
+   by HKDF-SHA256 with 'romulus-locked-v1' as both salt and info. The row is {v:2, iv, ct} (base64; ct ends
+   with the GCM tag, as WebCrypto writes it). agent/supabase.js readText undoes this on the computer that
+   fills forms, with Node's hkdfSync and the same strings; test/locked-crypto.test.js holds the two together.
+   A v:1 row (plain text, from before) still reads, and is re-saved encrypted the first time it is opened. */
+const LOCKED_INFO='romulus-locked-v1';
+function lockedCryptoOk(){ return !!(window.crypto&&crypto.subtle&&crypto.subtle.deriveKey); }
+async function lockedKey(syncKey,usage){
+  const enc=new TextEncoder();
+  const raw=await crypto.subtle.importKey('raw',enc.encode(syncKey),'HKDF',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:enc.encode(LOCKED_INFO),info:enc.encode(LOCKED_INFO)},raw,{name:'AES-GCM',length:256},false,[usage]);
+}
+function lockedB64(bytes){ let s=''; bytes.forEach(function(b){ s+=String.fromCharCode(b); }); return btoa(s); }
+function lockedUnB64(s){ return Uint8Array.from(atob(s),function(c){ return c.charCodeAt(0); }); }
+async function lockedEncrypt(syncKey,text){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},await lockedKey(syncKey,'encrypt'),new TextEncoder().encode(text));
+  return {v:2,iv:lockedB64(iv),ct:lockedB64(new Uint8Array(ct))};
+}
+async function lockedDecrypt(syncKey,doc){
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:lockedUnB64(doc.iv)},await lockedKey(syncKey,'decrypt'),lockedUnB64(doc.ct));
+  return new TextDecoder().decode(pt);
+}
+async function lockedRead(syncKey,doc){ // the text of a locked row, whichever version it is
+  if(!doc)return '';
+  if(doc.v===2&&doc.ct)return lockedDecrypt(syncKey,doc);
+  return doc.text||'';
 }
 async function lockedLoad(){
   const p=lockedProfile(); $('lockedSection').hidden=!p; if(!p)return;
   $('lockedStatus').textContent='loading…';
-  try{ const d=await syncPull(p); $('lockedText').value=(d&&d.text)||''; $('lockedStatus').textContent=''; }
+  try{
+    const d=await syncPull(p); const text=await lockedRead(p.baseKey,d);
+    $('lockedText').value=text; $('lockedStatus').textContent='';
+    if(d&&d.v!==2&&text&&lockedCryptoOk())await syncPushDoc(p,await lockedEncrypt(p.baseKey,text)); // a plain row from an older build: encrypted from now on
+  }
   catch(e){ $('lockedStatus').textContent='could not load ('+e.message+')'; }
 }
 $('lockedSaveBtn').addEventListener('click',async function(){
   const p=lockedProfile(); if(!p)return;
+  if(!lockedCryptoOk()){ $('lockedStatus').textContent='this device can’t encrypt; not saved'; return; }
   $('lockedStatus').textContent='saving…';
-  try{ await syncPushDoc(p,{v:1,text:$('lockedText').value}); $('lockedStatus').textContent='saved'; }
+  try{ await syncPushDoc(p,await lockedEncrypt(p.baseKey,$('lockedText').value)); $('lockedStatus').textContent='saved'; }
   catch(e){ $('lockedStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('lockedStatus').textContent=''; },2500);
 });
@@ -221,6 +256,7 @@ async function prefsLoad(){
   lockedLoad();
   routingLoad();
   formFilesLoad();
+  if(typeof standingLoad==='function')standingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
   try{ const r=await syncPullRow(p); $('prefsText').value=(r.doc&&r.doc.text)||''; prefsLoadedAt=r.updatedAt; $('prefsStatus').textContent=''; }
@@ -278,27 +314,93 @@ SYNC_CODE_FIELDS.slice(0,3).forEach(function(x){
     setSyncStatus('filled in from the sync code: press Save & sync');
   });
 });
-$('syncGenBtn').addEventListener('click',function(){
-  $('syncKey').value='tk_'+(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,10));
-});
+// what the database accepts as a key (supabase/setup.sql sync_put / sync_set check the same shape)
+const SYNC_KEY_SHAPE=/^tk_[A-Za-z0-9_-]{13,}$/;
+function newSyncKey(){ return 'tk_'+(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,10)); }
+$('syncGenBtn').addEventListener('click',function(){ $('syncKey').value=newSyncKey(); });
 $('syncSaveBtn').addEventListener('click',function(){
   const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim(), sk=$('syncKey').value.trim();
   if(!url||!key||!sk){ setSyncStatus('fill in the three fields',true); return; }
   if(sk.length<16){ setSyncStatus('the sync key must be at least 16 characters (press Generate key)',true); return; }
+  if(!SYNC_KEY_SHAPE.test(sk)){ setSyncStatus('a sync key starts with tk_ and has only letters, digits, - and _ (press Generate key)',true); return; }
   // the lists share the project; a key typed for one is its own, blank = made from the sync key
   const raw={personal:{url:url,key:key,syncKey:sk}};
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
-  for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
+  for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
   syncState.cfg=normalizeSyncCfg(raw);
-  localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncState.cfg));
-  if(window.desktop&&window.desktop.syncSaveCfg)window.desktop.syncSaveCfg(syncState.cfg);
+  syncCfgPersist(syncState.cfg); // config.json on the desktop, localStorage on the phone (sync.js)
   $('syncOffBtn').hidden=false;
   render(); // workspace chips may appear/disappear
   startSyncLoop();
 });
 $('syncOffBtn').addEventListener('click',function(){
-  syncState.cfg=null; localStorage.removeItem(SYNC_CFG_KEY);
+  syncState.cfg=null; syncCfgPersist(null);
   clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
   syncFillForm(); setSyncStatus('sync is off'); render();
 });
+/* Rotate sync key: a new personal key, every list made from it moved under the new keys, the old rows
+   blanked. The sync key is the password to the lists, so this is what to do when it may have leaked (a
+   sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
+   back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
+   Lists with a key of their own (not made from the sync key) are not touched. */
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
+function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
+  const out=[];
+  ['personal','work','agent','school'].forEach(function(ws){
+    const prof=c[ws]; if(!validProfile(prof)||(ws!=='personal'&&!prof.derived))return;
+    const nk=ws==='personal'?newKey:deriveSyncKey(newKey,ws);
+    [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx},to:{url:prof.url,key:prof.key,syncKey:nk+sfx}});
+    });
+  });
+  return out;
+}
+async function syncRotateKey(){
+  const c=syncState.cfg, p=c&&c.personal;
+  if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
+  const moving=['Personal (with Ideas and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
+  if(!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked, so a device still on the old key sees empty lists.\n\nEvery other device (phone, mini PC, widgets) stops syncing until you pair it again: press Copy sync code here afterwards and paste it there. Lists with a key of their own are left alone.'))return;
+  const newKey=newSyncKey();
+  const rotateBtn=$('syncRotateBtn'); if(rotateBtn)rotateBtn.disabled=true;
+  // nothing may upload to the old keys while the rows move
+  clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
+  setSyncStatus('rotating the sync key…');
+  try{
+    for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
+    await syncNow(); // this device's latest edits reach the old rows first, so the copies are complete
+    clearTimeout(syncState.pushTimer); liveStop();
+    const moves=syncRotateMoves(c,newKey);
+    // 1. copy each row and read the copy back
+    for(const m of moves){
+      const rows=await syncRpc(m.from,'sync_get',{p_sync_key:m.from.syncKey});
+      let doc=rows[0]?rows[0].doc:null;
+      if(doc==null)continue; // no such row: nothing to move
+      if(m.sfx===':locked'&&doc.v===2&&doc.ct)doc=await lockedEncrypt(m.newBase,await lockedDecrypt(m.oldBase,doc)); // its cipher key follows the agent key
+      await syncPushDoc(m.to,doc);
+      const back=await syncRpc(m.to,'sync_get',{p_sync_key:m.to.syncKey});
+      if(JSON.stringify((back[0]||{}).doc)!==JSON.stringify(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
+    }
+    // 2. this device switches to the new keys
+    const raw={personal:{url:p.url,key:p.key,syncKey:newKey}};
+    ['work','agent','school'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
+    syncState.cfg=normalizeSyncCfg(raw);
+    await syncCfgPersist(syncState.cfg);
+    // 3. the old rows are blanked (an old device then shows an empty list, never live data)
+    let left=0;
+    for(const m of moves){ try{ await syncPushDoc(m.from,m.sfx?Object.assign({text:''},SYNC_TOMBSTONE):SYNC_TOMBSTONE); }catch(e){ left++; } }
+    syncFillForm();
+    setSyncStatus('new sync key saved: pair your other devices again with Copy sync code'+(left?' ('+left+' old rows could not be blanked; try again later)':''));
+  }catch(e){
+    setSyncStatus('rotation stopped before switching keys: '+e.message+' (this device is unchanged)',true);
+  }
+  if(rotateBtn)rotateBtn.disabled=false;
+  startSyncLoop();
+}
+(function(){ // the button sits with the other sync buttons and shows only while sync is on
+  const b=document.createElement('button'); b.id='syncRotateBtn'; b.className='ghost mono'; b.textContent='Rotate sync key';
+  b.title='Make a new sync key and move every list over to it; other devices must be paired again';
+  $('syncGenBtn').insertAdjacentElement('afterend',b);
+  b.addEventListener('click',syncRotateKey);
+})();

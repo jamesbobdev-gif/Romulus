@@ -151,12 +151,24 @@ Everything you connect stays on the computer where you connected it, in the app'
 | `Romulus-<version>.apk` | The Android phone app. |
 | `latest*.yml` | What installed copies read to find out a new version exists. |
 | `*.blockmap` | Lets an update download only the parts that changed. |
+| `SHA256SUMS-<os>.txt` | The SHA-256 of each installer, one file per build (`windows`, `mac`, `linux`, `android`). See below. |
+
+## Verify your download
+
+The installers aren't code-signed yet (that needs a certificate; until there is one Windows and macOS warn about an unknown publisher), so the check is the checksum. Every release has a `SHA256SUMS-<os>.txt` next to the installers, written by the build machine itself. Compare your download's SHA-256 with the line for it:
+
+- **Windows** (PowerShell or Command Prompt): `certutil -hashfile Romulus-Setup-<version>.exe SHA256`
+- **Mac** (Terminal): `shasum -a 256 Romulus-<version>.dmg`
+- **Linux**: `sha256sum Romulus-<version>.AppImage`, or `sha256sum -c SHA256SUMS-linux.txt` in the download folder
+- **Android**: on a computer, `certutil` / `shasum` / `sha256sum` on the APK as above, against `SHA256SUMS-android.txt`
+
+If the two differ, don't run the file: delete it, download again from this page, and open an issue if it still differs.
 
 ## If something doesn't work
 
 - **Claude card says "not installed" after installing**: press **I already have it**, or restart Romulus so it sees the new PATH.
 - **Sign in to Claude never finishes**: close its window, run `claude auth login` in any terminal, then restart Romulus.
-- **Local model "not reachable"**: Ollama isn't running, or on another machine it isn't listening on the network (`OLLAMA_HOST=0.0.0.0`).
+- **Local model "not reachable"**: Ollama isn't running, or on another machine the address is wrong: it should listen on that machine only (`OLLAMA_HOST=127.0.0.1:11434`) and be published to your devices with `tailscale serve --bg --tcp 11434 tcp://127.0.0.1:11434` (the `minipc/setup.sh` script in the source repository does this), not opened to the whole network with `0.0.0.0`.
 - **Phone and computer show different lists**: the sync key differs by a character.
 - **Anything else**: the app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log` that usually names the cause. Open an issue here with the relevant lines (strip anything personal).
 

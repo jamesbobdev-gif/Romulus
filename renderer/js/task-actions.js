@@ -4,6 +4,12 @@
 
 /* ── task actions ── */
 let addingTask=false;
+/* ⚔ Legion (Agent tab): the task goes out as deep research, every connected AI on a different angle (agent/legion.js) */
+let legionOn=false;
+function setLegion(on){
+  legionOn=!!on; const b=$('legionBtn'); b.classList.toggle('on',legionOn); b.setAttribute('aria-pressed',String(legionOn));
+  if(state.activeTab==='agent')$('newTitle').placeholder=legionOn?'What should the legion research?':'Add a task for the Agent…';
+}
 async function addTask(){
   if(addingTask)return;
   const titleEl=$('newTitle'); let title=titleEl.value.trim();
@@ -24,6 +30,7 @@ async function addTask(){
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
   const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+  if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
   if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;
   if(ws==='school')t.kind='regular';
