@@ -44,3 +44,4 @@ oauth-clients.json
 # Android release signing key (goes in the ANDROID_KEYSTORE_BASE64 secret; never commit)
 *.keystore
 *.jks
+signing/
