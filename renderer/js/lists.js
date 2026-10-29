@@ -17,13 +17,13 @@ function buildRow(t,canDrag){
   check.setAttribute('aria-label',t.done?'Mark as not done':'Mark as done');
   check.addEventListener('click',function(e){ e.stopPropagation(); toggleDone(t,li,check); });
   const title=el('span','title',t.title);
-  const meta=el('div','meta');
+  const meta=el('div','meta'), chips=el('div','chips'); // chips wrap in their own box; the buttons sit beside it, so every row's chips end at the same edge
 
   // subtask progress — turn red if any sub is overdue
   if(t.subs.length){
     const doneCount=t.subs.filter(function(s){ return s.done; }).length;
     const subLate=t.subs.filter(function(s){ return !s.done&&s.due&&dateInfo(s.due).diff<0; }).length;
-    meta.appendChild(el('span','progress'+(subLate?' sub-late':''),doneCount+'/'+t.subs.length));
+    chips.appendChild(el('span','progress'+(subLate?' sub-late':''),doneCount+'/'+t.subs.length));
   }
   let dueDiff=null;
   const today=formatDate(new Date());
@@ -40,37 +40,37 @@ function buildRow(t,canDrag){
       state.calYear=p[0]; state.calMonth=p[1]-1;
       switchTab('calendar');
     });
-    meta.appendChild(dateBtn);
+    chips.appendChild(dateBtn);
   }
   if(t.tag){
     const tagChip=el('button','chip tag',t.tag); tagChip.setAttribute('aria-label','Filter by tag '+t.tag);
     tagChip.addEventListener('click',function(e){ e.stopPropagation(); state.filter=(state.filter===t.tag)?null:t.tag; render(); });
-    meta.appendChild(tagChip);
+    chips.appendChild(tagChip);
   }
   if(workConfigured()&&taskWs(t)==='work'&&state.wsFilter!=='work'&&state.activeTab!=='work'){
-    meta.appendChild(el('span','chip ws','work'));
+    chips.appendChild(el('span','chip ws','work'));
   }
   // what the morning swipe decided: picked for today, or pushed to tomorrow's deck
   if(!t.done&&t.plan){
     // worded as a decision, not a date, so it can't read as a second due date; and nothing when
     // it would just repeat the due chip ("today · today")
-    if(t.plan===today&&t.planSet===today&&t.due!==today){ const c=el('span','chip plan','doing today'); c.title='You picked this for today'; meta.appendChild(c); }
-    else if(movedLater&&!t.due){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; meta.appendChild(c); }
+    if(t.plan===today&&t.planSet===today&&t.due!==today){ const c=el('span','chip plan','doing today'); c.title='You picked this for today'; chips.appendChild(c); }
+    else if(movedLater&&!t.due){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; chips.appendChild(c); }
   }
   if(taskWs(t)==='school'){
-    if(state.activeTab!=='school')meta.appendChild(el('span','chip school','school'));
+    if(state.activeTab!=='school')chips.appendChild(el('span','chip school','school'));
     else {
-      const k=schoolKind(t); if(k!=='regular')meta.appendChild(el('span','chip school',k));
+      const k=schoolKind(t); if(k!=='regular')chips.appendChild(el('span','chip school',k));
       const f=schoolShowFrom(t);
-      if(!t.done&&f&&todayStart()<f){ const c=el('span','chip later','in list '+f.toLocaleDateString('en-US',{month:'short',day:'numeric'})); c.title='Joins your Human list on this day'; meta.appendChild(c); }
+      if(!t.done&&f&&todayStart()<f){ const c=el('span','chip later','in list '+f.toLocaleDateString('en-US',{month:'short',day:'numeric'})); c.title='Joins your Human list on this day'; chips.appendChild(c); }
     }
   }
   const isAgentTask=taskWs(t)==='agent';
-  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; meta.appendChild(rc); }
-  if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); meta.appendChild(rc); }
-  if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st','⚡ '+(TRIGGER_LABELS[t.trigger.kind]||'trigger')); tc.title='Starts '+triggerText(t.trigger); meta.appendChild(tc); }
-  if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; meta.appendChild(gc); }
-  if(isAgentTask&&t.goalId){ const sc2=el('span','chip st','step '+(t.goalStep||'?')); const gl=state.tasks.find(function(x){ return x.id===t.goalId; }); sc2.title=gl?'Step '+t.goalStep+' of the goal “'+gl.title+'”':'A step of a goal'; if(gl){ sc2.classList.add('tap'); sc2.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(gl.id); }); } meta.appendChild(sc2); }
+  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; chips.appendChild(rc); }
+  if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); chips.appendChild(rc); }
+  if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st','⚡ '+(TRIGGER_LABELS[t.trigger.kind]||'trigger')); tc.title='Starts '+triggerText(t.trigger); chips.appendChild(tc); }
+  if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; chips.appendChild(gc); }
+  if(isAgentTask&&t.goalId){ const sc2=el('span','chip st','step '+(t.goalStep||'?')); const gl=state.tasks.find(function(x){ return x.id===t.goalId; }); sc2.title=gl?'Step '+t.goalStep+' of the goal “'+gl.title+'”':'A step of a goal'; if(gl){ sc2.classList.add('tap'); sc2.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(gl.id); }); } chips.appendChild(sc2); }
   if(isAgentTask&&!t.done){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?(t.goalWait?['','next up']:t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?['working','in steps']:t.trigger&&t.trigger.kind?['','watching']:['ready','finished']):(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
@@ -84,9 +84,9 @@ function buildRow(t,canDrag){
       sc.addEventListener('click',flip);
       sc.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); flip(e); } });
     }
-    meta.appendChild(sc);
+    chips.appendChild(sc);
     // which worker it's assigned to (Claude on this computer, or your own model on the mini PC)
-    if(t.lane==='local'){ const lc=el('span','chip st','The local model'); lc.title='Your own model on the local model handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
+    if(t.lane==='local'){ const lc=el('span','chip st','The local model'); lc.title='Your own model on the local model handles this task'; chips.appendChild(lc); } // Claude is the usual case: no chip
   }
   // the row's buttons stay together on one line, so they never split around a wrapped chip
   const acts=el('span','acts');
@@ -116,7 +116,7 @@ function buildRow(t,canDrag){
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
     acts.appendChild(mv);
   }
-  acts.appendChild(chev); acts.appendChild(del); meta.appendChild(acts);
+  acts.appendChild(chev); acts.appendChild(del); meta.appendChild(chips); meta.appendChild(acts);
   row.appendChild(check); row.appendChild(title); row.appendChild(meta);
   row.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); });
   li.appendChild(row);

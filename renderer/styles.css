@@ -165,7 +165,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .title{font-size:15px;flex:1 1 14em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
 .task.done .title{color:var(--muted);text-decoration:line-through;text-decoration-color:#C9C9C3}
 .title-edit{flex:1;min-width:0;font-family:var(--display);font-size:15px;border:0;outline:0;background:transparent;border-bottom:1px solid var(--accent);padding:2px 0;color:var(--ink)}
-.meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;row-gap:6px} /* chips wrap instead of crushing the title */
+.meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0}
+.chips{display:flex;align-items:center;gap:7px;row-gap:6px;min-width:0;flex-wrap:wrap;justify-content:flex-end} /* chips wrap instead of crushing the title */
+.chips:empty{display:none}
 .acts{display:flex;align-items:center;gap:2px;flex:none}
 .progress{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .progress.sub-late{color:var(--late)}
@@ -331,7 +333,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
      (indented past the grip + checkbox: 12px + 10px + 19px + 10px) */
   .row{flex-wrap:wrap;row-gap:6px}
   .row .title{flex:1 1 0}
-  .row .meta{flex:1 1 100%;flex-wrap:wrap;row-gap:6px;padding-left:51px;justify-content:flex-start}
+  .row .meta{flex:1 1 100%;padding-left:51px}
+  .row .chips{flex:1 1 auto;justify-content:flex-start}
+  .row .acts{margin-left:auto}
   .list.donelist .row .meta{padding-left:29px}
   .row .meta .icon{padding:6px}
   /* phones: a compact calendar; tap a day for its full list. (.cal-grid prefix: these must beat
