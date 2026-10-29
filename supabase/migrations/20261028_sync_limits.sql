@@ -7,7 +7,8 @@
 --   * a document is at most 4 MB as stored.
 -- sync_get, widget_complete_task and agent_claim_task are unchanged. The same regex is in
 -- renderer/js/settings.js (SYNC_KEY_SHAPE, without the suffix part) and test/locked-crypto.test.js.
--- (Written 2026-10-28; not yet applied to the live project.)
+-- (Applied to the live project 2026-10-28 as migration sync_limits. Every row then in the table matched the key shape
+-- except one leftover realtime test row, tk_<id>:rt-test-…, which can no longer be written to and can be deleted.)
 
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
 returns boolean
