@@ -442,7 +442,10 @@ function finDrawStocks(box,s,cur,load){
   [['value','Largest position'],['gain','Biggest % gain ('+short+')'],['loss','Biggest % loss ('+short+')']].forEach(function(o){ const opt=el('option',null,o[1]); opt.value=o[0]; sel.appendChild(opt); });
   let sort='value'; try{ sort=localStorage.getItem('finStockSort')||'value'; }catch(e){}
   sel.value=sort; if(!sel.value)sel.value='value';
-  filt.appendChild(q); filt.appendChild(sel);
+  const dl=el('button','ghost mono fin-sheet-dl','⬇ Spreadsheet');
+  dl.title='Download your holdings as a spreadsheet (opens in Excel or Google Sheets)';
+  dl.addEventListener('click',function(){ finSaveStocksSheet(rows,short,cur,s.at); });
+  filt.appendChild(q); filt.appendChild(sel); filt.appendChild(dl);
   holdBox.appendChild(filt);
   const table=el('div','fin-holdings');
   holdBox.appendChild(table);
@@ -478,6 +481,25 @@ function finDrawStocks(box,s,cur,load){
   const mix=portfolioMix(s.rows);
   if(mix.total>0)body.appendChild(finMixFold(mix,cur));
   body.appendChild(el('p','fin-note','Prices from Yahoo Finance. Only the ticker symbols (like AAPL) are sent to it, never your shares or amounts.'));
+}
+/* every holding as a spreadsheet (stocksCsv, finance-insights.js). The computer asks where to save it
+   (main/downloads.js); the phone hands it to the Share menu */
+function finSaveStocksSheet(rows,short,cur,at){
+  const csv=stocksCsv(rows,short,cur);
+  const d=new Date(at||Date.now());
+  const title='Stocks '+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const say=function(m){ if(typeof pasteToast==='function')pasteToast(m); };
+  if(window.desktop&&window.desktop.saveSheet){
+    window.desktop.saveSheet(title,csv).then(function(r){
+      if(r&&r.ok)say('Saved to '+r.path);
+      else if(r&&!r.canceled)say('Couldn’t save it: '+(r.error||'something went wrong'));
+    });
+    return;
+  }
+  const file=new File(['﻿'+csv],title+'.csv',{type:'text/csv'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){ navigator.share({files:[file],title:title}).catch(function(){}); return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
 }
 /* Portfolio mix (finance-insights.js): what the stocks add up to by sector, industry, holding, or stocks vs
    funds, as bars with each one's share. Sectors come from Yahoo's search, sent only the ticker */

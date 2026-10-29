@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('desktop', {
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
   // documents from the Agent tab: an answer as a Word file, and files the mini PC's browser downloaded
   saveDoc: (title, text) => ipcRenderer.invoke('doc:save', title, text),
+  saveSheet: (title, csv) => ipcRenderer.invoke('sheet:save', title, csv),
   lupaFiles: () => ipcRenderer.invoke('lupa:files'),
   lupaFetch: (name) => ipcRenderer.invoke('lupa:fetch', name),
   lupaRemove: (names) => ipcRenderer.invoke('lupa:remove', names),

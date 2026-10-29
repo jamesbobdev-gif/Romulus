@@ -1,5 +1,6 @@
 /* Downloading documents from the Agent tab.
    - doc:save: an AI's written answer (an essay, a letter) saved as a Word file where he picks.
+   - sheet:save: the Finance tab's stocks saved as a spreadsheet (.csv) where he picks.
    - lupa:files / lupa:fetch / lupa:remove: files the mini PC's browser downloaded (a worksheet off Blackboard) sit in
      The local model’s ~/Downloads, not on this computer. These list them and copy one here, over the same SSH the
      mini PC's browser uses (localModel.browser.ssh).
@@ -41,6 +42,18 @@ async function saveDoc(_e, title, text) {
   const file = await pickPath(safeName(title, 'Document') + '.docx', [{ name: 'Word document', extensions: ['docx'] }]);
   if (!file) return { ok: false, canceled: true };
   try { fs.writeFileSync(file, makeDocx(String(title || '').slice(0, 200), String(text))); }
+  catch (e) { return { ok: false, error: e.message }; }
+  shell.showItemInFolder(file);
+  return { ok: true, path: file };
+}
+
+// a table (the Finance tab's stocks) as a .csv that Excel, Numbers and Google Sheets open
+async function saveSheet(_e, title, csv) {
+  if (!String(csv || '').trim()) return { ok: false, error: 'nothing to save' };
+  const file = await pickPath(safeName(title, 'Spreadsheet') + '.csv', [{ name: 'Spreadsheet (CSV)', extensions: ['csv'] }]);
+  if (!file) return { ok: false, canceled: true };
+  // the BOM tells Excel it's UTF-8 (names with accents, the — for a missing value)
+  try { fs.writeFileSync(file, '﻿' + String(csv)); }
   catch (e) { return { ok: false, error: e.message }; }
   shell.showItemInFolder(file);
   return { ok: true, path: file };
@@ -104,6 +117,7 @@ async function lupaRemove(_e, names) {
 const handlers = {
   'lupa:remove': lupaRemove,
   'doc:save': saveDoc,
+  'sheet:save': saveSheet,
   'lupa:files': () => lupaFiles(),
   'lupa:fetch': lupaFetch,
   'forms:files': () => ({ ok: true, files: agentFiles.list(formDir()) }),

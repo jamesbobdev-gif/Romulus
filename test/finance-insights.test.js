@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { debtPlan, subscriptionCheck, oddCharges, oddTitle, portfolioMix } = require('../renderer/js/finance-insights');
+const { debtPlan, subscriptionCheck, oddCharges, oddTitle, portfolioMix, stocksCsv } = require('../renderer/js/finance-insights');
 const { fetchSectors, stocksView } = require('../renderer/js/finance-core');
 
 const NOW = new Date(2026, 9, 28, 12).getTime();
@@ -100,4 +100,16 @@ test('sectors: only the ticker goes to Yahoo, and the answer lands on each stock
   asked.forEach((u) => assert.match(u, /search\?quotesCount=3&newsCount=0&q=(AAPL|VOO|BRK-B)$/));
   const v = stocksView([{ symbol: 'AAPL', shares: 1, value: 200 }], {}, null, null, null, s);
   assert.deepStrictEqual([v.rows[0].type, v.rows[0].sector], ['Stock', 'Technology']);
+});
+
+test('stocks spreadsheet: biggest first, plain numbers, commas quoted, no formulas, blanks for unknowns', () => {
+  const csv = stocksCsv([
+    { r: { symbol: null, name: '=HYPERLINK("x")', shares: 1, price: 5, live: false, changePct: 0, value: 5, cost: null, gain: null }, pct: null },
+    { r: { symbol: 'AAPL', name: 'Apple, Inc.', type: 'Stock', sector: 'Technology', industry: null, shares: 10.5, price: 230.1234567,
+      live: true, changePct: -1.2, value: 2416.3, cost: 2000, gain: 416.3 }, pct: 12.3 }], '6M', 'USD');
+  assert.deepStrictEqual(csv.split('\r\n'), [
+    'Symbol,Name,Type,Sector,Industry,Shares,Price (USD),Today %,6M %,Value (USD),Cost (USD),Gain (USD)',
+    'AAPL,"Apple, Inc.",Stock,Technology,,10.5,230.1235,-1.2,12.3,2416.3,2000,416.3',
+    ',"\'=HYPERLINK(""x"")",,,,1,5,,,5,,',
+    '']);
 });

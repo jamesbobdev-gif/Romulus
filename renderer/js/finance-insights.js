@@ -5,6 +5,7 @@
      trial turning paid looks like that).
    - oddCharges: a possible double charge, $100+ from a payee never paid before, a foreign transaction fee.
    - portfolioMix: what the stocks add up to by sector, industry, holding, and stocks vs funds.
+   - stocksCsv: the holdings as a spreadsheet to download.
    Nothing here gives advice beyond the arithmetic: the rate is worked back from interest actually charged.
    One of the page scripts in renderer/js (after finance-costs.js and finance-bills.js); main/finance.js and
    test/finance-insights.test.js load it too. */
@@ -137,4 +138,22 @@ function portfolioMix(rows){
     types:group(function(r){ return r.type||'Unknown'; })};
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={debtPlan:debtPlan,subscriptionCheck:subscriptionCheck,oddCharges:oddCharges,oddTitle:oddTitle,portfolioMix:portfolioMix}; }
+/* every holding as a .csv (Excel, Numbers, Google Sheets), biggest first, with plain numbers so the sheet can
+   add them up. rows: [{r: a stocksView row, pct: its move over the chart's window}]; short: that window ('6M') */
+function stocksCsv(rows,short,cur){
+  const cell=function(v){
+    if(v==null||v==='')return '';
+    if(typeof v==='number')return isFinite(v)?String(Math.round(v*10000)/10000):'';
+    let t=String(v); if(/^[=+\-@\t\r]/.test(t))t="'"+t; // a name starting with = isn't a formula
+    return /[",\n\r]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;
+  };
+  const head=['Symbol','Name','Type','Sector','Industry','Shares','Price ('+cur+')','Today %',short+' %','Value ('+cur+')','Cost ('+cur+')','Gain ('+cur+')'];
+  const lines=[head.map(cell).join(',')];
+  rows.slice().sort(function(a,b){ return b.r.value-a.r.value; }).forEach(function(x){
+    const r=x.r;
+    lines.push([r.symbol,r.name,r.type,r.sector,r.industry,r.shares,r.price,r.live?r.changePct:null,x.pct,r.value,r.cost,r.gain].map(cell).join(','));
+  });
+  return lines.join('\r\n')+'\r\n';
+}
+
+if(typeof module!=='undefined'&&module.exports){ module.exports={debtPlan:debtPlan,subscriptionCheck:subscriptionCheck,oddCharges:oddCharges,oddTitle:oddTitle,portfolioMix:portfolioMix,stocksCsv:stocksCsv}; }
