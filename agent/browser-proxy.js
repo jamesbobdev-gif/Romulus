@@ -114,6 +114,8 @@ function hostRefusal(msg) {
    the user can see afterwards what the agent did (Settings → What the Agent did). Never the page's contents. */
 const ACTIONS_FILE = process.env.TASKS_BROWSER_ACTIONS || '';
 const TASK_TITLE = process.env.TASKS_BROWSER_TASK || '';
+// the file's own name from a path written on Windows or on the mini PC (path.basename only knows the host's separator)
+const fileName = (p) => String(p).split(/[\\/]/).pop();
 function logAction(what, extra) {
   if (!ACTIONS_FILE) return;
   try { require('fs').appendFileSync(ACTIONS_FILE, JSON.stringify(Object.assign({ at: Date.now(), task: TASK_TITLE, what }, extra || {})) + '\n'); } catch (e) {}
@@ -291,7 +293,7 @@ function noteAction(msg, here) {
   const label = name === 'browser_click' ? ((refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '')).trim() : '';
   if (label && (BUY.test(label) || SUBMIT.test(label) || FINAL.test(label))) logAction('clicked', { label: label.slice(0, 80), url: String(here || '').slice(0, 200) });
   else if (pressesEnter(name, a) && checkoutPage(here)) logAction('pressed Enter', { url: String(here || '').slice(0, 200) });
-  else if (name === 'browser_file_upload' && a.paths != null) logAction('uploaded', { files: (Array.isArray(a.paths) ? a.paths : [a.paths]).map((p) => require('path').basename(String(p))), url: String(here || '').slice(0, 200) });
+  else if (name === 'browser_file_upload' && a.paths != null) logAction('uploaded', { files: (Array.isArray(a.paths) ? a.paths : [a.paths]).map(fileName), url: String(here || '').slice(0, 200) });
 }
 // the last step of buying or applying, by the page's address (its path; the host is anyone's)
 const CHECKOUT = /check-?out|\/buy\b|payment|\/pay\b|place-?order|\/orders?\b|purchase|\/apply\b|application|\/submit\b/i;
@@ -314,7 +316,7 @@ function fileRefusal(msg) {
   const paths = (Array.isArray(a.paths) ? a.paths : [a.paths]).map(String);
   const bad = paths.filter((x) => !FILES.some((f) => samePath(f, x)));
   if (!bad.length) return null;
-  const names = FILES.map((f) => require('path').basename(String(f)));
+  const names = FILES.map(fileName);
   return (FILES.length ? 'Only his own files for forms can be uploaded: ' + names.join(', ') + ' (with the full path you were given). '
     : 'He hasn\'t added any files for forms yet (⚙ Settings → About you → Files for forms), so nothing can be uploaded. ')
     + 'Not ' + bad.join(', ') + '. To close the file box without uploading, call browser_file_upload with no paths, then say in your note what the site asked for.';
