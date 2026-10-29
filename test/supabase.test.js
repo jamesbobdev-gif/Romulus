@@ -63,3 +63,19 @@ test('headers merge extras', () => {
   assert.deepStrictEqual(supabase.headers(a, { 'Content-Type': 'application/json' }),
     { apikey: 'k', Authorization: 'Bearer k', 'Content-Type': 'application/json' });
 });
+
+test('readRow sends p_since once it has seen a row, and keeps the copy when the database says unchanged', async () => {
+  const b = { url: 'https://y.supabase.co/', key: 'k', syncKey: 'since' };
+  const seen = {};
+  const first = await supabase.readRow(b, ':prefs', { fetch: fakeFetch(200, [{ doc: { text: 'one' }, updated_at: 't1', topic: 'sync:s', unchanged: false }], seen) });
+  assert.deepStrictEqual(first, { doc: { text: 'one' }, updated_at: 't1' });
+  assert.strictEqual(JSON.parse(seen.opts.body).p_since, undefined);
+  const again = await supabase.readRow(b, ':prefs', { fetch: fakeFetch(200, [{ doc: null, updated_at: 't1', topic: 'sync:s', unchanged: true }], seen) });
+  assert.strictEqual(JSON.parse(seen.opts.body).p_since, 't1');
+  assert.deepStrictEqual(again, { doc: { text: 'one' }, updated_at: 't1' }); // the kept copy, nothing downloaded
+  const changed = await supabase.readRow(b, ':prefs', { fetch: fakeFetch(200, [{ doc: { text: 'two' }, updated_at: 't2', topic: 'sync:s', unchanged: false }], seen) });
+  assert.deepStrictEqual(changed, { doc: { text: 'two' }, updated_at: 't2' });
+  const gone = await supabase.readRow(b, ':prefs', { fetch: fakeFetch(200, [{ doc: null, updated_at: null, topic: 'sync:s', unchanged: false }], seen) });
+  assert.strictEqual(gone, undefined);
+  assert.strictEqual(JSON.parse(seen.opts.body).p_since, 't2'); // it asked with the last time it knew; the row was gone
+});

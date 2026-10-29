@@ -35,10 +35,24 @@ async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
 }
 
 // One row ({doc, updated_at}) or undefined when there isn't one. Throws on a network or HTTP error.
+// The last row read is kept per key and its time sent as p_since: an unchanged row comes back without its
+// document (about a hundred bytes), and the kept copy is used (supabase/migrations/20261029_sync_get_since.sql).
+const seenRows = new Map(); // url|key → {doc, updated_at}
+let noSince = false; // an older database without p_since: whole rows, as before
 async function readRow(a, suffix, opts = {}) {
-  const rows = await rpc(a, 'sync_get', { p_sync_key: a.syncKey + suffix }, opts);
+  const k = a.url + '|' + a.syncKey + suffix, c = seenRows.get(k);
+  let rows;
+  if (c && !noSince) {
+    try { rows = await rpc(a, 'sync_get', { p_sync_key: a.syncKey + suffix, p_since: c.updated_at }, opts); }
+    catch (e) { if (!/HTTP 404/.test(e.message)) throw e; noSince = true; }
+  }
+  if (!rows) rows = await rpc(a, 'sync_get', { p_sync_key: a.syncKey + suffix }, opts);
   const row = Array.isArray(rows) ? rows[0] : undefined;
-  return row && row.doc != null ? { doc: row.doc, updated_at: row.updated_at } : undefined;
+  if (row && row.unchanged && c && row.updated_at === c.updated_at) return c;
+  if (!row || row.doc == null) { seenRows.delete(k); return undefined; }
+  const out = { doc: row.doc, updated_at: row.updated_at };
+  seenRows.set(k, out);
+  return out;
 }
 
 /* The Locked profile row (':locked') is encrypted by the app before it goes up (renderer/js/settings.js

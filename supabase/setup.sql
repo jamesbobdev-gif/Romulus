@@ -32,13 +32,18 @@ language sql immutable
 set search_path = public
 as $$ select 'sync:' || encode(sha256(convert_to(p_sync_key, 'UTF8')), 'hex') $$;
 
--- one row always: doc and updated_at are null when the list doesn't exist yet
-create or replace function public.sync_get(p_sync_key text)
-returns table(doc jsonb, updated_at timestamptz, topic text)
+-- one row always: doc and updated_at are null when the list doesn't exist yet. p_since = when the caller
+-- last pulled: a row unchanged since then comes back without its document (unchanged = true), so a poll
+-- of an unchanged list costs ~100 bytes, not the whole list (supabase/migrations/20261029_sync_get_since.sql)
+create or replace function public.sync_get(p_sync_key text, p_since timestamptz default null)
+returns table(doc jsonb, updated_at timestamptz, topic text, unchanged boolean)
 language sql stable security definer
 set search_path = public
 as $$
-  select s.doc, s.updated_at, public.sync_topic_of(p_sync_key)
+  select case when p_since is not null and s.updated_at = p_since then null else s.doc end,
+         s.updated_at,
+         public.sync_topic_of(p_sync_key),
+         (p_since is not null and s.updated_at = p_since)
   from (select 1) x left join public.tasks_sync s on s.sync_key = p_sync_key
   where length(p_sync_key) >= 16;
 $$;
@@ -160,7 +165,7 @@ revoke all on table public.tasks_sync from anon, authenticated;
 revoke all on table public.app_secrets from anon, authenticated;
 
 revoke all on function public.sync_topic_of(text) from public;
-revoke all on function public.sync_get(text) from public;
+revoke all on function public.sync_get(text, timestamptz) from public;
 revoke all on function public.sync_put(text, jsonb, timestamptz) from public;
 revoke all on function public.sync_set(text, jsonb) from public;
 revoke all on function public.widget_complete_task(text, text) from public;
@@ -168,7 +173,7 @@ revoke all on function public.agent_claim_task(text, text, text, text) from publ
 revoke all on function public.tasks_sync_broadcast() from public;
 -- (new functions in public get execute for the API roles by default: take it back from the two helpers)
 revoke execute on function public.tasks_sync_broadcast(), public.sync_topic_of(text) from anon, authenticated;
-grant execute on function public.sync_get(text), public.sync_put(text, jsonb, timestamptz), public.sync_set(text, jsonb),
+grant execute on function public.sync_get(text, timestamptz), public.sync_put(text, jsonb, timestamptz), public.sync_set(text, jsonb),
   public.widget_complete_task(text, text), public.agent_claim_task(text, text, text, text) to anon, authenticated, service_role;
 
 -- ───────────── photo attachments ─────────────

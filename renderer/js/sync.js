@@ -34,7 +34,11 @@ try{ applyTheme(localStorage.getItem(THEME_KEY)||''); }catch(e){}
    Each syncs with its own Supabase project; the remote docs never contain
    the ws field, so other devices/apps on a channel need no changes. */
 const SYNC_CFG_KEY='tasks.sync.v1';
-const syncState={ cfg:null, busy:false, again:false, pushTimer:null, pollTimer:null };
+const syncState={ cfg:null, busy:false, again:false, pushTimer:null, pollTimer:null,
+  docs:{}, // the last document pulled per row (url|key → {doc, updatedAt}): sync_get sends nothing back while it's unchanged
+  noSince:false, // the project's sync_get is an older one without p_since (migration not applied): pull whole rows
+  errStreak:0, nextTryAt:0 }; // after errors the poll backs off (a minute, then doubling, up to 15 minutes)
+const SYNC_POLL_MS=90*1000; // the fallback poll when live updates aren't connected (they usually are)
 /* One project, one sync key. The Work, Agent and School lists live in the same project under keys made
    from the personal one (tk_<id> → tk_work_<id>, tk_agent_<id>, tk_school_<id>; the Agent one must start
    with tk_agent_ for the server's claim function), unless a list was given its own key. A derived
@@ -134,11 +138,22 @@ function setSyncStatus(msg,isErr){
 
 // The list plus when it was last written, so our upload can check nobody wrote in between.
 // Also learns the list's live-update channel (liveTopics), which only the database knows.
+// With p_since (when this row was last pulled) the database sends the document only if it changed since;
+// otherwise the copy kept here is used, so an unchanged list costs ~100 bytes a poll, not the whole list.
 async function syncPullRow(p){
-  const rows=await syncRpc(p,'sync_get',{p_sync_key:p.syncKey});
+  const k=p.url+'|'+p.syncKey, c=syncState.docs[k];
+  let rows;
+  if(c&&c.updatedAt&&!syncState.noSince){
+    try{ rows=await syncRpc(p,'sync_get',{p_sync_key:p.syncKey,p_since:c.updatedAt}); }
+    catch(e){ if(!/HTTP 404/.test(e.message))throw e; syncState.noSince=true; } // an older database: no p_since yet
+  }
+  if(!rows)rows=await syncRpc(p,'sync_get',{p_sync_key:p.syncKey});
   const r=rows[0]||{};
   if(r.topic)noteTopic(p,r.topic);
-  return {doc:r.doc||null,updatedAt:r.updated_at||null};
+  if(r.unchanged&&c&&r.updated_at===c.updatedAt)return {doc:c.doc,updatedAt:c.updatedAt};
+  const row={doc:r.doc||null,updatedAt:r.updated_at||null};
+  if(row.updatedAt)syncState.docs[k]={doc:row.doc,updatedAt:row.updatedAt}; else delete syncState.docs[k];
+  return row;
 }
 async function syncPull(p){ return (await syncPullRow(p)).doc; }
 // Compare-and-swap upload: replaces the list only if it's still the version we downloaded (or creates
@@ -266,8 +281,14 @@ async function syncOnce(){
     renderActive();
     if(spawnMissedRecurs())touch(); // ticked off on a device or by a tool that doesn't make the next one
   }
-  if(firstErr)setSyncStatus('sync error: '+firstErr.message,true);
+  if(firstErr){
+    // back off: a minute, then doubling, up to 15 minutes. Hammering a project that answers 402 (over its plan's limit) helps nobody
+    syncState.errStreak=Math.min(syncState.errStreak+1,5);
+    syncState.nextTryAt=Date.now()+Math.min(15*60000,60000*Math.pow(2,syncState.errStreak-1));
+    setSyncStatus(/HTTP 402/.test(firstErr.message)?'sync paused: Supabase says the project is over its plan’s limit (egress). It resumes when the limit resets or the plan changes.':'sync error: '+firstErr.message,true);
+  }
   else{
+    syncState.errStreak=0; syncState.nextTryAt=0;
     syncState.lastAt=Date.now();
     setSyncStatus('synced '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+(liveAllUp()?' · live':''));
   }
@@ -283,9 +304,10 @@ function startSyncLoop(){
   if(!syncEnabled())return;
   // While Realtime is connected, changes arrive the moment they happen; the timer is only a safety net then.
   syncState.pollTimer=setInterval(function(){
+    if(Date.now()<syncState.nextTryAt)return; // backing off after errors
     if(liveAllUp()&&Date.now()-(syncState.lastAt||0)<5*60000)return;
     syncNow();
-  },30000);
+  },SYNC_POLL_MS);
   syncNow(); // its downloads learn each list's live channel, which opens the sockets (noteTopic)
 }
 
