@@ -36,7 +36,7 @@ function ideasProfile(){
 function ideasDoc(){ return {v:2,inbox:state.ideas.inbox,groups:state.ideas.groups,cards:state.ideas.cards,tombstones:state.ideas.tombstones}; }
 function canonIdeas(d){
   const by=function(a,b){ return a.id<b.id?-1:1; };
-  return JSON.stringify([d.inbox,d.groups.slice().sort(by),d.cards.slice().sort(by)]);
+  return stableJson([d.inbox,d.groups.slice().sort(by),d.cards.slice().sort(by)]);
 }
 function mergeIdeas(remoteDoc){
   const remote=normIdeas(remoteDoc), local=state.ideas;

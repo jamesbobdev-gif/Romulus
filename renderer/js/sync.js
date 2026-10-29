@@ -165,8 +165,18 @@ async function syncPushDoc(p,doc){
   if((await syncRpc(p,'sync_set',{p_sync_key:p.syncKey,p_doc:doc}))!==true)throw new Error('not saved');
 }
 
+// JSON with every object's keys sorted. The database stores a document as jsonb, which hands its keys back
+// in its own order (shortest first), so a plain JSON.stringify of the online copy never matched the one
+// here: every sync took the list for changed and uploaded it, and with live updates on, each upload woke
+// this device to sync again, without end.
+function stableJson(v){
+  return JSON.stringify(v,function(k,x){
+    if(!x||typeof x!=='object'||Array.isArray(x))return x;
+    const o={}; Object.keys(x).sort().forEach(function(key){ o[key]=x[key]; }); return o;
+  });
+}
 function canonTasks(tasks){
-  return JSON.stringify(tasks.slice().sort(function(a,b){ return a.id<b.id?-1:1; }));
+  return stableJson(tasks.slice().sort(function(a,b){ return a.id<b.id?-1:1; }));
 }
 function stripWs(t){ const c=Object.assign({},t); delete c.ws; return c; }
 // Doc pushed to a channel: only that workspace's tasks, without the ws field —
@@ -184,7 +194,8 @@ function mergeRemoteWs(remoteDoc,ws){
   const tombs={};
   state.tombstones.concat(rTombs).forEach(function(x){ if(!tombs[x.id]||x.deletedAt>tombs[x.id])tombs[x.id]=x.deletedAt; });
   const localWs=state.tasks.filter(function(t){ return taskWs(t)===ws; });
-  const others=state.tasks.filter(function(t){ return taskWs(t)!==ws; });
+  let others=state.tasks.filter(function(t){ return taskWs(t)!==ws; });
+  const elsewhere={}; others.forEach(function(t){ elsewhere[t.id]=t; });
   const byId={};
   localWs.concat(rTasks).forEach(function(t){
     const prev=byId[t.id];
@@ -194,11 +205,19 @@ function mergeRemoteWs(remoteDoc,ws){
       byId[t.id]=t;
     } else if(t.lane&&!prev.lane){ byId[t.id]=Object.assign({},prev,{lane:t.lane}); }
   });
-  const merged=[];
+  // A task lives in one list. One moved to another list (Personal → Work) is still in the old list's online
+  // copy, and must not come back there: the newer copy says where it lives (a tie keeps it where it is now
+  // in the other list) and the stale one goes. Two copies of one id made every save restamp both, and the
+  // lists uploaded each other's change forever.
+  const merged=[], movedOut={};
   Object.keys(byId).forEach(function(id){
     if(tombs[id]&&tombs[id]>=(byId[id].updatedAt||0))return;
+    const o=elsewhere[id];
+    if(o&&(o.updatedAt||0)>=(byId[id].updatedAt||0))return;
+    if(o)movedOut[id]=1;
     merged.push(byId[id]);
   });
+  if(Object.keys(movedOut).length)others=others.filter(function(t){ return !movedOut[t.id]; });
   const cutoff=Date.now()-60*86400000; // drop tombstones older than 60 days
   const mergedTombs=Object.keys(tombs).filter(function(id){ return tombs[id]>cutoff; })
     .map(function(id){ return {id:id,deletedAt:tombs[id]}; });
@@ -206,7 +225,7 @@ function mergeRemoteWs(remoteDoc,ws){
     const before={}; localWs.forEach(function(t){ before[t.id]=t.status; });
     if(merged.some(function(t){ return before[t.id]&&before[t.id]!==t.status&&(t.status==='needs-you'||t.status==='done'); }))buzz('answer');
   }
-  const changedLocal=canonTasks(merged)!==canonTasks(localWs);
+  const changedLocal=canonTasks(merged)!==canonTasks(localWs)||Object.keys(movedOut).length>0;
   const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw)||mergedTombs.length!==rTombs.length;
   state.tasks=others.concat(merged);
   state.tombstones=mergedTombs;

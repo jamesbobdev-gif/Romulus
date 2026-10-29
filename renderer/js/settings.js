@@ -13,6 +13,7 @@ function syncFillForm(){
   [['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']].forEach(function(x){ const l=c[x[0]]; $(x[1]).value=l&&!l.derived?l.syncKey||'':''; });
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
+  const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
 const SETTINGS_OPEN_KEY='tasks.settingsOpen';
@@ -357,6 +358,17 @@ function syncRotateMoves(c,newKey){ // every row that follows the personal key: 
   });
   return out;
 }
+async function syncCopyRows(moves){ // each row copied to its new key and read back; throws before anything switches
+  for(const m of moves){
+    const rows=await syncRpc(m.from,'sync_get',{p_sync_key:m.from.syncKey});
+    let doc=rows[0]?rows[0].doc:null;
+    if(doc==null)continue; // no such row: nothing to move
+    if(m.sfx===':locked'&&doc.v===2&&doc.ct)doc=await lockedEncrypt(m.newBase,await lockedDecrypt(m.oldBase,doc)); // its cipher key follows the agent key
+    await syncPushDoc(m.to,doc);
+    const back=await syncRpc(m.to,'sync_get',{p_sync_key:m.to.syncKey});
+    if(stableJson((back[0]||{}).doc)!==stableJson(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
+  }
+}
 async function syncRotateKey(){
   const c=syncState.cfg, p=c&&c.personal;
   if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
@@ -373,15 +385,7 @@ async function syncRotateKey(){
     clearTimeout(syncState.pushTimer); liveStop();
     const moves=syncRotateMoves(c,newKey);
     // 1. copy each row and read the copy back
-    for(const m of moves){
-      const rows=await syncRpc(m.from,'sync_get',{p_sync_key:m.from.syncKey});
-      let doc=rows[0]?rows[0].doc:null;
-      if(doc==null)continue; // no such row: nothing to move
-      if(m.sfx===':locked'&&doc.v===2&&doc.ct)doc=await lockedEncrypt(m.newBase,await lockedDecrypt(m.oldBase,doc)); // its cipher key follows the agent key
-      await syncPushDoc(m.to,doc);
-      const back=await syncRpc(m.to,'sync_get',{p_sync_key:m.to.syncKey});
-      if(JSON.stringify((back[0]||{}).doc)!==JSON.stringify(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
-    }
+    await syncCopyRows(moves);
     // 2. this device switches to the new keys
     const raw={personal:{url:p.url,key:p.key,syncKey:newKey}};
     ['work','agent','school'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
@@ -398,6 +402,57 @@ async function syncRotateKey(){
   if(rotateBtn)rotateBtn.disabled=false;
   startSyncLoop();
 }
+/* One key for every list: a setup from before the Work, Agent and School keys were made from the sync key
+   has a key of its own per list, so a new device paired with the sync key alone finds those lists empty.
+   This moves each such list (with its side rows) under the key made from the sync key, the same way a
+   rotation does: copy and read back, then switch this device, then blank the old rows. The sync key itself
+   stays, so other devices keep syncing and a phone needs only that one key from then on. */
+function syncOwnKeyLists(c){ return ['work','agent','school'].filter(function(ws){ return c&&validProfile(c[ws])&&!c[ws].derived; }); }
+function syncOneKeyMoves(c){
+  const out=[], pk=c.personal.syncKey;
+  syncOwnKeyLists(c).forEach(function(ws){
+    const prof=c[ws], nk=deriveSyncKey(pk,ws);
+    if(prof.syncKey===nk)return;
+    [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx},to:{url:c.personal.url,key:c.personal.key,syncKey:nk+sfx}});
+    });
+  });
+  return out;
+}
+async function syncUseOneKey(){
+  const c=syncState.cfg, p=c&&c.personal;
+  if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
+  const lists=syncOwnKeyLists(c);
+  if(!lists.length){ syncFillForm(); return; }
+  const names=lists.map(function(ws){ return ws[0].toUpperCase()+ws.slice(1); }).join(', ');
+  if(!confirm('Use one key for every list?\n\n'+names+' move under keys made from your sync key. After this, a new device needs only the sync key (or the sync code) and gets every list.\n\nDevices already set up with the sync code keep the old '+names+' keys and see those lists empty until you paste the new sync code there once.'))return;
+  const btn=$('syncOneKeyBtn'); if(btn)btn.disabled=true;
+  clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
+  setSyncStatus('moving '+names+' to your sync key…');
+  try{
+    for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
+    await syncNow(); // this device's latest edits reach the old rows first
+    clearTimeout(syncState.pushTimer); liveStop();
+    const moves=syncOneKeyMoves(c);
+    await syncCopyRows(moves);
+    syncState.cfg=normalizeSyncCfg({personal:p}); // every list now follows the sync key
+    await syncCfgPersist(syncState.cfg);
+    let left=0;
+    for(const m of moves){ try{ await syncPushDoc(m.from,m.sfx?Object.assign({text:''},SYNC_TOMBSTONE):SYNC_TOMBSTONE); }catch(e){ left++; } }
+    syncFillForm();
+    setSyncStatus('every list now uses your sync key'+(left?' ('+left+' old rows could not be blanked; try again later)':''));
+  }catch(e){
+    setSyncStatus('stopped before switching: '+e.message+' (this device is unchanged)',true);
+  }
+  if(btn)btn.disabled=false;
+  startSyncLoop();
+}
+(function(){ // shows only while a list still has a key of its own
+  const b=document.createElement('button'); b.id='syncOneKeyBtn'; b.className='ghost mono'; b.textContent='Use one key for every list'; b.hidden=true;
+  b.title='Move Work, Agent and School under your sync key, so other devices need only that one key';
+  $('syncGenBtn').insertAdjacentElement('afterend',b);
+  b.addEventListener('click',syncUseOneKey);
+})();
 (function(){ // the button sits with the other sync buttons and shows only while sync is on
   const b=document.createElement('button'); b.id='syncRotateBtn'; b.className='ghost mono'; b.textContent='Rotate sync key';
   b.title='Make a new sync key and move every list over to it; other devices must be paired again';

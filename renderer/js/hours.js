@@ -24,7 +24,7 @@ function hoursProfile(){
   return validProfile(p)?{url:p.url,key:p.key,syncKey:p.syncKey+':hours'}:null;
 }
 function hoursDoc(){ return {v:1,entries:state.hours.entries,tombstones:state.hours.tombstones}; }
-function canonHours(d){ return JSON.stringify(d.entries.slice().sort(function(a,b){ return a.id<b.id?-1:1; })); }
+function canonHours(d){ return stableJson(d.entries.slice().sort(function(a,b){ return a.id<b.id?-1:1; })); }
 function mergeHours(remoteDoc){
   const remote=normHours(remoteDoc), local=state.hours;
   const tombs={};
