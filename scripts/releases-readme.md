@@ -146,7 +146,7 @@ Everything you connect stays on the computer where you connected it, in the app'
 | File | What it is |
 |---|---|
 | `Romulus-Setup-<version>.exe` | The Windows installer. |
-| `Romulus-<version>.dmg`, `Romulus-<version>-mac.zip` | The Mac app (the zip is what Mac updates download). |
+| `Romulus-<version>-arm64.dmg`, `Romulus-<version>-arm64-mac.zip` | The Mac app, Apple silicon (the zip is what Mac updates download). |
 | `Romulus-<version>.AppImage` | The Linux app. |
 | `Romulus-<version>.apk` | The Android phone app. |
 | `latest*.yml` | What installed copies read to find out a new version exists. |
