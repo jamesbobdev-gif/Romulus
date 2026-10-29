@@ -17,7 +17,9 @@ function syncReadme() {
     if (Buffer.from(cur.content, 'base64').toString('utf8') === want) { console.log('releases README is current'); return false; }
     sha = cur.sha;
   } catch (e) {} // none yet: made below
-  const body = { message: 'README: how to install, what this repository is', content: Buffer.from(want).toString('base64') };
+  // sign the commit with the account's noreply address, or GitHub uses its primary (private) email
+  const who = { name: 'jamesbobdev-gif', email: '339323335+jamesbobdev-gif@users.noreply.github.com' };
+  const body = { message: 'README: how to install, what this repository is', content: Buffer.from(want).toString('base64'), author: who, committer: who };
   if (sha) body.sha = sha;
   api([`repos/${owner}/${repo}/contents/README.md`, '-X', 'PUT', '--input', '-'], JSON.stringify(body));
   console.log(`releases README updated on ${owner}/${repo}`);
