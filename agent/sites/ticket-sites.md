@@ -1,6 +1,6 @@
 ---
 name: Event ticket sites
-sites: fearticket.com, hauntpay.com, eventbrite.com, ticketmaster.com, livenation.com, axs.com, seatgeek.com, stubhub.com, vividseats.com, localcinemas.com, fandango.com
+sites: fearticket.com, hauntpay.com, eventbrite.com, ticketmaster.com, livenation.com, axs.com, seatgeek.com, stubhub.com, vividseats.com, fandango.com
 ---
 - The usual order: pick the date, then a time slot or section, then how many tickets, then checkout.
 - Popular nights sell out: if his date or time is gone, list what's left nearby instead of choosing.

@@ -36,7 +36,7 @@ What it can do today, with the right AI connected:
 
 Rules you set decide which AI gets which task: a word list, first-match rules, or "auto". Private words always route to the local model.
 
-### Finance (optional, desktop only)
+### Finance (optional)
 The parts of Rocket Money, Monarch, Copilot or Mint that most people actually use, on your own computer:
 
 - **Every account in one place**, read **read-only** through [SimpleFIN Bridge](https://bridge.simplefin.org) (about $15 a year, which pays the bank-connection cost; compare $100+ a year for the apps above).
@@ -48,7 +48,7 @@ The parts of Rocket Money, Monarch, Copilot or Mint that most people actually us
 
 What it doesn't do: budgets with envelopes, bill negotiation, or cancelling subscriptions for you. Those are the paid apps' upsells; the information to do them yourself is all here.
 
-Everything is kept in one file encrypted twice: AES-256 under a passphrase that is never saved, then again with your operating system's own encryption. It locks after 30 minutes, when the screen locks and when the computer sleeps. Windows Hello can unlock it. The cloud AIs can never read it; your local model can answer a money question from it, in a run with no web access, while it's unlocked.
+Everything is kept in one file encrypted twice: AES-256 under a passphrase that is never saved, then again with your operating system's own encryption. It locks after 30 minutes, when the screen locks and when the computer sleeps. Windows Hello can unlock it. The phone can get its own copy by scanning a QR code from the computer's Finance tab, kept behind your fingerprint. The cloud AIs can never read it; your local model can answer a money question from it, in a run with no web access, while it's unlocked.
 
 ### Phone (Android)
 The same lists on your phone, kept in sync, with home-screen widgets, a quick-add widget, and an optional **wake word** so you can speak a task to it. The Agent runs on your computer; the phone is where you reply from the couch.
@@ -125,7 +125,7 @@ Your lists are shared through a free [Supabase](https://supabase.com) project of
 
 **Connect the computer**: **⚙ Settings → Device sync**. Paste the URL and the anon key, press **Generate key** for a sync key, press **Save & sync**. The sync key is the password to your list; anyone with it can read and change it.
 
-**Connect the phone**: install the Android app (`Romulus-<version>.apk` from the releases page; open it on the phone), open the same Settings panel, enter the same three values. The sync key is long, so send it to yourself through something you trust (a password-manager note), not a group chat.
+**Connect the phone**: install the Android app (`Romulus-<version>.apk` from the releases page; open it on the phone), then on the computer press **Copy sync code** in Device sync. Send it to yourself through something you trust (a password-manager note, not a group chat), paste it into the first box of the phone's Device sync and press **Save & sync**.
 
 That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
@@ -174,4 +174,4 @@ If the two differ, don't run the file: delete it, download again from this page,
 
 ## Source code
 
-The code lives at [jamesbobdev-gif/Romulus](https://github.com/jamesbobdev-gif/Romulus), which is being prepared for an open-source release. Until it is public, report problems in this repository's Issues.
+The code lives at [jamesbobdev-gif/Romulus](https://github.com/jamesbobdev-gif/Romulus), under the MIT license. Report problems in its Issues, and security problems privately as its SECURITY.md says.

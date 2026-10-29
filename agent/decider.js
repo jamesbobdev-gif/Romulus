@@ -11,8 +11,8 @@ const QUESTIONS = {
     web: 'Needs the live web: shopping, ordering, booking, looking things up online, email or accounts on websites',
     local: 'Can be done without the web: writing, drafting, quizzes, coursework, forms, answering from knowledge' } },
 };
-// how sure d1 must be before its answer counts (tried on his past Agent tasks, 2026-10-21)
-const PRIVATE_AT = 0.9;  // Pharmacy / bank tasks came out 0.97–0.98, ordinary ones under 0.7
+// how sure d1 must be before its answer counts (tried on real Agent tasks, 2026-10-21)
+const PRIVATE_AT = 0.9;  // medication and bank tasks came out 0.97–0.98, ordinary ones under 0.7
 const SCRAP_BELOW = 0.2; // "Yeah", "It's too far": 0.11–0.15; the lowest real task ("Article Review 2") 0.28
 const LANE_AT = 0.8;
 const PAUSE_MS = 2 * 60 * 1000; // after d1 fails, the rules decide alone for a while instead of waiting on it each time

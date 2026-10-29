@@ -18,11 +18,11 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen3:30b-a3b          # or qwen3:8b on 16 GB
 ```
 
-Make Ollama listen on the network, not just localhost: set `OLLAMA_HOST=0.0.0.0` for the service (on Ubuntu, `systemctl edit ollama` and add `Environment="OLLAMA_HOST=0.0.0.0"` under `[Service]`), and let only your home network reach port 11434 in the firewall. Give the box a fixed address in your router.
+Keep Ollama listening on that box only (`OLLAMA_HOST=127.0.0.1:11434`, the default) and publish it to your own devices with [Tailscale](https://tailscale.com): `tailscale serve --bg --tcp 11434 tcp://127.0.0.1:11434`. Ollama has no password, so don't open it to the whole network with `0.0.0.0`.
 
-`minipc/setup.sh` does all of that on Ubuntu in one go (updates, no sleep, firewall for the home network, Ollama on the network, one model loaded at a time). Read it before running it; edit the `LAN` line for your network.
+`minipc/setup.sh` does all of that on Ubuntu in one go (updates, no sleep, Tailscale, a firewall that lets in only SSH, Ollama published to your tailnet, one model loaded at a time). Read it before running it; edit the `LAN` line for the home network allowed to SSH in.
 
-On your laptop: **⚙ Settings → Local model**, type `http://<the box's address>:11434`, **Find models**, pick one, **Use it**. Under **Who does Agent tasks**, "auto" sends writing and forms there and keeps web and shopping on the cloud AIs; private words always go there.
+On your laptop: **⚙ Settings → Local model**, type `http://<the box's Tailscale name or IP>:11434`, **Find models**, pick one, **Use it**. Under **Who does Agent tasks**, "auto" sends writing and forms there and keeps web and shopping on the cloud AIs; private words always go there.
 
 Optional, for browser tasks on that box too: `minipc/qwen-browser.service` runs a Chromium the model can drive, and `minipc/searxng.sh` sets up a private web search for it. Both are Ubuntu-specific.
 

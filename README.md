@@ -6,7 +6,7 @@
 
 **Bring your own model.** Plug in whatever you already pay for or can run: a Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama. Connect several and the app tries them in your order. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model.
 
-**Your money, without the subscription.** The Finance tab does what people pay Rocket Money, Monarch or Copilot for: every account in one place, recurring bills and subscriptions found automatically (and flagged when one stops), net worth over time, an income statement and balance sheet, receipts pulled from your inbox, live stock prices. The bank connection is read-only and costs about $15 a year; the data sits in an encrypted vault on your computer, not on anyone's server, and the Agent can't read it.
+**Your money, without the subscription.** The Finance tab does what people pay Rocket Money, Monarch or Copilot for: every account in one place, recurring bills and subscriptions found automatically (and flagged when one stops), net worth over time, an income statement and balance sheet, receipts pulled from your inbox, live stock prices. The bank connection is read-only and costs about $15 a year; the data sits in an encrypted vault on your computer (and, if you scan a QR code, on your phone behind your fingerprint), not on anyone's server, and no cloud AI can read it.
 
 Plus a School list that pulls due dates from course calendars, an Ideas board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
 
@@ -16,7 +16,7 @@ Plus a School list that pulls due dates from course calendars, an Ideas board, a
 
 **Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
 
-**Linux and macOS:** installers are built by the release workflow and attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
+**Linux, macOS and Android:** the `.AppImage`, `.dmg` and `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
 **From source:** Node 22 or newer, then `npm install` and `npm start`.
 
@@ -34,9 +34,9 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 | **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. |
 | **Work** | A second list, synced with the rest. |
 | **Calendar · Ideas · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
-| **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never leaves the computer. |
+| **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
 
-What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
+What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
 
 ## Privacy, in short
 

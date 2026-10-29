@@ -52,7 +52,7 @@ test('only running out of usage moves a task on', () => {
 });
 
 test('an answer that couldn’t do the task goes to the next AI', () => {
-  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'I couldn’t verify any Springfield-area showtimes for Tuesday.' }), true);
+  assert.strictEqual(couldntDo({ status: 'needs-you', note: 'I couldn’t verify any nearby showtimes for Tuesday.' }), true);
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Nothing on Fandango.', cant: 'no showtimes listed' }), true);
   assert.strictEqual(couldntDo({ status: 'needs-you', note: "I can't open a browser here." }), true);
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Searching for shampoos under $25 needs browser access to Amazon — handing over to Claude.' }), true);

@@ -13,7 +13,7 @@ const path = require('path');
 // the sites he signs in to on the mini PC, and a page of each that only shows when signed in
 const SITES = [
   { match: /(^|\.)blackboard\.com$/, name: 'Blackboard', home: '/ultra/course' },
-  { match: /(^|\.)d2llearn\.school\.edu$|^d2l\.|\.d2l\./, name: 'D2L', home: '/d2l/home' },
+  { match: /^d2l[a-z]*\.|\.d2l\./, name: 'D2L', home: '/d2l/home' },
 ];
 // sign-in services the school sites send him to
 const LOGIN_HOSTS = /^(login\.microsoftonline\.com|login\.microsoft\.com|login\.live\.com|accounts\.google\.com|.*\.okta\.com|sso\.[^/]+|idp\.[^/]+|adfs\.[^/]+)$/;

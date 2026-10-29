@@ -21,7 +21,7 @@ nearby: yes
      found showing it; if none near him do, say so and name the nearest place/date it is.
      - **Don't stop at the first theater you find.** Check more than one source: Fandango (search near
        his city or ZIP), then the big chains' own sites (AMC, Regal, Cinemark, Marcus) and local chains
-       (Atlas, local chains, independents). Aim for 5–8 theaters, closest first. A single theater
+       (regional chains, independents). Aim for 5–8 theaters, closest first. A single theater
        30 miles out when he lives near a city almost always means the search was too narrow, not that
        nothing closer has it — keep looking.
      - A wide release that opens later (presales) is listed at most big theaters near him even if one

@@ -1,6 +1,6 @@
-# Setting up Tasks
+# Setting up Romulus
 
-Tasks works the moment you install it: a to-do list on your computer, nothing to sign up for. Everything else is optional and switched on from **⚙ Settings**. This guide walks through each piece, in the order most people want them.
+Romulus works the moment you install it: a to-do list on your computer, nothing to sign up for. Everything else is optional and switched on from **⚙ Settings**. This guide walks through each piece, in the order most people want them.
 
 1. [Install](#1-install)
 2. [Connect an AI](#2-connect-an-ai) (for the Agent tab)
@@ -13,11 +13,13 @@ Tasks works the moment you install it: a to-do list on your computer, nothing to
 
 **Windows:** download `Romulus-Setup-<version>.exe` from the [releases page](https://github.com/jamesbobdev-gif/romulus-releases/releases) and run it. The installer is not code-signed yet, so Windows shows an "unrecognized app" warning: click **More info → Run anyway**. Romulus starts when you log in and lives in the tray near the clock; closing the window hides it there. To pin it: Start menu → right-click **Romulus** → Pin to taskbar.
 
-**Mac / Linux:** build it yourself for now (`npm install && npm run dist`; see the [README](../README.md)).
+**Mac:** download the `.dmg` from the same page and drag Romulus to Applications. It isn't signed by Apple yet, so the first open needs **System Settings → Privacy & Security → Open Anyway**, and updates have to be downloaded by hand until it is.
 
-**From source:** `npm install` then `npm start` (Node 18 or newer).
+**Linux:** download the `.AppImage`, `chmod +x` it and run it. Encrypted keys need a keyring (GNOME Keyring or KWallet).
 
-Updates on Windows arrive on their own: the app checks every few hours and installs the next version when your computer has been idle.
+**From source:** `npm install` then `npm start` (Node 22 or newer).
+
+Updates arrive on their own: the app checks every few hours and installs the next version when your computer has been idle (the tray menu has **Restart to update**). The phone shows an **Update** banner instead.
 
 ## 2. Connect an AI
 
@@ -84,7 +86,7 @@ That's every list: Work, Agent and School sync through the same project under ke
 
 ### Connect the phone
 
-Open the same Settings panel on the phone and enter the same three values. Keep them handy: the sync key is a long random string, so send it to yourself through something you trust (a password manager note, not a group chat).
+On the computer press **Copy sync code** in the same panel; it holds all three values. Send it to yourself through something you trust (a password-manager note, not a group chat), then on the phone open **⚙ Settings → Device sync**, paste it into the first box and press **Save & sync**.
 
 The Android app is `Romulus-<version>.apk` on the [releases page](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest): download it on the phone and open it. It updates itself from then on (an **Update** banner appears when a new version is out). To build it yourself instead, see the README.
 
@@ -118,7 +120,7 @@ Keys are never synced between devices and never leave the app except to the serv
 
 - **The Claude card says "not installed" after installing.** Press **I already have it**: the app looks again. If `claude` works in a terminal but not here, restart Romulus so it sees the new PATH.
 - **Sign in to Claude never finishes.** Close the terminal window it opened, run `claude auth login` yourself in any terminal, then press Sign in again (or just restart Romulus: it checks on start).
-- **"not reachable" on the Local model panel.** Ollama isn't running or isn't allowed from this computer. On the machine running it, `ollama serve` should be up; for another computer, Ollama must listen on the network (`OLLAMA_HOST=0.0.0.0`).
+- **"not reachable" on the Local model panel.** Ollama isn't running or isn't reachable from this computer. On the machine running it, `ollama serve` should be up; for another computer, publish it to your devices with Tailscale (`tailscale serve --bg --tcp 11434 tcp://127.0.0.1:11434`; [docs/second-machine.md](second-machine.md)) rather than opening it to the network with `0.0.0.0`.
 - **Device sync says "fill in the three personal fields".** All three are needed: URL, anon key, sync key.
 - **The phone and computer show different lists.** Check the sync key matches exactly on both; one character off is a different (empty) list.
 - **Something else.** The app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log`; it usually names the problem. Open an issue with the relevant lines (strip anything personal).

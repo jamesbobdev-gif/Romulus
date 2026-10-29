@@ -41,4 +41,4 @@ Skills (`agent/skills/*.md`) are short how-tos the Agent loads when a task's wor
 
 ## Reporting bugs
 
-Open an issue with what you did, what you expected, what happened, and the relevant lines from `%APPDATA%\Tasks\agent-runner.log` (Windows) with anything personal removed. Security problems go to [SECURITY.md](SECURITY.md) instead.
+Open an issue with what you did, what you expected, what happened, and the relevant lines from `%APPDATA%\Romulus\agent-runner.log` (Windows) with anything personal removed. Security problems go to [SECURITY.md](SECURITY.md) instead.
