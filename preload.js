@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld('desktop', {
   onAgentReconnect: (cb) => ipcRenderer.on('agent:reconnect', (_event, info) => cb(info)),
   onAgentReconnected: (cb) => ipcRenderer.on('agent:reconnected', (_event, info) => cb(info)),
   localStatus: () => ipcRenderer.invoke('local:status'),
+  // the local lane's sites: the ones a run reached (remembered as allowed) and the ones it was refused (a to-do asks him)
+  onLocalSitesSeen: (cb) => ipcRenderer.on('local:sites-seen', (_event, p) => cb(p)),
+  onLocalSiteAsk: (cb) => ipcRenderer.on('local:site-ask', (_event, p) => cb(p)),
   // ⚙ Local model: any Ollama (this computer by default)
   localGet: () => ipcRenderer.invoke('local:get'),
   localProbe: (url) => ipcRenderer.invoke('local:probe', url),

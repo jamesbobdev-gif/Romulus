@@ -162,10 +162,11 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .check{width:19px;height:19px;border-radius:50%;border:1.5px solid #BCBCB6;background:transparent;cursor:pointer;flex:none;display:grid;place-items:center;color:transparent;padding:0;transition:background .15s,border-color .15s,color .15s}
 .check:hover{border-color:var(--ink)}
 .check.on{background:var(--ink);border-color:var(--ink);color:#fff}
-.title{font-size:15px;flex:1 1 22em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
+.title{font-size:15px;flex:1 1 14em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
 .task.done .title{color:var(--muted);text-decoration:line-through;text-decoration-color:#C9C9C3}
 .title-edit{flex:1;min-width:0;font-family:var(--display);font-size:15px;border:0;outline:0;background:transparent;border-bottom:1px solid var(--accent);padding:2px 0;color:var(--ink)}
 .meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;row-gap:6px} /* chips wrap instead of crushing the title */
+.acts{display:flex;align-items:center;gap:2px;flex:none}
 .progress{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .progress.sub-late{color:var(--late)}
 .chip{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:6px;white-space:nowrap}
@@ -312,7 +313,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .subadd-row{display:flex;align-items:center;gap:8px;padding:8px 0 2px}
 .subadd{border:0;background:transparent;outline:0;font-family:var(--display);font-size:13.5px;color:var(--ink);flex:1;min-width:0}
 .subadd::placeholder{color:#A9A9A3}
-.sub-new-date{width:118px}
+.subadd-row .icon{opacity:.55}
+.subadd-row .icon:hover{opacity:1}
+.tag-inp{width:96px}
 
 .done-head{display:flex;align-items:center;justify-content:space-between;margin-top:26px}
 .ghost{border:0;background:transparent;cursor:pointer;color:var(--muted);padding:6px 4px;border-radius:6px}

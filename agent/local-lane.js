@@ -12,6 +12,7 @@ const { claudeExe, claudeEnv } = require('./platform');
 const os = require('os');
 const pageReader = require('./page-reader');
 const signinWatch = require('./signin-watch');
+const localSites = require('./local-sites');
 const formMode = require('./form-mode');
 const localAnswer = require('./local-answer');
 const providers = require('./providers');
@@ -162,7 +163,8 @@ current value. Every button, link and field has a ref in brackets, like [f1e15]:
 - Long pages are cut short: use browser_find with a word to reach the rest.
 - Multi-page forms: "Next"/"Continue" are fine to click; the last button (Submit/Apply…) is locked.
 - Allowed sites only (others are refused): the links in the task, plus: SITES. A link shown on one of
-  those sites' pages can be opened too (one step out: not links found on that second site).
+  those sites' pages can be opened too (one step out: not links found on that second site). A site you
+  needed and were refused: say which in your note. He gets a to-do to allow it, and the task runs again.
 - **Filling forms and applications:** use the Locked profile and his preferences for his details.
   If a field needs something you don't have, or a password, SSN, bank or card number, or anything you
   would have to make up, leave it empty and list it in your note. Never invent experience or answers.
@@ -396,7 +398,7 @@ async function runLocalTask(c, t) {
   const taskNotes = siteNotesFor(taskLinks(t));
   const earlier = howtosFor(t);
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
-  const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set();
+  const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   let maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
@@ -566,7 +568,7 @@ async function runLocalTask(c, t) {
           }
           if (!r.locked && !r.failed && (name === 'browser_click' && FINAL_BUTTON.test(what) || name === 'browser_press_key' && /enter/i.test(a.key || ''))) submittedNow = true;
           if (!r.locked && !r.failed && name === 'browser_type' && String(a.text || args.text || '').trim().length >= 120) typed = { text: String(a.text || args.text), where: String(what).slice(0, 120) };
-          if (r.locked) show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true);
+          if (r.locked) { show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true); const w = localSites.refusedHost(r.text); if (w) wanted.add(w); }
           else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (r.clickTimeout) clickTimeouts++; else if (r.loadTimeout) loadTimeouts++; }
           const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
@@ -638,8 +640,14 @@ async function runLocalTask(c, t) {
   const toPost = final.status === 'done' || submittedNow ? null
     : typed ? cleanDraft({ text: typed.text, where: (ownDraft && ownDraft.where) || typed.where }) : ownDraft || null;
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
+  // the sites it reached are remembered as allowed; the ones it was refused become a to-do on his Human list (agent/local-sites.js)
+  const reached = money ? [] : localSites.newHosts([...visited], sites);
+  if (reached.length) { sendToRenderer('local:sites-seen', { hosts: reached }); agentLog('local: remembering ' + reached.join(', ') + ' as allowed'); }
+  const want = money ? [] : [...wanted].filter((h) => !localSites.covered(h, sites.map(localSites.cleanSite))).slice(0, 3);
+  if (want.length) { sendToRenderer('local:site-ask', { hosts: want, task: t.id, title: t.title }); agentLog('local: wanted ' + want.join(', ') + ': asking on his Human list'); }
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
     note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live, draft: toPost,
+    wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
 

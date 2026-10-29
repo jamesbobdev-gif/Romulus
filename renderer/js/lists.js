@@ -32,7 +32,7 @@ function buildRow(t,canDrag){
   if(t.due){
     const info=dateInfo(t.due,t.dueTime);
     dueDiff=info.diff;
-    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text+(movedLater?' ↪ tomorrow':''));
+    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text+(movedLater?' ↪ tmrw':''));
     dateBtn.title=movedLater?'You swiped this to tomorrow — it comes back in tomorrow’s deck. Click to view in calendar':'View in calendar';
     dateBtn.addEventListener('click',function(e){
       e.stopPropagation();
@@ -88,6 +88,8 @@ function buildRow(t,canDrag){
     // which worker it's assigned to (Claude on this computer, or your own model on the mini PC)
     if(t.lane==='local'){ const lc=el('span','chip st','The local model'); lc.title='Your own model on the local model handles this task'; meta.appendChild(lc); } // Claude is the usual case: no chip
   }
+  // the row's buttons stay together on one line, so they never split around a wrapped chip
+  const acts=el('span','acts');
   // snooze: overdue → today, due today → tomorrow
   if(!t.done&&dueDiff!==null&&dueDiff<=0){
     const snz=iconBtn(I.snooze,dueDiff<0?'Snooze to today':'Snooze to tomorrow');
@@ -97,7 +99,7 @@ function buildRow(t,canDrag){
       const base=new Date(); if(dueDiff===0)base.setDate(base.getDate()+1);
       t.due=formatDate(base); touch();
     });
-    meta.appendChild(snz);
+    acts.appendChild(snz);
   }
   const pen=iconBtn(I.pen,'Edit task');
   pen.addEventListener('click',function(e){ e.stopPropagation(); startEdit(t,li.querySelector('.title')); });
@@ -106,15 +108,15 @@ function buildRow(t,canDrag){
   chev.addEventListener('click',function(e){ e.stopPropagation(); toggleExpand(t); });
   const del=iconBtn(I.x,'Delete task');
   del.addEventListener('click',function(e){ e.stopPropagation(); deleteTask(t); });
-  meta.appendChild(pen);
+  acts.appendChild(pen);
   if(agentAvailable()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
     const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';
     const mv=iconBtn(isAgentTask?I.human:I.bot,mvLabel); mv.title=mvLabel;
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
-    meta.appendChild(mv);
+    acts.appendChild(mv);
   }
-  meta.appendChild(chev); meta.appendChild(del);
+  acts.appendChild(chev); acts.appendChild(del); meta.appendChild(acts);
   row.appendChild(check); row.appendChild(title); row.appendChild(meta);
   row.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); });
   li.appendChild(row);
@@ -516,7 +518,7 @@ function buildPanel(t){
   const pm=el('div','panel-meta');
   const dueIn=el('input','sm'); dueIn.type='date'; dueIn.value=t.due||''; dueIn.setAttribute('aria-label','Task due date');
   const timeIn=el('input','sm'); timeIn.type='time'; timeIn.value=t.dueTime||''; timeIn.setAttribute('aria-label','Task due time');
-  function syncTimeState(){ timeIn.disabled=!dueIn.value; }
+  function syncTimeState(){ timeIn.hidden=!dueIn.value; } // no time box until there's a day to put it on
   dueIn.addEventListener('change',function(){
     t.due=dueIn.value||null; if(!t.due){ t.dueTime=null; timeIn.value=''; }
     if(t.recur){ if(t.due)t.recur.dom=Number(t.due.slice(8)); else t.recur=null; } // a repeat needs a date to count from
@@ -524,15 +526,14 @@ function buildPanel(t){
   });
   timeIn.addEventListener('change',function(){ t.dueTime=timeIn.value||null; touch(); });
   syncTimeState();
-  const tagIn=el('input','sm'); tagIn.value=t.tag||''; tagIn.placeholder='tag'; tagIn.setAttribute('list','tagOptions'); tagIn.setAttribute('aria-label','Tag');
+  const tagIn=el('input','sm tag-inp'); tagIn.value=t.tag||''; tagIn.placeholder='tag'; tagIn.setAttribute('list','tagOptions'); tagIn.setAttribute('aria-label','Tag');
   tagIn.addEventListener('change',function(){ t.tag=tagIn.value.trim()||null; touch(); });
   tagIn.addEventListener('keydown',function(e){ if(e.key==='Enter')tagIn.blur(); });
   pm.appendChild(dueIn); pm.appendChild(timeIn); pm.appendChild(tagIn); panel.appendChild(pm);
 
-  // repeat: ticking it off makes the next one (recur.js); agent tasks use their own schedule above
+  // repeat: ticking it off makes the next one (recur.js); agent tasks use their own schedule above.
+  // Same row as the date it counts from; "Doesn’t repeat" says what it is, so no label
   if(taskWs(t)!=='agent'&&!t.done){
-    const rr=el('div','panel-meta repeat-row');
-    rr.appendChild(el('span','lbl','Repeat'));
     const rs=document.createElement('select'); rs.className='sm'; rs.setAttribute('aria-label','Repeat');
     RECUR_OPTIONS.forEach(function(p){ const o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; rs.appendChild(o); });
     rs.value=t.recur&&RECUR_CHIPS[t.recur.every]?t.recur.every:'';
@@ -542,8 +543,7 @@ function buildPanel(t){
       t.recur={every:rs.value,dom:Number(t.due.slice(8)),series:(t.recur&&t.recur.series)||t.id};
       touch();
     });
-    rr.appendChild(rs);
-    panel.appendChild(rr);
+    pm.appendChild(rs);
   }
 
   // Screenshots: attach context photos to any (non-agent) task. Reuses the
@@ -601,8 +601,8 @@ function buildPanel(t){
     panel.addEventListener('drop',function(e){ if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){ e.preventDefault(); addPics(e.dataTransfer.files); } });
   }
 
-  // Subtasks section
-  panel.appendChild(el('span','subs-label','Subtasks'));
+  // Subtasks section: the label only once there are some ("Add a subtask…" says it otherwise)
+  if(t.subs.length)panel.appendChild(el('span','subs-label','Subtasks'));
   const ul=el('ul','subs');
 
   t.subs.forEach(function(s){
@@ -653,21 +653,43 @@ function buildPanel(t){
 
   panel.appendChild(ul);
 
-  // Add-subtask row: title + optional due date, Enter to add
+  // Add-subtask row: title + optional due date, Enter to add. The date is a small calendar
+  // button (like on each subtask) that opens the picker, then shows as a chip
   const addRow=el('div','subadd-row');
   const add=el('input','subadd'); add.placeholder='Add a subtask…'; add.setAttribute('data-id',t.id);
-  const newDue=el('input','sm sub-new-date'); newDue.type='date'; newDue.setAttribute('aria-label','Subtask due date');
+  const newDueArea=el('div','sub-date-area');
+  let newDue=null;
+  function showNewDue(){
+    newDueArea.innerHTML='';
+    const b=newDue?el('button','chip date',dateInfo(newDue).text):el('button','icon sub-new-cal');
+    if(!newDue)b.innerHTML=I.cal;
+    b.setAttribute('aria-label',newDue?'Change subtask due date':'Subtask due date');
+    b.title=newDue?'Click to change date':'Give it a due date';
+    b.addEventListener('click',function(e){ e.stopPropagation(); pickNewDue(); });
+    newDueArea.appendChild(b);
+  }
+  function pickNewDue(){
+    newDueArea.innerHTML='';
+    const inp=el('input','sm sub-date-inp'); inp.type='date'; inp.value=newDue||''; inp.setAttribute('aria-label','Subtask due date');
+    let saved=false;
+    function commit(){ if(saved)return; saved=true; newDue=inp.value||null; showNewDue(); }
+    inp.addEventListener('change',commit);
+    inp.addEventListener('blur',commit);
+    inp.addEventListener('keydown',function(ke){ if(ke.key==='Enter'){ commit(); doAddSub(); } else if(ke.key==='Escape')inp.blur(); });
+    newDueArea.appendChild(inp);
+    requestAnimationFrame(function(){ inp.focus(); try{inp.showPicker();}catch(_){} });
+  }
+  showNewDue();
 
   function doAddSub(){
     const v=add.value.trim(); if(!v){ add.focus(); return; }
-    t.subs.push({id:uid(),title:v,done:false,due:newDue.value||null});
-    add.value=''; newDue.value='';
+    t.subs.push({id:uid(),title:v,done:false,due:newDue});
+    add.value=''; newDue=null;
     persist(); render();
     requestAnimationFrame(function(){ const next=document.querySelector('input.subadd[data-id="'+t.id+'"]'); if(next)next.focus(); });
   }
   add.addEventListener('keydown',function(e){ if(e.key==='Enter')doAddSub(); });
-  newDue.addEventListener('keydown',function(e){ if(e.key==='Enter')doAddSub(); });
-  addRow.appendChild(add); addRow.appendChild(newDue);
+  addRow.appendChild(add); addRow.appendChild(newDueArea);
   panel.appendChild(addRow);
   return panel;
 }

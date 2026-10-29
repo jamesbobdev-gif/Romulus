@@ -335,7 +335,7 @@ function setDone(t,v){
     if(!v&&t.status==='done')t.status='queued';
     if(v){ t.status='done'; keepLastOrder(t); delete t.cart; delete t.cartOff; delete t.cartPick; } // a finished order: its cards go
   }
-  else if(v)spawnRecur(t); // a repeating to-do: the next one appears
+  else if(v){ spawnRecur(t); if(typeof siteAskHost==='function'&&siteAskHost(t))siteAskAllowed(siteAskHost(t)); } // a repeating to-do: the next one appears; an "Allow the local model on…" to-do allows that site (local-sites.js)
   else unspawnRecur(t);
 }
 function toggleDone(t,liEl,checkEl){

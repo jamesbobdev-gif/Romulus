@@ -104,6 +104,8 @@ Then choose, per calendar, whether its events become to-dos and whether your tas
 
 **Goals.** Title an Agent task “Goal: …” (or add `#goal`) for something that takes weeks: getting an internship, planning a move. The first run only plans it: steps in order, with an estimate of the Agent’s time, and what it would need from you. Reply with changes to get a new plan, or press **Start these steps**: each step becomes its own Agent task, run one after another on the computer that runs the Agent, and the goal shows how far along it is. Anything final inside a step (applying, sending, booking) still waits for your yes there. The goal task’s instructions go to every step.
 
+**The local model’s sites.** The list in **⚙ Settings → Routing → Sites the local model may open** fills itself: every site the local model reaches in a run is added, so it's allowed next time. When its browser refuses a site it needed, a to-do appears on your Human list (“Allow the local model on linkedin.com? …”). Check it off to allow the site and run the task again; delete it to say no.
+
 ## 5. Where your keys live
 
 Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Romulus\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless if copied to another account or machine. The Settings page only ever shows a key's first and last characters.
