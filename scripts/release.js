@@ -30,6 +30,16 @@ console.log('Releasing ' + pkg.version);
 // the public repo's README (install steps, what the repo is) travels with each release
 try { require('./releases-readme').syncReadme(); } catch (e) { console.log('releases README not updated: ' + e.message); }
 run('npx electron-builder --win --publish always', { stdio: 'inherit', env: Object.assign({}, process.env, { GH_TOKEN: token }) });
+// installed copies find the new version only through latest.yml; v1.0.4 went out without it, so check, and
+// attach this build's own copy if electron-builder didn't
+const tag = 'v' + pkg.version;
+const assets = run(`gh release view ${tag} --repo ${owner}/${repo} --json assets --jq ".assets[].name"`).split(/\r?\n/);
+if (!assets.includes('latest.yml')) {
+  const yml = path.join(root, 'dist', 'latest.yml');
+  if (!fs.readFileSync(yml, 'utf8').includes(`version: ${pkg.version}`)) { console.error(`dist/latest.yml is not for ${pkg.version}; the release has no latest.yml, so installed copies won't update`); process.exit(1); }
+  run(`gh release upload ${tag} "${yml}" --repo ${owner}/${repo}`, { stdio: 'inherit' });
+  console.log('latest.yml was missing from the release: attached');
+}
 // the release page: say which file to download (GitHub adds source archives of its own that hold only the README)
 try { require('./releases-readme').writeNotes(pkg.version); } catch (e) { console.log('release notes not written: ' + e.message); }
 console.log(`Done: ${pkg.version} is on https://github.com/${owner}/${repo}/releases — Windows copies update within a few hours.`);
