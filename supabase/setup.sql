@@ -49,7 +49,7 @@ as $$
 $$;
 
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :ideas, :hours;
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours;
 -- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
 -- can't fill the table (supabase/migrations/20261028_sync_limits.sql).
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
@@ -61,7 +61,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|ideas|hours))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if p_prev is null then
     insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now()) on conflict (sync_key) do nothing;
@@ -79,7 +79,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|ideas|hours))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now())
     on conflict (sync_key) do update set doc = excluded.doc, updated_at = now();
