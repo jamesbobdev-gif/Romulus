@@ -34,6 +34,8 @@
   window.phoneUpdate = { isNewer: isNewer, pickRelease: pickRelease };
 
   if (!cap || typeof cap.isNativePlatform !== 'function' || !cap.isNativePlatform() || !version || !releases) return;
+  // only the APK from the releases page updates itself; a store build is updated by its store (store.js)
+  if (window.ROMULUS_STORE !== 'github') return;
 
   var banner = null;
   function show(rel) {

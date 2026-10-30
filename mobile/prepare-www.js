@@ -36,7 +36,10 @@ const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.
 const financePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'finance-phone.js'), 'utf8') + '</script>';
 // "Update" banner when a newer release is on GitHub (update-phone.js)
 const updatePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'update-phone.js'), 'utf8') + '</script>';
-html = html.replace('<head>', () => '<head>\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
+// store.js says which Android build this is (GitHub APK or Google Play); each build flavor brings its own
+// copy from android/app/src/<flavor>/assets/public, so it isn't in www/
+const store = '<script src="store.js"></script>';
+html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 // everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is

@@ -651,8 +651,10 @@ if(window.desktop&&window.desktop.feedsFetch){
   function show(s){
     $('wakeOn').checked=!!s.on;
     // without "Display over other apps", Android makes you tap a notification after the chime
-    $('wakeOverlayBtn').hidden=!s.on||s.overlay;
-    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.overlay?'listening while the screen is on':'on · you’ll tap a notification to talk unless you allow this'):'';
+    // (the Google Play build can't ask for it at all: android/app/src/play/AndroidManifest.xml)
+    const canAsk=window.ROMULUS_STORE!=='play';
+    $('wakeOverlayBtn').hidden=!s.on||s.overlay||!canAsk;
+    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
   }
   function refresh(){ call('status').then(show).catch(function(){}); }
   cap.addListener('WakeWord','progress',function(d){ if(d&&d.pct!=null)$('wakeStatus').textContent='downloading speech model… '+d.pct+'%'; });

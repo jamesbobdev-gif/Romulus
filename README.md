@@ -81,7 +81,7 @@ One version number (`package.json`) covers every device: the desktop installers 
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Its password, key alias and key password. |
 | `OAUTH_CLIENTS_JSON` | Optional: the app's own Google / Microsoft sign-in clients. |
 
-Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The macOS installer is unsigned until an Apple Developer certificate is added, so Macs download updates but can't install them yet.
+Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The Mac and Windows installers stay unsigned until their signing secrets are set; the release workflow lists them.
 
 `npm run release` is the quick path for Windows only: it bumps the version, builds the installer on this machine and publishes it. The phone and the other systems only get a version that went through the tag workflow.
 
@@ -93,10 +93,10 @@ Never add `seed-config.json` or `oauth-clients.json` to a build you share, and n
 cd mobile
 node prepare-www.js        # copies renderer/ and bakes in sync-config.json
 npx cap sync android
-cd android && ./gradlew assembleDebug
+cd android && ./gradlew assembleGithubDebug
 ```
 
-Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/debug/`; it updates an installed copy in place. Its version comes from the root `package.json`. Without a `mobile/sync-config.json` the build bakes in no keys, and the phone is connected by pasting the sync code into Settings → Device sync; that is how the public APK from the releases page is built (see Releases below).
+Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/github/debug/` (`assemblePlayDebug` makes the Google Play build instead, with no update banner); it updates an installed copy in place. Its version comes from the root `package.json`. Without a `mobile/sync-config.json` the build bakes in no keys, and the phone is connected by pasting the sync code into Settings → Device sync; that is how the public APK from the releases page is built (see Releases below).
 
 ### Where your data lives
 

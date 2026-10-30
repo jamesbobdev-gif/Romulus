@@ -33,3 +33,20 @@ test("pickRelease finds the APK among a release's files", () => {
   assert.equal(pickRelease({ tag_name: 'v1.0.5', assets: [] }).apkUrl, null);
   assert.equal(pickRelease(null), null);
 });
+
+// with Capacitor present: does the check get as far as scheduling itself?
+function scheduled(store) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'update-phone.js'), 'utf8');
+  const window = { ROMULUS_VERSION: '1.0.5', ROMULUS_RELEASES: 'o/r', ROMULUS_STORE: store,
+    Capacitor: { isNativePlatform: () => true } };
+  let timers = 0;
+  vm.runInNewContext(src, { window, document: { readyState: 'complete', addEventListener() {} },
+    setTimeout: () => { timers++; }, localStorage: {} });
+  return timers > 0;
+}
+
+test('only the APK from the releases page checks for updates; the Google Play build leaves that to Play', () => {
+  assert.equal(scheduled('github'), true);
+  assert.equal(scheduled('play'), false);
+  assert.equal(scheduled(undefined), false);
+});

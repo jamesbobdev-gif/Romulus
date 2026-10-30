@@ -7,8 +7,10 @@
 # (A fine-grained token with Contents: read and write passes the check below but GitHub still refuses
 # release-asset uploads from it with "Resource not accessible by personal access token".)
 #
-# The macOS build is unsigned and not notarized: macOS will ask the person to allow it in System Settings
-# until an Apple Developer certificate is added (CSC_LINK / CSC_KEY_PASSWORD secrets).
+# The Mac (Apple chip and Intel) and Windows installers are unsigned until their signing secrets are added
+# (see "Build and publish" below): until then macOS asks the person to allow Romulus in System Settings and
+# Windows shows a SmartScreen warning. Store builds (Google Play .aab, Microsoft Store .appx) are attached to
+# the run as artifacts, not published to the releases page.
 #
 # Supply chain: every action below is pinned to a commit SHA (the version is in the trailing comment;
 # Dependabot keeps them current), the workflow's own GITHUB_TOKEN can only read this repository, and each
@@ -75,11 +77,37 @@ jobs:
         if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
         shell: bash
         run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
+      # Signing, each part only once its secrets exist; until then that installer is built unsigned as before.
+      # Mac (Apple Developer Program): MAC_CSC_LINK (the Developer ID Application certificate as a base64
+      # .p12), MAC_CSC_KEY_PASSWORD, and for notarization APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
+      # Windows (Azure Trusted Signing): secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and
+      # repository variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_CERT_PROFILE.
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder ${{ matrix.target }} --publish always
+          CSC_LINK: ${{ matrix.name == 'mac' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.name == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.name == 'mac' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.name == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.name == 'mac' && secrets.APPLE_TEAM_ID || '' }}
+          AZURE_TENANT_ID: ${{ matrix.name == 'windows' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.name == 'windows' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ matrix.name == 'windows' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+        shell: bash
+        run: |
+          extra=()
+          if [ "${{ matrix.name }}" = windows ] && [ -n "$AZURE_SIGNING_ENDPOINT" ] && [ -n "$AZURE_CLIENT_SECRET" ]; then
+            echo "signing the Windows installer with Azure Trusted Signing"
+            extra=(-c.win.azureSignOptions.endpoint="$AZURE_SIGNING_ENDPOINT"
+                   -c.win.azureSignOptions.codeSigningAccountName="$AZURE_SIGNING_ACCOUNT"
+                   -c.win.azureSignOptions.certificateProfileName="$AZURE_CERT_PROFILE")
+          fi
+          if [ "${{ matrix.name }}" = mac ] && [ -z "$CSC_LINK" ]; then echo "no MAC_CSC_LINK secret: the Mac build is unsigned"; fi
+          npx electron-builder ${{ matrix.target }} --publish always "${extra[@]}"
       # SHA-256 of every installer this job built, so a download can be checked against the release page
       # (SECURITY.md and the releases repository's README say how). One file per OS: SHA256SUMS-<os>.txt.
       - name: Checksums
@@ -97,6 +125,23 @@ jobs:
           # the release this run publishes to: the pushed tag, or v<package.json version> when started by hand
           if [ "$GITHUB_REF_TYPE" = tag ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('../package.json').version")"; fi
           gh release upload --repo jamesbobdev-gif/romulus-releases "$TAG" "$SUMS" --clobber
+      # The Microsoft Store package (.appx), once the app is reserved in Partner Center: its Product identity
+      # page gives the three repository variables below. The Store signs the package itself, so it isn't
+      # published to the releases page (unsigned, it won't install from there); download it from this run's
+      # artifacts and upload it in Partner Center.
+      - name: Microsoft Store package
+        if: ${{ matrix.name == 'windows' && vars.MS_STORE_PUBLISHER != '' }}
+        env:
+          IDENTITY: ${{ vars.MS_STORE_IDENTITY_NAME }}
+          PUBLISHER: ${{ vars.MS_STORE_PUBLISHER }}
+          PUBLISHER_NAME: ${{ vars.MS_STORE_PUBLISHER_NAME }}
+        shell: bash
+        run: npx electron-builder --win appx --publish never -c.appx.identityName="$IDENTITY" -c.appx.publisher="$PUBLISHER" -c.appx.publisherDisplayName="$PUBLISHER_NAME"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ matrix.name == 'windows' && vars.MS_STORE_PUBLISHER != '' }}
+        with:
+          name: microsoft-store-appx
+          path: dist/*.appx
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: installers-${{ matrix.os }}
@@ -156,14 +201,18 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease \
+          # the APK for the releases page, and the bundle for Google Play (build.gradle: productFlavors). The same
+          # key signs both; on Play it is the upload key, and Play re-signs what it hands out.
+          ./gradlew --no-daemon assembleGithubRelease bundlePlayRelease \
             -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.keystore" \
             -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
           version=$(node -p "require('../../package.json').version")
-          mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Romulus-$version.apk"
+          mv app/build/outputs/apk/github/release/app-github-release.apk "$RUNNER_TEMP/Romulus-$version.apk"
+          mv app/build/outputs/bundle/playRelease/app-play-release.aab "$RUNNER_TEMP/Romulus-$version-play.aab"
           echo "APK=$RUNNER_TEMP/Romulus-$version.apk" >> "$GITHUB_ENV"
+          echo "AAB=$RUNNER_TEMP/Romulus-$version-play.aab" >> "$GITHUB_ENV"
           echo "TAG=v$version" >> "$GITHUB_ENV"
       - name: Upload to the release
         if: steps.keystore.outputs.present == 'true'
@@ -182,3 +231,10 @@ jobs:
           path: |
             ${{ env.APK }}
             ${{ runner.temp }}/SHA256SUMS-android.txt
+      # the Google Play bundle stays off the public releases page (phones can't install an .aab); download it
+      # from this run's artifacts and upload it in the Play Console
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.keystore.outputs.present == 'true'
+        with:
+          name: google-play-aab
+          path: ${{ env.AAB }}

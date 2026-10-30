@@ -29,7 +29,18 @@
       "agent/**"
     ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": true
+    },
+    "appx": {
+      "displayName": "Romulus",
+      "applicationId": "Romulus",
+      "backgroundColor": "transparent",
+      "languages": ["en-US"]
     },
     "win": {
       "target": "nsis",

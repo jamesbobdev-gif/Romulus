@@ -26,6 +26,14 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Two builds of the same app. "github" is the APK on the releases page, which offers its own updates
+    // (mobile/update-phone.js). "play" is the bundle for Google Play: Play updates it, and its policies allow
+    // no other way, so it has no update banner and no draw-over-other-apps permission (src/play/).
+    flavorDimensions = ["store"]
+    productFlavors {
+        github { dimension "store" }
+        play { dimension "store" }
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -51,8 +59,9 @@ dependencies {
     implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
     implementation project(':capacitor-android')
     // "Hey Romulus": offline wake word (the English model is downloaded on first use, not bundled)
-    implementation 'com.alphacephei:vosk-android:0.3.47'
-    implementation 'net.java.dev.jna:jna:5.13.0@aar'
+    // 0.3.75 or later: its native library is built for 16 KB memory pages, which Google Play requires
+    implementation 'com.alphacephei:vosk-android:0.3.75'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
