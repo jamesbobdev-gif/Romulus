@@ -98,12 +98,12 @@ as_user npm config set prefix "$HOME_DIR/.npm-global"
 as_user npm install -g --no-audit --no-fund @google/gemini-cli >/dev/null || echo "!! Gemini CLI install failed (the Gemini API key still works without it)"
 
 log "7/8 The Tasks service (starts at boot, even before you log in)"
-as_user mkdir -p "$APP_DIR" "$HOME_DIR/.config/systemd/user" "$HOME_DIR/.config/Tasks"
-chmod 700 "$HOME_DIR/.config/Tasks"
-# this computer is the hub; the token is made on first start (~/.config/Tasks/hub-token.txt)
-if [ ! -s "$HOME_DIR/.config/Tasks/config.json" ]; then
-  echo '{"hub":{"role":"server","port":8790}}' > "$HOME_DIR/.config/Tasks/config.json"
-  chown "$USER_NAME:" "$HOME_DIR/.config/Tasks/config.json"; chmod 600 "$HOME_DIR/.config/Tasks/config.json"
+as_user mkdir -p "$APP_DIR" "$HOME_DIR/.config/systemd/user" "$HOME_DIR/.config/Romulus"
+chmod 700 "$HOME_DIR/.config/Romulus"
+# this computer is the hub; the token is made on first start (~/.config/Romulus/hub-token.txt)
+if [ ! -s "$HOME_DIR/.config/Romulus/config.json" ]; then
+  echo '{"hub":{"role":"server","port":8790}}' > "$HOME_DIR/.config/Romulus/config.json"
+  chown "$USER_NAME:" "$HOME_DIR/.config/Romulus/config.json"; chmod 600 "$HOME_DIR/.config/Romulus/config.json"
 fi
 cat > "$HOME_DIR/.config/systemd/user/tasks-hub.service" <<EOF
 [Unit]
@@ -115,7 +115,7 @@ Environment=PATH=$HOME_DIR/.local/bin:$HOME_DIR/.npm-global/bin:/usr/local/bin:/
 Environment=ELECTRON_ENABLE_LOGGING=1
 WorkingDirectory=$APP_DIR
 # a virtual screen: the app's window and its tray live there, nobody sees them. Its saved secrets use
-# Chromium's basic store (no desktop keyring here); ~/.config/Tasks is readable by you only.
+# Chromium's basic store (no desktop keyring here); ~/.config/Romulus is readable by you only.
 ExecStart=/usr/bin/xvfb-run -a -s "-screen 0 1280x900x24" $APP_DIR/node_modules/electron/dist/electron $APP_DIR --password-store=basic
 Restart=always
 RestartSec=10

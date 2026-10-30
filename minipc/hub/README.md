@@ -21,7 +21,7 @@ Task sync stays on Supabase (option C). That keeps the claude.ai Tasks connector
 ## How it's locked down
 - The hub's gateway listens on **127.0.0.1:8790 only**. `tailscale serve` publishes it as
   `https://tasks-hub.<tailnet>.ts.net`, **inside your tailnet only** (the setup turns Funnel off).
-- Every call needs the **hub token** (64 hex characters, made on first start, in `~/.config/Tasks/hub-token.txt`).
+- Every call needs the **hub token** (64 hex characters, made on first start, in `~/.config/Romulus/hub-token.txt`).
 - **Watch** goes through a relay that lets through only the 8 screen/mouse/keyboard commands Watch uses. A
   stolen token can't read pages or cookies or run code in the agent browser. Each Watch connection needs a
   one-time ticket that expires after 2 minutes. The browser's own debugging port stays on 127.0.0.1.
@@ -46,12 +46,12 @@ Task sync stays on Supabase (option C). That keeps the claude.ai Tasks connector
    starts the service). Run it again after every app change.
 6. **Sign in to Claude on the hub:** `ssh james@tasks-hub`, then `claude`, then `/login` (paste the code back).
 7. **Laptop app → Settings → Agent & AI → Mini PC server:** address `https://tasks-hub.<tailnet>.ts.net`, token
-   from `ssh james@tasks-hub cat ~/.config/Tasks/hub-token.txt`. Then **Test**, **Use the mini PC** (Tasks
+   from `ssh james@tasks-hub cat ~/.config/Romulus/hub-token.txt`. Then **Test**, **Use the mini PC** (Tasks
    restarts), and **Send my settings to it**. That sends your calendar/Gmail sign-ins, AI keys, sync links,
    course feeds and what the agent learned. It goes over Tailscale only.
 8. **Log in to sites again in the hub's agent browser:** open a task → ◉ Watch, and log in to Walmart etc.
    there. (Windows encrypts Chrome's saved logins, so they can't move to Linux.) Once that works, delete the
-   laptop's old agent browser: `%APPDATA%\Tasks\agent-browser\profile`.
+   laptop's old agent browser: `%APPDATA%\Romulus\agent-browser\profile`.
 
 ## Day to day
 - New calendar account: connect it in the laptop app as usual. The sign-in happens on the laptop, then the
@@ -60,4 +60,4 @@ Task sync stays on Supabase (option C). That keeps the claude.ai Tasks connector
 - If the hub is off: the lists still work and sync, and agent tasks wait in the queue until it's back.
 - To run everything on the laptop again: Settings → Mini PC server → **Run everything here again**, and stop the
   hub first: `ssh james@tasks-hub systemctl --user stop tasks-hub`.
-- Logs: `ssh james@tasks-hub journalctl --user -u tasks-hub -f` and `~/.config/Tasks/agent-runner.log`.
+- Logs: `ssh james@tasks-hub journalctl --user -u tasks-hub -f` and `~/.config/Romulus/agent-runner.log`.
