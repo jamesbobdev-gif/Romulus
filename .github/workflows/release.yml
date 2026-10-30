@@ -137,12 +137,12 @@ jobs:
           PUBLISHER_NAME: ${{ vars.MS_STORE_PUBLISHER_NAME }}
         shell: bash
         run: npx electron-builder --win appx --publish never -c.appx.identityName="$IDENTITY" -c.appx.publisher="$PUBLISHER" -c.appx.publisherDisplayName="$PUBLISHER_NAME"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ matrix.name == 'windows' && vars.MS_STORE_PUBLISHER != '' }}
         with:
           name: microsoft-store-appx
           path: dist/*.appx
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ matrix.os }}
           path: |
@@ -224,7 +224,7 @@ jobs:
           # its checksum too, in the same form as the desktop ones
           (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > SHA256SUMS-android.txt && cat SHA256SUMS-android.txt)
           gh release upload "$TAG" "$(dirname "$APK")/SHA256SUMS-android.txt" --repo jamesbobdev-gif/romulus-releases --clobber
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.keystore.outputs.present == 'true'
         with:
           name: android-apk
@@ -233,7 +233,7 @@ jobs:
             ${{ runner.temp }}/SHA256SUMS-android.txt
       # the Google Play bundle stays off the public releases page (phones can't install an .aab); download it
       # from this run's artifacts and upload it in the Play Console
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.keystore.outputs.present == 'true'
         with:
           name: google-play-aab
