@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Romulus</title>
+<meta name="description" content="Romulus is an open-source to-do list with an agent in it. Hand it a task in plain words and it goes and does it, and it never buys, sends, submits or books anything until you say yes. Free for Windows, macOS, Linux and Android.">
+<meta property="og:title" content="Romulus">
+<meta property="og:description" content="A to-do list with an agent in it. Open source, bring your own model, your data stays on your computer.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://jamesbobdev-gif.github.io/Romulus/img/icon.png">
+<meta property="og:url" content="https://jamesbobdev-gif.github.io/Romulus/">
+<link rel="icon" href="img/icon.png">
+<link rel="apple-touch-icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column (72ch) like the app window itself, with a wider hero for the screenshots.
+   The tokens are the app's own (renderer/styles.css light theme; the dark theme from the README). */
+:root{
+  --bg:#FBFBFA;--surface:#FFFFFF;--ink:#161616;--muted:#71716C;--faint:#9A9A94;
+  --hairline:#E9E9E5;--chip:#F1F1EE;--accent:#2742C8;--accent-dim:#1F36AC;--accent-ink:#FFFFFF;
+  --accent-soft:#EEF1FC;--good:#1F7A3E;--good-bg:#E8F5EC;--late:#C03B2B;--late-bg:#FAEBE8;
+  --shadow:0 1px 2px rgba(22,22,22,.06),0 12px 32px -16px rgba(22,22,22,.18);
+  --display:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Spline Sans Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
+    --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--accent-dim:#A7B6FF;--accent-ink:#0F1330;
+    --accent-soft:#232842;--good:#7CD69A;--good-bg:#1D2E24;--late:#F09383;--late-bg:#3A2420;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
+  --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--accent-dim:#A7B6FF;--accent-ink:#0F1330;
+  --accent-soft:#232842;--good:#7CD69A;--good-bg:#1D2E24;--late:#F09383;--late-bg:#3A2420;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--display);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.1;font-weight:700;letter-spacing:-.02em}
+p{margin:0}
+.mono{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+code,kbd{font-family:var(--mono);font-size:.88em;background:var(--chip);border:1px solid var(--hairline);border-radius:4px;padding:1px 5px;white-space:nowrap}
+.wrap{max-width:72ch;margin:0 auto}
+.wide{max-width:1040px;margin:0 auto}
+section{padding-block:56px}
+section+section{border-top:1px solid var(--hairline)}
+.eyebrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:18px}
+.lede{font-size:19px;color:var(--muted);max-width:60ch}
+h2{font-size:30px;margin-bottom:10px}
+h3{font-size:17px;letter-spacing:-.01em}
+.sub{color:var(--muted);max-width:60ch;margin-bottom:28px}
+
+/* top bar */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;max-width:1040px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:700;font-size:17px;letter-spacing:-.01em}
+.brand img{width:28px;height:28px;border-radius:7px}
+.brand:hover{text-decoration:none}
+.nav{display:flex;gap:4px 22px;flex-wrap:wrap;justify-content:flex-end}
+.nav a{color:var(--muted);font-size:14px;font-weight:500}
+.nav a:hover{color:var(--ink);text-decoration:none}
+
+/* hero */
+.hero{padding-block:40px 64px}
+.hero h1{font-size:clamp(38px,6.4vw,66px);font-weight:800;letter-spacing:-.035em;max-width:16ch}
+.hero .lede{margin-top:20px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:30px}
+.btn{display:inline-flex;align-items:center;gap:10px;border-radius:10px;padding:13px 20px;font-weight:600;font-size:15px;line-height:1;border:1px solid transparent;cursor:pointer;font-family:inherit;transition:transform .12s ease,background .12s ease}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover{background:var(--accent-dim)}
+.btn-ghost{background:var(--surface);color:var(--ink);border-color:var(--hairline);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.btn-ghost:hover{border-color:var(--faint)}
+.btn svg{width:18px;height:18px;flex:none}
+.btn small{font-weight:500;opacity:.75;font-size:13px}
+.others{margin-top:14px;font-size:14px;color:var(--muted)}
+.others a{font-weight:500}
+.others .sep{color:var(--faint)}
+
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:56px;align-items:start}
+.shot{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.shot figcaption{padding:10px 14px;border-top:1px solid var(--hairline);display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:13px;color:var(--muted)}
+.shot figcaption b{color:var(--ink);font-weight:600}
+.demo-note{font-size:12px;color:var(--faint);margin-top:12px;text-align:right}
+@media (max-width:640px){.shots{grid-template-columns:1fr}.demo-note{text-align:left}}
+
+/* the rule: a mock Agent card */
+.rule{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:36px;align-items:center}
+@media (max-width:760px){.rule{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;box-shadow:var(--shadow);padding:18px 20px}
+.card .task{font-weight:600;font-size:16px;display:flex;gap:10px;align-items:flex-start}
+.card .task .st{flex:none;margin-top:3px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:999px;background:var(--late-bg);color:var(--late)}
+.card .q{margin-top:14px;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;font-size:15px}
+.card .q b{font-weight:600}
+.card .who{margin-bottom:6px}
+.card .reply{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+.card .reply span{border:1px solid var(--hairline);background:var(--chip);border-radius:999px;padding:6px 14px;font-size:14px;font-weight:500}
+.card .reply .yes{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.card .held{margin-top:14px;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.card .held i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--late);flex:none}
+
+/* pillars */
+.pillars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+@media (max-width:760px){.pillars{grid-template-columns:1fr;gap:28px}}
+.pillar h3{margin-bottom:8px}
+.pillar p{color:var(--muted);font-size:15px}
+.pillar .k{display:block;margin-bottom:12px}
+
+/* tabs: the app's own tab bar */
+.tabs{border-bottom:2px solid var(--hairline);display:flex;gap:0 26px;overflow-x:auto;scrollbar-width:none;margin-bottom:6px}
+.tabs::-webkit-scrollbar{display:none}
+.tabs span{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:10px 0 11px;white-space:nowrap;margin-bottom:-2px}
+.tabs span.on{color:var(--ink);border-bottom:2px solid var(--ink)}
+.box{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.box div{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid var(--hairline);font-size:15px}
+.box div:last-child{border-bottom:0}
+.box b{font-weight:600}
+.box p{color:var(--muted)}
+@media (max-width:560px){.box div{grid-template-columns:1fr;gap:4px}}
+.can{margin-top:28px;color:var(--muted);font-size:15px}
+.can b{color:var(--ink);font-weight:600}
+
+/* downloads */
+.dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:640px){.dl{grid-template-columns:1fr}}
+.dl a{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:16px 18px;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.03);transition:border-color .12s ease,transform .12s ease}
+.dl a:hover{text-decoration:none;border-color:var(--accent);transform:translateY(-1px)}
+.dl a.here{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.dl .os{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px}
+.dl .os svg{width:20px;height:20px;flex:none;color:var(--muted)}
+.dl .os .you{margin-left:auto;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);background:var(--accent-soft);padding:3px 8px;border-radius:999px}
+.dl .file{font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-all}
+.dl .file b{color:var(--ink);font-weight:500}
+.dl .note{font-size:13px;color:var(--muted)}
+.fine{margin-top:22px;display:grid;gap:10px;font-size:14px;color:var(--muted)}
+.fine b{color:var(--ink);font-weight:600}
+.fine code{font-size:12.5px}
+
+/* privacy */
+.priv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 36px;font-size:15px;color:var(--muted)}
+@media (max-width:640px){.priv{grid-template-columns:1fr}}
+.priv b{color:var(--ink);font-weight:600;display:block;margin-bottom:3px}
+
+/* open source */
+.repo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px 28px;align-items:center;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:22px 24px;box-shadow:var(--shadow)}
+@media (max-width:640px){.repo{grid-template-columns:1fr}}
+.repo .name{font-weight:700;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.repo .name svg{width:22px;height:22px}
+.repo .meta{margin-top:6px;font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16px}
+pre{margin:18px 0 0;background:var(--chip);border:1px solid var(--hairline);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--ink)}
+pre .c{color:var(--faint)}
+.contrib{margin-top:22px;font-size:15px;color:var(--muted)}
+.contrib b{color:var(--ink);font-weight:600}
+
+footer{border-top:1px solid var(--hairline);padding-block:28px 40px;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 20px;max-width:1040px;margin:0 auto}
+footer a{color:var(--muted);font-weight:500}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="#"><img src="img/icon.png" alt="" width="28" height="28">Romulus</a>
+  <nav class="nav">
+    <a href="#download">Download</a>
+    <a href="#inside">What's inside</a>
+    <a href="#privacy">Privacy</a>
+    <a href="https://github.com/jamesbobdev-gif/Romulus">GitHub</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero wide">
+  <div class="eyebrow">
+    <span class="mono">Open source · MIT</span>
+    <span class="mono" id="ver">v1.0.5</span>
+    <span class="mono">Windows · macOS · Linux · Android</span>
+  </div>
+  <h1>A to-do list with an agent in it.</h1>
+  <p class="lede">Write a task the way you'd tell a person. "Find the cheapest flight to Denver the weekend of the 14th." "Order the groceries." "Draft a reply to the landlord." Hand it to the Agent and it goes and does it: searches, reads, fills forms, compares prices, builds the cart. It comes back only when it needs a decision.</p>
+  <div class="cta">
+    <a class="btn btn-primary" id="main-dl" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+      <span id="main-dl-label">Download the latest release</span>
+    </a>
+    <a class="btn btn-ghost" href="https://github.com/jamesbobdev-gif/Romulus">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.17c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+      View the source
+    </a>
+  </div>
+  <p class="others" id="others">Also for <a href="#download">every other platform</a>, or <a href="https://github.com/jamesbobdev-gif/Romulus#install">run it from source</a>.</p>
+
+  <div class="shots">
+    <figure class="shot" style="margin:0"><img src="img/human.png" width="660" height="1165" alt="The Human tab: a list of to-dos with due dates, times, tags and a weekly repeat"><figcaption><b>Human</b><span>your own to-dos</span></figcaption></figure>
+    <figure class="shot" style="margin:0"><img src="img/agent.png" width="660" height="1340" alt="The Agent tab: tasks waiting, working and needing an answer, one opened to the Agent's question about which Denver flight to book"><figcaption><b>Agent</b><span>what the AI is doing, and its questions</span></figcaption></figure>
+  </div>
+  <p class="demo-note">Made-up demo data.</p>
+</section>
+
+<section class="wrap">
+  <div class="rule">
+    <div>
+      <h2>It asks before anything final.</h2>
+      <p class="sub" style="margin-bottom:0">The Agent never buys, sends, submits, books or deletes until you reply <b>yes</b> to the exact thing it described. That rule is enforced in code, and it is the one rule contributors can't change. A question is not a yes. "Ok" counts only on its own.</p>
+    </div>
+    <div class="card" aria-label="An example Agent task waiting for a decision">
+      <div class="task"><span class="st">Needs you</span><span>Find the cheapest flight to Denver the weekend of the 14th</span></div>
+      <div class="q">
+        <div class="mono who">Agent</div>
+        Cheapest is <b>Frontier, Fri 14 Nov 6:05am → Sun 16 Nov 9:40pm, $118</b>, carry-on not included. United is $212 with a bag and a 10:30am departure. Book the Frontier one?
+      </div>
+      <div class="reply"><span class="yes">Yes</span><span>United instead</span><span>Not now</span></div>
+      <div class="held"><i></i>Held at the payment page. Nothing is booked until you answer.</div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="pillars">
+    <div class="pillar">
+      <span class="mono k">Bring your own model</span>
+      <h3>Plug in what you already pay for, or run.</h3>
+      <p>A Claude or ChatGPT plan, an OpenRouter account, a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or your own model on your own hardware through Ollama. Connect several and the app tries them in your order.</p>
+    </div>
+    <div class="pillar">
+      <span class="mono k">Private things stay local</span>
+      <h3>Some tasks never leave your machine.</h3>
+      <p>Anything that touches the bank, medical records or passwords goes only to your local model. The Locked profile that fills forms and job applications is readable by that model alone.</p>
+    </div>
+    <div class="pillar">
+      <span class="mono k">Your money, without the subscription</span>
+      <h3>A Finance tab instead of Rocket Money.</h3>
+      <p>Every account in one place, recurring bills and subscriptions found on their own, net worth over time, an income statement and balance sheet, receipts from your inbox, live stock prices. Read-only bank access for about $15 a year. Encrypted on your computer, never on a server.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" id="inside">
+  <h2>What's inside</h2>
+  <p class="sub">The same tabs on the desktop and on the phone, kept in sync through a Supabase project you own.</p>
+  <div class="tabs" aria-hidden="true"><span class="on">Human</span><span>Agent</span><span>School</span><span>Work</span><span>Calendar</span><span>Ideas</span><span>Hours</span><span>Finance</span></div>
+  <div class="box">
+    <div><b>Human</b><p>Your own to-dos: due dates, times, tags, subtasks, repeats, drag to reorder, search.</p></div>
+    <div><b>Agent</b><p>Tasks the AI does. A live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI.</p></div>
+    <div><b>School</b><p>Assignments, with due dates pulled from Blackboard or D2L calendar links. The class is the tag.</p></div>
+    <div><b>Work</b><p>A second list, synced with the rest.</p></div>
+    <div><b>Calendar · Ideas · Hours</b><p>Extra views: the month, a board of note cards, a log of hours per day. Google and Microsoft calendars included.</p></div>
+    <div><b>Finance</b><p>Accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, and the phone can get its own copy from a QR code.</p></div>
+  </div>
+  <p class="can"><b>What the Agent can do today:</b> research and writing; shopping on Amazon and Walmart, groceries included, with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from the Locked profile; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (<code>#legion</code>) that your local model splits into pieces so no single cloud AI sees the whole question; its own headless browser you can watch and take over.</p>
+</section>
+
+<section class="wrap" id="download">
+  <h2>Download</h2>
+  <p class="sub">Free, and the installed copy updates itself. Every file below is built on GitHub's runners from the public source, with a SHA-256 checksum next to it on the <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">release page</a>.</p>
+  <div class="dl" id="dl">
+    <a data-os="windows" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
+      <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 11 4.4v7.1H3zm0 13 8 1.1V12.5H3zM12 4.2 21 3v8.5h-9zm0 8.3h9V21l-9-1.2z"/></svg>Windows<span class="you" hidden>Your device</span></span>
+      <span class="file"><b data-file>Romulus-Setup-1.0.5.exe</b> <span data-size></span></span>
+      <span class="note">Windows 10 or 11. Not code-signed yet, so SmartScreen warns: <b>More info → Run anyway</b>.</span>
+    </a>
+    <a data-os="mac" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
+      <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.5-.2-2.8.8-3.6.8-.7 0-1.9-.8-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.5.8 1.2 1.8 2.4 3 2.4 1.2-.1 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.6-3.9zM14.1 5.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>macOS<span class="you" hidden>Your device</span></span>
+      <span class="file"><b data-file>Romulus-1.0.5-arm64.dmg</b> <span data-size></span></span>
+      <span class="note">Apple silicon. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
+    </a>
+    <a data-os="linux" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
+      <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Linux<span class="you" hidden>Your device</span></span>
+      <span class="file"><b data-file>Romulus-1.0.5.AppImage</b> <span data-size></span></span>
+      <span class="note">Any distribution. Make it executable (<code>chmod +x</code>) and run it.</span>
+    </a>
+    <a data-os="android" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
+      <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>Android<span class="you" hidden>Your device</span></span>
+      <span class="file"><b data-file>Romulus-1.0.5.apk</b> <span data-size></span></span>
+      <span class="note">Install the APK, then scan the sync code from the desktop app in <b>Settings → Device sync</b>. It tells you when a new version is out.</span>
+    </a>
+  </div>
+  <div class="fine">
+    <p><b>From source:</b> Node 22 or newer, then <code>npm install</code> and <code>npm start</code>.</p>
+    <p><b>Then:</b> the <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/docs/SETUP.md">setup guide</a> walks through connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.</p>
+    <p><b>iPhone:</b> not yet. The phone app is Android only.</p>
+  </div>
+</section>
+
+<section class="wrap" id="privacy">
+  <h2>Privacy, in short</h2>
+  <p class="sub">Everything you connect stays on the computer where you connected it. There is no telemetry.</p>
+  <div class="priv">
+    <div><b>Keys never sync.</b>Tokens and sync keys are encrypted with the operating system's own encryption and stay on that machine. The sync key is the password to your lists; rotate it from Settings.</div>
+    <div><b>You own the sync.</b>Lists sync through a Supabase project you set up yourself, and the sync table is closed to anyone without the list's key.</div>
+    <div><b>Locked means locked.</b>The Locked profile is encrypted on your device before upload, and neither it nor Finance is ever given to a cloud AI.</div>
+    <div><b>Checkable builds.</b>Every release ships with SHA-256 checksums, and every workflow action is pinned to a commit. Details in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</div>
+  </div>
+</section>
+
+<section class="wrap" id="source">
+  <h2>Open source</h2>
+  <p class="sub">The whole app is on GitHub under the MIT license: the Electron desktop app, the Agent, the Android wrapper and the sync project's SQL. Installers live in a releases repository of their own.</p>
+  <a class="repo" href="https://github.com/jamesbobdev-gif/Romulus">
+    <div>
+      <div class="name"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.17c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>jamesbobdev-gif / Romulus</div>
+      <div class="meta"><span>MIT license</span><span>Electron · Node 22 · Capacitor</span><span id="stars" hidden></span></div>
+    </div>
+    <span class="btn btn-ghost">Open on GitHub</span>
+  </a>
+<pre><span class="c"># run it from source</span>
+git clone https://github.com/jamesbobdev-gif/Romulus.git
+cd Romulus
+npm install
+npm start</pre>
+  <p class="contrib"><b>Contributing:</b> small, focused changes land fastest. Skills and site notes for the Agent are short markdown files and new ones are welcome. The ground rules are in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>; the one that matters most is that "ask before anything final" stays enforced in code. Found a security problem? <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a> says how to report it.</p>
+</section>
+</main>
+
+<footer>
+  <span>Romulus · MIT · <a href="https://github.com/jamesbobdev-gif/Romulus">Source</a> · <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases">All releases</a></span>
+  <span>Romulus killed Remus. This should kill your need for Meta Muse.</span>
+</footer>
+
+<script>
+(function () {
+  var RELEASES = 'https://github.com/jamesbobdev-gif/romulus-releases/releases/latest';
+  // the last few releases, not only the latest: while a release is still building (the installers arrive
+  // one platform at a time over an hour or so) each platform keeps the newest file it actually has
+  var API = 'https://api.github.com/repos/jamesbobdev-gif/romulus-releases/releases?per_page=5';
+  var CODE = 'https://api.github.com/repos/jamesbobdev-gif/Romulus';
+  var names = { windows: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android' };
+  var match = {
+    windows: function (n) { return /\.exe$/i.test(n); },
+    mac:     function (n) { return /\.dmg$/i.test(n); },
+    linux:   function (n) { return /\.AppImage$/i.test(n); },
+    android: function (n) { return /\.apk$/i.test(n); }
+  };
+
+  // which card is this visitor's
+  var ua = navigator.userAgent || '';
+  var os = /Android/i.test(ua) ? 'android'
+         : /iPhone|iPad|iPod/i.test(ua) ? null
+         : /Win/i.test(ua) ? 'windows'
+         : /Mac/i.test(ua) ? 'mac'
+         : /Linux|X11/i.test(ua) ? 'linux' : null;
+
+  var cards = {};
+  Array.prototype.forEach.call(document.querySelectorAll('#dl a[data-os]'), function (a) { cards[a.getAttribute('data-os')] = a; });
+  var main = document.getElementById('main-dl');
+  var label = document.getElementById('main-dl-label');
+  var others = document.getElementById('others');
+
+  function pointMain(version) {
+    if (!os) return;
+    var card = cards[os];
+    card.classList.add('here');
+    card.querySelector('.you').hidden = false;
+    main.href = card.href;
+    label.textContent = 'Download for ' + names[os] + (version ? ' · ' + version : '');
+    var rest = Object.keys(names).filter(function (k) { return k !== os; }).map(function (k) {
+      return '<a href="' + cards[k].href + '">' + names[k] + '</a>';
+    });
+    others.innerHTML = 'Also for ' + rest.slice(0, -1).join('<span class="sep">, </span>') + ' and ' + rest[rest.length - 1] + ', or <a href="https://github.com/jamesbobdev-gif/Romulus#install">run it from source</a>.';
+  }
+
+  function mb(bytes) { return (bytes / 1048576).toFixed(0) + ' MB'; }
+
+  pointMain('v' + document.getElementById('ver').textContent.replace(/^v/, ''));
+
+  // direct links, file names and sizes from the releases repository
+  fetch(API, { headers: { Accept: 'application/vnd.github+json' } }).then(function (r) { return r.ok ? r.json() : null; }).then(function (list) {
+    if (!list || !list.length) return;
+    var releases = list.filter(function (r) { return !r.draft && !r.prerelease && r.assets; });
+    if (!releases.length) return;
+    var shown = {};
+    Object.keys(match).forEach(function (k) {
+      var card = cards[k], asset = null, at = -1;
+      for (var i = 0; i < releases.length && !asset; i++) {
+        asset = releases[i].assets.filter(function (a) { return match[k](a.name); })[0] || null;
+        at = i;
+      }
+      if (!asset) { card.href = RELEASES; return; }
+      shown[k] = at;
+      card.href = asset.browser_download_url;
+      card.querySelector('[data-file]').textContent = asset.name;
+      card.querySelector('[data-size]').textContent = '· ' + mb(asset.size);
+    });
+    // the version in the eyebrow and on the big button: this visitor's platform, else the newest file anywhere
+    var at = (os && os in shown) ? shown[os] : Math.min.apply(null, Object.keys(shown).map(function (k) { return shown[k]; }).concat([0]));
+    var tag = releases[at].tag_name;
+    document.getElementById('ver').textContent = tag;
+    pointMain(tag);
+  }).catch(function () {});
+
+  fetch(CODE).then(function (r) { return r.ok ? r.json() : null; }).then(function (repo) {
+    if (!repo || typeof repo.stargazers_count !== 'number' || repo.stargazers_count < 10) return;
+    var s = document.getElementById('stars');
+    s.textContent = repo.stargazers_count.toLocaleString() + ' stars';
+    s.hidden = false;
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>

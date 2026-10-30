@@ -44,6 +44,21 @@
       ],
       "port": 8761,
       "autoPort": false
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8771",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "site"
+      ],
+      "port": 8771,
+      "autoPort": false
     }
   ]
 }
