@@ -3,10 +3,12 @@ const assert = require('node:assert');
 const helpers = require('../agent/helpers');
 
 test('isYes: a yes that stands, not one taken back', () => {
-  for (const t of ['yes', 'Yes please', 'yep', 'Y', 'ok go ahead', 'yes, place it', 'go ahead and submit it', 'Order it.',
+  for (const t of ['yes', 'Yes please', 'yep', 'Y', 'ok', 'OK!', 'sure', 'ok go ahead', 'okay, order it', 'sure, go ahead', 'yes, place it', 'go ahead and submit it', 'Order it.', 'yes, post it: Anyone free Friday?',
     'yes, but first replace what you typed with exactly this text, then post it:\n\nHi all']) assert.ok(helpers.isYes(t), t);
   for (const t of ['yes, but don\'t order yet', 'yes but wait', 'yesterday was fine', 'no', 'not yet', 'yes, hold on', 'sure, but check the total first',
-    'yes to the second one? actually stop', 'Yes. Never mind, cancel it', '', null]) assert.ok(!helpers.isYes(t), String(t));
+    'yes to the second one? actually stop', 'Yes. Never mind, cancel it', '', null,
+    // a question, or an ok that leads into something other than a go-ahead, is not a yes
+    'ok but what did you put for the salary question?', 'okay, show me the cart first', 'sure, which one do you recommend?', 'ok, Walmart', 'y tho?', 'yes?', 'sure thing, what was the total']) assert.ok(!helpers.isYes(t), String(t));
 });
 
 test('isPublicUrl: the web, not this computer or its network', () => {

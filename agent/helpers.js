@@ -39,11 +39,16 @@ function leaksPrivate(text, { privateWords, locked } = {}) {
    "yes, wait"). "Yes, but first replace what you typed with this, then post it" is still a yes: the words
    change, the go-ahead stands. One rule for every lane (agent-browser.js saidYes, local-lane.js
    localApproved, run-live.js), so a yes means the same thing everywhere. */
-const YES_START = /^\s*(yes|yep|yeah|yup|y|ok|okay|sure|go ahead|do it|place it|order it|send it|submit it|book it|buy it|post it|(go ahead and )?(submit|send|apply|post|buy|order|book)( it)?)\b/i;
+const GO = '(yes|yep|yeah|yup|go ahead|do it|place it|order it|send it|submit it|book it|buy it|post it|(go ahead and )?(submit|send|apply|post|buy|order|book)( it)?)';
+// "ok", "sure", "y" on their own, or leading into a go-ahead ("ok, order it"); "ok, which one?" and "okay, show
+// me the cart first" start the same way and are not a yes
+const YES_START = new RegExp('^\\s*((ok|okay|sure|alright|y)[,!.]?\\s+)?' + GO + '\\b', 'i');
+const YES_WHOLE = /^\s*(ok|okay|sure|alright|y|yes|yep|yeah|yup)[\s!.]*$/i;
 const HOLD = /\b(don'?t|do not|never|not (yet|now|today|that)|wait|hold (on|off)|later|instead|cancel|stop|but (first )?(check|ask|look|tell|show|confirm|make sure)|before you (do|order|place|send|submit|buy|post))\b/i;
 function isYes(text) {
   const t = String(text || '').slice(0, 240);
-  return YES_START.test(t) && !HOLD.test(t);
+  if (/\?/.test(t.split(':')[0])) return false; // a question is not a go-ahead (text he dictates after a colon may hold one)
+  return (YES_WHOLE.test(t) || YES_START.test(t)) && !HOLD.test(t);
 }
 
 /* A web address on the public internet: http(s), and not this computer, the LAN or a private range.
