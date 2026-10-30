@@ -6,15 +6,26 @@
 'use strict';
 
 const fin={ data:null, query:'', account:'', shown:50, busy:false, msg:'', msgErr:false };
-const finApi=window.desktop&&window.desktop.financeStatus?window.desktop:(window.phoneFinance||null);
-if(finApi){
-  $('tabFinance').hidden=false;
-  finApi.onFinanceLocked(function(){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });
+// SimpleFIN through the computer or the phone when there is one; CSV files (finance-csv.js) everywhere else,
+// or when he picked CSV files over SimpleFIN (remembered on this device)
+const finNative=window.desktop&&window.desktop.financeStatus?window.desktop:(window.phoneFinance||null);
+function finUseCsv(){ try{ return !finNative||localStorage.getItem('finance.source')==='csv'; }catch(e){ return !finNative; } }
+if(window.csvFinance&&finNative&&finNative.financeScreen)window.csvFinance.financeScreen=finNative.financeScreen; // still hidden from screenshots
+let finApi=finUseCsv()?(window.csvFinance||null):finNative;
+function finSwitchSource(csv){
+  try{ if(csv)localStorage.setItem('finance.source','csv'); else localStorage.removeItem('finance.source'); }catch(e){}
+  finApi=finUseCsv()?(window.csvFinance||null):finNative; fin.data=null; finSay(''); renderFinance();
+}
+if(window.csvFinance)window.csvFinance.onFinanceLocked(function(){ if(finApi===window.csvFinance){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); } });
+if(finApi)$('tabFinance').hidden=false;
+if(finNative){
+  // SimpleFIN's own lock and update events count only while it's the one showing
+  finNative.onFinanceLocked(function(){ if(finApi!==finNative)return; fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });
   // purchase emails came in (or it started or stopped looking): drawn again, search and filter kept
-  if(finApi.onFinanceUpdated)finApi.onFinanceUpdated(function(){ if(state.activeTab==='finance'&&fin.data&&!fin.busy)renderFinance(); });
+  if(finNative.onFinanceUpdated)finNative.onFinanceUpdated(function(){ if(finApi===finNative&&state.activeTab==='finance'&&fin.data&&!fin.busy)renderFinance(); });
   // the phone: back in the app on a locked Finance tab → the fingerprint prompt again
-  if(finApi.phone)document.addEventListener('visibilitychange',function(){
-    if(document.hidden)return;
+  if(finNative.phone)document.addEventListener('visibilitychange',function(){
+    if(document.hidden||finApi!==finNative)return;
     const inFlight=fin.unlocking&&Date.now()-fin.unlocking<15000; // some phones hide the page under the prompt itself
     if(state.activeTab==='finance'&&!fin.data&&!fin.invalidated&&!inFlight){ fin.autoAsked=false; renderFinance(); }
   });
@@ -56,6 +67,7 @@ async function renderFinance(){
 
 /* ── first time: SimpleFIN setup token + a passphrase (on the phone: pairing with the computer) ── */
 function drawFinSetup(v,st){
+  if(finApi.csv)return drawFinCsvSetup(v,st);
   if(finApi.phone)return drawFinPair(v);
   v.textContent='';
   const box=el('div','fin-card fin-setup');
@@ -85,8 +97,117 @@ function drawFinSetup(v,st){
   });
   box.appendChild(go);
   box.appendChild(finMsgEl());
+  box.appendChild(finCsvInstead());
   v.appendChild(box);
   tok.focus();
+}
+function finCsvInstead(){
+  const b=el('button','ghost mono','no SimpleFIN? use CSV files from your bank instead');
+  b.addEventListener('click',function(){ finSwitchSource(true); });
+  return b;
+}
+
+/* ── CSV files (finance-csv.js): the first file and a passphrase; SimpleFIN pointed to for automatic updates ── */
+function drawFinCsvSetup(v,st){
+  v.textContent='';
+  const box=el('div','fin-card fin-setup');
+  box.appendChild(el('h3',null,'Add your bank accounts'));
+  const auto=el('div','fin-csv-auto');
+  auto.appendChild(el('b',null,'Updates by itself: SimpleFIN'));
+  if(finNative){
+    auto.appendChild(el('p','fin-note','Connect your banks through SimpleFIN (about $15 a year) and your accounts update on their own.'));
+    const back=el('button','ghost mono','use SimpleFIN instead');
+    back.addEventListener('click',function(){ finSwitchSource(false); });
+    auto.appendChild(back);
+  }else{
+    auto.appendChild(el('p','fin-note','For accounts that update on their own, install Romulus on your computer or Android phone and connect your banks through SimpleFIN (bridge.simplefin.org, about $15 a year). SimpleFIN can’t be used from a web browser.'));
+  }
+  box.appendChild(auto);
+  box.appendChild(el('b',null,'Or from a CSV file'));
+  const steps=el('ol','fin-steps');
+  ['On your bank’s website, download your transactions as a CSV file (often under Download, Export or Statements).',
+   'Choose the file below and name the account.',
+   'Pick a passphrase. Your bank data is encrypted with it and kept only on this '+(finNative?'device':'browser')+'.'].forEach(function(t){ steps.appendChild(el('li',null,t)); });
+  box.appendChild(steps);
+  const form=finCsvForm();
+  box.appendChild(form.el);
+  const p1=finInput('password','passphrase (at least '+st.minPassphrase+' characters)');
+  const p2=finInput('password','passphrase again');
+  box.appendChild(p1); box.appendChild(p2);
+  box.appendChild(el('p','fin-note','The passphrase isn’t saved anywhere and nobody can reset it. If you forget it, you start again with your CSV files. Nothing here is synced to your other devices.'));
+  const go=el('button','btn-accent',fin.busy?'Adding…':'Add'); go.disabled=fin.busy;
+  go.addEventListener('click',async function(){
+    if(p1.value.length<st.minPassphrase){ finSay('Use at least '+st.minPassphrase+' characters for the passphrase.',true); return drawFinCsvSetup(v,st); }
+    if(p1.value!==p2.value){ finSay('The two passphrases don’t match.',true); return drawFinCsvSetup(v,st); }
+    const file=await form.read(); if(!file){ finSay('Choose a CSV file first.',true); return drawFinCsvSetup(v,st); }
+    fin.busy=true; finSay(''); go.disabled=true; go.textContent='Adding…';
+    const r=await finApi.financeSetup(p1.value,file).catch(function(e){ return {ok:false,error:e.message}; });
+    p1.value=p2.value=''; fin.busy=false;
+    if(!r.ok){ finSay(r.error,true); return drawFinCsvSetup(v,st); }
+    finSay(finCsvAddedWord(r)); renderFinance();
+  });
+  box.appendChild(go);
+  box.appendChild(finMsgEl());
+  v.appendChild(box);
+}
+// the file, the account it goes in, and its balance (when the file doesn't say)
+function finCsvForm(accounts){
+  const wrap=el('div','fin-csv-form');
+  const pick=el('input','fin-input'); pick.type='file'; pick.accept='.csv,text/csv,text/plain';
+  const name=finInput('text','account name, e.g. Chase checking');
+  if(accounts&&accounts.length){
+    const list=el('datalist'); list.id='finCsvAccounts';
+    accounts.forEach(function(a){ const o=el('option'); o.value=a.name; list.appendChild(o); });
+    wrap.appendChild(list); name.setAttribute('list','finCsvAccounts');
+    name.placeholder='account name (same name adds to it)';
+  }
+  const bal=finInput('text','balance today (optional)'); bal.inputMode='decimal';
+  pick.addEventListener('change',function(){ const f=pick.files[0]; if(f&&!name.value)name.value=f.name.replace(/\.[^.]*$/,'').replace(/[_-]+/g,' ').slice(0,60); });
+  [pick,name,bal].forEach(function(i){ wrap.appendChild(i); });
+  return { el:wrap, read:async function(){
+    const f=pick.files[0]; if(!f)return null;
+    if(f.size>10*1024*1024){ finSay('That file is over 10 MB. Download a shorter date range.',true); return null; }
+    return { name:f.name, text:await f.text(), account:name.value.trim(), balance:bal.value.trim() };
+  } };
+}
+function finCsvAddedWord(r){
+  const span=r.from?' ('+finDate(r.from)+' to '+finDate(r.to)+')':'';
+  let s=r.added===r.total?'Added '+r.added+' transactions to '+r.account+span+'.':'Added '+r.added+' new of '+r.total+' transactions to '+r.account+span+'. The rest were already there.';
+  if(r.flipped)s+=' Charges were positive numbers in that file, so they were made negative.';
+  if(!r.hasBalance)s+=' The file has no balance, so type it under CSV files.';
+  return s;
+}
+// the CSV accounts: another file, the balance, or taking one out
+function finCsvFold(d){
+  const fold=el('details','fin-fold');
+  fold.appendChild(el('summary','mono','csv files'));
+  fold.open=!!fin.csvOpen;
+  fold.addEventListener('toggle',function(){ fin.csvOpen=fold.open; });
+  fold.appendChild(el('p','fin-note','Download newer transactions from your bank now and then and add them here. Rows you’ve already added are skipped.'));
+  const form=finCsvForm(d.accounts);
+  fold.appendChild(form.el);
+  const add=el('button','btn-accent',fin.busy?'Adding…':'Add file'); add.disabled=fin.busy;
+  add.addEventListener('click',async function(){
+    const file=await form.read(); if(!file){ if(!fin.msg)finSay('Choose a CSV file first.',true); return renderFinance(); }
+    fin.busy=true; add.disabled=true; add.textContent='Adding…';
+    const r=await finApi.financeImport(file).catch(function(e){ return {ok:false,error:e.message}; });
+    fin.busy=false; finSay(r.ok?finCsvAddedWord(r):r.error,!r.ok); renderFinance();
+  });
+  fold.appendChild(add);
+  d.accounts.forEach(function(a){
+    const row=el('div','fin-row fin-csv-acct');
+    row.appendChild(el('span',null,a.name+' · '+a.transactions.length));
+    const bal=finInput('text','balance'); bal.value=String(a.balance); bal.inputMode='decimal';
+    bal.addEventListener('change',async function(){ const r=await finApi.financeSetBalance(a.id,bal.value); finSay(r.ok?'':r.error,!r.ok); renderFinance(); });
+    const rm=el('button','ghost mono','remove');
+    rm.addEventListener('click',async function(){
+      if(rm.dataset.sure!=='1'){ rm.dataset.sure='1'; rm.textContent='remove '+a.name+'?'; return; }
+      await finApi.financeRemoveAccount(a.id); finSay('Removed '+a.name+'.'); renderFinance();
+    });
+    row.appendChild(bal); row.appendChild(rm); fold.appendChild(row);
+  });
+  if(finNative){ const back=el('button','ghost mono','use SimpleFIN instead'); back.addEventListener('click',function(){ finSwitchSource(false); }); fold.appendChild(back); }
+  return fold;
 }
 
 // the phone: scan the code the computer's Finance tab shows, then his fingerprint
@@ -110,6 +231,7 @@ function drawFinPair(v){
   });
   box.appendChild(go);
   box.appendChild(finMsgEl());
+  box.appendChild(finCsvInstead());
   v.appendChild(box);
 }
 // the phone: one tap (and once by itself when the tab opens) for the fingerprint prompt
@@ -185,7 +307,8 @@ function drawFinLocked(v,st){
     box.appendChild(finMsgEl());
     box.appendChild(el('p','fin-note','After you unlock, Windows Hello (your Windows PIN, fingerprint or face) can open Finance next time.'));
   }
-  box.appendChild(finForgetFold('forgot your passphrase?','Nobody can reset it. The only way back in is to forget this connection: the saved bank data and history on this computer are deleted, and you connect again with a new SimpleFIN token.'));
+  box.appendChild(finForgetFold('forgot your passphrase?',finApi.csv?'It can’t be reset. Forgetting deletes the bank data saved here, then you start again with your CSV files.'
+    :'Nobody can reset it. The only way back in is to forget this connection: the saved bank data and history on this computer are deleted, and you connect again with a new SimpleFIN token.'));
   v.appendChild(box);
   if(passBox===box)pass.focus();
 }
@@ -201,7 +324,7 @@ function finForgetFold(label,note){
     if(go.disabled)return;
     go.disabled=true;
     await finApi.financeForget(); fin.invalidated=false;
-    finSay(finApi.phone?'Removed from this phone. Pair again from the computer whenever you like.':'Forgotten. Remember to disable it on bridge.simplefin.org too.'); renderFinance();
+    finSay(finApi.csv?'Forgotten. Your bank data is gone from here.':finApi.phone?'Removed from this phone. Pair again from the computer whenever you like.':'Forgotten. Remember to disable it on bridge.simplefin.org too.'); renderFinance();
   });
   const row=el('div','fin-row'); row.appendChild(word); row.appendChild(go); fold.appendChild(row);
   fold.addEventListener('toggle',function(){ if(!fold.open){ word.value=''; go.disabled=true; } });
@@ -879,9 +1002,10 @@ function finPairFold(){
 function drawFinMain(v){
   const d=fin.data; v.textContent='';
   const bar=el('div','fin-bar');
-  bar.appendChild(el('span','mono fin-ago',finAgo(d.fetchedAt)+' · '+finMailWord(d.mail)));
-  const refresh=el('button','ghost mono',fin.busy?'refreshing…':'refresh'); refresh.disabled=fin.busy;
+  bar.appendChild(el('span','mono fin-ago',d.csv?'from CSV files · '+finAgo(d.fetchedAt).replace('updated','last added'):finAgo(d.fetchedAt)+' · '+finMailWord(d.mail)));
+  const refresh=el('button','ghost mono',d.csv?'add a csv':fin.busy?'refreshing…':'refresh'); refresh.disabled=fin.busy;
   refresh.addEventListener('click',async function(){
+    if(d.csv){ fin.csvOpen=true; const f=v.querySelector('.fin-csv-fold'); if(f){ f.open=true; f.scrollIntoView({block:'center'}); } return; }
     fin.busy=true; drawFinMain(v);
     const r=await finApi.financeRefresh().catch(function(e){ return {ok:false,error:e.message}; });
     fin.busy=false; finSay(r.ok?'':r.error,!r.ok); renderFinance();
@@ -892,6 +1016,7 @@ function drawFinMain(v){
   v.appendChild(bar);
   v.appendChild(finMsgEl());
   (d.errors||[]).forEach(function(m){ v.appendChild(el('p','fin-msg err','From your bank: '+m)); });
+  if(d.csv&&!d.accounts.length){ v.appendChild(el('p','empty','No accounts yet. Add a CSV file from your bank.')); const f=finCsvFold(d); f.classList.add('fin-csv-fold'); f.open=true; v.appendChild(f); v.appendChild(finForgetFold('remove Finance from here','This deletes the bank data saved here.')); return; }
   if(!d.accounts.length){ v.appendChild(el('p','empty',d.fetchedAt?'SimpleFIN didn’t send any accounts.':'Nothing downloaded yet. Press refresh.')); return; }
 
   // totals (in the first account's currency; SimpleFIN gives card debt as a negative balance)
@@ -923,7 +1048,7 @@ function drawFinMain(v){
   v.appendChild(finFoldable(accts,'accounts','Accounts',d.accounts.length+(d.accounts.length===1?' account':' accounts')));
   v.appendChild(finWorthChart(d.accounts,cur));
   const debts=finDebtsCard(d,cur); if(debts)v.appendChild(debts);
-  v.appendChild(finStocksCard(cur));
+  if(!d.csv)v.appendChild(finStocksCard(cur)); // a CSV has no holdings
 
   // fixed and variable costs (finance-costs.js): drawn again when he corrects a payee below
   const costBox=el('div','fin-charts');
@@ -996,9 +1121,10 @@ function drawFinMain(v){
   more.addEventListener('click',function(){ fin.shown+=100; drawList(); });
   drawList();
 
+  if(d.csv){ const f=finCsvFold(d); f.classList.add('fin-csv-fold'); v.appendChild(f); }
   if(finApi.financeScreen)v.appendChild(finCaptureFold());
   if(finApi.financeSetHello)v.appendChild(finHelloFold(d.hello));
   if(finApi.financePairCode)v.appendChild(finPairFold());
-  v.appendChild(finApi.phone?finForgetFold('remove Finance from this phone','This deletes Finance’s data and fingerprint key on this phone only. Your computer and SimpleFIN keep working, and you can pair again from the computer.')
+  v.appendChild(d.csv?finForgetFold('remove Finance from here','This deletes all the bank data from your CSV files saved here. Your bank still has it, so you can add the files again.'):finApi.phone?finForgetFold('remove Finance from this phone','This deletes Finance’s data and fingerprint key on this phone only. Your computer and SimpleFIN keep working, and you can pair again from the computer.')
     :finForgetFold('connection settings','Forgetting deletes the saved bank data and up to a year of history from this computer. To see your accounts again you’d connect with a new SimpleFIN token, starting over at 90 days.'));
 }
