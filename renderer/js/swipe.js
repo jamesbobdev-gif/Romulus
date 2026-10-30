@@ -48,6 +48,18 @@ function closeSwipe(){
   document.body.style.overflow='';
   renderActive(); updatePlanBtn();
 }
+// a sync brought in choices made on another device: drop the cards already sorted there,
+// and close the deck if that was all of them (swiping it again here would only overwrite them)
+function refreshSwipe(){
+  if(!swipe.open)return;
+  const ov=$('swipeOverlay');
+  if(ov&&ov.querySelector('.swipe-card[data-gone]'))return; // a card is mid-flight; the next sync catches up
+  const rest=swipe.deck.slice(swipe.i).filter(function(t){ const live=state.tasks.find(function(x){ return x.id===t.id; }); return live&&swipeEligible(live); });
+  if(rest.length===swipe.deck.length-swipe.i)return;
+  swipe.deck=swipe.deck.slice(0,swipe.i).concat(rest);
+  if(!rest.length&&!swipe.history.length){ closeSwipe(); return; }
+  renderSwipe();
+}
 // auto-open the first time the app is opened (or brought back) on a new day
 var swipeReady=false; // set a few seconds after load, once the first sync has had a chance
 function maybeShowSwipe(){
