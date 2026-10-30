@@ -84,7 +84,8 @@ const wordHit = (text, words) => words.find((w) => new RegExp('(^|[^a-z0-9])' + 
 // → what made a task private (a word from his list, or something shaped like a card / social security number), or null
 function privateMatch(t) {
   if (t && t.financeSeen) return 'his finances'; // The local model read Finance for it (agent/local-lane.js)
-  const text = [t.title, t.notes].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').map((h) => h.text))
+  // his words only: the title, notes, the reply waiting to be sent, and everything he said before (not what an AI wrote)
+  const text = [t.title, t.notes, t.reply].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').map((h) => h.text))
     .map((x) => String(x || '')).join('\n').toLowerCase();
   const words = String(routing.private || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
   const hit = wordHit(text, words);
@@ -136,7 +137,11 @@ function routeTask(t) {
 }
 // a task the local model read his Finance for stays on the mini PC even if it was switched to Claude by hand
 // a #legion task is Lupa's even if it was on Claude before (its title was edited): only Lupa may see the whole request
-const laneOf = (t) => t.financeSeen || isLegion(t) ? 'local' : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
+// a private word that arrives later (in a reply, or typed into a task already on Claude) moves the task to the mini PC
+// before the next run, whatever lane it had: only a #claude tag in the title keeps it on the cloud (same as routeTask)
+const laneOf = (t) => t.financeSeen || isLegion(t) ? 'local'
+  : t.lane === 'claude' && !/(^|\s)#claude\b/i.test(String(t.title || '')) && privateMatch(t) ? 'local'
+  : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
 // unassigned tasks whose route is 'ask': the user picks (the renderer turns them into a question with two buttons)
 const askedRoute = new Set();

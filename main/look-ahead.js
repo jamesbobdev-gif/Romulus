@@ -29,9 +29,11 @@ function allTasks() {
   let data; try { data = JSON.parse(fs.readFileSync(ctx.dataFile(), 'utf8')); } catch (e) { return []; }
   return Array.isArray(data.tasks) ? data.tasks : [];
 }
-// his open tasks, soonest first: titles only, so Claude doesn't suggest what's already there
+// his open tasks, soonest first: titles only, so Claude doesn't suggest what's already there. A task with one
+// of his private words (or a card or social security number) never goes to the cloud, this way either.
 function openTasks(tasks) {
-  return tasks.filter((t) => t && !t.done && t.title)
+  const { privateMatch } = require('../agent/routing');
+  return tasks.filter((t) => t && !t.done && t.title && !privateMatch(t))
     .sort((a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999')))
     .slice(0, 120).map((t) => ({ title: String(t.title).replace(/\s+/g, ' ').slice(0, 100), due: t.due || null, list: t.ws || 'personal' }));
 }

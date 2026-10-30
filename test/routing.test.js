@@ -38,10 +38,19 @@ test('rules saved before private words existed get the default list', () => {
   assert.strictEqual(routing.getRouting(), routing.ROUTING_DEFAULT);
 });
 
-test('laneOf keeps a lane already set', () => {
+test('laneOf keeps a lane already set, unless a private word has come in since', () => {
   routing.useRouting(null);
-  assert.strictEqual(routing.laneOf({ title: 'look up my bank', lane: 'claude' }), 'claude');
+  assert.strictEqual(routing.laneOf({ title: 'look up a lamp', lane: 'claude' }), 'claude');
+  assert.strictEqual(routing.laneOf({ title: 'look up a lamp', lane: 'local' }), 'local');
   assert.strictEqual(routing.isClaudeLane({ title: 'Find a lamp' }), true);
+  // the task went to Claude, then his reply (or an earlier message of his) holds a private word or a card number
+  assert.strictEqual(routing.laneOf({ title: 'book a dentist', lane: 'claude', reply: 'my card is 4111 1111 1111 1111' }), 'local');
+  assert.strictEqual(routing.laneOf({ title: 'book a dentist', lane: 'claude', history: [{ who: 'you', text: 'use my bank account' }] }), 'local');
+  assert.strictEqual(routing.laneOf({ title: 'look up my bank', lane: 'claude' }), 'local');
+  // what an AI wrote doesn't count, and a #claude tag in the title is his say-so
+  assert.strictEqual(routing.laneOf({ title: 'book a dentist', lane: 'claude', history: [{ who: 'claude', text: 'the bank is closed' }] }), 'claude');
+  assert.strictEqual(routing.laneOf({ title: 'look up my bank #claude', lane: 'claude' }), 'claude');
+  assert.strictEqual(routing.privateMatch({ title: 'order milk', reply: 'it is 123-45-6789' }), 'a social security number');
 });
 
 test('auto picks from what the task needs', () => {
