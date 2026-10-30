@@ -164,13 +164,34 @@ async function syncPullRow(p){
   return row;
 }
 async function syncPull(p){ return (await syncPullRow(p)).doc; }
+// The database also refuses a write when the account is over its storage allowance, saving too often, or
+// new and its network has made too many accounts this hour (supabase/migrations/20261030_sync_account_limits.sql).
+// That comes back false too, so ask why: a refusal is shown and backed off from, not retried as a clash.
+const SYNC_REFUSED={
+  full:'sync paused: this account’s online storage is full. Your lists are safe on this device; deleting old tasks frees space.',
+  rate:'sync paused for a minute: it was saving too often',
+  new_accounts:'sync couldn’t start: too many new sync keys from this network this hour. It tries again later.',
+  server_full:'sync paused: the sync server is full right now. Your lists are safe on this device.'
+};
+async function syncRefusal(p){
+  try{
+    const r=(await syncRpc(p,'sync_usage',{p_sync_key:p.syncKey}))[0];
+    return r&&r.refused?(SYNC_REFUSED[r.refused]||'sync refused ('+r.refused+')'):'';
+  }catch(e){ return ''; } // an older database without sync_usage
+}
+function refusedError(msg){ const e=new Error(msg); e.refused=true; return e; }
 // Compare-and-swap upload: replaces the list only if it's still the version we downloaded (or creates
 // it if there was none). false = someone else (phone, Claude, the connector) wrote in between.
 async function syncPushCas(p,doc,prevUpdatedAt){
-  return (await syncRpc(p,'sync_put',{p_sync_key:p.syncKey,p_doc:doc,p_prev:prevUpdatedAt||null}))===true;
+  if((await syncRpc(p,'sync_put',{p_sync_key:p.syncKey,p_doc:doc,p_prev:prevUpdatedAt||null}))===true)return true;
+  const why=await syncRefusal(p);
+  if(why)throw refusedError(why);
+  return false;
 }
 async function syncPushDoc(p,doc){
-  if((await syncRpc(p,'sync_set',{p_sync_key:p.syncKey,p_doc:doc}))!==true)throw new Error('not saved');
+  if((await syncRpc(p,'sync_set',{p_sync_key:p.syncKey,p_doc:doc}))===true)return;
+  const why=await syncRefusal(p);
+  throw why?refusedError(why):new Error('not saved');
 }
 
 // JSON with every object's keys sorted. The database stores a document as jsonb, which hands its keys back
@@ -312,7 +333,7 @@ async function syncOnce(){
     // back off: a minute, then doubling, up to 15 minutes. Hammering a project that answers 402 (over its plan's limit) helps nobody
     syncState.errStreak=Math.min(syncState.errStreak+1,5);
     syncState.nextTryAt=Date.now()+Math.min(15*60000,60000*Math.pow(2,syncState.errStreak-1));
-    setSyncStatus(/HTTP 402/.test(firstErr.message)?'sync paused: Supabase says the project is over its plan’s limit (egress). It resumes when the limit resets or the plan changes.':'sync error: '+firstErr.message,true);
+    setSyncStatus(/HTTP 402/.test(firstErr.message)?'sync paused: Supabase says the project is over its plan’s limit (egress). It resumes when the limit resets or the plan changes.':firstErr.refused?firstErr.message:'sync error: '+firstErr.message,true);
   }
   else{
     syncState.errStreak=0; syncState.nextTryAt=0;
