@@ -2,7 +2,7 @@
 -- again) is written by the app as <agent key>:standing, but the key shape the two write functions accept
 -- (20261028_sync_limits.sql) listed only :prefs, :locked, :routing, :ideas and :hours, so every save of a
 -- standing permission returned false and the Allow button never stuck. Same functions, with :standing added.
--- The regex is also in supabase/setup.sql (kept in step).
+-- The regex is also in supabase/setup.sql (kept in step). Applied to the live project 2026-10-30 as migration sync_standing_key.
 
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
 returns boolean
