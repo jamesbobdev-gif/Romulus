@@ -12,6 +12,9 @@ store.load().then(async function(data){
     state.tasks=data.tasks.map(function(t){
       const out={
         id:t.id||uid(), title:String(t.title||''), done:!!t.done, due:t.due||null, dueTime:t.dueTime||null, tag:t.tag||null, ws:taskWs(t), pin:t.pin!=null?t.pin:null, googleEventId:t.googleEventId||null,
+        // which calendar the event lives on, and a to-do pulled from a calendar (main/gcal-sync.js): dropping these
+        // made every restart create the events again and push pulled to-dos back onto the calendar
+        calRef:t.calRef||null, fromCal:t.fromCal||null,
         created:t.created||Date.now(),
         updatedAt:t.updatedAt||t.created||Date.now(),
         // backward-compatible: existing subs without a 'due' field get null
