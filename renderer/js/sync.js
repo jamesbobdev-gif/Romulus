@@ -28,6 +28,13 @@ const themeStyle=document.createElement('style');
 document.head.appendChild(themeStyle);
 function applyTheme(css){ themeStyle.textContent=css||''; }
 try{ applyTheme(localStorage.getItem(THEME_KEY)||''); }catch(e){}
+// light / dark / system (the computer's setting): html[data-theme], read by styles.css
+const THEME_MODE_KEY='tasks.themeMode.v1';
+function applyThemeMode(mode){
+  if(mode==='light'||mode==='dark')document.documentElement.dataset.theme=mode;
+  else delete document.documentElement.dataset.theme;
+}
+try{ applyThemeMode(localStorage.getItem(THEME_MODE_KEY)||'system'); }catch(e){}
 
 /* ── device sync (Supabase-backed, per-task last-write-wins) ──
    Supports two independent channels ("workspaces"): personal and work.

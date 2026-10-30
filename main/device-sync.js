@@ -20,6 +20,14 @@ handle('sync:save-cfg', async (_e, sync) => {
   return true;
 });
 
+/* the sync code as a QR code, for the phone to scan (Settings → Device sync). It holds the sync key, so
+   it's drawn here and shown only on this screen, never sent anywhere */
+handle('sync:qr', async (_e, text) => {
+  text = String(text || '');
+  if (!text.startsWith('tasks-sync:') || text.length > 2000) return { ok: false, error: 'not a sync code' };
+  return { ok: true, svg: await require('qrcode').toString(text, { type: 'svg', errorCorrectionLevel: 'L', margin: 2 }) };
+});
+
 handle('gcal:save-cfg', async (_e, { clientId, clientSecret }) => {
   const cfg = readConfig();
   cfg.gcal = Object.assign({}, cfg.gcal, { clientId, clientSecret });

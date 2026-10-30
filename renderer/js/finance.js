@@ -855,7 +855,7 @@ function finHelloFold(on){
 function finPairFold(){
   const fold=el('details','fin-fold');
   fold.appendChild(el('summary','mono','pair your phone'));
-  fold.appendChild(el('p','fin-note','Open Finance in the Tasks app on your phone, tap Scan, and point it at the code. The phone then gets your accounts from SimpleFIN itself and opens them with your fingerprint. Anyone who scans this code can read your bank accounts, so only show it to your own phone. It hides after 2 minutes.'));
+  fold.appendChild(el('p','fin-note','Open Finance in the Romulus app on your phone, tap Scan, and point it at the code. The phone then gets your accounts from SimpleFIN itself and opens them with your fingerprint. Anyone who scans this code can read your bank accounts, so only show it to your own phone. It hides after 2 minutes.'));
   const go=el('button','btn-accent','Show the code');
   const box=el('div','fin-qr'); box.hidden=true;
   let timer=null;

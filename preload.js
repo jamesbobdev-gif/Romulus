@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('desktop', {
 
   syncGetCfg: () => ipcRenderer.invoke('sync:get-cfg'),
   syncSaveCfg: (cfg) => ipcRenderer.invoke('sync:save-cfg', cfg),
+  syncQr: (code) => ipcRenderer.invoke('sync:qr', code),
 
   gcalGetCfg: () => ipcRenderer.invoke('gcal:get-cfg'),
   gcalSaveCfg: (cfg) => ipcRenderer.invoke('gcal:save-cfg', cfg),

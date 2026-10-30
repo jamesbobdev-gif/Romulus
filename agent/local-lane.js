@@ -370,7 +370,8 @@ async function localFailed(c, t, msg) {
    (so none can tell what he is researching), and Lupa puts the answers together into the report. The report is
    also saved as Word + Markdown in Documents/Claude Agent/Research. A reply afterwards is answered by Lupa from that
    report; a reply with #legion (or "dig deeper") sends the legion out again. */
-const LEGION_LEAD = 'Lupa Au Palatine';
+// who leads a legion, as the live box and the report name it: localModel.name in config.json if set
+const legionLead = () => String((readConfig().localModel || {}).name || '').trim() || 'your local model';
 const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replace(/[^\w-]/g, '') + '.md');
 // one prompt to Lupa's model → its whole answer (JSON when a schema is given)
 function lupaThink(c, prompt, { schema, ms } = {}) {
@@ -389,20 +390,21 @@ async function runLegionTask(c, t) {
   const think = (prompt, o) => lupaThink(c, prompt, o);
   let note, options = [];
   if (!again) {
-    show('💬 ' + LEGION_LEAD + ' is answering from the report…\n');
+    const lead = legionLead();
+    show('💬 ' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
     note = (await legion.followUp(topic, before, reply, { think })).trim();
   } else {
     const extra = [t.notes, reply].filter(Boolean).join('\n').slice(0, 1500);
     agentLog('legion: ' + topic.slice(0, 80) + ' (' + order.join(', ') + ')');
     const started = Date.now();
-    const r = await legion.research(topic, { order, run: runHelperOn, think, names, lead: LEGION_LEAD, extra,
+    const r = await legion.research(topic, { order, run: runHelperOn, think, names, lead: legionLead(), extra,
       privateWords: routing.getRouting().private, locked: await agentRow(':locked'), onStep: show });
     if (r.error) {
       // Lupa itself not answering is a failure like any other local task's (it waits for him: never handed to the cloud)
       if (UNREACHABLE.test(r.error) || /timed? ?out/i.test(r.error)) throw new Error(r.error);
       note = 'The legion couldn’t finish: ' + r.error + '. Reply to try again.';
     } else {
-      const full = r.report + '\n\n' + legion.credits(r, names, LEGION_LEAD);
+      const full = r.report + '\n\n' + legion.credits(r, names, legionLead());
       const dir = path.join(ctx.documents(), 'Claude Agent', 'Research');
       const base = (topic.replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
       let saved = '';
@@ -418,7 +420,7 @@ async function runLegionTask(c, t) {
       agentLog('legion: done in ' + Math.round((Date.now() - started) / 1000) + 's, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' pieces answered');
     }
   }
-  sendToRenderer('agent:results', [{ id, lane: 'local', status: 'needs-you', note: note || 'Lupa gave no answer. Reply to try again.',
+  sendToRenderer('agent:results', [{ id, lane: 'local', status: 'needs-you', note: note || 'Your local model gave no answer. Reply to try again.',
     options: options.length ? options : null, pref: null, thoughts: live || undefined }]);
 }
 async function runLocalTask(c, t) {

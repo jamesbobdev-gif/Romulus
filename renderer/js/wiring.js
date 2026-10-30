@@ -24,6 +24,10 @@ if(window.desktop&&window.desktop.aiStatus){
   const save=async function(change,msg){
     Object.keys(change).forEach(function(k){ if(/Key$/.test(k)){ delete modelLists[k.slice(0,-3)]; delete keyBad[k.slice(0,-3)]; } }); // a new key: ask for its models again
     try{ ai=await window.desktop.aiSave(change); aiDraw(); say(msg||'saved'); }catch(e){ say('save failed'); } };
+  // the Agent tab's "Connect free" button (welcome.js): OpenRouter's sign-in, then switched on → {ok, error}
+  window.quickConnectAi=async function(){
+    const res=await window.desktop.aiOpenRouterConnect(); ai=res.status; aiDraw(); return res;
+  };
   const keyRow=function(ph,saveAs,label){
     const r=el('div','settings-row'); r.style.marginTop='8px';
     const k=el('input','settings-inp'); k.type='password'; k.placeholder=ph; k.style.flex='1'; k.style.margin='0'; k.autocomplete='off';
@@ -262,7 +266,7 @@ if(window.desktop&&window.desktop.aiStatus){
             try{ const res=await window.desktop.aiOpenRouterConnect(); ai=res.status; aiDraw(); say(res.ok?'OpenRouter connected':'didn’t connect: '+res.error); }
             catch(e){ say('didn’t connect'); cb2.disabled=false; cb2.textContent='Connect with OpenRouter ↗'; } });
           cr.appendChild(cb2); box.appendChild(cr);
-          box.appendChild(el('p','settings-hint','Sign in (or make a free account) and OpenRouter hands Tasks a key. One account, hundreds of models, some free. Or paste a key from openrouter.ai/keys below.'));
+          box.appendChild(el('p','settings-hint','Sign in (or make a free account) and OpenRouter hands Romulus a key. One account, hundreds of models, some free. Or paste a key from openrouter.ai/keys below.'));
           box.lastChild.style.margin='8px 0 0';
         }
         box.appendChild(keyRow(o.hasKey?'replace OpenRouter key':'OpenRouter API key (openrouter.ai/keys)','openrouterKey'));

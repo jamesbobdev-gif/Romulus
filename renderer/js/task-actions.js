@@ -10,7 +10,7 @@ let legionOn=false;
 function sendAsLegion(t){
   t.title='#legion '+t.title; t.lane='local'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
   t.status='queued'; t.waitUntil=null; t.stuck=null; t.reply=null;
-  agentSay(t,'sys','Sent out as a legion: Lupa splits it into pieces for the other AIs, then writes the report');
+  agentSay(t,'sys','Sent out as a legion of agents: your local model splits it into pieces for the other AIs, then writes the report');
   touch();
 }
 function setLegion(on){
@@ -33,7 +33,7 @@ async function addTask(){
     composerAtts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); composerAtts.length=0; drawComposerAtts();
     addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add';
   }
-  const due=$('newDue').value||null; const dueTime=due?($('newTime').value||null):null; const tag=$('newTag').value.trim()||null;
+  let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; const tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
   const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
@@ -53,6 +53,9 @@ function parseSpokenTask(text,now){
   const base=new Date(now); base.setHours(0,0,0,0);
   const plus=function(n){ const d=new Date(base); d.setDate(d.getDate()+n); return d; };
   const NUM={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,fourteen:14,thirty:30};
+  // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
+  // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
+  if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
   const DOW=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
   const MON=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const LEAD='(?:\\b(?:on|by|due|for|before|until|till|this|coming|next)\\s+)*';
@@ -104,8 +107,8 @@ function parseSpokenTask(text,now){
      "add finish the report to work"                    → {kind:'task', tab:'work'}
      "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
-const VOICE_TABS={human:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas'};
-const VOICE_TAB_NAME={list:'Human',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Ideas'};
+const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas'};
+const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Ideas'};
 function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
 // "app" / "app ideas" / "the app ideas group" → that idea group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
@@ -131,7 +134,7 @@ function parseVoiceCommand(said,curTab,smart){
   // "we're out of eggs" / "add eggs to groceries": onto his grocery list for the next order (grocery-list.js)
   if(outOfNames(s)&&groceryTask())return {kind:'grocery',text:s};
   // "go to the ideas tab (and …)" — the tab first, then whatever follows
-  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|personal|main|home|agent|claude|school|work|calendar|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
+  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
   if(m){ tab=VOICE_TABS[m[1].toLowerCase()]; s=m[2].trim(); if(!s)return {kind:'tab',tab:tab}; }
   // Claude / the agent
   m=/^(?:send|give|hand|pass)\s+(?:this\s+|it\s+)?(?:over\s+)?(?:to\s+)?(?:the\s+)?(?:agent|claude)\s*[,:]?\s*(?:to\s+)?(.+)$/i.exec(s)

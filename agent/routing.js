@@ -116,7 +116,7 @@ function routeTask(t) {
   if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
   if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: The local model reads Finance' };
   // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js)
-  if (isLegion(t)) return { lane: 'local', reason: 'deep research: Lupa leads a legion of cloud AIs' };
+  if (isLegion(t)) return { lane: 'local', reason: 'deep research: your local model leads a legion of cloud AIs' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
   if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);

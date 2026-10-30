@@ -111,7 +111,8 @@ handle('ai:openrouter-connect', async () => {
   agentLog('openrouter: connecting in the browser');
   const r = await openrouterConnect.connect({ openExternal: (u) => ctx.openExternal(u) });
   if (r.ok) {
-    const c = readConfig(); c.ai = Object.assign({}, c.ai, { openrouterKey: r.key }); writeConfig(c);
+    const c = readConfig(), order = providers.settings(c).order.map((p) => ({ id: p.id, on: p.on || p.id === 'openrouter' }));
+    c.ai = Object.assign({}, c.ai, { openrouterKey: r.key, order }); writeConfig(c); // signed in = switched on, so one click is enough
     providers.clearModelCache && providers.clearModelCache('openrouter');
     scheduleAgentRun(); agentLog('openrouter: connected');
   } else agentLog('openrouter: connect failed: ' + r.error);

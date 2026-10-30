@@ -160,7 +160,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       const lines=(Array.isArray(u.pref)?u.pref:[u.pref]).filter(function(l){ return typeof l==='string'&&l.trim(); }).slice(0,6);
       if(lines.length)agentSay(t,'sys','It would like to remember '+(lines.length>1?'these':'this')+' for next time. Keep?',{prefs:lines});
       // sites the local model needed and couldn't open: the to-do on his Human list allows one (local-sites.js finds this task by siteWant)
-      (Array.isArray(u.wanted)?u.wanted:[]).slice(0,3).forEach(function(h){ agentSay(t,'sys','It wanted to open '+h+', which isn’t on the sites it may open. A to-do on your Human list allows it; check that off and this runs again.',{siteWant:String(h)}); });
+      (Array.isArray(u.wanted)?u.wanted:[]).slice(0,3).forEach(function(h){ agentSay(t,'sys','It wanted to open '+h+', which isn’t on the sites it may open. A to-do on your To do list allows it; check that off and this runs again.',{siteWant:String(h)}); });
       // a step he said it needn't ask about again (its `allow`): Allow / Keep asking (standing.js), never saved by itself
       if(typeof u.allow==='string'&&u.allow.trim())agentSay(t,'sys','It would like to stop asking before this step. Allow it from now on? (Buying, sending, submitting and booking still wait for your yes.)',{allow:u.allow.trim().slice(0,160)});
     });

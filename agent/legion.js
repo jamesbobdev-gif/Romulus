@@ -119,8 +119,9 @@ const findingsText = (scouts) => scouts.map((s, i) => '### ' + (i + 1) + '. ' + 
 
 /* the whole run → {report, options, scouts:[{piece, via, text|error}], dropped} | {error}
    onStep(line): progress for the live box. names: id → display name; lead: Lupa's name. */
-async function research(topic, { order, run, think, names = {}, lead = 'Lupa', extra, privateWords, locked, onStep } = {}) {
+async function research(topic, { order, run, think, names = {}, lead = 'your local model', extra, privateWords, locked, onStep } = {}) {
   const say = (s) => { if (onStep) onStep(s); };
+  const Lead = lead.charAt(0).toUpperCase() + lead.slice(1); // at the start of a line
   const n = (id) => names[id] || id;
   order = (order || []).slice();
   topic = String(topic || '').trim();
@@ -128,12 +129,12 @@ async function research(topic, { order, run, think, names = {}, lead = 'Lupa', e
   if (!order.length) return { error: 'no cloud AI is connected: turn some on in Settings → AI connections' };
 
   say('⚔ Legion: ' + lead + ' leads, ' + order.length + ' AI' + (order.length > 1 ? 's' : '') + ' search (' + order.map(n).join(', ') + ')\n');
-  say('🗺 ' + lead + ' is splitting it into pieces no single AI can read the whole of…\n');
+  say('🗺 ' + Lead + ' is splitting it into pieces no single AI can read the whole of…\n');
   let plan;
   try { plan = await planPieces(topic, extra, { order, think, privateWords, locked }); }
-  catch (e) { return { error: lead + ' couldn’t split it (' + String(e && e.message || e).slice(0, 120) + ')' }; }
+  catch (e) { return { error: Lead + ' couldn’t split it (' + String(e && e.message || e).slice(0, 120) + ')' }; }
   plan.dropped.forEach((d) => say('  ✗ kept back "' + d.title + '": ' + d.why + '\n'));
-  if (plan.pieces.length < 2) return { error: lead + ' couldn’t split it into pieces that are safe to send', dropped: plan.dropped };
+  if (plan.pieces.length < 2) return { error: Lead + ' couldn’t split it into pieces that are safe to send', dropped: plan.dropped };
 
   // one piece per AI where possible; a piece whose AI fails goes to the AI holding the fewest pieces, so no one collects several
   const held = Object.fromEntries(order.map((id) => [id, 0]));
@@ -157,20 +158,20 @@ async function research(topic, { order, run, think, names = {}, lead = 'Lupa', e
   }));
   if (!scouts.some((s) => !s.error)) return { error: 'none of the AIs came back with an answer', scouts, dropped: plan.dropped };
 
-  say('📝 ' + lead + ' is putting it back together and writing the report (this takes a few minutes on the mini PC)…\n');
+  say('📝 ' + Lead + ' is putting it back together and writing the report (this takes a few minutes on a local model)…\n');
   let out;
   try { out = await think(COMPILE_PROMPT(topic, findingsText(scouts), extra), { schema: REPORT_SCHEMA, ms: WRITE_MS }); }
-  catch (e) { return { error: lead + ' couldn’t write the report (' + String(e && e.message || e).slice(0, 120) + ')', scouts, dropped: plan.dropped }; }
+  catch (e) { return { error: Lead + ' couldn’t write the report (' + String(e && e.message || e).slice(0, 120) + ')', scouts, dropped: plan.dropped }; }
   const j = json(out);
   const { report, options } = j && typeof j.report === 'string' && j.report.trim() ? { report: j.report.trim(), options: cleanOptions(j.options) } : splitOptions(out);
-  if (!report) return { error: lead + ' wrote an empty report', scouts, dropped: plan.dropped };
+  if (!report) return { error: Lead + ' wrote an empty report', scouts, dropped: plan.dropped };
   say('✅ Report ready\n');
   return { report, options, scouts, dropped: plan.dropped };
 }
 
 // who did what, for the bottom of the report
-function credits(r, names = {}, lead = 'Lupa') {
-  return '---\n**The legion:** split and written by ' + lead + ' on your mini PC. Pieces: ' +
+function credits(r, names = {}, lead = 'your local model') {
+  return '---\n**The legion:** split and written by ' + lead + ' on your own machine. Pieces: ' +
     r.scouts.map((s) => s.piece.title + ' (' + (s.error ? 'no answer' : names[s.via] || s.via) + ')').join(' · ') + '.' +
     (r.dropped && r.dropped.length ? ' Kept back: ' + r.dropped.map((d) => d.title).join(', ') + '.' : '') +
     '\n_No cloud AI saw your whole request: each got one general question. The answers came from web searches, so check anything important._';

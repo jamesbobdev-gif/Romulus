@@ -275,6 +275,25 @@ $('prefsSaveBtn').addEventListener('click',async function(){
   }catch(e){ $('prefsStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('prefsStatus').textContent=''; },2500);
 });
+/* Basic / Advanced: .adv panels show only with the switch on (remembered here) */
+const ADV_KEY='tasks.settingsAdvanced.v1';
+function setAdvanced(on){
+  document.body.classList.toggle('show-adv',!!on); $('advOn').checked=!!on;
+  try{ if(on)localStorage.setItem(ADV_KEY,'1'); else localStorage.removeItem(ADV_KEY); }catch(e){}
+}
+try{ setAdvanced(!!localStorage.getItem(ADV_KEY)); }catch(e){}
+$('advOn').addEventListener('change',function(){ setAdvanced(this.checked); });
+function drawThemeModes(){
+  let mode='system'; try{ mode=localStorage.getItem(THEME_MODE_KEY)||'system'; }catch(e){}
+  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
+}
+document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
+  b.addEventListener('click',function(){
+    try{ localStorage.setItem(THEME_MODE_KEY,b.dataset.mode); }catch(e){}
+    applyThemeMode(b.dataset.mode); drawThemeModes();
+  });
+});
+drawThemeModes();
 $('themeApplyBtn').addEventListener('click',function(){
   const css=$('themeCss').value;
   try{ localStorage.setItem(THEME_KEY,css); }catch(e){}
@@ -305,13 +324,50 @@ $('syncCopyBtn').addEventListener('click',function(){
   const oldCopy=function(){ const ta=document.createElement('textarea'); ta.value=code; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(e){} ta.remove(); if(ok)done(); else setSyncStatus('couldn’t copy',true); };
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(done,oldCopy); else oldCopy();
 });
+function syncCodeNow(){
+  const o={}; SYNC_CODE_FIELDS.forEach(function(x){ const v=$(x[1]).value.trim(); if(v)o[x[0]]=v; });
+  return o.u&&o.k&&o.s?SYNC_CODE_PREFIX+btoa(JSON.stringify(o)):null;
+}
+function fillFromSyncCode(t){
+  let o; try{ o=JSON.parse(atob(t.slice(SYNC_CODE_PREFIX.length))); }catch(err){ setSyncStatus('that sync code is cut off: try again',true); return false; }
+  SYNC_CODE_FIELDS.forEach(function(f){ $(f[1]).value=o[f[0]]||''; });
+  return true;
+}
+/* phone pairing by QR: the computer draws the sync code (main/device-sync.js sync:qr), the phone scans it
+   with the scanner Finance pairing uses (FinanceVault.scan) and saves at once. It hides after 2 minutes. */
+if(window.desktop&&window.desktop.syncQr){
+  const qb=$('syncQrBtn'), box=$('syncQrBox'); let qrTimer=null;
+  const hideQr=function(){ clearTimeout(qrTimer); box.innerHTML=''; box.hidden=true; qb.textContent='Show code for phone'; };
+  qb.hidden=false;
+  qb.addEventListener('click',async function(){
+    if(!box.hidden){ hideQr(); return; }
+    const code=syncCodeNow(); if(!code){ setSyncStatus('fill in the three fields first',true); return; }
+    const r=await window.desktop.syncQr(code).catch(function(e){ return {ok:false,error:e.message}; });
+    if(!r.ok){ setSyncStatus('couldn’t draw the code: '+r.error,true); return; }
+    box.innerHTML=r.svg; box.hidden=false; qb.textContent='Hide the code';
+    setSyncStatus('scan it from Settings → Device sync on your phone. Anyone who scans it can open your lists');
+    qrTimer=setTimeout(hideQr,120000);
+  });
+  $('syncSection').addEventListener('toggle',function(){ if(!this.open)hideQr(); });
+}
+(function(){
+  const cap=window.Capacitor;
+  if(!cap||typeof cap.nativePromise!=='function'||!cap.isPluginAvailable||!cap.isPluginAvailable('FinanceVault'))return;
+  const sb=$('syncScanBtn'); sb.hidden=false;
+  sb.addEventListener('click',async function(){
+    let text='';
+    try{ text=String((await cap.nativePromise('FinanceVault','scan',{})).text||'').trim(); }
+    catch(e){ if(!/cancel/i.test(String(e&&(e.code||e.message))))setSyncStatus('the scanner didn’t start',true); return; }
+    if(text.indexOf(SYNC_CODE_PREFIX)!==0){ setSyncStatus('that isn’t a sync code: use Show code for phone on the computer',true); return; }
+    if(fillFromSyncCode(text)){ setSyncStatus('paired: saving…'); $('syncSaveBtn').click(); }
+  });
+})();
 SYNC_CODE_FIELDS.slice(0,3).forEach(function(x){
   $(x[1]).addEventListener('paste',function(e){
     const t=((e.clipboardData&&e.clipboardData.getData('text'))||'').trim();
     if(t.indexOf(SYNC_CODE_PREFIX)!==0)return;
     e.preventDefault();
-    let o; try{ o=JSON.parse(atob(t.slice(SYNC_CODE_PREFIX.length))); }catch(err){ setSyncStatus('that sync code is cut off: copy it again',true); return; }
-    SYNC_CODE_FIELDS.forEach(function(f){ $(f[1]).value=o[f[0]]||''; });
+    if(!fillFromSyncCode(t))return;
     setSyncStatus('filled in from the sync code: press Save & sync');
   });
 });

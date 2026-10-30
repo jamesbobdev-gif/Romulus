@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <title>Romulus</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -32,7 +32,7 @@
     <div id="aiUsage" hidden></div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Agent &amp; AI</summary>
-      <div class="settings-sub" id="hubSection" hidden>
+      <div class="settings-sub adv" id="hubSection" hidden>
         <h3 class="settings-subhead">Mini PC server</h3>
         <p class="settings-hint">When it's on, the agent, its browser, mail dates and calendar sync run on your mini PC. This computer only shows them and syncs, over Tailscale.</p>
         <input id="hubUrl" class="settings-inp mono" placeholder="https://tasks-hub.your-tailnet.ts.net" autocomplete="off" spellcheck="false">
@@ -51,7 +51,7 @@
         <div id="aiList"></div>
         <span id="aiStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
-      <div class="settings-sub" id="localSection" hidden>
+      <div class="settings-sub adv" id="localSection" hidden>
         <h3 class="settings-subhead">Local model</h3>
         <p class="settings-hint">Your own model through <a id="ollamaLink" href="#">Ollama</a>, on this computer or another one on your network. Nothing it works on leaves your machines. Tasks with private words always go here.</p>
         <div class="settings-row" style="margin-top:0">
@@ -67,7 +67,7 @@
           <span id="localStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
-      <div class="settings-sub" id="routingSection" hidden>
+      <div class="settings-sub adv" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
         <p class="settings-hint"><span class="mono">#local</span> or <span class="mono">#claude</span> in a title beats everything below. Then: private words, rules (first match), default.</p>
         <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> (or card/SSN numbers) → the local model.</p>
@@ -101,7 +101,7 @@
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
-      <div class="settings-sub" id="standingSection" hidden>
+      <div class="settings-sub adv" id="standingSection" hidden>
         <h3 class="settings-subhead">Doesn’t ask again</h3>
         <p class="settings-hint">Steps you’ve said yes to once and for all, so the Agent stops asking on every task: logging in to a site, building a cart, opening a seat map. Buying, paying, sending, submitting and booking are never on this list: those always wait for your yes.</p>
         <div id="standingList"></div>
@@ -111,7 +111,7 @@
           <span id="standingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
-      <div class="settings-sub" id="howtosSection" hidden>
+      <div class="settings-sub adv" id="howtosSection" hidden>
         <h3 class="settings-subhead">What worked before</h3>
         <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
         <div id="howtosList"></div>
@@ -231,11 +231,11 @@
       <p class="settings-hint">
         Sync with your phone via a free <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
-      <p class="settings-hint">Adding a device? Press <b>Copy sync code</b> here, then paste it into the first box on the other device: it fills in all three.</p>
+      <p class="settings-hint">Adding your phone? Press <b>Show code for phone</b> here, then <b>Scan the computer's code</b> in Settings → Device sync on the phone. (Or <b>Copy sync code</b> and paste it into the first box on the other device.)</p>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKey" class="settings-inp" placeholder="Anon / publishable key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
-      <details class="settings-sub" style="margin-top:14px">
+      <details class="settings-sub adv" style="margin-top:14px">
         <summary class="settings-label" id="syncListsLabel">Per-list keys (optional)</summary>
         <p class="settings-hint">The Work, Agent and School lists get their own keys made from the sync key above, so they sync wherever it does. Type a key here only to share one list with a different key (for example a Work list shared with a colleague).</p>
         <input id="syncKeyW" class="settings-inp" placeholder="Work sync key (automatic)" autocomplete="off" spellcheck="false">
@@ -244,14 +244,22 @@
       </details>
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
+        <button id="syncQrBtn" class="ghost mono" hidden>Show code for phone</button>
+        <button id="syncScanBtn" class="btn-accent" hidden>Scan the computer's code</button>
         <button id="syncCopyBtn" class="ghost mono">Copy sync code</button>
         <button id="syncGenBtn" class="ghost mono">Generate key</button>
         <button id="syncOffBtn" class="ghost mono danger" hidden>Turn off</button>
         <span id="syncStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
+      <div id="syncQrBox" class="fin-qr" hidden></div>
     </details>
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
+      <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
+        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button>
+      </div>
+      <details class="settings-sub">
+      <summary class="settings-label">Custom CSS (advanced)</summary>
       <p class="settings-hint">Paste CSS to restyle the app.</p>
       <textarea id="themeCss" class="settings-inp theme-css" rows="9" spellcheck="false" placeholder=":root{
   --bg:#FBFBFA;      /* page background */
@@ -269,14 +277,17 @@
         <button id="themeResetBtn" class="ghost mono danger">Reset</button>
         <span id="themeStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
+      </details>
     </details>
+    <!-- Basic shows what most people need; the switch shows the power-user panels (.adv) too (settings.js) -->
+    <label class="switch settings-adv-switch"><input type="checkbox" id="advOn"><span class="track" aria-hidden="true"></span><span>Show advanced settings <span class="settings-hint" style="display:inline">(mini PC, local model, routing rules, what the Agent remembers)</span></span></label>
   </section>
 
   <div class="rule" aria-hidden="true"></div>
 
   <!-- Tab bar replaces the rule -->
   <div class="tabs" role="tablist">
-    <button id="tabList" class="tab active" role="tab" aria-selected="true">Human</button>
+    <button id="tabList" class="tab active" role="tab" aria-selected="true">To do</button>
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
@@ -293,7 +304,7 @@
       <input type="time" id="newTime" class="sm" aria-label="Due time">
       <input id="newTag" class="sm" list="tagOptions" placeholder="tag" aria-label="Tag" autocomplete="off">
       <datalist id="tagOptions"></datalist>
-      <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Deep research led by Lupa: it splits your question into pieces, each AI you connected researches one piece without seeing the whole, then Lupa writes the report (#legion)" hidden>⚔ Legion</button>
+      <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report (#legion)" hidden>⚔ Legion</button>
       <button id="newAttBtn" class="att-btn" type="button" title="Add photos — or just paste a screenshot" hidden>+ Photo</button>
       <input id="newAttFile" type="file" accept="image/*" multiple hidden>
       <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
@@ -324,7 +335,7 @@
         <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
         <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
         <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Ideas</b> and <b>Hours</b> are extra views of the same tasks.</li>
-        <li id="welcomeTrayTip">Closing the window hides Tasks in the tray by the clock; right-click the tray icon to quit.</li>
+        <li id="welcomeTrayTip">Closing the window hides Romulus in the tray by the clock; right-click the tray icon to quit.</li>
       </ul>
       <p class="welcome-foot">You can change all of this later in ⚙ Settings. This card shows once.</p>
     </div>
@@ -339,10 +350,16 @@
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
     <!-- Agent tab, nothing connected yet (welcome.js drawAgentSetup) -->
+    <!-- Agent tab, an AI connected but no tasks yet: things to try, one tap each (welcome.js) -->
+    <div id="agentExamples" class="agent-examples" hidden>
+      <span class="agent-examples-head">Try one:</span>
+    </div>
     <div id="agentSetupCard" class="connect-card" hidden>
       <b>Pick an AI to do your tasks</b>
-      <p>The Agent hands each task to an AI that can search the web, read pages, fill forms and shop, then comes back when it needs you. Connect one to start: your Claude or ChatGPT plan, a free OpenRouter account, or your own local model.</p>
-      <button id="agentSetupBtn" class="btn-accent">Connect an AI</button>
+      <p>The Agent hands each task to an AI that can search the web, read pages, fill forms and shop, then comes back when it needs you. The quickest start is free: sign in to OpenRouter (or make an account) in your browser and you're done.</p>
+      <button id="agentQuickBtn" class="btn-accent">Connect free with OpenRouter ↗</button>
+      <p class="settings-hint" id="agentQuickStatus" style="margin:8px 0 0"></p>
+      <p style="margin:10px 0 0"><a href="#" id="agentSetupBtn">Use Claude, ChatGPT, Gemini or your own model instead</a></p>
     </div>
     <div id="agentSyncHint" class="empty" hidden>Want the Agent on your phone too? <a href="#" id="agentSyncLink">Set up device sync</a>.</div>
     <div id="connectCard" class="connect-card" hidden>

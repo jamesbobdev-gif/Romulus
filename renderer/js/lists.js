@@ -62,7 +62,7 @@ function buildRow(t,canDrag){
     else {
       const k=schoolKind(t); if(k!=='regular')chips.appendChild(el('span','chip school',k));
       const f=schoolShowFrom(t);
-      if(!t.done&&f&&todayStart()<f){ const c=el('span','chip later','in list '+f.toLocaleDateString('en-US',{month:'short',day:'numeric'})); c.title='Joins your Human list on this day'; chips.appendChild(c); }
+      if(!t.done&&f&&todayStart()<f){ const c=el('span','chip later','in list '+f.toLocaleDateString('en-US',{month:'short',day:'numeric'})); c.title='Joins your To do list on this day'; chips.appendChild(c); }
     }
   }
   const isAgentTask=taskWs(t)==='agent';
@@ -111,13 +111,13 @@ function buildRow(t,canDrag){
   acts.appendChild(pen);
   // ⚔ send an Agent task out as a legion: Lupa splits it so no cloud AI sees the whole of it (agent/legion.js)
   if(isAgentTask&&!t.done&&t.status!=='working'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
-    const lg=iconBtn(I.legion,'Send out as a legion'); lg.title='Deep research led by Lupa: each AI you connected researches one piece without seeing the whole, then Lupa writes the report';
+    const lg=iconBtn(I.legion,'Send out as a legion'); lg.title='Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report';
     lg.addEventListener('click',function(e){ e.stopPropagation(); sendAsLegion(t); });
     acts.appendChild(lg);
   }
   if(agentAvailable()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
-    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to Human (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';
+    const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to To do (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';
     const mv=iconBtn(isAgentTask?I.human:I.bot,mvLabel); mv.title=mvLabel;
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
     acts.appendChild(mv);
@@ -807,7 +807,7 @@ function render(){
 
   const es=$('emptyState');
   if(unconnected){ es.hidden=true; }
-  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for the Agent yet — add one above, or hand one over from the Human tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
+  else if(tasks.length===0){ es.hidden=false; es.textContent=onAgent?'No tasks for the Agent yet — add one above, or hand one over from the To do tab.':onSchool?'No assignments yet — add one above (put the class in the tag).':onWork?'No work tasks yet — add one above.':'Nothing here yet — add your first task above.'; }
   else if(openVis.length===0){
     es.hidden=false;
     es.textContent=q?'No matches for "'+$('searchBox').value.trim()+'".':(state.filter?'Nothing open under "'+state.filter+'".':'All clear.');
