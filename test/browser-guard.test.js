@@ -103,3 +103,52 @@ test('uploads: only his files for forms, by their exact path', () => {
   assert.match(proxy.fileRefusal(call('browser_file_upload', { paths: [resume, path.join(tmp, 'notes.txt')] })), /Not .*notes\.txt/);
   assert.match(proxy.fileRefusal(call('browser_file_upload', { paths: 'C:\\Windows\\system.ini' })), /system\.ini/);
 });
+
+test('Space, a line break typed key by key, and an address that cannot be read are Enter too', () => {
+  for (const k of ['Space', ' ', 'Shift+Space']) assert.match(proxy.buyRefusal(call('browser_press_key', { key: k }), 'https://www.walmart.com/checkout'), /Not without a yes/, k);
+  assert.match(proxy.buyRefusal(call('browser_type', { ref: 'e8', text: 'Smith\n', slowly: true }), here), /Not without a yes/);
+  assert.strictEqual(proxy.buyRefusal(call('browser_type', { ref: 'e8', text: 'line one\nline two' }), here), null); // filled in one go: no key is pressed
+  assert.match(proxy.buyRefusal(call('browser_press_key', { key: 'Enter' }), null), /Not without a yes/); // the tab's address could not be read
+  assert.strictEqual(proxy.buyRefusal(call('browser_press_key', { key: 'Escape' }), null), null);
+});
+
+test('on every lane, sending, deleting, paying and posting wait for his yes, not only buying and submitting', () => {
+  proxy.learnRefs(['- button "Delete account" [ref=f1]', '- button "Send message" [ref=f2]', '- button "Cancel subscription" [ref=f3]',
+    '- button "Cancel" [ref=f4]', '- button "Post" [ref=f5]', '- textbox "Postcode" [ref=f6]', '- button "Reserve a time slot" [ref=f7]'].join('\n'));
+  const shop = 'https://www.walmart.com/account';
+  for (const r of ['f1', 'f2', 'f3', 'f5']) assert.match(proxy.buyRefusal(call('browser_click', { target: r }), shop), /can't be taken back/, r);
+  for (const r of ['f4', 'f6', 'f7']) assert.strictEqual(proxy.buyRefusal(call('browser_click', { target: r }), shop), null, r); // closing a dialog, a field, a pickup time
+});
+
+test('a nameless box around the order button meets the same gates as the button', () => {
+  proxy.learnRefs(['- generic [ref=g1] [cursor=pointer]:', '  - generic [ref=g2]:', '    - text "Place order"', '    - button "Place order" [ref=g3]',
+    '- generic [ref=g4] [cursor=pointer]:', '  - img "logo" [ref=g5]', '- generic [ref=g6]:', '  - text "nothing named here"'].join('\n'));
+  assert.match(proxy.buyRefusal(call('browser_click', { target: 'g1' }), 'https://shop.example.com/checkout'), /places the order/);
+  assert.match(proxy.buyRefusal(call('browser_click', { target: 'g2' }), 'https://shop.example.com/checkout'), /places the order/);
+  assert.strictEqual(proxy.buyRefusal(call('browser_click', { target: 'g4' }), 'https://shop.example.com/'), null);
+  assert.strictEqual(proxy.buyRefusal(call('browser_click', { target: 'g6' }), 'https://shop.example.com/'), null);
+});
+
+test('no acting on a page that is this computer or its network, however the browser got there', () => {
+  for (const u of ['http://127.0.0.1:8790/hub/import', 'http://lupa:11434/', 'http://192.168.1.1/admin']) {
+    assert.match(proxy.privateRefusal(call('browser_click', { target: 'e1' }), u), /may not act/, u);
+    assert.match(proxy.privateRefusal(call('browser_type', { ref: 'e8', text: 'x' }), u), /may not act/, u);
+    assert.strictEqual(proxy.privateRefusal(call('browser_navigate', { url: 'https://www.walmart.com/' }), u), null); // leaving is fine
+  }
+  assert.strictEqual(proxy.privateRefusal(call('browser_click', { target: 'e1' }), 'https://www.walmart.com/'), null);
+  assert.strictEqual(proxy.privateRefusal(call('browser_click', { target: 'e1' }), 'about:blank'), null);
+  assert.strictEqual(proxy.privateRefusal(call('browser_click', { target: 'e1' }), null), null);
+});
+
+test('only the page tools reach Playwright: no running code, raw requests or closing the browser', () => {
+  for (const t of ['browser_click', 'browser_navigate', 'browser_snapshot', 'browser_fill_form', 'browser_tabs', 'browser_file_upload'])
+    assert.strictEqual(proxy.toolRefusal(call(t, {})), null, t);
+  for (const t of ['browser_evaluate', 'browser_run_code_unsafe', 'browser_network_request', 'browser_close', 'browser_install', 'anything_else'])
+    assert.match(proxy.toolRefusal(call(t, {})), /not available/, t);
+});
+
+test('the current tab\'s address is read even when it holds parentheses', () => {
+  assert.strictEqual(proxy.currentUrl('- 0: (current) [Apply](https://x.wd5.myworkdayjobs.com/job/Engineer-(Remote)_R1/apply)'), 'https://x.wd5.myworkdayjobs.com/job/Engineer-(Remote)_R1/apply');
+  assert.strictEqual(proxy.currentUrl('- 1: [Other](https://a.example/)\n- 0: (current) [Cart](https://www.walmart.com/cart) [crashed]'), 'https://www.walmart.com/cart');
+  assert.strictEqual(proxy.currentUrl('- 0: [Not current](https://a.example/)'), null);
+});

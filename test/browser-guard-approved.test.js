@@ -45,3 +45,12 @@ test('what went through is in the actions log; ordinary clicks are not', () => {
   assert.deepStrictEqual(lines[2].files, ['resume.pdf']);
   assert.ok(lines.every((l) => typeof l.at === 'number'));
 });
+
+test('his yes is spent by the step it was for: a second order waits for a fresh one', () => {
+  // the test above logged the Place order click as gone through
+  assert.match(proxy.buyRefusal(call('browser_click', { target: 'e6' }), 'https://www.walmart.com/checkout'), /fresh yes/);
+  assert.match(proxy.buyRefusal(call('browser_press_key', { key: 'Enter' }), 'https://www.walmart.com/checkout'), /fresh yes/);
+  assert.strictEqual(proxy.buyRefusal(call('browser_click', { target: 'e2' }), 'https://www.walmart.com/checkout'), null); // Continue is not final
+  proxy.resetSpent();
+  assert.strictEqual(proxy.buyRefusal(call('browser_click', { target: 'e6' }), 'https://www.walmart.com/checkout'), null);
+});
