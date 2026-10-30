@@ -6,8 +6,9 @@
 const KEY = 'tasks.v1';
 const store = {
   async load(){
+    // desktop: a file that can't be read (or parsed) throws, and init.js then refuses to save over it; null = first run
+    if(window.desktop){ const r=await window.desktop.load(); return r?JSON.parse(r):null; }
     try{
-      if(window.desktop){ const r=await window.desktop.load(); return r?JSON.parse(r):null; }
       if(window.storage){ const r=await window.storage.get(KEY); return(r&&r.value)?JSON.parse(r.value):null; }
       const r=localStorage.getItem(KEY); return r?JSON.parse(r):null;
     }catch(e){ return null; }

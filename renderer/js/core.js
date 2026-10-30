@@ -29,6 +29,7 @@ function stampChanges(){
 }
 function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas,hours:state.hours}; }
 function persist(){
+  if(state.loadFailed){ voiceToast('Not saved: your tasks file couldn’t be read at start-up. Restart Romulus.',true); return; }
   clearTimeout(saveTimer);
   saveTimer=setTimeout(function(){ stampChanges(); store.save(currentDoc()); schedulePush(); if(typeof billAlerts==='function')billAlerts(); },200);
 }

@@ -62,4 +62,9 @@ store.load().then(async function(data){
   startSyncLoop();
   setTimeout(function(){ swipeReady=true; maybeShowSwipe(); },4000); // after the first sync, so another device's choices are in
   setTimeout(runDueRepeats,10*1000);
+}).catch(function(e){
+  // the tasks file is there but couldn't be read: show the page, but never save over the file (core.js persist)
+  state.loadFailed=String((e&&e.message)||e||'unknown error');
+  render();
+  voiceToast('Couldn’t read your tasks: '+state.loadFailed+'. Nothing is saved until Romulus is restarted.',true);
 });
