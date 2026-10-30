@@ -46,7 +46,7 @@ jobs:
       # (job-level so the step's `if` below can see it: a step's own env isn't set when its `if` is evaluated)
       OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
@@ -165,7 +165,7 @@ jobs:
     needs: build # the release exists once the desktop builds have published to it
     if: ${{ always() && needs.build.result != 'cancelled' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Signing key
         id: keystore
         env:
