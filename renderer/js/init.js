@@ -16,6 +16,7 @@ store.load().then(async function(data){
         // made every restart create the events again and push pulled to-dos back onto the calendar
         calRef:t.calRef||null, fromCal:t.fromCal||null,
         created:t.created||Date.now(),
+        doneAt:t.done&&t.doneAt?t.doneAt:undefined, // when it was ticked (year-review.js)
         updatedAt:t.updatedAt||t.created||Date.now(),
         // backward-compatible: existing subs without a 'due' field get null
         subs:Array.isArray(t.subs)?t.subs.map(function(s){
@@ -30,6 +31,7 @@ store.load().then(async function(data){
       if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; if(t.runFrom&&(out.status==='working'||out.status==='queued'))out.runFrom=t.runFrom; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true; if(t.parked&&out.status==='needs-you')out.parked=true;
         if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object')out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')};
         if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
+        if(out.status==='suggested'&&(t.suggest==='look-ahead'||t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'))out.suggest=t.suggest; // a card on the Human tab (lists.js drawSuggestions)
         // what a waiting answer brought: its order cards (and his picks on them), tap questions, and ◉ Watch's page
         if(out.status==='needs-you'){
           if(Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick; }
@@ -61,6 +63,7 @@ store.load().then(async function(data){
   rebuildSnap();
   if(spawnMissedRecurs())persist();
   render(); // list is the default active tab
+  reviewBannerCheck(); // January and February: last year's review (year-review-view.js)
   holoBackToSchool(); // undo the School → Holo auto-move
   startSyncLoop();
   setTimeout(function(){ swipeReady=true; maybeShowSwipe(); },4000); // after the first sync, so another device's choices are in

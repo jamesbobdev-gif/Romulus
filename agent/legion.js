@@ -75,10 +75,18 @@ const COMPILE_PROMPT = (topic, findings, extra) => 'You split his research reque
   'and "options": up to 6 of the options for him to tap, [{"label":"name","desc":"one line: price, why","url":"https://…"}], ' +
   'only with a real link from the answers (an empty list if none).';
 
-const FOLLOW_PROMPT = (topic, report, question) => 'Earlier you researched this for him and wrote the report below. Answer his follow-up ' +
-  'question from it. If the report doesn\'t cover it, say so and suggest he replies with #legion to research it again. ' +
-  'Don\'t make up facts or links.\n\nResearch request: ' + topic + '\n\n## Your report\n\n' + report + '\n\n## His question\n' + question +
-  '\n\nAnswer in Markdown, as short as the question allows.';
+const FOLLOW_SCHEMA = { type: 'object', properties: { answer: { type: 'string' }, research: { type: 'boolean' } }, required: ['answer', 'research'] };
+/* "why was the train worse?" is answered from the report and what he said since ("I can't drive"); "give me the
+   flight options" needs facts the report doesn't have, so research comes back true and the legion goes out again */
+const FOLLOW_PROMPT = (topic, report, question, earlier) => 'Earlier you researched this for him and wrote the report below. ' +
+  'Answer his follow-up from the report and from what he told you since (it changes the answer: if he can\'t do an option, ' +
+  'that option is out). When he asks why one option beats another, explain it from the report\'s numbers: price, travel time, ' +
+  'transfers, downsides. Don\'t make up facts or links.\n' +
+  'Set "research" to true only when he needs facts the report doesn\'t have (specific times, current prices, a list of choices ' +
+  'the report only names in passing); then "answer" is one line on what you will look up. Otherwise false.' +
+  '\n\nResearch request: ' + topic + '\n\n## Your report\n\n' + report +
+  (earlier ? '\n\n## Since the report\n' + earlier : '') + '\n\n## His question\n' + question +
+  '\n\nAnswer with JSON: {"answer":"Markdown, as short as the question allows","research":false}';
 
 const json = (text) => { const s = String(text || ''); try { return JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1)); } catch (e) { return null; } };
 const pieceCount = (order) => Math.max(MIN_PIECES, Math.min(MAX_PIECES, (order || []).length));
@@ -177,7 +185,13 @@ function credits(r, names = {}, lead = 'your local model') {
     '\n_No cloud AI saw your whole request: each got one general question. The answers came from web searches, so check anything important._';
 }
 
-// a reply on a finished legion task: Lupa answers it from the report, nothing leaves
-const followUp = (topic, report, question, { think }) => think(FOLLOW_PROMPT(topic, report, question), { ms: PLAN_MS });
+/* a reply on a finished legion task: Lupa answers it from the report and the turns since, nothing leaves.
+   earlier: those turns as text. → {answer, research}: research true means send the legion out again */
+async function followUp(topic, report, question, { think, earlier } = {}) {
+  const out = await think(FOLLOW_PROMPT(topic, report, question, earlier), { schema: FOLLOW_SCHEMA, ms: PLAN_MS });
+  const j = json(out);
+  if (j && typeof j.answer === 'string') return { answer: j.answer.trim(), research: j.research === true };
+  return { answer: String(out || '').trim(), research: false };
+}
 
 module.exports = { isLegion, topicOf, research, credits, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES };

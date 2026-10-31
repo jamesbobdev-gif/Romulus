@@ -166,8 +166,9 @@ if(calApi){
   setTimeout(calTick,45*1000); setInterval(calTick,15*60*1000);
 
   /* Dates from Gmail: main checks the mailbox (free when nothing's new) and asks Claude
-     about new mail that mentions a date. Each found date is a personal task with its own id, added once:
-     one he deleted isn't brought back, and one already on a list (same day, same name) isn't doubled. */
+     about new mail that mentions a date. Each found date is a suggestion on the Human tab with its own id
+     (lists.js drawSuggestions): Accept puts it on his list, Deny drops it. Added once: one he denied or
+     deleted isn't brought back, and one already on a list (same day, same name) isn't doubled. */
   if(window.desktop&&window.desktop.mailCheck){
     const mailSay=function(st,r){
       if(!st.connected)return '';
@@ -175,7 +176,7 @@ if(calApi){
       if(st.expired)return 'Your Gmail sign-in ran out.';
       if(!st.enabled)return '';
       if(r&&r.error)return 'last check failed: '+r.error;
-      if(r&&r.items&&r.items.length)return r.items.length+' date'+(r.items.length>1?'s':'')+' added from email just now.';
+      if(r&&r.items&&r.items.length)return r.items.length+' date'+(r.items.length>1?'s':'')+' from email waiting on your To do tab.';
       return st.last?'Last checked '+new Date(st.last).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'.':'';
     };
     const addMailItems=function(items){
@@ -184,7 +185,8 @@ if(calApi){
       let added=0;
       (items||[]).forEach(function(e){
         if(tombed[e.id]||state.tasks.some(function(x){ return x.id===e.id||(x.due===e.due&&norm(x.title)===norm(e.title)); }))return;
-        state.tasks.push({id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime||null,tag:'email',notes:e.notes||null,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
+        state.tasks.push({id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime||null,tag:'email',notes:e.notes||null,ws:'agent',subs:[],googleEventId:null,created:Date.now(),
+          status:'suggested',suggest:'email',note:null,reply:null,options:null,history:[]});
         added++;
       });
       if(added)touch();

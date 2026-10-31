@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktop', {
   load: () => ipcRenderer.invoke('tasks:load'),
+  loadRestored: () => ipcRenderer.invoke('tasks:restored'),
   save: (raw) => ipcRenderer.invoke('tasks:save', raw),
 
   syncGetCfg: () => ipcRenderer.invoke('sync:get-cfg'),
@@ -94,6 +95,9 @@ contextBridge.exposeInMainWorld('desktop', {
   mailStatus: () => ipcRenderer.invoke('mail:status'),
   mailSetEnabled: (on) => ipcRenderer.invoke('mail:set-enabled', on),
   mailCheck: () => ipcRenderer.invoke('mail:check'),
+  // an email the Agent wrote, sent only when he presses Send (agent/mail-send.js)
+  mailSendAccounts: () => ipcRenderer.invoke('mail:send-accounts'),
+  mailSend: (req) => ipcRenderer.invoke('mail:send', req),
   // morning look-ahead: what's coming up that needs doing → Agent tasks waiting on him
   lookAheadStatus: () => ipcRenderer.invoke('lookahead:status'),
   lookAheadSetEnabled: (on) => ipcRenderer.invoke('lookahead:set-enabled', on),

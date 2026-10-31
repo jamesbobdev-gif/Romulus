@@ -9,6 +9,7 @@
    Tokens and links stay in this computer's config.json; nothing here is synced or shown to a model. */
 const http = require('http');
 const crypto = require('crypto');
+const mailSend = require('./mail-send');
 
 let io = null; // { readConfig, writeConfig, openExternal, clients }
 function init(opts) { io = opts; migrate(); }
@@ -56,9 +57,10 @@ const google = {
   client: googleClient,
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token',
-  // calendar events, the list of calendars, and reading (never changing) Gmail for dates (agent/mail-events.js);
-  // Google's screen lets people untick Gmail
-  scope: 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/gmail.readonly',
+  // calendar events, the list of calendars, reading (never changing) Gmail for dates (agent/mail-events.js), and
+  // sending an email he pressed Send on (agent/mail-send.js; gmail.send can only send, not read);
+  // Google's screen lets people untick either Gmail one
+  scope: 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send',
   authExtra: { access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true' },
   async api(token, method, url, body) {
     const res = await fetch('https://www.googleapis.com/calendar/v3/' + url, { method, signal: AbortSignal.timeout(20000),
@@ -121,7 +123,7 @@ const microsoft = {
   client: msClient,
   authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
   tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-  scope: 'openid email profile offline_access User.Read Calendars.ReadWrite',
+  scope: 'openid email profile offline_access User.Read Calendars.ReadWrite Mail.Send', // Mail.Send: an email he pressed Send on
   authExtra: { prompt: 'select_account' },
   // Microsoft allows any port on a localhost redirect, but the host has to be "localhost"
   redirectHost: 'localhost',
@@ -220,6 +222,12 @@ function when(p) {
 const PROVIDERS = { google, microsoft, ics };
 
 /* ---------- tokens ---------- */
+// Microsoft refreshes only to scopes the account agreed to: one connected before Mail.Send was asked for
+// would fail its refresh (and its calendar) if the refresh asked for it. It gets Mail.Send by connecting again.
+function msRefreshScope(a) {
+  const granted = String(a.scope || '');
+  return microsoft.scope.split(' ').filter((s) => s !== 'Mail.Send' || /mail\.send/i.test(granted)).join(' ');
+}
 async function tokenFor(acctId) {
   const cfg = io.readConfig();
   const a = accounts(cfg).find((x) => x.id === acctId);
@@ -233,7 +241,7 @@ async function tokenFor(acctId) {
   if (!c) throw new Error(p.name + ' sign-in isn’t set up in this build');
   const params = new URLSearchParams({ client_id: c.clientId, refresh_token: t.refresh_token, grant_type: 'refresh_token' });
   if (c.clientSecret) params.set('client_secret', c.clientSecret);
-  if (a.provider === 'microsoft') params.set('scope', p.scope);
+  if (a.provider === 'microsoft') params.set('scope', msRefreshScope(a));
   const res = await fetch(p.tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params, signal: AbortSignal.timeout(20000) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -480,4 +488,10 @@ function setReceipts(acctId, on) {
   return true;
 }
 
-module.exports = { init, connect, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor };
+// the accounts an email can go out from (agent/mail-send.js canSend), and whether any is connected that can't yet
+function sendAccounts() {
+  const all = accounts(io.readConfig()).filter((a) => a.provider === 'google' || a.provider === 'microsoft');
+  return { accounts: all.filter(mailSend.canSend), needReconnect: all.filter((a) => !mailSend.canSend(a)) };
+}
+
+module.exports = { init, connect, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, msRefreshScope };

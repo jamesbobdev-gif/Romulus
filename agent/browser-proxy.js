@@ -135,8 +135,20 @@ const ACTIONS_FILE = process.env.TASKS_BROWSER_ACTIONS || '';
 const TASK_TITLE = process.env.TASKS_BROWSER_TASK || '';
 // the file's own name from a path written on Windows or on the mini PC (path.basename only knows the host's separator)
 const fileName = (p) => String(p).split(/[\\/]/).pop();
+// the app reads the newest 200 lines every minute: past ACTIONS_MAX the file is cut back to its newest ACTIONS_KEEP
+const ACTIONS_MAX = 256 * 1024, ACTIONS_KEEP = 128 * 1024;
+function trimActions(file) {
+  const fs = require('fs');
+  try {
+    if (fs.statSync(file).size <= ACTIONS_MAX) return;
+    const text = fs.readFileSync(file, 'utf8');
+    const tail = text.slice(-ACTIONS_KEEP);
+    fs.writeFileSync(file, tail.slice(tail.indexOf('\n') + 1)); // from a whole line
+  } catch (e) {}
+}
 function logAction(what, extra) {
   if (!ACTIONS_FILE) return;
+  trimActions(ACTIONS_FILE);
   try { require('fs').appendFileSync(ACTIONS_FILE, JSON.stringify(Object.assign({ at: Date.now(), task: TASK_TITLE, what }, extra || {})) + '\n'); } catch (e) {}
 }
 // pressing Enter, in any spelling Playwright accepts ("Enter", "NumpadEnter", "Control+Enter"), or Space (which
@@ -439,4 +451,4 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests
+else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests

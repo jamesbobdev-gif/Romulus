@@ -239,7 +239,6 @@ function drawFinPhoneLocked(v){
   v.textContent='';
   const box=el('div','fin-card fin-lock');
   box.appendChild(el('h3',null,'Finance is locked'));
-  box.appendChild(el('p','fin-note','It locks when you leave the app and after 30 minutes without use.'));
   const go=el('button','btn-accent','Unlock with fingerprint');
   // one prompt at a time, but a request that never came back (or is 15 s old) never blocks the button
   const unlock=async function(){
@@ -267,7 +266,6 @@ function drawFinLocked(v,st){
   v.textContent='';
   const box=el('div','fin-card fin-lock');
   box.appendChild(el('h3',null,'Finance is locked'));
-  box.appendChild(el('p','fin-note','It locks after 30 minutes without use, when the screen locks, and when the computer sleeps.'));
   // Windows Hello first (asked by itself once when the tab opens); the passphrase folded under it
   let passBox=box;
   if(st.hello&&finApi.financeHelloUnlock){
@@ -282,9 +280,8 @@ function drawFinLocked(v,st){
     };
     hb.addEventListener('click',helloUnlock);
     box.appendChild(hb);
-    box.appendChild(el('p','fin-note','Your Windows PIN, fingerprint or face.'));
     passBox=el('details','fin-fold fin-pass-fold');
-    passBox.appendChild(el('summary','mono','use your passphrase instead'));
+    passBox.appendChild(el('summary','mono','use passphrase'));
     passBox.open=!!(fin.msg&&fin.msgErr); // Hello didn't work: the passphrase is right there
     if(!fin.autoAsked){ fin.autoAsked=true; setTimeout(helloUnlock,200); }
   }
@@ -303,12 +300,9 @@ function drawFinLocked(v,st){
   const row=el('div','fin-row'); row.appendChild(pass); row.appendChild(go); passBox.appendChild(row);
   if(passBox!==box){ box.appendChild(finMsgEl()); box.appendChild(passBox); }
   if(st.waitSeconds&&!fin.msg)finSay('Too many wrong tries. Wait '+st.waitSeconds+' seconds.',true);
-  if(passBox===box){
-    box.appendChild(finMsgEl());
-    box.appendChild(el('p','fin-note','After you unlock, Windows Hello (your Windows PIN, fingerprint or face) can open Finance next time.'));
-  }
+  if(passBox===box)box.appendChild(finMsgEl());
   box.appendChild(finForgetFold('forgot your passphrase?',finApi.csv?'It can’t be reset. Forgetting deletes the bank data saved here, then you start again with your CSV files.'
-    :'Nobody can reset it. The only way back in is to forget this connection: the saved bank data and history on this computer are deleted, and you connect again with a new SimpleFIN token.'));
+    :'It can’t be reset. Forgetting deletes the bank data on this computer, then you connect again with a new SimpleFIN token.'));
   v.appendChild(box);
   if(passBox===box)pass.focus();
 }
@@ -357,12 +351,12 @@ function finMailWord(m){
 }
 
 // any section folds up to its title (with a one-line summary while it's folded); remembered on this computer
-function finOpen(id){ try{ return localStorage.getItem('finOpen.'+id)!=='0'; }catch(e){ return true; } }
-function finFoldable(card,id,title,summary){
+function finOpen(id,shut){ try{ const v=localStorage.getItem('finOpen.'+id); return v==null?!shut:v!=='0'; }catch(e){ return !shut; } }
+function finFoldable(card,id,title,summary,shut){
   const h=card.querySelector(':scope > h3'); if(h)h.remove();
   const body=el('div','fin-fold-body');
   while(card.firstChild)body.appendChild(card.firstChild);
-  let open=finOpen(id);
+  let open=finOpen(id,shut);
   const t=el('button','fin-fold-title');
   const chev=el('span','fin-chev'); chev.innerHTML='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   t.appendChild(chev); t.appendChild(el('h3',null,title));
@@ -587,7 +581,8 @@ function finDrawStocks(box,s,cur,load){
       const r=x.r, row=el('div','fin-hold');
       const who=el('span','fin-desc'); who.appendChild(el('b',null,r.symbol||r.name)); if(r.symbol&&r.name)who.appendChild(el('span','fin-sub',r.name));
       row.appendChild(who);
-      row.appendChild(el('span','fin-amt',String(Math.round(r.shares*1000)/1000)));
+      // a sliver of a coin keeps its first digits instead of rounding to 0
+      row.appendChild(el('span','fin-amt',String(r.shares&&Math.abs(r.shares)<0.001?Number(r.shares.toPrecision(3)):Math.round(r.shares*1000)/1000)));
       row.appendChild(el('span','fin-amt',finMoney(r.price,cur)));
       row.appendChild(el('span','fin-amt fin-delta '+(!r.live?'':r.changePct>=0?'up':'down'),r.live?(r.changePct>=0?'▲ ':'▼ ')+Math.abs(r.changePct).toFixed(2)+'%':'—'));
       row.appendChild(el('span','fin-amt fin-delta '+(x.pct==null?'':x.pct>=0?'up':'down'),x.pct==null?'—':(x.pct>=0?'▲ ':'▼ ')+Math.abs(x.pct).toFixed(1)+'%'));
@@ -637,7 +632,9 @@ function finMixFold(mix,cur){
     const list=mix[pick], rows=list.slice(0,10);
     if(list.length>10){ const rest=list.slice(10); rows.push({name:rest.length+' more',value:rest.reduce(function(s,x){ return s+x.value; },0),pct:rest.reduce(function(s,x){ return s+x.pct; },0),many:rest}); }
     const top=list[0];
-    note.textContent=pick==='holdings'?'Your biggest holding, '+top.name+', is '+top.pct.toFixed(0)+'% of your stocks.'
+    // bars against the longest row shown, "42 more" included, so none runs past the card
+    const most=Math.max.apply(null,rows.map(function(x){ return x.value; }).concat([1e-9]));
+    note.textContent=pick==='holdings'?'Your biggest holding, '+top.name+', is '+top.pct.toFixed(1)+'% of your stocks.'
       :pick==='types'?'Funds (ETFs, mutual funds) hold many companies each, so they spread out more than a single stock.'
       :'Funds don’t say which sectors they hold, so they show as their own bar. “Unknown” is a ticker Yahoo had nothing for.';
     bars.textContent='';
@@ -646,7 +643,7 @@ function finMixFold(mix,cur){
       r.title=x.many?x.many.map(function(m){ return m.name+': '+finMoney(m.value,cur)+' ('+m.pct.toFixed(1)+'%)'; }).join('\n'):x.name+': '+finMoney(x.value,cur);
       r.appendChild(el('span','fin-hbar-name',x.name));
       const track=el('span','fin-hbar-track'), f=el('span','fin-hbar-fill');
-      f.style.width=Math.max(2,x.value/top.value*100)+'%'; track.appendChild(f); r.appendChild(track);
+      f.style.width=Math.max(2,x.value/most*100)+'%'; track.appendChild(f); r.appendChild(track);
       r.appendChild(el('span','fin-amt',x.pct.toFixed(1)+'%'));
       bars.appendChild(r);
     });
@@ -854,6 +851,39 @@ function finVariableChart(c,cur){
   box.appendChild(cols);
   return finFoldable(box,'variable','Variable costs',avg?finMoney(avg,cur)+'/mo':'');
 }
+// money in and out (the income statement's totals), this month and the 5 before it, side by side; starts folded
+function finInOutChart(d,cur){
+  const s=incomeStatement(d.accounts,d.kinds,Date.now(),5);
+  const box=el('div','fin-card fin-chart');
+  box.appendChild(el('h3',null,'In and out by month'));
+  box.appendChild(el('p','fin-note','Moving money between your own accounts and paying off cards don’t count. Refunds come off what went out.'));
+  const legend=el('div','fin-legend');
+  [['In',FIN_ASSET],['Out',FIN_DEBT]].forEach(function(p){
+    const k=el('span','fin-key'); const sw=el('span','fin-swatch'); sw.style.background=p[1];
+    k.appendChild(sw); k.appendChild(el('span',null,p[0])); legend.appendChild(k);
+  });
+  box.appendChild(legend);
+  const top=Math.max.apply(null,s.incomeTotal.concat(s.expenseTotal,[1]));
+  const cols=el('div','fin-cols fin-cols-pair');
+  s.cols.forEach(function(c,i){
+    const inV=Math.max(0,s.incomeTotal[i]), outV=Math.max(0,s.expenseTotal[i]);
+    const col=el('div','fin-col'+(c.partial?' partial':''));
+    col.title=c.label+(c.partial?' so far':'')+': in '+finMoney(inV,cur)+', out '+finMoney(outV,cur);
+    const plot=el('div','fin-col-plot fin-col-pair');
+    [[inV,FIN_ASSET],[outV,FIN_DEBT]].forEach(function(p){
+      const bar=el('div','fin-col-bar');
+      bar.appendChild(el('span','fin-col-val',finCompact(p[0],cur)));
+      const b=el('span','fin-col-fill'); b.style.background=p[1]; b.style.height=(p[0]?Math.max(2,p[0]/top*100):0)+'%';
+      bar.appendChild(b); plot.appendChild(bar);
+    });
+    col.appendChild(plot);
+    col.appendChild(el('span','mono fin-col-label',c.label+(c.partial?' so far':'')));
+    cols.appendChild(col);
+  });
+  box.appendChild(cols);
+  const now=s.cols.length-1;
+  return finFoldable(box,'inout','In and out by month','this month: in '+finCompact(s.incomeTotal[now],cur)+' · out '+finCompact(s.expenseTotal[now],cur),true);
+}
 /* Debts (finance-insights.js debtPlan): each card and loan, what it charged in interest, the yearly rate that
    works out to, and how long the usual payment takes to clear it. Highest rate first: extra money there saves
    the most interest. Only arithmetic on what the bank sent, so the rate and months are "about" */
@@ -1013,7 +1043,11 @@ function drawFinMain(v){
   const lockBtn=el('button','ghost mono','lock');
   lockBtn.addEventListener('click',async function(){ finSay(''); await finApi.financeLock(); fin.data=null; renderFinance(); });
   bar.appendChild(refresh); bar.appendChild(lockBtn);
+  // January and February: last year's look back, money included (year-review-view.js)
+  const reviewYear=reviewYearFor(Date.now());
+  if(reviewYear){ const yb=el('button','ghost mono','your '+reviewYear); yb.addEventListener('click',function(){ openReview({year:reviewYear}); }); bar.insertBefore(yb,refresh); }
   v.appendChild(bar);
+  if(fin.reviewAfterUnlock){ const y=fin.reviewAfterUnlock; fin.reviewAfterUnlock=null; setTimeout(function(){ if(fin.data)openReview({year:y}); },0); } // he unlocked from the review's money card
   v.appendChild(finMsgEl());
   (d.errors||[]).forEach(function(m){ v.appendChild(el('p','fin-msg err','From your bank: '+m)); });
   if(d.csv&&!d.accounts.length){ v.appendChild(el('p','empty','No accounts yet. Add a CSV file from your bank.')); const f=finCsvFold(d); f.classList.add('fin-csv-fold'); f.open=true; v.appendChild(f); v.appendChild(finForgetFold('remove Finance from here','This deletes the bank data saved here.')); return; }
@@ -1022,14 +1056,16 @@ function drawFinMain(v){
   // totals (in the first account's currency; SimpleFIN gives card debt as a negative balance)
   const cur=d.accounts[0].currency;
   const net=d.accounts.reduce(function(s,a){ return s+a.balance; },0);
-  const monthStart=new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-  let inM=0,outM=0;
-  d.accounts.forEach(function(a){ a.transactions.forEach(function(t){ if(t.pending||t.posted*1000<monthStart)return; if(t.amount>0)inM+=t.amount; else outM-=t.amount; }); });
+  // in/out this month: the income statement's this-month column, so transfers between his accounts,
+  // card payments and brokerage moves don't count, and refunds come off spending
+  const incM=incomeStatement(d.accounts,d.kinds), nowCol=incM.net.length-1;
+  const inM=incM.incomeTotal[nowCol], outM=incM.expenseTotal[nowCol];
   const tiles=el('div','fin-tiles');
   [['Net',finMoney(net,cur)],['In this month',finMoney(inM,cur)],['Out this month',finMoney(outM,cur)]].forEach(function(p){
     const t=el('div','fin-tile'); t.appendChild(el('span','mono fin-label',p[0])); t.appendChild(el('b',null,p[1])); tiles.appendChild(t);
   });
   v.appendChild(tiles);
+  v.appendChild(finInOutChart(d,cur));
 
   // accounts by bank
   const accts=el('div','fin-card');

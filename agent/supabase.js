@@ -6,6 +6,7 @@
    No Electron here, so it can be tested on its own. */
 
 const crypto = require('crypto');
+const syncCrypto = require('./sync-crypto');
 
 const base = (a) => String(a.url).replace(/\/+$/, '') + '/rest/v1';
 const headers = (a, extra) => Object.assign({ apikey: a.key, Authorization: 'Bearer ' + a.key }, extra);
@@ -23,8 +24,16 @@ function channel(cfg) {
   const a = s.agent;
   if (a && a.url && a.key && a.syncKey) return a;
   const p = s.personal;
-  if (p && p.url && p.key && p.syncKey) return { url: p.url, key: p.key, syncKey: deriveSyncKey(p.syncKey, 'agent'), derived: true };
+  if (p && p.url && p.key && p.syncKey) return Object.assign({ url: p.url, key: p.key, syncKey: deriveSyncKey(p.syncKey, 'agent'), derived: true }, p.v2 ? { v2: true } : {});
   return null;
+}
+/* End-to-end encrypted lists (a.v2, agent/sync-crypto.js): the database knows a row only by its lookup id, and
+   its document is sealed. readRow opens it and writeRow seals it, so callers only ever see plain documents. */
+const rowKey = (a, suffix) => (a.v2 ? syncCrypto.rowKey(a.syncKey + suffix) : a.syncKey + suffix);
+function openDoc(a, suffix, doc) {
+  if (!a.v2 || doc == null) return doc;
+  if (!syncCrypto.isSealed(doc)) throw new Error('an unencrypted copy is where the encrypted row should be');
+  return syncCrypto.open(a.syncKey + suffix, doc);
 }
 
 async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
@@ -40,17 +49,17 @@ async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
 const seenRows = new Map(); // url|key → {doc, updated_at}
 let noSince = false; // an older database without p_since: whole rows, as before
 async function readRow(a, suffix, opts = {}) {
-  const k = a.url + '|' + a.syncKey + suffix, c = seenRows.get(k);
+  const rk = rowKey(a, suffix), k = a.url + '|' + rk, c = seenRows.get(k);
   let rows;
   if (c && !noSince) {
-    try { rows = await rpc(a, 'sync_get', { p_sync_key: a.syncKey + suffix, p_since: c.updated_at }, opts); }
+    try { rows = await rpc(a, 'sync_get', { p_sync_key: rk, p_since: c.updated_at }, opts); }
     catch (e) { if (!/HTTP 404/.test(e.message)) throw e; noSince = true; }
   }
-  if (!rows) rows = await rpc(a, 'sync_get', { p_sync_key: a.syncKey + suffix }, opts);
+  if (!rows) rows = await rpc(a, 'sync_get', { p_sync_key: rk }, opts);
   const row = Array.isArray(rows) ? rows[0] : undefined;
   if (row && row.unchanged && c && row.updated_at === c.updated_at) return c;
   if (!row || row.doc == null) { seenRows.delete(k); return undefined; }
-  const out = { doc: row.doc, updated_at: row.updated_at };
+  const out = { doc: openDoc(a, suffix, row.doc), updated_at: row.updated_at };
   seenRows.set(k, out);
   return out;
 }
@@ -90,7 +99,20 @@ async function readText(a, suffix, opts) {
 // Compare-and-swap write: prev = the updated_at read (null to make the row). → true, or false when the
 // row changed meanwhile (read it again and merge). Throws on a network or HTTP error.
 async function writeRow(a, suffix, doc, prev, opts) {
-  return (await rpc(a, 'sync_put', { p_sync_key: a.syncKey + suffix, p_doc: doc, p_prev: prev || null }, opts)) === true;
+  const up = a.v2 ? syncCrypto.seal(a.syncKey + suffix, doc) : doc;
+  return (await rpc(a, 'sync_put', { p_sync_key: rowKey(a, suffix), p_doc: up, p_prev: prev || null }, opts)) === true;
 }
 
-module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow, lockedKey, decryptLocked, docText, LOCKED_INFO };
+// Photos and "I'm stuck" screenshots in the public agent-attachments bucket are deleted after 30 days by the
+// attachments-cleanup function (supabase/functions); this asks it to run. A project without the function
+// answers 404: nothing to do. Returns how many files went, or null.
+async function cleanupAttachments(a, { fetch: f = fetch } = {}) {
+  if (!a) return null;
+  try {
+    const r = await f(String(a.url).replace(/\/+$/, '') + '/functions/v1/attachments-cleanup', { method: 'POST', headers: headers(a), signal: AbortSignal.timeout(30000) });
+    if (!r.ok) return null;
+    return (await r.json()).removed || 0;
+  } catch (e) { return null; }
+}
+
+module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow, lockedKey, decryptLocked, docText, cleanupAttachments, LOCKED_INFO };

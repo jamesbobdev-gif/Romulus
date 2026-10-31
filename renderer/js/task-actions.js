@@ -6,6 +6,23 @@
 let addingTask=false;
 /* ⚔ Legion (Agent tab): the task goes out as deep research, every connected AI on a different angle (agent/legion.js) */
 let legionOn=false;
+/* Book this, on a legion's report: a booking task of its own goes to the Agent with the trip and his pick. The
+   legion stays private; this one AI sees the trip, which he agrees to here. It finds the exact times and prices,
+   gets the booking ready and stops for his yes before paying (agent/skills/tickets.md). */
+function isLegionTask(t){ return /(^|\s)#(legion|research)\b/i.test(String(t&&t.title||'')); }
+function bookFromLegion(t,o,label){
+  const topic=String(t.title).replace(/(^|\s)#(legion|research)\b/ig,' ').replace(/\s+/g,' ').trim();
+  if(!confirm('Book “'+label+'”?\n\nOne AI with a browser gets this trip (your request, not your private profile) so it can find the exact times and prices and get the booking ready.\n\nNothing is paid for until you reply yes on the booking task.'))return;
+  const bottom=(String(t.note||'').match(/\*\*Bottom line:\*\*[^\n]*/)||[''])[0].replace(/\*\*/g,'');
+  const nt={id:uid(),title:'Book '+label+': '+topic,done:false,due:null,dueTime:null,tag:t.tag||null,ws:'agent',subs:[],googleEventId:null,created:Date.now(),
+    status:'queued',note:null,
+    notes:'He picked this from his research report: '+label+(o.desc?' ('+o.desc+')':'')+(o.url?' '+o.url:'')+'.\n'+(bottom?bottom+'\n':'')+
+      'Find the exact options for his dates (times, transfers, the all-in price), show the best 2–4 as options for him to pick, then get the one he picks ready on the booking site and stop at the review page. Book only after he replies yes.'};
+  state.tasks.push(nt);
+  t.bookedFrom=t.bookedFrom||[]; t.bookedFrom.push(label);
+  agentSay(t,'sys','🎟 Made a booking task for '+label+'. It shows you the exact options and asks before paying.');
+  buzz('send'); touch();
+}
 // an Agent task already on the list → a legion: Lupa (the local lane) takes it, from the start
 function sendAsLegion(t){
   t.title='#legion '+t.title; t.lane='local'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
@@ -36,6 +53,9 @@ async function addTask(){
   let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; const tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
   const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
+  // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
+  if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
@@ -53,9 +73,6 @@ function parseSpokenTask(text,now){
   const base=new Date(now); base.setHours(0,0,0,0);
   const plus=function(n){ const d=new Date(base); d.setDate(d.getDate()+n); return d; };
   const NUM={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,fourteen:14,thirty:30};
-  // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
-  // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
-  if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
   const DOW=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
   const MON=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const LEAD='(?:\\b(?:on|by|due|for|before|until|till|this|coming|next)\\s+)*';
@@ -331,7 +348,7 @@ function isAmazon(url){
 // a flight or event-ticket site: The Agent books it after a yes, like Amazon (tickets skill)
 function isTicketSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
-  return /(^|\.)(ticketmaster\.com|livenation\.com|axs\.com|seatgeek\.com|stubhub\.com|vividseats\.com|delta\.com|united\.com|aa\.com|southwest\.com|jetblue\.com|spirit\.com|flyfrontier\.com|alaskaair\.com)$/.test(h);
+  return /(^|\.)(ticketmaster\.com|livenation\.com|axs\.com|seatgeek\.com|stubhub\.com|vividseats\.com|delta\.com|united\.com|aa\.com|southwest\.com|jetblue\.com|spirit\.com|flyfrontier\.com|alaskaair\.com|amtrak\.com|greyhound\.com|flixbus\.com|megabus\.com)$/.test(h);
 }
 function isModelSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }

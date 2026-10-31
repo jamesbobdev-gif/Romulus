@@ -409,20 +409,21 @@ function syncRotateMoves(c,newKey){ // every row that follows the personal key: 
     const prof=c[ws]; if(!validProfile(prof)||(ws!=='personal'&&!prof.derived))return;
     const nk=ws==='personal'?newKey:deriveSyncKey(newKey,ws);
     [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
-      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx},to:{url:prof.url,key:prof.key,syncKey:nk+sfx}});
+      const v2=!!prof.v2; // an encrypted list stays encrypted, under the new key's lookup id and content key
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx,v2:v2},to:{url:prof.url,key:prof.key,syncKey:nk+sfx,v2:v2}});
     });
   });
   return out;
 }
 async function syncCopyRows(moves){ // each row copied to its new key and read back; throws before anything switches
   for(const m of moves){
-    const rows=await syncRpc(m.from,'sync_get',{p_sync_key:m.from.syncKey});
-    let doc=rows[0]?rows[0].doc:null;
+    // syncPull / syncPushDoc open and seal end-to-end encrypted rows (m.from / m.to say whether they are)
+    let doc=await syncPull(m.from);
     if(doc==null)continue; // no such row: nothing to move
     if(m.sfx===':locked'&&doc.v===2&&doc.ct)doc=await lockedEncrypt(m.newBase,await lockedDecrypt(m.oldBase,doc)); // its cipher key follows the agent key
     await syncPushDoc(m.to,doc);
-    const back=await syncRpc(m.to,'sync_get',{p_sync_key:m.to.syncKey});
-    if(stableJson((back[0]||{}).doc)!==stableJson(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
+    const back=await syncPull(m.to);
+    if(stableJson(back)!==stableJson(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
   }
 }
 async function syncRotateKey(){
@@ -444,6 +445,7 @@ async function syncRotateKey(){
     await syncCopyRows(moves);
     // 2. this device switches to the new keys
     const raw={personal:{url:p.url,key:p.key,syncKey:newKey}};
+    if(p.v2)raw.personal.v2=true;
     ['work','agent','school'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
     syncState.cfg=normalizeSyncCfg(raw);
     await syncCfgPersist(syncState.cfg);
@@ -470,7 +472,7 @@ function syncOneKeyMoves(c){
     const prof=c[ws], nk=deriveSyncKey(pk,ws);
     if(prof.syncKey===nk)return;
     [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
-      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx},to:{url:c.personal.url,key:c.personal.key,syncKey:nk+sfx}});
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx,v2:!!prof.v2},to:{url:c.personal.url,key:c.personal.key,syncKey:nk+sfx,v2:!!c.personal.v2}});
     });
   });
   return out;
@@ -502,6 +504,52 @@ async function syncUseOneKey(){
   }
   if(btn)btn.disabled=false;
   startSyncLoop();
+}
+/* End-to-end encryption on (sync-crypto.js): every list and its side rows copied, sealed, under their lookup
+   ids, each read back; then this device switches; then the old rows get {moved:'v2'}, which tells a newer
+   device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
+   (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
+   Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
+   (buy emails, school feeds, the work calendar) can't read sealed rows yet (docs/phone-only-plan.md). */
+const SYNC_MOVED={moved:'v2'};
+function syncV2Moves(c){
+  const out=[];
+  ['personal','work','agent','school'].forEach(function(ws){
+    const prof=c[ws]; if(!validProfile(prof)||prof.v2)return;
+    [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
+      const k={url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx};
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:prof.syncKey,from:Object.assign({v2:false},k),to:Object.assign({v2:true},k)});
+    });
+  });
+  return out;
+}
+async function syncMoveToV2(){
+  const c=syncState.cfg;
+  if(!c||!validProfile(c.personal)){ setSyncStatus('save the sync settings first',true); return false; }
+  if(!syncCryptoOk()){ setSyncStatus('this device can’t encrypt (no WebCrypto)',true); return false; }
+  clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
+  setSyncStatus('encrypting your lists…');
+  let ok=false;
+  try{
+    for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
+    await syncNow(); // this device's latest edits reach the old rows first
+    clearTimeout(syncState.pushTimer); liveStop();
+    const moves=syncV2Moves(c);
+    await syncCopyRows(moves);
+    const raw=Object.assign({},c,{personal:Object.assign({},c.personal,{v2:true})});
+    syncOwnKeyLists(c).forEach(function(ws){ raw[ws]=Object.assign({},c[ws],{v2:true}); });
+    syncState.cfg=normalizeSyncCfg(raw);
+    await syncCfgPersist(syncState.cfg);
+    syncState.docs={};
+    let left=0;
+    for(const m of moves){ try{ await syncPushDoc(m.from,SYNC_MOVED); }catch(e){ left++; } }
+    setSyncStatus('your lists are end-to-end encrypted'+(left?' ('+left+' old rows could not be cleared; try again later)':''));
+    ok=true;
+  }catch(e){
+    setSyncStatus('stopped before switching: '+e.message+' (this device is unchanged)',true);
+  }
+  startSyncLoop();
+  return ok;
 }
 (function(){ // shows only while a list still has a key of its own
   const b=document.createElement('button'); b.id='syncOneKeyBtn'; b.className='ghost mono'; b.textContent='Use one key for every list'; b.hidden=true;

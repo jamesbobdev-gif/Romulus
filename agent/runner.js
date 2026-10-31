@@ -49,6 +49,7 @@ const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
 const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor } = require('./grocery');
+const mailSend = require('./mail-send');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
 const GROCERY_TIMEOUT_MS = 40 * 60 * 1000; // a grocery order fills a whole cart and compares sizes: it gets longer
 let runTimeoutMs = AGENT_TIMEOUT_MS; // this run's limit
@@ -398,6 +399,7 @@ async function startAgentRun() {
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
+    u.email = u.status === 'needs-you' ? (mailSend.cleanEmail(u.email) || null) : null; // an email he sends with his Send (agent/mail-send.js)
     u.seats = sawMail ? null : (cleanSeats(u.seats) || null); // a seat map with its pick, he can tap other seats
     u.showtimes = sawMail ? null : (cleanShowtimes(u.showtimes) || null); // days and times he taps to pick one
     u.theaters = sawMail ? null : (cleanTheaters(u.theaters) || null); // a map of the theaters, he taps one

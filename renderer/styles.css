@@ -95,7 +95,8 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .lane-slider .lane-word.on{color:var(--ink);cursor:default}
 .lane-slider .lane-cloud,.lane-slider .lane-cloud.on{display:inline-flex;align-items:center;justify-content:center;gap:3px;cursor:pointer}
 .lane-slider .lane-pick{appearance:none;-webkit-appearance:none;border:0;background:none;padding:0;margin:0;color:inherit;font:inherit;text-align:center;cursor:pointer;outline:none}
-.lane-slider .lane-pick option{color:var(--ink);background:var(--surface)}
+/* every dropdown's open list follows the theme (Chromium paints it white with the select's light ink otherwise) */
+select option,select optgroup{color:var(--ink);background:var(--surface)}
 .lane-slider .lane-caret{font-size:10px;opacity:.7;pointer-events:none}
 .lane-slider .lane-cloud:focus-within{color:var(--ink)}
 .lane-ask{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 12px;padding:9px 12px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);font-size:12.5px;line-height:1.4}
@@ -135,6 +136,8 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .yes-prompts{display:grid;gap:8px;margin:0 0 12px}
 .yes-card{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;cursor:pointer}
 .yes-card:hover,.yes-card:focus-visible{border-color:var(--muted);border-left-color:var(--accent);outline:0}
+.suggest-card{cursor:default;border-left-color:var(--muted)}
+.suggest-card:hover{border-color:var(--hairline);border-left-color:var(--muted)}
 .yes-head{display:flex;align-items:baseline;gap:8px;min-width:0}
 .yes-who{flex:none;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .yes-title{font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -172,7 +175,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 
 .list{list-style:none;margin:10px 0 0;padding:0}
 .task{border-bottom:1px solid var(--hairline);transition:opacity .2s}
-.task.selected{background:#F3F3EF;box-shadow:0 0 0 4px #F3F3EF;border-radius:2px}
+.task.selected{background:var(--chip);box-shadow:0 0 0 4px var(--chip);border-radius:2px}
 /* jumped to from the calendar / a widget: a short highlight so you spot it */
 .task.flash{animation:taskflash 1.4s ease-out}
 @keyframes taskflash{0%,35%{background:rgba(39,66,200,.14);box-shadow:0 0 0 4px rgba(39,66,200,.14)}}
@@ -224,6 +227,24 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .chip.st.tap:active{transform:scale(.95)}
 .chip.st.ready{background:#E6F4EA;border-color:#B7DEC2;color:#1E6B3A} /* Claude finished; waits for the user to check it off */
 .agent-note{font-size:13px;line-height:1.55;color:var(--ink);background:var(--chip);border-radius:8px;padding:9px 11px;margin:0 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+/* a markdown answer (markdown.js): headings, lists, links and tables as real text */
+.md{white-space:normal}
+.md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
+.md p{margin:0 0 8px}
+.md .md-h{font-weight:650;color:var(--ink);margin:12px 0 4px;line-height:1.3}
+.md .md-h1{font-size:16px}.md .md-h2{font-size:14.5px}.md .md-h3{font-size:13.5px}
+.md strong{font-weight:650}
+.md code{font-family:var(--mono);font-size:12px;background:var(--surface);border-radius:4px;padding:0 4px}
+.md .md-list{margin:0 0 8px;padding-left:20px}
+.md .md-list li{margin:2px 0}
+.md .md-quote{border-left:2px solid var(--hairline);padding-left:10px;color:var(--muted);margin:0 0 8px}
+.md .md-hr{border:0;border-top:1px solid var(--hairline);margin:10px 0}
+.md .md-link{color:var(--accent);text-decoration:none;cursor:pointer;overflow-wrap:anywhere}
+.md .md-link:hover{text-decoration:underline}
+.md .md-table{overflow-x:auto;margin:0 0 8px}
+.md table{border-collapse:collapse;font-size:12.5px}
+.md th,.md td{border:1px solid var(--hairline);padding:4px 8px;text-align:left;vertical-align:top}
+.md th{font-weight:600;background:var(--surface)}
 /* option carousel: top 3 visible, scroll sideways (or the arrows) for the rest */
 .opts-wrap{position:relative;margin:0 0 12px}
 .agent-opts{display:grid;grid-auto-flow:column;grid-auto-columns:calc((100% - 20px)/3);gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;padding-bottom:2px}
@@ -351,13 +372,13 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .ghost.danger:hover{color:var(--late)}
 .list.donelist .row{padding:10px 4px 10px 0}
 .empty{color:var(--muted);text-align:center;margin:56px 0;font-size:14px}
-
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .agent-examples{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:520px;margin:-36px auto 40px}
 .agent-examples[hidden]{display:none}
 .agent-examples-head{width:100%;text-align:center;color:var(--faint);font-size:12px}
 .agent-example{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:7px 13px;cursor:pointer;transition:border-color .15s}
 .agent-example:hover{border-color:var(--accent);color:var(--accent)}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #newTitle:focus-visible,.subadd:focus-visible,.title-edit:focus-visible{outline:none}
 @media(max-width:520px){main{padding:36px 16px 80px}.row{gap:10px}
   /* phones: the title gets the whole line; chips and buttons wrap onto a second line under it
@@ -693,6 +714,12 @@ textarea.ask-other{min-height:70px}
 .draft-count{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 .draft-undo{margin-left:auto;background:none;border:0;color:var(--accent);font-size:12px;cursor:pointer;padding:0}
 .draft-box .btn-accent:disabled{opacity:.5;cursor:default}
+/* agent-email.js: To / Cc / Subject above the body */
+.email-row{display:flex;align-items:center;gap:8px;margin:0 0 6px}
+.email-label{width:56px;flex:none;color:var(--muted);font-size:12px}
+.email-inp{flex:1;min-width:0}
+.email-from{max-width:60%}
+.email-connect{color:var(--accent);text-decoration:underline;cursor:pointer}
 .ask-back,.ask-skip{background:none;border:0;padding:0;font:inherit;font-size:12.5px;color:var(--muted);cursor:pointer}
 .ask-back:disabled{visibility:hidden}
 .ask-skip{color:var(--accent)}
@@ -762,6 +789,12 @@ textarea.ask-other{min-height:70px}
 .fin-row{display:flex;gap:8px;align-items:center}
 .fin-row .fin-input{flex:1;min-width:0}
 .fin-row .btn-accent{margin-left:0}
+/* lock screen: one centered card, a title and the unlock button */
+.fin-lock{text-align:center;padding:28px 20px;margin-top:40px}
+.fin-lock h3{margin-bottom:16px}
+.fin-lock>.btn-accent{margin:0 auto}
+.fin-lock .fin-row{max-width:360px;margin:0 auto}
+.fin-lock .fin-fold[open]{text-align:left}
 .fin-select{flex:0 1 220px!important}
 .fin-msg{font-size:12.5px;color:var(--muted);margin:6px 0}
 .fin-msg.err{color:var(--late)}
@@ -813,6 +846,10 @@ textarea.ask-other{min-height:70px}
 .fin-col-fill{display:block;width:100%;max-width:24px;background:var(--accent);border-radius:4px 4px 0 0}
 .fin-col.partial .fin-col-fill{opacity:.45}
 .fin-col-val{font-size:11px;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fin-col-pair{flex-direction:row;align-items:flex-end;justify-content:center;gap:3px}
+.fin-col-bar{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;min-width:0}
+.fin-col-pair .fin-col-val{font-size:10px}
+@media(max-width:520px){.fin-col:not(.partial) .fin-col-pair .fin-col-val{visibility:hidden}}
 .fin-col-label{position:absolute;top:100%;margin-top:4px;font-size:10px;color:var(--muted);white-space:nowrap}
 .fin-kind{margin-left:6px;font-size:10px;padding:0 6px;border-radius:999px;border:1px solid var(--hairline);background:var(--chip);color:var(--muted);cursor:pointer}
 .fin-kind.fixed{color:var(--ink)}
@@ -986,3 +1023,37 @@ textarea.ask-other{min-height:70px}
 .lupa-file-x:hover{color:var(--ink);background:var(--hairline)}
 .lupa-file-x:disabled{opacity:.4;cursor:default}
 .hours-due-sub.hours-thru-k{flex:none;min-width:0}
+
+/* Year in review (year-review-view.js): its own page like Settings; each card leads with one big number */
+body.review-open main>*:not(.top):not(#reviewPanel){display:none!important}
+body.review-open .top-right{display:none!important}
+.yr-panel{margin-top:16px}
+.yr-head{display:flex;align-items:center;gap:12px}
+.yr-head h2{margin:0}
+.yr-sample{background:var(--chip);color:var(--muted);margin-left:auto}
+.yr-card{padding:18px 18px 16px}
+.yr-big{font-family:var(--display);font-weight:700;font-size:40px;line-height:1.05;letter-spacing:-.02em;margin:6px 0 2px;overflow-wrap:anywhere}
+.yr-hero{text-align:center;padding:30px 18px 24px;border-top:3px solid var(--accent)}
+.yr-hero .yr-big{font-size:64px;color:var(--accent)}
+.yr-line{margin:4px 0 14px;font-size:14px;color:var(--muted);line-height:1.45}
+.yr-hero .yr-line{margin-bottom:6px}
+.yr-cols{height:120px;margin-top:6px;padding-top:18px}
+.yr-cols .fin-col-fill{position:relative}
+.yr-val{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:3px;opacity:1}
+.yr-cols:not(.fin-cols-pair) .fin-col:not(.yr-peak) .fin-col-fill{opacity:.55}
+
+.yr-cols .yr-nodata .fin-col-plot{background:repeating-linear-gradient(135deg,transparent 0 4px,var(--hairline) 4px 5px);border-radius:4px 4px 0 0}
+.yr-bars{margin:4px 0 10px}
+.yr-facts{list-style:none;margin:6px 0 0;padding:0}
+.yr-facts li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--hairline);font-size:13.5px}
+.yr-facts li b{font-weight:500;text-align:right;overflow-wrap:anywhere}
+.yr-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.yr-tags .chip{background:var(--chip);color:var(--ink)}
+.yr-sub{margin:14px 0 2px}
+.yr-split-label{margin-bottom:6px}
+.yr-split{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--hairline)}
+.yr-split-fixed{background:var(--accent)}
+.yr-money-go{margin:4px 0 0}
+.yr-end{text-align:center;padding:22px 0 40px}
+.yr-end b{font-family:var(--display);font-size:20px}
+@media(max-width:520px){.yr-big{font-size:32px}.yr-hero .yr-big{font-size:48px}}

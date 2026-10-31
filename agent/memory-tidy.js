@@ -20,6 +20,20 @@ const dataFile = () => ctx.dataFile();
 const agentLog = (m) => ctx.agentLog(m);
 
 const MEMORY_TIDY_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
+/* The whole memory goes with every task, so it is kept short. Over MEMORY_LONG characters the tidy is asked to
+   condense it under that; an answer is taken when it fits under MEMORY_MAX or at least shrinks a memory that
+   is already over it (rejecting every answer over the limit left a long memory growing for good). */
+const MEMORY_LONG = 4000;
+const MEMORY_MAX = 6000;
+function tidyProblem(before, next) {
+  const items = (s) => s.split('\n').filter((l) => /^\s*-\s+\S/.test(l)).length;
+  const long = before.length > MEMORY_LONG;
+  if (!/^##\s+\S/m.test(next)) return 'no headings';
+  if (next.length > MEMORY_MAX && !(next.length < before.length * 0.9)) return 'too long';
+  // not much shorter in lines (no facts dropped wholesale); condensing a long memory may merge more of them
+  if (items(next) < Math.floor(items(before) * (long ? 0.5 : 0.7))) return 'dropped too many lines';
+  return null;
+}
 let memoryTidying = false;
 async function agentPrefsRow() {
   const a = supabase.channel(readConfig());
@@ -62,6 +76,9 @@ async function maybeTidyMemory() {
       '- Merge duplicates and near-duplicates into one line; move lines that sit under the wrong heading; tighten wording. Keep every distinct fact — never drop one because it seems minor, and keep his own wording where he wrote a line himself.',
       '- You may ADD a line only for a lasting preference or fact the user clearly stated himself in "Recent replies" below (e.g. "I only want stuff on Amazon", "I\'m in Denver"). A one-off choice for a single purchase is not a lasting preference unless he said it generally.',
       '- Never infer anything about him from task titles or from what Claude asked. If unsure, leave it out.',
+      ...(before.text.length > MEMORY_LONG ? [
+        '- The file is ' + before.text.length + ' characters, and all of it goes with every task. Condense it to under ' + MEMORY_LONG + ': merge related lines into one, cut filler words, and drop one-off details that will not matter for future tasks. Keep every lasting preference and fact.',
+      ] : []),
       '- If nothing needs changing, return null.',
       '',
       'Answer with ONLY this JSON: {"text": "<the whole new memory file>"} or {"text": null}',
@@ -102,10 +119,10 @@ async function maybeTidyMemory() {
     }
     if (next == null || !String(next).trim() || String(next).trim() === before.text.trim()) { agentLog('memory tidy: nothing to change'); markDone(); return; }
     next = String(next).replace(/\r/g, '').trim();
-    // sanity: still headings + lines, not much shorter (no facts dropped wholesale), not runaway long
     const items = (s) => s.split('\n').filter((l) => /^\s*-\s+\S/.test(l)).length;
-    if (!/^##\s+\S/m.test(next) || next.length > 6000 || items(next) < Math.floor(items(before.text) * 0.7)) {
-      agentLog('memory tidy: answer rejected (' + items(before.text) + ' → ' + items(next) + ' lines, ' + next.length + ' chars)');
+    const problem = tidyProblem(before.text, next);
+    if (problem) {
+      agentLog('memory tidy: answer rejected, ' + problem + ' (' + items(before.text) + ' → ' + items(next) + ' lines, ' + before.text.length + ' → ' + next.length + ' chars)');
       markDone(); return;
     }
     // he edited it while Claude was thinking → his version stands; try again next week
@@ -126,4 +143,4 @@ async function maybeTidyMemory() {
 }
 const isTidying = () => memoryTidying;
 
-module.exports = { init, maybeTidyMemory, recentReplies, isTidying };
+module.exports = { init, maybeTidyMemory, recentReplies, isTidying, tidyProblem, MEMORY_LONG, MEMORY_MAX };

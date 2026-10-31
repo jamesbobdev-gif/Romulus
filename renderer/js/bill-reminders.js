@@ -1,7 +1,9 @@
-/* Bill reminders on the Human list (main/finance.js billsNow, worked out by renderer/js/finance-bills.js):
-   - on this computer, every hour and whenever Finance works its bills out again: a "Pay …" to-do for each bill
-     due within 3 days (or overdue), dated its due day, "— accrues interest" when it does; the to-dos of bills
-     the bank shows paid get checked off. Works while Finance is locked; paid is learned when it unlocks.
+/* Bill reminders on the Human tab (main/finance.js billsNow, worked out by renderer/js/finance-bills.js):
+   - on this computer, every hour and whenever Finance works its bills out again: a "Pay …" suggestion card
+     (lists.js drawSuggestions) for each bill due within 3 days (or overdue), dated its due day, "— accrues
+     interest" when it does. Accept puts it on his list as a to-do; Deny drops it, and the same bill for the same
+     due day isn't suggested again (its id is steady, so the tombstone matches). The to-dos and cards of bills the
+     bank shows paid get checked off or dropped. Works while Finance is locked; paid is learned when it unlocks.
    - on the phone, where those to-dos arrive through sync: a notification when one arrives and another at 9am
      on its due day, both taken back once it's checked off or gone.
    - charges worth a second look (a double charge, $100+ from a new payee, a foreign fee) come the same way, as
@@ -12,20 +14,25 @@
 const BILL_TAG='bill';
 const CHARGE_TAG='charge'; // "Check a possible double charge from …" (finance-insights.js oddCharges)
 const BILL_NOTE_KEY='billNotes'; // {taskId: due} this phone has notifications set for
-function isBillTask(prefix,t){ return t.tag===BILL_TAG&&taskWs(t)==='personal'&&(t.title===prefix||t.title.startsWith(prefix+' —')); }
+function isBillTask(prefix,t){ return t.tag===BILL_TAG&&(taskWs(t)==='personal'||t.status==='suggested')&&(t.title===prefix||t.title.startsWith(prefix+' —')); }
+// one id per bill and due day (or per charge), so a denied card stays denied and the hourly check can't double it
+function billId(b){ let h=0; const k=(b.kind==='charge'?'charge|':'bill|')+b.title+'|'+b.due; for(let i=0;i<k.length;i++)h=(h*31+k.charCodeAt(i))|0; return 'bill-'+(h>>>0).toString(16)+'-'+k.length.toString(36); }
 
 async function billCheck(){
   if(!window.desktop||!window.desktop.financeBills)return;
   let r; try{ r=await window.desktop.financeBills(); }catch(e){ return; }
   if(!r)return;
   let changed=false;
+  const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
   (r.paid||[]).forEach(function(p){
     state.tasks.forEach(function(t){ if(!t.done&&t.due&&t.due<=p.through&&isBillTask(p.prefix,t)){ t.done=true; changed=true; } });
   });
   (r.due||[]).forEach(function(b){
-    const tag=b.kind==='charge'?CHARGE_TAG:BILL_TAG;
-    if(state.tasks.some(function(t){ return t.tag===tag&&taskWs(t)==='personal'&&(tag===CHARGE_TAG?t.title===b.title:t.due===b.due&&isBillTask(b.prefix,t)); }))return;
-    state.tasks.push({id:uid(),title:b.title,done:false,due:b.due,dueTime:null,tag:tag,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
+    const tag=b.kind==='charge'?CHARGE_TAG:BILL_TAG, id=billId(b);
+    if(tombed[id])return; // he denied (or deleted) this one
+    if(state.tasks.some(function(t){ return t.id===id||(t.tag===tag&&(taskWs(t)==='personal'||t.status==='suggested')&&(tag===CHARGE_TAG?t.title===b.title:t.due===b.due&&isBillTask(b.prefix,t))); }))return;
+    state.tasks.push({id:id,title:b.title,done:false,due:b.due,dueTime:null,tag:tag,ws:'agent',subs:[],googleEventId:null,created:Date.now(),
+      status:'suggested',suggest:tag===CHARGE_TAG?'charge':'bill',note:null,reply:null,options:null,history:[]});
     changed=true;
   });
   if(changed)touch();

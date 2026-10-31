@@ -104,7 +104,16 @@ test('Lupa not answering, nothing connected, or no AI coming back → an error',
   assert.match(r.error, /none of the AIs/);
 });
 
-test('a follow-up is answered by Lupa alone', async () => {
+test('a follow-up is answered by Lupa alone, knowing what he said since the report', async () => {
   const l = lupa();
-  assert.equal(await legion.followUp(TOPIC, '# report', 'which is lightest?', { think: l.think }), 'From the report: A.');
+  assert.deepEqual(await legion.followUp(TOPIC, '# report', 'which is lightest?', { think: l.think }), { answer: 'From the report: A.', research: false });
+  const j = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'Driving is out: you can\'t drive.', research: false }) : null });
+  const f = await legion.followUp(TOPIC, '# report', 'why not the car?', { think: j.think, earlier: 'He said: I can\'t drive at all' });
+  assert.equal(f.answer, 'Driving is out: you can\'t drive.');
+  assert.match(j.thoughts[0].prompt, /Since the report\nHe said: I can't drive at all/);
+});
+
+test('a follow-up that needs new facts asks for the legion again', async () => {
+  const l = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'Flights for Dec 22–27', research: true }) : null });
+  assert.deepEqual(await legion.followUp(TOPIC, '# report', 'give me the flight options', { think: l.think }), { answer: 'Flights for Dec 22–27', research: true });
 });

@@ -1,8 +1,8 @@
 ---
 name: tickets
-description: Buying tickets: flights, games, concerts and shows — finding the options, the review stop, and booking after his yes
+description: Buying tickets: flights, trains, buses, games, concerts and shows — finding the options, the review stop, and booking after his yes
 browser: yes
-match: \b(flights?|fly(ing)?|airfare|airline|plane|round ?trip|one[- ]way|layover|nonstop|delta|united|american airlines|southwest|jetblue|spirit|frontier|alaska air|google flights|kayak|expedia|tickets? (to|for)|game tickets|concert tickets|season tickets|ticketmaster|seatgeek|stubhub|vivid ?seats|axs|box office)\b
+match: \b(flights?|fly(ing)?|airfare|airline|plane|round ?trip|one[- ]way|layover|nonstop|delta|united|american airlines|southwest|jetblue|spirit|frontier|alaska air|google flights|kayak|expedia|trains?|amtrak|bus tickets?|buses|book[^.:]{0,40}\bbus|greyhound|megabus|flixbus|tickets? (to|for)|game tickets|concert tickets|season tickets|ticketmaster|seatgeek|stubhub|vivid ?seats|axs|box office)\b
 ---
 # Tickets (flights, games, concerts, shows)
 
@@ -35,6 +35,11 @@ on file. The card number itself is never yours to type.
   - A fare on the results page is real enough to show: its price, airline, times and stops are what
     he picks from. When the fare has no page of its own to link, `url` can be that results page; the
     exact fare gets checked on the airline's site after he picks.
+- **Trains and buses:** Amtrak (amtrak.com) for trains; Greyhound, FlixBus and Megabus for buses (they
+  share routes: check each). Search the exact date, cheapest first; give the departure and arrival
+  times, transfers, total hours and the fare class (Amtrak Value vs Flex, Greyhound Economy vs Flexible:
+  the cheap ones can't be refunded). Local trains and buses at either end (SEPTA, RTA) are bought on
+  the day or in their own app: say how, don't book them.
 - **Events:** the venue's official seller first (Ticketmaster or AXS for most arenas, the team's own
   site), then resale (SeatGeek, StubHub, Vivid Seats) when it's sold out or cheaper. Resale listings
   show the price before fees: open one to see the all-in total before comparing.

@@ -1,7 +1,7 @@
 /* Morning look-ahead: once a day, Claude looks at the next two weeks of his calendar, the last week of
    his mail (subjects and snippets), his memory and his open tasks, and says what needs doing before he
-   notices: a gift for Saturday's party, a bill due Thursday, something running out. Each one becomes an
-   Agent task waiting on him ("needs you"); his reply starts the work as a normal Agent run.
+   notices: a gift for Saturday's party, a bill due Thursday, something running out. Each one becomes a
+   suggestion on his Human tab; Accept starts the work as a normal Agent run, Deny drops it.
    One call with no tools (like the Gmail dates check): calendar and mail text are other people's words,
    so this call can't reach the web or touch anything. It only proposes; it never does the thing. */
 

@@ -172,6 +172,22 @@ function cleanCart(c) {
   }).filter(Boolean);
   return out.length ? out : undefined;
 }
+/* The same claim when the list is end-to-end encrypted (a.v2): the server can't read the task, so the worker
+   opens the list, stamps the task and writes it back compare-and-swap. Two workers racing both read the same
+   version, and the database takes only the first write back (sync_put's p_prev), so still only one wins.
+   true = won, false = taken or changed, null = server unreachable. */
+async function claimSealed(a, id, worker, lane) {
+  try {
+    const row = await supabase.readRow(a, '');
+    const tasks = row && row.doc && Array.isArray(row.doc.tasks) ? row.doc.tasks : null;
+    const t = tasks && tasks.find((x) => x.id === id);
+    if (!t || t.done || (t.status || 'queued') !== 'queued' || (t.lane && t.lane !== lane)) return false;
+    const now = Date.now();
+    const doc = Object.assign({}, row.doc, { tasks: tasks.map((x) => (x.id === id
+      ? Object.assign({}, x, { status: 'working', lane, claimedBy: worker.slice(0, 60), claimedAt: now, updatedAt: now }) : x)) });
+    return await supabase.writeRow(a, '', doc, row.updated_at);
+  } catch (e) { return null; }
+}
 // claim on the server first (atomic: only one worker can win a queued task) → the tasks we may run
 async function claimAgentTasks(tasks, lane = 'claude') {
   const a = supabase.channel(readConfig());
@@ -182,6 +198,7 @@ async function claimAgentTasks(tasks, lane = 'claude') {
     let ok = null;
     for (let i = 0; i < 3 && ok !== true; i++) { // our own reply may still be uploading: try a few times
       if (i) await new Promise((r) => setTimeout(r, 4000));
+      if (a.v2) { ok = await claimSealed(a, t.id, worker, lane); if (ok === null) break; continue; }
       try {
         const r = await fetch(supabase.base(a) + '/rpc/agent_claim_task', {
           method: 'POST', headers: supabase.headers(a, { 'Content-Type': 'application/json' }),

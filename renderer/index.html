@@ -69,7 +69,7 @@
       </div>
       <div class="settings-sub adv" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
-        <p class="settings-hint"><span class="mono">#local</span> or <span class="mono">#claude</span> in a title beats everything below. Then: private words, rules (first match), default.</p>
+        <p class="settings-hint"><span class="mono">#local</span> in a title beats everything below. Anything about your finances, and <span class="mono">#legion</span> research, always stays with the local model, even over <span class="mono">#claude</span>. Then: <span class="mono">#claude</span>, private words, rules (first match), default.</p>
         <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> (or card/SSN numbers) → the local model.</p>
         <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
         <div id="routingRules"></div>
@@ -85,7 +85,7 @@
             <option value="local">The local model</option>
           </select>
         </div>
-        <p class="settings-hint" style="margin-top:6px">Auto: inbox, web, shopping → cloud. Writing, forms → the local model. Anything else → cloud, or the local model if Claude is near its limit. If a side is offline, the other takes it.</p>
+        <p class="settings-hint" style="margin-top:6px">Auto: if the local machine has a small decider model, it picks first. Otherwise inbox, web, shopping → cloud. Writing, forms → the local model. Anything else → cloud, or the local model if Claude is near its limit. If a side is offline, the other takes it.</p>
         <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line.</p>
         <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
         <div class="settings-row" style="margin-top:10px">
@@ -120,15 +120,15 @@
           <span id="howtosStatus" class="mono" style="font-size:11px;color:var(--muted)">Notes that overlap are merged on their own</span>
         </div>
       </div>
-      <div class="settings-sub" id="actionsSection">
-        <h3 class="settings-subhead">What the Agent did</h3>
+      <details class="settings-sub settings-collapse" id="actionsSection">
+        <summary class="settings-subhead">What the Agent did</summary>
         <p class="settings-hint">One log across every task: orders placed, applications sent, mail opened and files handed over (as its browser let each through), its answers, your replies, and the runner's own notes on what went wrong. Tap a line to open its task.</p>
         <input id="logSearch" class="settings-inp" type="search" placeholder="Search the log… (a site, a word, a task)" aria-label="Search the log">
         <div class="log-filters" id="logFilters" role="tablist">
           <button class="chip st tap on" data-kind="">All</button><button class="chip st tap" data-kind="action">Actions</button><button class="chip st tap" data-kind="answer">Answers</button><button class="chip st tap" data-kind="you">You</button><button class="chip st tap" data-kind="system">System</button><button class="chip st tap" data-kind="runner" hidden>Runner</button>
         </div>
         <div id="actionsList"></div>
-      </div>
+      </details>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
       <summary class="settings-label">About you</summary>
@@ -165,7 +165,7 @@
       <summary class="settings-label">Agent features</summary>
       <div class="settings-sub" id="lookAheadSection" hidden>
         <h3 class="settings-subhead">Morning look-ahead</h3>
-        <p class="settings-hint">Each morning the Agent reads the next two weeks of your calendar, last week's email and what it knows about you, and adds what needs doing to the Agent list. It only suggests; you reply to start it.</p>
+        <p class="settings-hint">Each morning the Agent reads the next two weeks of your calendar, last week's email and what it knows about you, and suggests what needs doing on your To do tab. It only suggests: Accept hands one to the Agent, Deny drops it for good.</p>
         <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="lookAheadOn"><span class="track" aria-hidden="true"></span><span>Look ahead every morning</span></label>
         <div class="settings-row">
           <button id="lookAheadRun" class="ghost mono">Run now</button>
@@ -253,6 +253,14 @@
       </div>
       <div id="syncQrBox" class="fin-qr" hidden></div>
     </details>
+    <details class="settings-panel settings-collapse" id="reviewSection">
+      <summary class="settings-label">Year in review</summary>
+      <p class="settings-hint">A look back at the year: what you got done and when, what the Agent did, your hours and, with Finance unlocked, your money. It opens with a card on January 1 and stays here through February.</p>
+      <div class="settings-row">
+        <button id="reviewOpenBtn" class="ghost mono">Your year so far</button>
+        <button id="reviewSampleBtn" class="ghost mono">Preview with made-up data</button>
+      </div>
+    </details>
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
       <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
@@ -280,8 +288,11 @@
       </details>
     </details>
     <!-- Basic shows what most people need; the switch shows the power-user panels (.adv) too (settings.js) -->
-    <label class="switch settings-adv-switch"><input type="checkbox" id="advOn"><span class="track" aria-hidden="true"></span><span>Show advanced settings <span class="settings-hint" style="display:inline">(mini PC, local model, routing rules, what the Agent remembers)</span></span></label>
+    <label class="switch settings-adv-switch"><input type="checkbox" id="advOn"><span class="track" aria-hidden="true"></span><span>Show advanced settings <span class="settings-hint" style="display:inline">(mini PC, local model, routing rules, what the Agent may do without asking and what it remembers, per-list sync keys)</span></span></label>
   </section>
+
+  <!-- Year in review (year-review-view.js): replaces the lists while open, like Settings -->
+  <section id="reviewPanel" class="yr-panel" hidden></section>
 
   <div class="rule" aria-hidden="true"></div>
 
@@ -339,6 +350,13 @@
       </ul>
       <p class="welcome-foot">You can change all of this later in ⚙ Settings. This card shows once.</p>
     </div>
+    <!-- January and February: last year's look back (year-review-view.js) -->
+    <div id="reviewBanner" class="connect-card welcome yr-banner" hidden>
+      <b>Your year in review</b>
+      <p id="reviewBannerText"></p>
+      <div class="welcome-choices"><button id="reviewBannerOpen" class="btn-accent">Open it</button><button id="reviewBannerLater" class="ghost">Not now</button></div>
+      <p class="welcome-foot">It stays in ⚙ Settings → Year in review through February.</p>
+    </div>
     <!-- Agent tasks are waiting but nothing can run them (welcome.js) -->
     <div id="agentNudge" class="nudge" hidden><span id="agentNudgeText"></span> <button id="agentNudgeBtn" class="ghost mono">Connect an AI</button></div>
     <input id="searchBox" class="search" placeholder="Search tasks… (Ctrl+F)" aria-label="Search tasks" autocomplete="off">
@@ -347,13 +365,14 @@
     <details id="lupaFiles" class="lupa-files" hidden></details>
     <!-- the Agent is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
     <div id="yesPrompts" class="yes-prompts" hidden></div>
+    <div id="suggestPrompts" class="yes-prompts" hidden></div>
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
-    <!-- Agent tab, nothing connected yet (welcome.js drawAgentSetup) -->
     <!-- Agent tab, an AI connected but no tasks yet: things to try, one tap each (welcome.js) -->
     <div id="agentExamples" class="agent-examples" hidden>
       <span class="agent-examples-head">Try one:</span>
     </div>
+    <!-- Agent tab, nothing connected yet (welcome.js drawAgentSetup) -->
     <div id="agentSetupCard" class="connect-card" hidden>
       <b>Pick an AI to do your tasks</b>
       <p>The Agent hands each task to an AI that can search the web, read pages, fill forms and shop, then comes back when it needs you. The quickest start is free: sign in to OpenRouter (or make an account) in your browser and you're done.</p>
@@ -406,6 +425,7 @@
   <div id="financeView" hidden></div>
 </main>
 
+<script src="js/sync-crypto.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
@@ -416,7 +436,9 @@
 <script src="js/agent-ask.js"></script>
 <script src="js/grocery-list.js"></script>
 <script src="js/agent-draft.js"></script>
+<script src="js/agent-email.js"></script>
 <script src="js/seat-map.js"></script>
+<script src="js/markdown.js"></script>
 <script src="js/lists.js"></script>
 <script src="js/calendar-view.js"></script>
 <script src="js/ideas.js"></script>
@@ -426,9 +448,11 @@
 <script src="js/finance-costs.js"></script>
 <script src="js/finance-worth.js"></script>
 <script src="js/finance-statements.js"></script>
+<script src="js/year-review.js"></script>
 <script src="js/finance-bills.js"></script>
 <script src="js/finance-insights.js"></script>
 <script src="js/finance.js"></script>
+<script src="js/year-review-view.js"></script>
 <script src="js/popups.js"></script>
 <script src="js/wiring.js"></script>
 <script src="js/settings.js"></script>

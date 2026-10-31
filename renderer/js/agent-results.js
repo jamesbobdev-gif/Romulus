@@ -128,6 +128,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
       // agent-draft.js: the words waiting on his yes, in full and editable (his edits start over with each answer)
       t.draft=u.draft&&typeof u.draft.text==='string'&&u.draft.text.trim()?{text:u.draft.text,where:String(u.draft.where||'')}:null; if(typeof draftEdits!=='undefined')delete draftEdits[t.id];
+      // agent-email.js: an email it wrote, sent only by his Send (fresh with each answer)
+      t.email=u.email&&Array.isArray(u.email.to)&&u.email.to.length&&u.email.body?{to:u.email.to,cc:Array.isArray(u.email.cc)?u.email.cc:[],subject:String(u.email.subject||''),body:String(u.email.body)}:null; if(typeof emailEdits!=='undefined')delete emailEdits[t.id];
       t.seats=u.seats&&Array.isArray(u.seats.rows)?u.seats:null; if(typeof seatDrafts!=='undefined')delete seatDrafts[t.id]; // seat-map.js: its pick, fresh each answer
       t.showtimes=u.showtimes&&Array.isArray(u.showtimes.days)?u.showtimes:null; if(typeof showDay!=='undefined')delete showDay[t.id]; // seat-map.js: days and times to tap
       t.theaters=u.theaters&&Array.isArray(u.theaters.theaters)?u.theaters:null; if(typeof theaterPick!=='undefined')delete theaterPick[t.id]; // seat-map.js: the theaters on a map

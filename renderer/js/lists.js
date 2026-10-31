@@ -156,7 +156,8 @@ function buildPanel(t){
         const b=el('div','conv-msg '+who);
         const seen=who==='you'&&(h.heard||(liveHeard[t.id]||[]).indexOf(h.at)!==-1); // Claude took it mid-run
         if(who!=='sys')b.appendChild(el('div','conv-who',(who==='you'?'You':h.lane==='local'?'Local model':CLOUD_NAMES[h.via]||'Claude')+(who==='claude'&&h.model?' ('+String(h.model).replace(/^models\//,'')+')':'')+' \u00B7 '+fmtWhen(h.at)+(seen?' \u00B7 \u2713 seen while working':'')));
-        b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
+        if(who==='claude'){ const tx=el('div'); tx.appendChild(richText(h.text)); b.appendChild(tx); } // reports come in markdown
+        else b.appendChild(el('div',null,who==='sys'?h.text+' \u00B7 '+fmtWhen(h.at):h.text));
         if(Array.isArray(h.images)&&h.images.length)b.appendChild(photoStrip(h.images));
         if(Array.isArray(h.options)&&h.options.length)b.appendChild(el('div','conv-opts','Showed: '+h.options.join(' \u00B7 ')));
         if(Array.isArray(h.prefs)&&h.prefs.length&&typeof prefsBox==='function')b.appendChild(prefsBox(t,h)); // agent-results.js: Keep / Forget
@@ -278,7 +279,7 @@ function buildPanel(t){
       if(t.note&&t.note.indexOf(t.stuck.reason)===-1)nb.appendChild(el('div','stuck-note',t.note));
       if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What the browser showed when it stopped. Click to enlarge'; } nb.appendChild(ps); }
     } else if(wantsYes(t)&&Array.isArray(t.cart)&&t.cart.length)nb.appendChild(noteFold(t)); // the cards do the talking: just its first line, the rest on a tap
-    else nb.appendChild(document.createTextNode(t.note));
+    else nb.appendChild(richText(t.note));
     if(!stuck&&isDocAnswer(t.note))nb.appendChild(docButton(t.title,t.note)); // an essay or a letter: save it as a Word file
     // the latest answer's "What it did", right under it (older ones are in the conversation)
     const lastAns=(t.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0];
@@ -320,7 +321,14 @@ function buildPanel(t){
         if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
         mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','📧 Emailing you the link to '+label+'.'); buzz('send'); touch(); });
         btns.appendChild(mb); } }
-      if(canPick){
+      if(canPick&&isLegionTask(t)){
+        const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
+        const bb=el('button','opt-pick',booked?'Booking…':'Book this'); bb.disabled=booked;
+        bb.title='Makes a booking task: it finds the exact times and prices and asks you before paying';
+        bb.addEventListener('click',function(e){ e.stopPropagation(); bookFromLegion(t,o,label); });
+        btns.appendChild(bb);
+      }
+      else if(canPick){
         const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':(kind==='amazon'||kind==='tickets')?'Buy this':'Choose this');
         pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'The Agent gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
         pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='amazon'?'. Buy it on Amazon.':kind==='tickets'?'. Book it.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
@@ -382,7 +390,8 @@ function buildPanel(t){
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.seats&&Array.isArray(t.seats.rows))panel.appendChild(seatMap(t)); // seat-map.js: its pick, tap others
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.showtimes&&Array.isArray(t.showtimes.days))panel.appendChild(showtimesCard(t)); // seat-map.js: tap a day, then a time
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.theaters&&Array.isArray(t.theaters.theaters))panel.appendChild(theatersCard(t)); // seat-map.js: the theaters on a map, tap one
-  if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):hasDraft(t)?draftBox(t):yesButton(t)); // agent-draft.js: the words it will post, editable // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
+  if(hasEmail(t))panel.appendChild(emailBox(t)); // agent-email.js: the email it wrote, sent only by his Send
+  else if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):hasDraft(t)?draftBox(t):yesButton(t)); // agent-draft.js: the words it will post, editable // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
     const ta=el('textarea','settings-inp'); ta.rows=2; ta.setAttribute('aria-label','Reply to the Agent');
@@ -802,6 +811,7 @@ function render(){
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
   drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
   drawYesPrompts(tab==='list'?needing:[]);
+  drawSuggestions(tab==='list');
   const ol=$('openList'); ol.innerHTML='';
   openVis.forEach(function(t){ ol.appendChild(buildRow(t,true)); });
 
@@ -850,8 +860,8 @@ function drawYesPrompts(needing){
     const ctx=yesContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
     const row=el('div','yes-btns');
     const cart=Array.isArray(t.cart)&&t.cart.length;
-    if(cart||hasDraft(t)){
-      const r=el('button','btn-accent',cart?'Review the order':'Read what it will post');
+    if(cart||hasDraft(t)||hasEmail(t)){
+      const r=el('button','btn-accent',cart?'Review the order':hasEmail(t)?'Read the email':'Read what it will post');
       r.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(t.id); });
       row.appendChild(r);
     } else {
@@ -869,6 +879,51 @@ function drawYesPrompts(needing){
     c.appendChild(row);
     c.addEventListener('click',function(){ openTaskById(t.id); });
     c.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target===c)openTaskById(t.id); });
+    box.appendChild(c);
+  });
+}
+
+/* Also on the Human tab: the morning look-ahead's ideas (look-ahead.js), dates found in his email
+   (calendars.js) and Finance's bill and charge reminders (bill-reminders.js), as cards with Accept / Deny.
+   They're kept as Agent tasks with status "suggested", which no runner picks up and the Agent tab doesn't
+   show. Accept: a look-ahead one goes to the Agent to start; an email date, a bill or a charge goes on his
+   list. Deny deletes it, and the tombstone keeps it from coming back. */
+function suggestionContext(t){
+  if(t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'){
+    const when=t.due?dateInfo(t.due,t.dueTime).text:'';
+    return [when,String(t.notes||'').replace(/\s+/g,' ').trim()].filter(Boolean).join(' · ');
+  }
+  const s=String(t.note||'').replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
+  return s.length>260?s.slice(0,257).replace(/\s+\S*$/,'')+'…':s;
+}
+function acceptSuggestion(t){
+  const lt=liveTask(t), kind=lt.suggest; delete lt.suggest;
+  // a fresh id (moveTask tombstones the old one); the hourly bill check finds the to-do by name and due day
+  if(kind==='email'||kind==='bill'||kind==='charge'){ moveTask(lt,'personal'); buzz('check'); return; } // touch() is moveTask's
+  lt.status='queued'; lt.reply='yes'; agentSay(lt,'you','yes'); // its note offered the work: this is his go
+  buzz('send'); touch();
+}
+function drawSuggestions(show){
+  const box=$('suggestPrompts'); box.innerHTML='';
+  const list=show?state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='suggested'; })
+    .sort(function(a,b){ return String(a.due||'9999').localeCompare(String(b.due||'9999')); }):[];
+  box.hidden=!list.length;
+  list.forEach(function(t){
+    const c=el('div','yes-card suggest-card');
+    const head=el('div','yes-head');
+    head.appendChild(el('span','yes-who',t.suggest==='email'?'From your email':t.suggest==='bill'?'Bill coming due':t.suggest==='charge'?'A charge worth a look':'The Agent suggests'));
+    head.appendChild(el('b','yes-title',t.title));
+    c.appendChild(head);
+    const ctx=suggestionContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
+    const row=el('div','yes-btns');
+    const y=el('button','btn-accent','Accept');
+    y.title=t.suggest==='look-ahead'?'The Agent starts on it':'Put it on your list';
+    y.addEventListener('click',function(){ acceptSuggestion(t); });
+    const n=el('button','btn-ghost','Deny');
+    n.title='Drop it: it won’t be suggested again';
+    n.addEventListener('click',function(){ deleteTask(liveTask(t)); });
+    row.appendChild(y); row.appendChild(n);
+    c.appendChild(row);
     box.appendChild(c);
   });
 }

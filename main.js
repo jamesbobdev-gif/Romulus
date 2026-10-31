@@ -193,6 +193,11 @@ if (!gotLock) {
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);
     setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000);
+    // agent photos and screenshots older than 30 days come out of the public bucket: asked once a day
+    const sb = require('./agent/supabase');
+    const cleanAttachments = () => sb.cleanupAttachments(sb.channel(readConfig())).then((n) => { if (n) agentLog('attachments cleanup: removed ' + n + ' old file(s)'); });
+    setTimeout(cleanAttachments, 10 * 60 * 1000);
+    setInterval(cleanAttachments, 24 * 60 * 60 * 1000);
     // still signed in to his school sites on the mini PC? Looked at every 30 min; it runs once a day, when the local model is idle
     setInterval(() => localLane.checkSignins().catch((e) => agentLog('sign-in check crashed: ' + (e && e.message || e))), 30 * 60 * 1000);
 

@@ -28,6 +28,7 @@ const { cloudOrder, couldntDo } = require('./ai-connections');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText,
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
+const mailSend = require('./mail-send');
 const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const { formFiles } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
@@ -348,17 +349,18 @@ async function startLocalRun() {
     scheduleLocalRun(); // anything queued meanwhile
   }
 }
-// a local task that couldn't finish: the cloud AIs take over, unless it's private (then it waits for him)
+// a local task that couldn't finish: the cloud AIs take over, unless it's private or about his money (then it waits for him)
 async function localFailed(c, t, msg) {
   agentLog('local task failed: ' + msg);
   const where = c.url.replace(/^https?:\/\//, '');
   const unreachable = UNREACHABLE.test(msg) || /abort/i.test(msg);
+  const money = isMoneyTask(t); // only the local model reads Finance, so a cloud AI could only guess
   const stuck = unreachable
-    ? { reason: 'The local model isn’t reachable at ' + where + '.', fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
+    ? { reason: 'The local model isn’t reachable at ' + where + '.' + (money ? ' This one is about your money, so it waits for the local model.' : ''), fix: 'Check it’s switched on and on Wi-Fi, then reply “try again”.' }
     : /timed? ?out/i.test(msg)
     ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
     : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
-  if (cloudOrder().length && !privateMatch(t) && !legion.isLegion(t)) { // a legion never goes to the cloud whole
+  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) { // a legion never goes to the cloud whole
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
     return;
   }
@@ -384,17 +386,27 @@ async function runLegionTask(c, t) {
   const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
   const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
   let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
-  const again = !before || !reply || /(^|\s)#(legion|research)\b|\b(dig deeper|research (it )?(again|more)|send the legion)\b/i.test(reply);
+  let again = !before || !reply || /(^|\s)#(legion|research)\b|\b(dig deeper|research (it )?(again|more)|send the legion)\b/i.test(reply);
   let live = '';
   const show = (s) => { live = (live + s).slice(-6000); sendToRenderer('agent:live', { id, text: live }); };
   const think = (prompt, o) => lupaThink(c, prompt, o);
+  // the turns since the report (his "I can't drive", Lupa's answers), without the report itself or this reply
+  const hist = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who !== 'app' && String(h.text || '').trim());
+  const since = hist.slice(Math.max(0, hist.map((h) => String(h.text || '').slice(0, 200)).lastIndexOf(before.slice(0, 200)) + 1)).slice(-8);
+  if (since.length && since[since.length - 1].who === 'you' && String(since[since.length - 1].text).trim() === reply) since.pop();
+  const earlier = since.map((h) => (h.who === 'you' ? 'He said: ' : 'You answered: ') + String(h.text).trim().slice(0, 800)).join('\n\n');
   let note, options = [];
   if (!again) {
     const lead = legionLead();
     show('💬 ' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
-    note = (await legion.followUp(topic, before, reply, { think })).trim();
-  } else {
-    const extra = [t.notes, reply].filter(Boolean).join('\n').slice(0, 1500);
+    const f = await legion.followUp(topic, before, reply, { think, earlier });
+    if (f.research) { show('🔎 ' + (f.answer || 'The report doesn’t have that') + ': sending the legion out again\n'); again = true; }
+    else note = f.answer;
+  }
+  if (again) {
+    // what he told us along the way ("I can't drive") goes with the legion, so the new report applies it
+    const told = hist.filter((h) => h.who === 'you').map((h) => String(h.text).trim());
+    const extra = [t.notes, ...told.filter((x) => x !== reply), reply].filter(Boolean).join('\n').slice(-1500);
     agentLog('legion: ' + topic.slice(0, 80) + ' (' + order.join(', ') + ')');
     const started = Date.now();
     const r = await legion.research(topic, { order, run: runHelperOn, think, names, lead: legionLead(), extra,
@@ -706,6 +718,7 @@ async function runLocalTask(c, t) {
   if (want.length) { sendToRenderer('local:site-ask', { hosts: want, task: t.id, title: t.title }); agentLog('local: wanted ' + want.join(', ') + ': asking on his Human list'); }
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
     note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live, draft: toPost,
+    email: final.status === 'done' ? null : (mailSend.cleanEmail(final.email) || null), // sent only by his Send (agent/mail-send.js)
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }

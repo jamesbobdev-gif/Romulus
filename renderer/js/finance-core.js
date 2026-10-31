@@ -88,11 +88,21 @@
   const YAHOO = 'https://query1.finance.yahoo.com/v8/finance/chart/';
   // SimpleFIN's holdings on an account, cut down to what the tab shows
   function cleanHoldings(list) {
-    return (Array.isArray(list) ? list : []).filter((h) => h && (h.symbol || h.description)).slice(0, 200).map((h) => ({
-      symbol: SYMBOL.test(String(h.symbol || '').trim().toUpperCase()) ? String(h.symbol).trim().toUpperCase() : '',
-      name: txt(h.description, 120).trim(), shares: num(h.shares), value: num(h.market_value),
-      cost: h.cost_basis == null || h.cost_basis === '' ? null : num(h.cost_basis),
-    }));
+    return (Array.isArray(list) ? list : []).filter((h) => h && (h.symbol || h.description)).slice(0, 200).map((h) => {
+      const shares = num(h.shares), value = num(h.market_value);
+      return {
+        symbol: SYMBOL.test(String(h.symbol || '').trim().toUpperCase()) ? String(h.symbol).trim().toUpperCase() : '',
+        name: txt(h.description, 120).trim(), shares, value,
+        cost: h.cost_basis == null || h.cost_basis === '' ? null : totalCost(num(h.cost_basis), shares, value),
+      };
+    });
+  }
+  /* cost_basis should be the total paid, but some brokerages send it per share (a crypto one sent ~$98k for a few
+     dollars of bitcoin): whichever reading lands nearer today's value is taken */
+  function totalCost(cost, shares, value) {
+    if (!(cost > 0 && shares > 0 && value > 0) || shares === 1) return cost;
+    const off = (x) => Math.abs(Math.log(x / value));
+    return off(cost * shares) < off(cost) ? cost * shares : cost;
   }
   // every account's holdings, the same symbol added up (it can be in two accounts)
   function holdingsOf(accounts) {

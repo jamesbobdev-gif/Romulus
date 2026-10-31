@@ -1,7 +1,7 @@
 /* Morning look-ahead (agent/look-ahead.js): the renderer asks every 15 minutes; once a day after
    lookAhead.at (07:00 unless changed) this gathers his calendar, recent mail, memory and open tasks,
    asks Claude in one tool-less call, and hands back the proposals for the renderer to put on the
-   Agent list as "needs you". What was suggested is remembered for 60 days so it isn't suggested again. */
+   Human tab as suggestions to accept or deny. What was suggested is remembered for 60 days so it isn't suggested again. */
 const fs = require('fs');
 const crypto = require('crypto');
 const lookAhead = require('../agent/look-ahead');

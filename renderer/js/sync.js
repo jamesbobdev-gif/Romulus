@@ -4,22 +4,56 @@
 
 /* ── storage ── */
 const KEY = 'tasks.v1';
+/* The phone (and a plain browser) keeps the tasks in IndexedDB: localStorage stops at about 5 MB, and a list
+   that outgrew it would stop saving. The localStorage copy older versions wrote is read once, then dropped. */
+const idb={
+  db:null,
+  open(){
+    if(this.db)return this.db;
+    this.db=new Promise(function(ok,fail){
+      if(!window.indexedDB){ fail(new Error('no IndexedDB')); return; }
+      const r=indexedDB.open('romulus',1);
+      r.onupgradeneeded=function(){ r.result.createObjectStore('kv'); };
+      r.onsuccess=function(){ ok(r.result); }; r.onerror=function(){ fail(r.error); };
+    });
+    this.db.catch(function(){ idb.db=null; });
+    return this.db;
+  },
+  async get(k){ const db=await this.open(); return new Promise(function(ok,fail){ const r=db.transaction('kv').objectStore('kv').get(k); r.onsuccess=function(){ ok(r.result); }; r.onerror=function(){ fail(r.error); }; }); },
+  async set(k,v){ const db=await this.open(); return new Promise(function(ok,fail){ const tx=db.transaction('kv','readwrite'); tx.objectStore('kv').put(v,k); tx.oncomplete=function(){ ok(); }; tx.onerror=tx.onabort=function(){ fail(tx.error||new Error('save aborted')); }; }); }
+};
+let saveWarned=false; // one toast per session when saving fails, not one per edit
 const store = {
   async load(){
-    // desktop: a file that can't be read (or parsed) throws, and init.js then refuses to save over it; null = first run
-    if(window.desktop){ const r=await window.desktop.load(); return r?JSON.parse(r):null; }
+    // desktop: a file that can't be read (or parsed) throws, and init.js then refuses to save over it; null = first run.
+    // When it fell back to a backup copy, say so once the page is up.
+    if(window.desktop){
+      const r=await window.desktop.load();
+      if(window.desktop.loadRestored)window.desktop.loadRestored().then(function(from){ if(from)setTimeout(function(){ voiceToast('Your tasks file was damaged, so Romulus opened its backup ('+from+').',true); },1500); }).catch(function(){});
+      return r?JSON.parse(r):null;
+    }
     try{
       if(window.storage){ const r=await window.storage.get(KEY); return(r&&r.value)?JSON.parse(r.value):null; }
-      const r=localStorage.getItem(KEY); return r?JSON.parse(r):null;
+      let r=null; try{ r=await idb.get(KEY); }catch(e){}
+      if(r==null)r=localStorage.getItem(KEY);
+      return r?JSON.parse(r):null;
     }catch(e){ return null; }
   },
   async save(data){
     const raw=JSON.stringify(data);
     try{
-      if(window.desktop){ await window.desktop.save(raw); }
+      if(window.desktop){ if(await window.desktop.save(raw)===false)throw new Error('the tasks file could not be written'); }
       else if(window.storage){ await window.storage.set(KEY,raw); }
-      else { localStorage.setItem(KEY,raw); }
-    }catch(e){ console.error('save failed',e); }
+      else {
+        let inDb=false; try{ await idb.set(KEY,raw); inDb=true; }catch(e){}
+        if(inDb){ try{ localStorage.removeItem(KEY); }catch(e){} }
+        else localStorage.setItem(KEY,raw);
+      }
+      saveWarned=false;
+    }catch(e){
+      console.error('save failed',e);
+      if(!saveWarned&&typeof voiceToast==='function'){ saveWarned=true; voiceToast('Couldn’t save your tasks on this device. Your last change may be lost if the app closes.',true); }
+    }
   }
 };
 
@@ -63,7 +97,7 @@ function normalizeSyncCfg(raw){
   if(raw.personal&&raw.personal.url)out.personal=raw.personal;
   ['work','agent','school'].forEach(function(k){ const p=raw[k]; if(p&&p.url&&p.syncKey&&!p.derived)out[k]=p; });
   const p=out.personal;
-  if(p&&p.url&&p.key&&p.syncKey)['work','agent','school'].forEach(function(k){ if(!out[k])out[k]={url:p.url,key:p.key,syncKey:deriveSyncKey(p.syncKey,k),derived:true}; });
+  if(p&&p.url&&p.key&&p.syncKey)['work','agent','school'].forEach(function(k){ if(!out[k]){ out[k]={url:p.url,key:p.key,syncKey:deriveSyncKey(p.syncKey,k),derived:true}; if(p.v2)out[k].v2=true; } });
   return (out.personal||out.work)?out:null;
 }
 /* Where the config lives. The sync key is the password to every list, so on the desktop it stays in
@@ -125,7 +159,7 @@ function schoolSurfaced(t){ const f=schoolShowFrom(t); return !f||todayStart()>=
 // which tasks a list tab shows ('list' = Human)
 function inTab(t,tab){
   const ws=taskWs(t);
-  if(tab==='agent')return ws==='agent';
+  if(tab==='agent')return ws==='agent'&&t.status!=='suggested'; // a suggestion waits on the Human tab for Accept / Deny
   if(tab==='school')return ws==='school';
   if(tab==='work')return ws==='work';
   return ws==='personal'||ws==='work'||(ws==='school'&&schoolSurfaced(t));
@@ -139,6 +173,30 @@ async function syncRpc(p,fn,body){
   if(!res.ok)throw new Error('HTTP '+res.status);
   return res.json();
 }
+/* End-to-end encryption (sync-crypto.js). A profile with v2:true is found under its lookup id and its rows
+   go up sealed; every list made from the personal key follows it (normalizeSyncCfg). A profile built for one
+   row (ideasProfile, prefsProfile, …) has no flag of its own: it's whatever the list it belongs to is. */
+function syncV2(p){
+  if(p.v2!=null)return !!p.v2;
+  const base=syncSplitKey(p.syncKey).base, c=syncState.cfg||{};
+  return ['personal','work','agent','school'].some(function(ws){ return c[ws]&&c[ws].syncKey===base&&c[ws].v2; });
+}
+async function syncRowKey(p){ return syncV2(p)?syncV2RowKey(p.syncKey):p.syncKey; }
+/* Another device moved these lists to v2 and left {moved:'v2'} under the old key (syncMoveToV2 in
+   settings.js): this one follows, so it never writes plain lists again. */
+function syncAdoptV2(p){
+  const base=syncSplitKey(p.syncKey).base, c=syncState.cfg;
+  if(!c||!syncCryptoOk())return false;
+  const ws=['personal','work','agent','school'].find(function(w){ return c[w]&&c[w].syncKey===base; });
+  if(!ws)return false;
+  const raw=Object.assign({},c);
+  if(ws==='personal'||c[ws].derived)raw.personal=Object.assign({},c.personal,{v2:true});
+  else raw[ws]=Object.assign({},c[ws],{v2:true});
+  syncState.cfg=normalizeSyncCfg(raw);
+  syncCfgPersist(syncState.cfg);
+  syncState.docs={};
+  return true;
+}
 function setSyncStatus(msg,isErr){
   const n=document.getElementById('syncStatus');
   if(n){ n.textContent=msg; n.style.color=isErr?'var(--late)':'var(--muted)'; }
@@ -149,17 +207,24 @@ function setSyncStatus(msg,isErr){
 // With p_since (when this row was last pulled) the database sends the document only if it changed since;
 // otherwise the copy kept here is used, so an unchanged list costs ~100 bytes a poll, not the whole list.
 async function syncPullRow(p){
-  const k=p.url+'|'+p.syncKey, c=syncState.docs[k];
+  const v2=syncV2(p), rk=await syncRowKey(p);
+  const k=p.url+'|'+rk, c=syncState.docs[k];
   let rows;
   if(c&&c.updatedAt&&!syncState.noSince){
-    try{ rows=await syncRpc(p,'sync_get',{p_sync_key:p.syncKey,p_since:c.updatedAt}); }
+    try{ rows=await syncRpc(p,'sync_get',{p_sync_key:rk,p_since:c.updatedAt}); }
     catch(e){ if(!/HTTP 404/.test(e.message))throw e; syncState.noSince=true; } // an older database: no p_since yet
   }
-  if(!rows)rows=await syncRpc(p,'sync_get',{p_sync_key:p.syncKey});
+  if(!rows)rows=await syncRpc(p,'sync_get',{p_sync_key:rk});
   const r=rows[0]||{};
   if(r.topic)noteTopic(p,r.topic);
   if(r.unchanged&&c&&r.updated_at===c.updatedAt)return {doc:c.doc,updatedAt:c.updatedAt};
-  const row={doc:r.doc||null,updatedAt:r.updated_at||null};
+  if(!v2&&r.doc&&r.doc.moved==='v2'){
+    if(syncAdoptV2(p))return syncPullRow(Object.assign({},p,{v2:true}));
+    throw new Error('these lists are end-to-end encrypted now, and this device can’t open them');
+  }
+  // a v2 row is opened here, so everything above this layer only ever sees the plain document
+  if(v2&&r.doc&&!syncIsSealed(r.doc))throw new Error('an unencrypted copy is where the encrypted list should be; not touching it');
+  const row={doc:r.doc?(syncIsSealed(r.doc)?await syncOpen(p.syncKey,r.doc):r.doc):null,updatedAt:r.updated_at||null};
   if(row.updatedAt)syncState.docs[k]={doc:row.doc,updatedAt:row.updatedAt}; else delete syncState.docs[k];
   return row;
 }
@@ -175,21 +240,22 @@ const SYNC_REFUSED={
 };
 async function syncRefusal(p){
   try{
-    const r=(await syncRpc(p,'sync_usage',{p_sync_key:p.syncKey}))[0];
+    const r=(await syncRpc(p,'sync_usage',{p_sync_key:await syncRowKey(p)}))[0];
     return r&&r.refused?(SYNC_REFUSED[r.refused]||'sync refused ('+r.refused+')'):'';
   }catch(e){ return ''; } // an older database without sync_usage
 }
 function refusedError(msg){ const e=new Error(msg); e.refused=true; return e; }
 // Compare-and-swap upload: replaces the list only if it's still the version we downloaded (or creates
 // it if there was none). false = someone else (phone, Claude, the connector) wrote in between.
+async function syncUpDoc(p,doc){ return syncV2(p)?syncSeal(p.syncKey,doc):doc; } // what goes over the wire
 async function syncPushCas(p,doc,prevUpdatedAt){
-  if((await syncRpc(p,'sync_put',{p_sync_key:p.syncKey,p_doc:doc,p_prev:prevUpdatedAt||null}))===true)return true;
+  if((await syncRpc(p,'sync_put',{p_sync_key:await syncRowKey(p),p_doc:await syncUpDoc(p,doc),p_prev:prevUpdatedAt||null}))===true)return true;
   const why=await syncRefusal(p);
   if(why)throw refusedError(why);
   return false;
 }
 async function syncPushDoc(p,doc){
-  if((await syncRpc(p,'sync_set',{p_sync_key:p.syncKey,p_doc:doc}))===true)return;
+  if((await syncRpc(p,'sync_set',{p_sync_key:await syncRowKey(p),p_doc:await syncUpDoc(p,doc)}))===true)return;
   const why=await syncRefusal(p);
   throw why?refusedError(why):new Error('not saved');
 }

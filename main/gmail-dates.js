@@ -5,8 +5,11 @@
 const path = require('path');
 const os = require('os');
 const { claudeExe, claudeEnv } = require('../agent/platform');
+const fs = require('fs');
 const calendars = require('../agent/calendars');
 const mailEvents = require('../agent/mail-events');
+const mailSend = require('../agent/mail-send');
+const agentBrowser = require('../agent/agent-browser');
 
 let ctx = null; // { readConfig, writeConfig, agentLog }
 function init(c) { ctx = c; }
@@ -81,5 +84,33 @@ handle('mail:check', async () => {
   } finally { mailChecking = false; }
 });
 
+/* An email the Agent wrote, sent because he pressed Send on it (renderer/js/agent-email.js; agent/mail-send.js).
+   This is the only way the app sends mail: the Agent itself has no tool for it. Goes into the actions log
+   (Settings → What the Agent did) like an order or an application. */
+handle('mail:send-accounts', () => {
+  const r = calendars.sendAccounts();
+  return { accounts: r.accounts.map((a) => ({ id: a.id, provider: a.provider, email: a.email || null })),
+    needReconnect: r.needReconnect.map((a) => a.email || a.provider) };
+});
+handle('mail:send', async (_e, req) => {
+  const r = req || {};
+  const list = calendars.sendAccounts().accounts;
+  const acct = list.find((a) => a.id === r.from) || list[0];
+  if (!acct) return { error: 'No account can send email yet: connect Gmail or Outlook again in Settings → Calendars and allow sending.' };
+  const email = mailSend.cleanEmail(r.email);
+  if (!email) return { error: 'The email needs a message and one to ten good addresses.' };
+  try {
+    const out = await mailSend.send(acct, await calendars.tokenFor(acct.id), email);
+    try {
+      fs.appendFileSync(agentBrowser.actionsLogFile(), JSON.stringify({ at: Date.now(), task: String(r.task || '').slice(0, 120), what: 'sent email',
+        from: acct.email || acct.provider, to: email.to.concat(email.cc || []).join(', '), subject: email.subject }) + '\n');
+    } catch (e) {}
+    agentLog('mail: sent "' + email.subject.slice(0, 60) + '" to ' + email.to.length + ' + ' + ((email.cc || []).length) + ' from ' + (acct.email || acct.provider));
+    return { ok: true, from: acct.email || null, to: email.to, cc: email.cc || [], id: out.id };
+  } catch (e) {
+    agentLog('mail send failed: ' + e.message);
+    return { error: String(e.message || e).slice(0, 200) };
+  }
+});
 
 module.exports = { init, handlers, gmail, claudeJson, mailAllowed, receiptAccounts: () => calendars.receiptAccounts() };
