@@ -105,3 +105,35 @@ test('describe reads like the panel', () => {
   assert.strictEqual(tr.describe({ kind: 'page', url: 'https://www.shop.com/x', what: 'in stock' }), 'when shop.com/x says: in stock');
   assert.strictEqual(tr.describe(null), '');
 });
+
+test('date: a check-back day, and an email trigger with an "or by" day', () => {
+  assert.deepStrictEqual(tr.clean({ kind: 'date', what: 'refund posted?', on: '2026-11-14', auto: true }),
+    { kind: 'date', what: 'refund posted?', since: 0, on: '2026-11-14', auto: true });
+  assert.strictEqual(tr.clean({ kind: 'date', what: 'x', on: 'Nov 14' }), null);
+  assert.strictEqual(tr.clean({ kind: 'mail', what: 'reply from Best Buy', by: '2026-11-14' }).by, '2026-11-14');
+  const d = task('d1', { kind: 'date', what: 'has the refund posted?', on: '2026-10-28' });
+  const later = task('d2', { kind: 'date', what: 'x', on: '2026-10-29' });
+  const m = task('m1', { kind: 'mail', what: 'reply from Best Buy', by: '2026-10-27' });
+  const plain = task('m2', { kind: 'mail', what: 'reply from Best Buy' });
+  const hits = tr.dateHits([d, later, m, plain], { now });
+  assert.deepStrictEqual(hits.map((h) => [h.id, h.key]), [['d1', 'date:2026-10-28'], ['m1', 'by:2026-10-27']]);
+  assert.match(hits[0].what, /^Check-back day \(Wed, Oct 28\): has the refund posted\?$/);
+  assert.match(hits[1].what, /^No email by Tue, Oct 27: reply from Best Buy$/);
+  assert.deepStrictEqual(tr.dateHits([d], { now, fired: { d1: ['date:2026-10-28'] } }), []); // once
+  assert.strictEqual(tr.describe({ kind: 'date', what: 'refund?', on: '2026-11-14' }), 'on Sat, Nov 14: refund?');
+  assert.strictEqual(tr.describe({ kind: 'mail', what: 'reply', by: '2026-11-14' }), 'when an email arrives: reply (or on Sat, Nov 14 if none has)');
+});
+
+test('followUp: what a run may arm on its case', () => {
+  assert.deepStrictEqual(tr.followUp({ on: '2026-11-14', mail: 'a reply from Best Buy about the return', why: 'refund in 10 days' }, now),
+    { kind: 'mail', what: 'a reply from Best Buy about the return', since: now, by: '2026-11-14', auto: true });
+  assert.deepStrictEqual(tr.followUp({ on: '2026-11-14', mail: '', why: 'has the refund posted?' }, now),
+    { kind: 'date', what: 'has the refund posted?', since: now, on: '2026-11-14', auto: true });
+  assert.strictEqual(tr.followUp({ on: '2026-10-28', why: 'x' }, now), null); // today: too soon
+  assert.strictEqual(tr.followUp({ on: '2027-06-01', why: 'x' }, now), null); // over 120 days off
+  assert.strictEqual(tr.followUp({ mail: 'a reply from Best Buy' }, now), null); // no day, no follow-up
+  assert.strictEqual(tr.followUp({ on: '2026-11-14' }, now), null); // nothing to check
+  assert.strictEqual(tr.followUp(null, now), null);
+  assert.strictEqual(tr.followUp([{ on: '2026-11-14', why: 'x' }], now), null);
+  assert.ok(tr.clean(tr.followUp({ on: '2026-11-14', why: 'x' }, now))); // what it arms is a trigger the app acts on
+});

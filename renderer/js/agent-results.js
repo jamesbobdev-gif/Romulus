@@ -140,6 +140,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       // suggestions for the week start unselected: he taps the ones he wants
       if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
       if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
+      // a case waiting on someone else (agent/triggers.js followUp): it watches until then. Never over one he set himself
+      if(u.followUp&&u.followUp.kind&&(!t.trigger||t.trigger.auto)){ t.trigger=u.followUp; t.triggered=null; agentSay(t,'sys','Following up: starts again '+triggerText(u.followUp)); }
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','The local model asked Claude: '+q); });
       const extra=Array.isArray(u.options)&&u.options.length?{options:u.options.map(function(o){ return o.label; })}:{};
       if(u.lane==='local')extra.lane='local';

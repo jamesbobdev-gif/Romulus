@@ -5,13 +5,15 @@
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
-const TRIGGER_LABELS={mail:'email',calendar:'calendar',page:'web page'};
-const TRIGGER_HINTS={mail:'e.g. Acmebank statement · a reply from the landlord',calendar:'e.g. dentist · flight to Denver',page:'e.g. the price is under $40 · says In Stock'};
+const TRIGGER_LABELS={mail:'email',calendar:'calendar',page:'web page',date:'date'};
+const TRIGGER_HINTS={mail:'e.g. Acmebank statement · a reply from the landlord',calendar:'e.g. dentist · flight to Denver',page:'e.g. the price is under $40 · says In Stock',date:'e.g. has the refund posted?'};
+const triggerDay=function(s){ return new Date(s+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
 function triggerText(tr){
   if(!tr||!tr.kind)return '';
   const what=String(tr.what||'');
-  if(tr.kind==='mail')return 'when an email arrives: '+what;
+  if(tr.kind==='mail')return 'when an email arrives: '+what+(tr.by?' (or on '+triggerDay(tr.by)+' if none has)':'');
   if(tr.kind==='calendar')return (tr.before?tr.before+' h before':'at')+' a calendar event: '+what;
+  if(tr.kind==='date')return 'on '+(tr.on?triggerDay(tr.on):'a day')+': '+what;
   return 'when '+String(tr.url||'').replace(/^https?:\/\/(www\.)?/,'').slice(0,60)+' says: '+what;
 }
 const triggerArmed=function(t){ return taskWs(t)==='agent'&&!t.done&&!!(t.trigger&&t.trigger.kind)&&['queued','working','needs-you'].indexOf(t.status)===-1; };
@@ -30,6 +32,7 @@ if(window.desktop&&window.desktop.triggersTick){
         if(!t||!triggerArmed(t))return;
         t.triggered={kind:f.kind,what:String(f.what||'').slice(0,300),link:f.link||null,at:Date.now()};
         t.done=false; t.status='queued'; t.repeatDue=true; t.reply=null;
+        if(t.trigger.auto)t.trigger=null; // a case's follow-up is used up: the run sets the next one if it still waits
         agentSay(t,'sys','Triggered: '+t.triggered.what);
         voiceToast('Started: '+t.title,true);
         changed=true;

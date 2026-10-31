@@ -503,29 +503,31 @@ function buildPanel(t){
     const tw=el('div','panel-meta repeat-row trigger-row');
     tw.appendChild(el('span','lbl','Starts when'));
     const ks=document.createElement('select'); ks.className='sm'; ks.setAttribute('aria-label','Starts when');
-    [['','You queue it'],['mail','An email arrives about…'],['calendar','Hours before a calendar event…'],['page','A web page says…']].forEach(function(p){ const o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; ks.appendChild(o); });
+    [['','You queue it'],['mail','An email arrives about…'],['calendar','Hours before a calendar event…'],['page','A web page says…'],['date','On a day…']].forEach(function(p){ const o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; ks.appendChild(o); });
     ks.value=t.trigger&&t.trigger.kind?t.trigger.kind:'';
     const hrs=el('input','sm hours'); hrs.type='number'; hrs.min='0'; hrs.max='336'; hrs.value=t.trigger&&t.trigger.before!=null?t.trigger.before:24; hrs.setAttribute('aria-label','Hours before');
+    const day=el('input','sm day'); day.type='date'; day.value=t.trigger&&t.trigger.on?t.trigger.on:''; day.setAttribute('aria-label','Day to start');
     const url=el('input','sm url'); url.type='url'; url.placeholder='https://… the page to watch'; url.value=t.trigger&&t.trigger.url?t.trigger.url:''; url.setAttribute('aria-label','Page to watch');
     const what=el('input','sm what'); what.type='text'; what.value=t.trigger&&t.trigger.what?t.trigger.what:''; what.setAttribute('aria-label','What to wait for');
     const hint=el('span','next','');
-    function showTrigger(){ const k=ks.value; hrs.hidden=k!=='calendar'; url.hidden=k!=='page'; what.hidden=!k; what.placeholder=TRIGGER_HINTS[k]||'';
+    function showTrigger(){ const k=ks.value; hrs.hidden=k!=='calendar'; url.hidden=k!=='page'; day.hidden=k!=='date'; what.hidden=!k; what.placeholder=TRIGGER_HINTS[k]||'';
       hint.textContent=!k?'':t.triggered&&t.triggered.at&&!triggerArmed(t)?'set off '+fmtWhen(t.triggered.at):triggerArmed(t)?(triggerChecked?'watching · last looked '+fmtWhen(triggerChecked):'watching'):''; }
     function applyTrigger(){
       const k=ks.value;
       if(!k){ if(t.trigger){ t.trigger=null; t.triggered=null; agentSay(t,'sys','Starts when: off — queue it yourself'); touch(); } showTrigger(); return; }
       const tr={kind:k,what:what.value.replace(/\s+/g,' ').trim().slice(0,200),since:t.trigger&&t.trigger.since?t.trigger.since:Date.now()};
       if(k==='page')tr.url=url.value.trim().slice(0,500); if(k==='calendar')tr.before=Math.min(336,Math.max(0,Number(hrs.value)||0));
+      if(k==='date')tr.on=day.value; if(k==='mail'&&t.trigger&&t.trigger.kind==='mail'&&t.trigger.by)tr.by=t.trigger.by; // a follow-up's "or by" day stays; edited, the trigger is his
       showTrigger();
-      if(!tr.what||(k==='page'&&!/^https?:\/\/\S+\.\S+/i.test(tr.url)))return; // half filled: nothing yet
-      const same=function(x){ return x?JSON.stringify([x.kind,x.what,x.url||'',x.before||0]):''; };
+      if(!tr.what||(k==='page'&&!/^https?:\/\/\S+\.\S+/i.test(tr.url))||(k==='date'&&!/^\d{4}-\d{2}-\d{2}$/.test(tr.on)))return; // half filled: nothing yet
+      const same=function(x){ return x?JSON.stringify([x.kind,x.what,x.url||'',x.before||0,x.on||'',x.by||'']):''; };
       if(same(t.trigger)===same(tr))return;
       t.trigger=tr; t.triggered=null;
       if(t.status==='queued'&&!t.done)t.status='done'; // not now: when it happens
       agentSay(t,'sys','Starts '+triggerText(tr)); touch();
     }
-    ks.addEventListener('change',applyTrigger); [what,url,hrs].forEach(function(i){ i.addEventListener('change',applyTrigger); });
-    tw.appendChild(ks); tw.appendChild(hrs); tw.appendChild(url); tw.appendChild(what); tw.appendChild(hint); showTrigger();
+    ks.addEventListener('change',applyTrigger); [what,url,hrs,day].forEach(function(i){ i.addEventListener('change',applyTrigger); });
+    tw.appendChild(ks); tw.appendChild(hrs); tw.appendChild(day); tw.appendChild(url); tw.appendChild(what); tw.appendChild(hint); showTrigger();
     panel.appendChild(tw);
   }
 

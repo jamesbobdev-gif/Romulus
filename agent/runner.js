@@ -50,6 +50,7 @@ const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
 const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor } = require('./grocery');
 const mailSend = require('./mail-send');
+const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
 const GROCERY_TIMEOUT_MS = 40 * 60 * 1000; // a grocery order fills a whole cart and compares sizes: it gets longer
 let runTimeoutMs = AGENT_TIMEOUT_MS; // this run's limit
@@ -245,6 +246,7 @@ async function startAgentRun() {
   const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') +
     (browses(id) ? filesPart : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
+    'Today is ' + new Date().toDateString() + '.\n' + // for deadlines and a followUp's day
     (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
   // his files for forms (the resume), for a run with the browser: name and the full path the upload tool takes
   const filesPart = (() => { const f = formFiles(); return f.length ? '\n\n## His files for forms\nHis own documents, for a site that asks for a resume or the like (the agent browser rules say how). ' +
@@ -400,6 +402,9 @@ async function startAgentRun() {
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
     u.email = u.status === 'needs-you' ? (mailSend.cleanEmail(u.email) || null) : null; // an email he sends with his Send (agent/mail-send.js)
+    // a case waiting on someone else: when to look again (agent/triggers.js followUp). A run that saw his
+    // mail keeps only the day: its words could be an email's, and the next run can reach the web
+    u.followUp = triggers.followUp(sawMail && u.followUp ? { on: u.followUp.on, why: 'look at this case again' } : u.followUp);
     u.seats = sawMail ? null : (cleanSeats(u.seats) || null); // a seat map with its pick, he can tap other seats
     u.showtimes = sawMail ? null : (cleanShowtimes(u.showtimes) || null); // days and times he taps to pick one
     u.theaters = sawMail ? null : (cleanTheaters(u.theaters) || null); // a map of the theaters, he taps one

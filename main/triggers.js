@@ -6,6 +6,7 @@
    - calendar: no model; an event with the trigger's words, once its "hours before" window opens.
    - page: the page is fetched every 6 hours (public hosts only, 1 MB, 20 s) and Claude, tool-less, says
      whether the condition shows on it. It fires once, then not again until the page stops saying so.
+   - date: no model; a check-back day that has come, or an email trigger's `by` day with no email yet.
    What fired is remembered in config.triggers so an email or an event starts a task once. */
 const triggers = require('../agent/triggers');
 const calendars = require('../agent/calendars');
@@ -111,7 +112,8 @@ handle('triggers:tick', async () => {
   const s = state();
   const fired = [], errors = [];
   try {
-    for (const [name, fn] of [['mail', checkMail], ['calendar', checkCalendar], ['page', checkPages]]) {
+    const checkDates = async (ts, st) => triggers.dateHits(ts, { fired: st.fired });
+    for (const [name, fn] of [['mail', checkMail], ['calendar', checkCalendar], ['page', checkPages], ['date', checkDates]]) {
       try { fired.push(...await fn(tasks, s)); } catch (e) { errors.push(name + ': ' + e.message.slice(0, 120)); agentLog('triggers: ' + name + ' check failed: ' + e.message); }
     }
     for (const f of fired) (s.fired[f.id] = (s.fired[f.id] || []).concat([f.key]).slice(-50));

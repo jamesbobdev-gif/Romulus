@@ -3,6 +3,10 @@
      {kind:'mail',     what:'Acmebank statement', since}            an email about this arrives
      {kind:'calendar', what:'dentist', before: 24}                 this many hours before a matching event
      {kind:'page',     url:'https://…', what:'the price is under $40'}  a web page says so (checked now and then)
+     {kind:'date',     on:'2026-11-14', what:'has the refund posted?'}  that day comes (a case's check-back)
+   An email trigger may also carry by:'YYYY-MM-DD': no such email by then starts it anyway ("no reply yet").
+   A run can arm one itself (its `followUp`, see followUp below): those carry auto:true and are cleared
+   once they fire, so a case only keeps watching while its runs keep asking to.
    main/triggers.js does the checking on the computer that runs the Agent (Gmail, calendar and page fetches
    live there) and the window queues the task with t.triggered = what set it off, so the run knows why it
    started. Email, event and page text are other people's words: the one model call here has no tools, and
@@ -12,11 +16,17 @@ const STOP = new Set(('a an the my me i you your our for of on in at to from up 
   'is are be it this that what which who with please can could should would will just also some any all when if ' +
   'email mail message arrives arrive comes come gets get new next before after event appointment page says ' +
   'under over below above than less more price').split(' '));
-const KINDS = ['mail', 'calendar', 'page'];
+const KINDS = ['mail', 'calendar', 'page', 'date'];
 const PAGE_EVERY_MS = 6 * 60 * 60 * 1000;   // a page is fetched this often
 const PAGE_CHARS = 6000;                     // what the model gets of it
 const MAIL_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_BEFORE_H = 24 * 14;
+const MAX_FOLLOW_DAYS = 120;                 // a run's check-back is at most this far off
+
+// 'YYYY-MM-DD' in his time zone
+const ymd = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const isDay = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00').getTime());
+const dayText = (s) => new Date(s + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
 // the words that matter in "an email from Acmebank about my statement" → ['acmebank', 'statement']
 function words(what) {
@@ -41,7 +51,25 @@ function clean(tr) {
     if (!out.url || !what) return null;
   } else if (!what) return null;
   if (tr.kind === 'calendar') out.before = Math.min(MAX_BEFORE_H, Math.max(0, Number(tr.before) || 0));
+  if (tr.kind === 'date') { if (!isDay(tr.on)) return null; out.on = tr.on; }
+  if (tr.kind === 'mail' && isDay(tr.by)) out.by = tr.by;
+  if (tr.auto === true) out.auto = true;
   return out;
+}
+
+/* A run's `followUp` on a case that waits on someone else (a refund, a reply, a claim):
+   {mail:'a reply from Best Buy about the return', on:'2026-11-14', why:'refund takes 10 business days'}
+   → the trigger it arms: an email trigger with `by` when there's both, a date one when there's only the
+   day. The day must be after today and within MAX_FOLLOW_DAYS; no day, no follow-up (an email that
+   never comes would leave the case watching for ever). */
+function followUp(f, now = Date.now()) {
+  if (!f || typeof f !== 'object' || Array.isArray(f) || !isDay(f.on)) return null;
+  const today = ymd(now), last = ymd(now + MAX_FOLLOW_DAYS * 864e5);
+  if (f.on <= today || f.on > last) return null;
+  const mail = String(f.mail || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const why = String(f.why || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (mail && words(mail).length) return { kind: 'mail', what: mail, since: now, by: f.on, auto: true };
+  return why ? { kind: 'date', what: why, since: now, on: f.on, auto: true } : null;
 }
 // http(s) to a public host only: never this computer, the mini PC or anything else on his network
 function safeUrl(u) {
@@ -146,6 +174,23 @@ function calendarSpanMs(tasks) {
   return tasks.some((t) => clean(t.trigger) && clean(t.trigger).kind === 'calendar') ? (h + 25) * 3600 * 1000 : 0;
 }
 
+/* ---------- a day ---------- */
+// no model: a date trigger once its day has come, and an email trigger whose `by` passed without the email
+// (an email that did come fired it, and it was cleared or re-armed with a new day then)
+function dateHits(tasks, { now = Date.now(), fired = {} } = {}) {
+  const out = [], today = ymd(now);
+  for (const t of tasks) {
+    const tr = clean(t.trigger); if (!tr) continue;
+    const day = tr.kind === 'date' ? tr.on : tr.kind === 'mail' ? tr.by : null;
+    if (!day || day > today) continue;
+    const key = (tr.kind === 'date' ? 'date:' : 'by:') + day;
+    if ((fired[t.id] || []).includes(key)) continue;
+    out.push({ id: t.id, kind: 'date', key, link: null,
+      what: tr.kind === 'date' ? 'Check-back day (' + dayText(day) + '): ' + tr.what : 'No email by ' + dayText(day) + ': ' + tr.what });
+  }
+  return out;
+}
+
 /* ---------- a web page ---------- */
 const pageDue = (t, checkedAt = {}, now = Date.now()) => now - (checkedAt[t.id] || 0) >= PAGE_EVERY_MS;
 // a page's readable words (its HTML with the tags, scripts and styles taken out)
@@ -182,10 +227,11 @@ function cleanPage(answer, t) {
 // what the panel and the task's conversation say about a trigger
 function describe(tr) {
   const c = clean(tr); if (!c) return '';
-  if (c.kind === 'mail') return 'when an email arrives: ' + c.what;
+  if (c.kind === 'mail') return 'when an email arrives: ' + c.what + (c.by ? ' (or on ' + dayText(c.by) + ' if none has)' : '');
   if (c.kind === 'calendar') return (c.before ? c.before + ' h before' : 'at') + ' a calendar event: ' + c.what;
+  if (c.kind === 'date') return 'on ' + dayText(c.on) + ': ' + c.what;
   return 'when ' + c.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60) + ' says: ' + c.what;
 }
 
-module.exports = { KINDS, PAGE_EVERY_MS, words, enough, clean, safeUrl, armed, mailCandidates, MAIL_SCHEMA, mailPrompt, mailInput, cleanMail,
-  calendarHits, calendarSpanMs, pageDue, stripHtml, PAGE_SCHEMA, pagePrompt, pageInput, cleanPage, describe };
+module.exports = { KINDS, PAGE_EVERY_MS, MAX_FOLLOW_DAYS, words, enough, clean, safeUrl, armed, followUp, mailCandidates, MAIL_SCHEMA, mailPrompt, mailInput, cleanMail,
+  calendarHits, calendarSpanMs, dateHits, pageDue, stripHtml, PAGE_SCHEMA, pagePrompt, pageInput, cleanPage, describe };
