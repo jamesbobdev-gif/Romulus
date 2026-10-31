@@ -330,6 +330,7 @@ function holoBackToSchool(){
 }
 function setDone(t,v){
   t.done=v;
+  if(v)t.doneAt=Date.now(); else delete t.doneAt; // the year in review counts it on this day
   if(taskWs(t)==='agent'){
     // re-opening an agent task hands it back to Claude; ticking one off closes it
     if(!v&&t.status==='done')t.status='queued';

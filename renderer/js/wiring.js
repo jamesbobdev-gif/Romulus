@@ -714,6 +714,7 @@ $('clearDone').addEventListener('click',function(){
     const now=Date.now();
     const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':'list'; // only clear the tab you're looking at
     const gone=function(t){ return t.done&&inTab(t,curTab); };
+    reviewLogCleared(state.tasks.filter(gone)); // still counted in the year in review
     state.tasks.forEach(function(t){ if(gone(t))state.tombstones.push({id:t.id,deletedAt:now}); });
     state.tasks=state.tasks.filter(function(t){ return !gone(t); });
     touch();

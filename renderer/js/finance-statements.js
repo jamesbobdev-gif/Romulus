@@ -113,4 +113,4 @@ function balanceSheet(accounts,now,daysBack){
     assetTotal:assetTotal,liabilityTotal:liabilityTotal,netWorth:assetTotal.map(function(v,i){ return v-liabilityTotal[i]; })};
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={incomeStatement:incomeStatement,balanceSheet:balanceSheet,stmtBalanceAt:stmtBalanceAt,stmtIncomeKind:stmtIncomeKind}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={incomeStatement:incomeStatement,balanceSheet:balanceSheet,stmtBalanceAt:stmtBalanceAt,stmtIncomeKind:stmtIncomeKind,stmtIsInvest:stmtIsInvest}; }
