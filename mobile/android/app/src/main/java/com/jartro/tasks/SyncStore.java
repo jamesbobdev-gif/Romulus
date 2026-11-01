@@ -108,7 +108,10 @@ final class SyncStore {
 
     /* ── helpers ── */
     private static String base(JSONObject cfg) throws Exception {
-        return cfg.getString("url").replaceAll("/+$", "");
+        String u = cfg.getString("url").trim().replaceAll("/+$", "");
+        // the anon key and the sync key go in the headers: never over plain http, whatever the saved address says
+        if (!u.toLowerCase().startsWith("https://")) throw new Exception("sync url must be https");
+        return u;
     }
     private static HttpURLConnection open(JSONObject cfg, String url, String method) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();

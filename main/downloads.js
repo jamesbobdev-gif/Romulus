@@ -26,7 +26,9 @@ async function formAdd() {
   return out;
 }
 
-const sshHost = () => ((ctx.readConfig().localModel || {}).browser || {}).ssh || '';
+// user@host or host, nothing else: a value starting with "-" would be read by ssh as an option (-oProxyCommand=… runs a command)
+const SSH_HOST = /^(?:[\w.-]+@)?[\w.-]+$/;
+const sshHost = () => { const h = String(((ctx.readConfig().localModel || {}).browser || {}).ssh || ''); return SSH_HOST.test(h) ? h : ''; };
 // a file name safe to use as a Windows file name
 const safeName = (s, fallback) => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || fallback;
 // "…" in single quotes for the mini PC's shell
@@ -64,7 +66,7 @@ function onLupa(cmd, toFile) {
   const host = sshHost();
   if (!host) return Promise.reject(new Error('the mini PC’s SSH isn’t set up'));
   return new Promise((resolve, reject) => {
-    const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', host, cmd], { windowsHide: true });
+    const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '--', host, cmd], { windowsHide: true });
     const out = [], err = [];
     const sink = toFile ? fs.createWriteStream(toFile) : null;
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 120 * 1000);

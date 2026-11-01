@@ -24,6 +24,9 @@ const schoolCfg = fs.existsSync(schoolFile) ? JSON.parse(fs.readFileSync(schoolF
 const addChannel = (name, cfg) => cfg ? `try{ var c=JSON.parse(localStorage.getItem('tasks.sync.v1')); if(c&&c.url)c={personal:c}; if(c&&!c.${name}){ c.${name}=${JSON.stringify(cfg)}; localStorage.setItem('tasks.sync.v1',JSON.stringify(c)); } }catch(e){}` : '';
 
 let html = fs.readFileSync(src, 'utf8');
+// the desktop page's Content-Security-Policy allows only its own script files; Capacitor's native bridge is an
+// inline script the WebView injects, so the phone build goes without it (the WebView has no Node side to reach)
+html = html.replace(/<!--\s*Only the app's own scripts[^]*?-->\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*/, '');
 const seed = `<script>
 window.ROMULUS_VERSION=${JSON.stringify(rootPkg.version)}; window.ROMULUS_RELEASES=${JSON.stringify(releases)};
 ${syncCfg ? `try{ if(!localStorage.getItem('tasks.sync.v1')) localStorage.setItem('tasks.sync.v1', ${JSON.stringify(JSON.stringify(syncCfg))}); }catch(e){}` : ''}

@@ -17,10 +17,17 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
   const cutoff = Date.now() - KEEP_DAYS * 24 * 60 * 60 * 1000;
   const old: string[] = [];
-  // the bucket holds one folder per agent key (tk_agent_att_…), the files inside it
-  const { data: folders, error } = await db.storage.from(BUCKET).list("", { limit: 1000 });
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-  for (const f of folders || []) {
+  // the bucket holds one folder per agent key (tk_agent_att_…), the files inside it. Folders are listed page by
+  // page: on a shared project there can be more than one page of them, and the ones past it would never be cleaned
+  const folders: { id: string | null; name: string }[] = [];
+  for (let off = 0; ; off += 1000) {
+    const { data, error } = await db.storage.from(BUCKET).list("", { limit: 1000, offset: off });
+    if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+    folders.push(...(data || []));
+    if (!data || data.length < 1000 || folders.length >= 20000) break;
+  }
+  for (const f of folders) {
+    if (old.length >= MAX_PER_RUN) break;
     if (f.id) continue; // a file at the top level: not one the app writes
     let offset = 0;
     while (old.length < MAX_PER_RUN) {

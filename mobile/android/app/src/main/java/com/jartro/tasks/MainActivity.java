@@ -90,9 +90,14 @@ public class MainActivity extends BridgeActivity {
                 intent.setAction(Intent.ACTION_MAIN);
                 intent.removeExtra(Intent.EXTRA_STREAM);
             } else if (intent.hasExtra("hookKind")) {
-                p.put("kind", intent.getStringExtra("hookKind"));
-                if (intent.hasExtra("hookArg")) p.put("arg", intent.getStringExtra("hookArg"));
+                // only this app's own widgets (Widgets.openApp) carry the install's nonce: an intent from another
+                // app that names a hook (voice, wake…) just opens the app
+                String kind = intent.getStringExtra("hookKind"), nonce = intent.getStringExtra("hookNonce");
                 intent.removeExtra("hookKind");
+                intent.removeExtra("hookNonce");
+                if (nonce == null || !Widgets.hookNonce(this).equals(nonce)) return;
+                p.put("kind", kind);
+                if (intent.hasExtra("hookArg")) p.put("arg", intent.getStringExtra("hookArg"));
             } else return;
             deliver(p.toString(), 0);
         } catch (Exception ignored) {}

@@ -577,7 +577,7 @@ function buildPanel(t){
     function badge(th,text){ const b=el('div',null,text); b.style.cssText='position:absolute;left:0;right:0;bottom:0;font-family:var(--mono);font-size:8px;text-align:center;background:rgba(20,20,20,.62);color:#fff;padding:1px 0'; th.appendChild(b); }
     function drawPics(){
       strip.innerHTML=''; strip.hidden=!fileIn&&!(t.images||[]).length&&!uploading.length;
-      (t.images||[]).forEach(function(u,i){
+      (t.images||[]).filter(function(u){ return /^https:\/\//i.test(String(u)); }).forEach(function(u,i){ // synced from other devices: web pictures only
         const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=u; im.alt='Screenshot'; im.referrerPolicy='no-referrer';
         im.addEventListener('click',function(){ openLightbox((t.images||[]).map(function(x,j){ return {image:x,label:'Screenshot '+(j+1)}; }),i); });
         const x=el('button',null,'✕'); x.setAttribute('aria-label','Remove screenshot');

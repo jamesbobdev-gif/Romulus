@@ -212,7 +212,9 @@ async function startAgentRun() {
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
-    conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who, text: String(h.text || '').slice(0, 600),
+    // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
+    conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
+      text: h.lane === 'local' && h.who !== 'you' ? '(the local model worked on this step; its note stays on his computer)' : String(h.text || '').slice(0, 600),
       shown: Array.isArray(h.options) ? h.options : undefined,
       sentPhotos: Array.isArray(h.images) && h.images.length ? h.images.length : undefined })) : [],
     repeats: t.repeat ? { every: t.repeat.every, at: t.repeat.at } : null,

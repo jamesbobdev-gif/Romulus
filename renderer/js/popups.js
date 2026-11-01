@@ -88,6 +88,7 @@ function openLightbox(opts,startIdx){
     box.innerHTML='';
     const o=pics[pos].o, label=String(o.label||('Option '+(pics[pos].i+1)));
     const big=document.createElement('img');
+    if(!/^https:\/\//i.test(String(o.image)))return; // the AI's or a synced card's picture: web pictures only
     big.src=String(o.image).replace(/\._AC_SL\d+_\./,'._AC_SL1500_.'); // sharper copy of the same Amazon photo
     big.alt=label; big.referrerPolicy='no-referrer'; big.draggable=false;
     big.addEventListener('error',function(){ if(big.src!==o.image)big.src=o.image; }); // fall back to the card-size photo

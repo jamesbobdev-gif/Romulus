@@ -280,8 +280,12 @@ async function sendCalAccounts() {
 const localHandlers = {
   'hub:get': () => { const c = cfg(); return { role: role(), url: c.url || '', hasToken: !!c.hubToken }; },
   'hub:test': async (_e, url, token) => {
-    const u = String(url || baseUrl()).trim().replace(/\/+$/, ''), t = String(token || cfg().hubToken || '').trim();
+    const u = String(url || baseUrl()).trim().replace(/\/+$/, '');
     if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(u)) return { ok: false, error: 'use the mini PC’s https://….ts.net address' };
+    // the saved token goes only to the saved address: any other address must come with its own token, or the
+    // page could have the token sent to a server of someone's choosing
+    const t = String(token || (u === baseUrl() ? cfg().hubToken : '') || '').trim();
+    if (!t) return { ok: false, error: 'paste the hub token' };
     try {
       const r = await fetch(u + '/hub/ping', { headers: { Authorization: 'Bearer ' + t }, signal: AbortSignal.timeout(10000) });
       const j = await r.json().catch(() => ({}));

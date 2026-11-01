@@ -57,6 +57,9 @@ async function load(list: string): Promise<Row> {
   if (!r.ok) throw new Error(`load ${list}: HTTP ${r.status}`);
   const rows = await r.json();
   const doc = rows.length ? rows[0].doc : null;
+  // the app moved this list to end-to-end encryption and left a marker under the old key: writing a plain list over
+  // it would destroy the marker and never reach the real (sealed) list
+  if (doc && doc.moved === "v2") throw new UserError(`The ${list} list is end-to-end encrypted on the devices; this server can't read or change it.`);
   return {
     doc: {
       v: 1,
@@ -631,11 +634,24 @@ async function handle(msg: any): Promise<unknown | null> {
   }
 }
 
+// the token compared in constant time, through a hash so lengths don't tell either (same for ?token= and the header)
+async function tokenOk(given: string | null): Promise<boolean> {
+  if (!given || !TOKEN) return false;
+  const [a, b] = await Promise.all([given, TOKEN].map((s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))));
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+const MAX_BATCH = 20;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   const url = new URL(req.url);
   if (!TOKEN || Object.values(LISTS).some((k) => !k)) return new Response("Not configured", { status: 503 });
-  if (url.searchParams.get("token") !== TOKEN) return new Response("Not found", { status: 404 });
+  // Authorization: Bearer <token> is preferred (a query string lands in request logs and proxies); ?token= still works
+  const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
+  if (!(await tokenOk(bearer || url.searchParams.get("token")))) return new Response("Not found", { status: 404 });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: CORS });
 
   let body: unknown;
@@ -643,6 +659,7 @@ Deno.serve(async (req: Request) => {
     return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
   }
   if (Array.isArray(body)) {
+    if (body.length > MAX_BATCH) return json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `At most ${MAX_BATCH} requests per batch` } }, 400);
     const out = (await Promise.all(body.map(handle))).filter((x) => x !== null);
     return out.length ? json(out) : new Response(null, { status: 202, headers: CORS });
   }

@@ -35,7 +35,7 @@ function wakeMiniPcDisplay(ssh) {
     const cmd = 'export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus; ' +
       'gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig ' +
       '--method org.freedesktop.DBus.Properties.Set org.gnome.Mutter.DisplayConfig PowerSaveMode "<0>"';
-    const p = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', ssh, cmd], { windowsHide: true, stdio: 'ignore' });
+    const p = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '--', ssh, cmd], { windowsHide: true, stdio: 'ignore' });
     const done = () => { clearTimeout(t); resolve(); };
     const t = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(); }, 15000);
     p.on('exit', done); p.on('error', done);
@@ -44,11 +44,13 @@ function wakeMiniPcDisplay(ssh) {
 async function ensureQwenBrowser() {
   const b = (readConfig().localModel || {}).browser;
   if (!b || !b.ssh) return false;
+  // user@host or host only: ssh would read a value starting with "-" as an option (main/downloads.js has the same check)
+  if (!/^(?:[\w.-]+@)?[\w.-]+$/.test(String(b.ssh))) { agentLog('local: the mini PC\'s ssh address in Settings is not a plain user@host'); return false; }
   await wakeMiniPcDisplay(b.ssh);
   if (await qwenBrowserUp()) return true;
   if (qwenTunnel) { try { qwenTunnel.kill(); } catch (e) {} qwenTunnel = null; }
   qwenTunnel = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30',
-    '-N', '-L', '127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + ':127.0.0.1:' + (b.port || 9334), b.ssh], { windowsHide: true });
+    '-N', '-L', '127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + ':127.0.0.1:' + (Number(b.port) || 9334), '--', b.ssh], { windowsHide: true });
   qwenTunnel.on('exit', () => { qwenTunnel = null; });
   qwenTunnel.on('error', (e) => { agentLog('local: ssh tunnel failed to start: ' + e.message); qwenTunnel = null; }); // e.g. no ssh installed: unhandled, this would crash the app
   for (let i = 0; i < 20; i++) { if (await qwenBrowserUp()) return true; await new Promise((r) => setTimeout(r, 500)); }

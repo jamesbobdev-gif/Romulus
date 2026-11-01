@@ -137,7 +137,8 @@ const hookArg = (x) => '"' + String(x).replace(/\\/g, '/') + '"'; // forward sla
 function webGuardHooks() { // → the hook, for a run's --settings (agent/runner.js), or null
   const node = findNode();
   if (!node) return null;
-  return { PreToolUse: [{ matcher: 'WebFetch|WebSearch',
+  // Agent too: a helper run has its own tools, and the store checkers' browser connections, to carry mail off with
+  return { PreToolUse: [{ matcher: 'WebFetch|WebSearch|Agent',
     hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()), timeout: 15 }] }] };
 }
 // his latest reply is a yes to something Claude asked him to say yes to
@@ -148,12 +149,14 @@ function saidYes(t) {
   return isYes(lastYou) && /reply\s*\**\s*yes/i.test(asked);
 }
 const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
-// the sites his yes was about: where the run stopped to ask, the links in the ask, and the cart's or options' links.
-// Empty when none is known (then the yes unlocks the order button anywhere, as before).
+/* The sites his yes was about: where the run stopped to ask (t.page), the cart's or options' links, and links he
+   wrote himself (title, notes, replies). Not the links in the AI's ask: a page can put its own address into
+   that note, and his yes would then unlock the final step there too. Empty when none is known, and then the yes
+   unlocks nothing (browser-proxy.js buyRefusal): the run must stop on the page and ask again. */
 function approvedHostsFor(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
-  const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  const urls = [t.page].concat(asked.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
+  const his = [t.title, t.notes, t.reply].concat(hist.filter((h) => h && h.who === 'you').map((h) => h.text)).join('\n');
+  const urls = [t.page].concat(his.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
     (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url), (Array.isArray(t.options) ? t.options : []).map((o) => o && o.url));
   return [...new Set(urls.map(hostOf).filter(Boolean))];
 }

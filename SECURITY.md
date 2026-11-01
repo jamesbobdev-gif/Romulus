@@ -38,6 +38,15 @@ The Agent is an AI that reads your tasks, browses the web and fills forms for yo
 - The sync project receives your lists, encrypted in transit, reachable only through server functions that need the sync key.
 - Nothing is sent to the authors of this app. There is no telemetry.
 
+## Known limits (as of the November 2026 review)
+
+Things the review found and left as they are, because the fix changes how lists or networks are set up. Worth knowing if you run a shared sync project or a mini PC:
+
+- **The list keys are related.** The Agent, Work and School keys are the personal key with a different prefix, so anyone holding one of them (the mini PC, a phone build with only the agent key) can work out the others. Making them one-way derived means re-keying every existing list; planned for the next sync version.
+- **Ollama traffic is plain HTTP.** When the local model runs on another machine, the Locked profile and Finance answers cross your network unencrypted to a port with no password. Put it behind Tailscale (`minipc/setup.sh` does) or the SSH tunnel, never on open Wi-Fi.
+- **A sync peer can say yes to an update.** Anyone with your sync key can answer "Update" on your behalf (the `:updates` row); the installer still comes only from the official release feed and is checked against its `latest.yml`.
+- **An inbox run can use other connectors** you have allowed in your own Claude Code settings (Stripe, Linear, …): Romulus denies the ones it knows about, not a list it can't see.
+
 ## Design points worth knowing
 
 - **Final actions are locked in code**, not just in the prompt: the agent browser refuses buy, submit, send, book, delete and the Enter key until the user has said yes in the task.

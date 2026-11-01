@@ -167,7 +167,7 @@ function cardsStrip(t){
     if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
     const ph=el('div','mini-pic');
-    if(it.image){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+    if(it.image&&/^https:\/\//i.test(String(it.image))){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
       im.onerror=function(){ ph.textContent=it.name.charAt(0); im.remove(); }; ph.appendChild(im); }
     else ph.textContent=it.name.charAt(0);
     c.appendChild(ph);

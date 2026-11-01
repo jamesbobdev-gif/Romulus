@@ -154,7 +154,8 @@ function logAction(what, extra) {
 // pressing Enter, in any spelling Playwright accepts ("Enter", "NumpadEnter", "Control+Enter"), or Space (which
 // presses a focused button just the same), or typing with submit, or typing key by key with a line break in it
 // (Playwright presses Enter for the line break)
-const pressesEnter = (name, a) => (name === 'browser_press_key' && /(^|\+)\s*((numpad)?enter|space| )\s*$/i.test(String(a.key || '')))
+// Playwright also takes a bare line break ("\n", "\r") or "Return" as the Enter key
+const pressesEnter = (name, a) => (name === 'browser_press_key' && (/[\r\n]/.test(String(a.key || '')) || /(^|\+)\s*((numpad)?enter|return|space| )\s*$/i.test(String(a.key || ''))))
   || (name === 'browser_type' && (!!a.submit || (!!a.slowly && /[\r\n]/.test(String(a.text || '')))));
 
 /* Mail guard, for Claude's runs on the desktop (TASKS_BROWSER_MAIL). The user is logged in to his mail
@@ -169,17 +170,29 @@ const pressesEnter = (name, a) => (name === 'browser_press_key' && /(^|\+)\s*((n
 const MAIL_MODE = process.env.TASKS_BROWSER_MAIL || '';
 const TAINT_FILE = process.env.TASKS_BROWSER_TAINT || '';
 const MAIL_APPROVED = process.env.TASKS_BROWSER_APPROVED === '1';
-// his private pages: mail, and the account pages that hold the same kind of thing
-const PRIVATE = ['mail.google.com', 'calendar.google.com', 'contacts.google.com', 'drive.google.com', 'myaccount.google.com',
-  'outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'outlook.cloud.microsoft', 'onedrive.live.com',
+// his mail itself: the one private place a tainted run may still type in (a search, a draft)
+const MAIL = ['mail.google.com', 'outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'outlook.cloud.microsoft',
   'mail.yahoo.com', 'mail.proton.me', 'www.icloud.com'];
+// his private pages: mail, and the account, file and document pages that hold the same kind of thing (logged in)
+const PRIVATE = MAIL.concat(['calendar.google.com', 'contacts.google.com', 'drive.google.com', 'docs.google.com', 'sheets.google.com',
+  'slides.google.com', 'keep.google.com', 'photos.google.com', 'pay.google.com', 'passwords.google.com', 'myaccount.google.com',
+  'myactivity.google.com', 'takeout.google.com', 'onedrive.live.com', 'teams.microsoft.com', 'sharepoint.com', 'office.com', 'microsoft365.com']);
 const LOGIN = ['accounts.google.com', 'login.microsoftonline.com', 'login.live.com', 'login.yahoo.com', 'account.proton.me'];
 const isPrivate = (url) => hostAllowed(url, PRIVATE);
+const isMail = (url) => hostAllowed(url, MAIL);
 const mailSide = (url) => /^(about:blank|chrome-error:)/.test(String(url)) || hostAllowed(url, PRIVATE.concat(LOGIN));
+// on a private page without a yes: nothing that hands his things to someone else or changes how his mail is handled
+const PRIVATE_FINAL = /\b(share|forward|archive|block|mute|report|spam|trash|invite|grant|allow|create (a )?(filter|rule)|apply (a )?(filter|rule)|move to|label|mark (as|all)|export|download|make (a )?copy|publish|get (shareable )?link|copy link|add (people|member|user)|change (owner|permission)|remove access)\b/i;
+/* Tainted = this run has seen his mail. Kept in this process and in TASKS_BROWSER_TAINT: the store checkers
+   (shop1..3) are separate launcher processes on the same browser, so they read the file too, or a run could
+   open mail in one and carry it off through another. The app deletes the file before each run. */
 let tainted = false;
+const fileTainted = () => { try { return !!TAINT_FILE && require('fs').existsSync(TAINT_FILE); } catch (e) { return false; } };
+const isTainted = () => tainted || fileTainted();
 function taint(url) {
   if (tainted) return;
   tainted = true;
+  if (fileTainted()) return; // another launcher of this run already marked it
   logAction('opened mail', { url: String(url).slice(0, 200) });
   try { if (TAINT_FILE) require('fs').writeFileSync(TAINT_FILE, JSON.stringify({ url: String(url).slice(0, 200), at: Date.now() })); } catch (e) {}
 }
@@ -197,7 +210,7 @@ function mailRefusal(msg, here) {
   }
   if (here && isPrivate(here)) taint(here); // e.g. a tab left on his inbox
   if (to && isPrivate(to)) { taint(to); return null; }
-  if (!tainted) return null;
+  if (!isTainted()) return null;
   const why = 'This run has opened the user\'s mail, so it can no longer use other sites (a page could have asked for his mail to be sent somewhere). ';
   if (to && !mailSide(to)) return why + 'Finish the mail part and say in your note what is left; the rest runs next time.';
   if (TYPING.has(name) && here && !mailSide(here)) return why + 'This page (' + here.slice(0, 80) + ') is outside his mail.';
@@ -206,6 +219,16 @@ function mailRefusal(msg, here) {
     if (FINAL.test(label)) return 'Not without a yes: "' + label.trim() + '" looks like Send or another final step. List exactly what you will send in your note and ask the user to reply yes.';
     if (pressesEnter(name, a))
       return 'Not without a yes: Enter can send. Ask the user to reply yes first.';
+    // his files, contacts, calendar and account pages: a run may read them, but sharing a file, forwarding, making a
+    // mail filter or inviting someone is as final as Send, and typing there (a new address to share with) has no
+    // place without a yes. Mail itself still takes a search or a draft.
+    if (here && isPrivate(here) && !isMail(here)) {
+      if (name === 'browser_click' && PRIVATE_FINAL.test(label)) return 'Not without a yes: "' + label.trim() + '" on ' + here.slice(0, 60) + ' shares, moves or hands over his things. Say in your note exactly what it would do and ask the user to reply yes.';
+      if (name === 'browser_type' || name === 'browser_fill_form' || name === 'browser_select_option' || name === 'browser_drag')
+        return 'Not without a yes: nothing is typed or changed on his files, contacts or account pages (' + here.slice(0, 60) + ') in a run that has seen his mail. Read what you need and ask the user to reply yes for any change.';
+    } else if (name === 'browser_click' && PRIVATE_FINAL.test(label) && /\b(forward|filter|rule|block|report|spam|share|invite)\b/i.test(label)) {
+      return 'Not without a yes: "' + label.trim() + '" forwards, shares or changes how his mail is handled. Say in your note exactly what it would do and ask the user to reply yes.';
+    }
   }
   return null;
 }
@@ -323,9 +346,12 @@ function buyRefusal(msg, here) {
   // Amazon's "Buy Now" can order in one tap, skipping the review page he said yes to: never, yes or not
   if (name === 'browser_click' && /\bbuy now\b/i.test(labelOf(a.target || a.ref, a.element)) && /amazon\./i.test(here || ''))
     return 'Not "Buy Now": it skips the review page. Tap Add to Cart, then go through checkout.';
-  // his yes was about particular sites (TASKS_BROWSER_APPROVED_HOSTS): the order button is unlocked there only
-  const approved = !spent && ((MAIL_APPROVED && (!APPROVED_HOSTS.length || hostAllowed(String(here || ''), APPROVED_HOSTS))) || (lockState() || {}).approved === true);
-  const again = spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.' : '';
+  // his yes was about particular sites (TASKS_BROWSER_APPROVED_HOSTS): the order button is unlocked there only. No
+  // sites known = the yes unlocks nothing: a page could otherwise send the run anywhere and spend the yes there.
+  const approved = !spent && ((MAIL_APPROVED && APPROVED_HOSTS.length > 0 && hostAllowed(String(here || ''), APPROVED_HOSTS)) || (lockState() || {}).approved === true);
+  const again = spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.'
+    : MAIL_APPROVED && !APPROVED_HOSTS.length ? ' His yes named no site: stop on the page where the final step is, say its address in your note, and ask again.'
+    : MAIL_APPROVED && here && !hostAllowed(String(here), APPROVED_HOSTS) ? ' His yes was about ' + APPROVED_HOSTS.slice(0, 3).join(', ') + ', not this site.' : '';
   if (name === 'browser_click' && !approved && BUY.test(labelOf(a.target || a.ref, a.element)))
     return 'Not without a yes: this places the order. List the items, total and time slot in your note and ask the user to reply yes.' + again;
   // a job application (or any other form): "Submit" sends it, and waits for his yes the same way
@@ -451,4 +477,4 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests
+else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; } }; // tests

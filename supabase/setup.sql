@@ -31,9 +31,13 @@ create table if not exists public.sync_settings (
   free_quota_bytes         bigint not null default 25 * 1024 * 1024,
   writes_per_minute        int    not null default 120,
   new_accounts_per_ip_hour int    not null default 10,
-  max_total_bytes          bigint not null default 6 * 1024 * 1024 * 1024::bigint
+  max_total_bytes          bigint not null default 6 * 1024 * 1024 * 1024::bigint,
+  ip_pepper                text   not null default md5(random()::text || clock_timestamp()::text || random()::text) -- so a stored IP hash can't be reversed
 );
 insert into public.sync_settings (id) values (true) on conflict (id) do nothing;
+alter table public.sync_settings add column if not exists ip_pepper text;
+update public.sync_settings set ip_pepper = md5(random()::text || clock_timestamp()::text || random()::text) where ip_pepper is null;
+alter table public.sync_settings alter column ip_pepper set not null;
 alter table public.sync_settings enable row level security;
 
 create table if not exists public.sync_accounts (
@@ -55,6 +59,15 @@ create table if not exists public.sync_new_accounts (
   primary key (ip_hash, hour)
 );
 alter table public.sync_new_accounts enable row level security;
+
+-- photo uploads per network and hour (the agent-attachments policy below)
+create table if not exists public.sync_upload_tries (
+  ip_hash text not null,
+  hour    timestamptz not null,
+  n       int not null default 0,
+  primary key (ip_hash, hour)
+);
+alter table public.sync_upload_tries enable row level security;
 
 -- ───────────── reading and writing a list ─────────────
 -- a list's live-update channel: a hash of its key, so hearing "changed" needs the key but never shows it
@@ -80,6 +93,15 @@ as $$
   where length(p_sync_key) >= 16;
 $$;
 
+-- End-to-end encrypted sync (renderer/js/sync-crypto.js): a device that moves its lists to v2 leaves {"moved":"v2"}
+-- under the old key, and from then on that row takes no write but another moved marker, so an older build can't
+-- put the list back in the clear on top of it.
+create or replace function public.sync_is_moved(p_sync_key text)
+returns boolean
+language sql stable
+set search_path = public
+as $$ select coalesce((select doc->>'moved' = 'v2' from public.tasks_sync where sync_key = p_sync_key), false) $$;
+
 -- ───────────── limits per account ─────────────
 create or replace function public.sync_account_of(p_sync_key text)
 returns text
@@ -90,19 +112,27 @@ as $$ select encode(sha256(convert_to(regexp_replace(p_sync_key, '^tk_(work_|age
 create or replace function public.sync_doc_size(p_doc jsonb)
 returns bigint
 language sql immutable
+set search_path = public
 as $$ select coalesce(octet_length(p_doc::text), 0)::bigint $$;
 
--- hash of the caller's IP from the request PostgREST is answering; null when there is none (SQL editor, service role)
+-- hash of the caller's IP from the request PostgREST is answering; null when there is none (SQL editor, service role).
+-- Only headers the edge sets are trusted: cf-connecting-ip (overwritten by the edge whatever the client sent) or the
+-- LAST x-forwarded-for entry (the one the nearest trusted hop appended; earlier ones are the client's own claim).
+-- Never x-real-ip or the first entry: a client could pick those and so look like a new network on every request.
+-- Peppered with a per-project secret, so the stored hash can't be turned back into the address.
 create or replace function public.sync_caller_ip_hash()
 returns text
 language plpgsql stable
 set search_path = public
 as $$
-declare h json; ip text;
+declare h json; ip text; xff text; pepper text;
 begin
   begin h := nullif(current_setting('request.headers', true), '')::json; exception when others then h := null; end;
-  ip := nullif(trim(coalesce(h->>'cf-connecting-ip', h->>'x-real-ip', split_part(h->>'x-forwarded-for', ',', 1))), '');
-  return case when ip is null then null else encode(sha256(convert_to(ip, 'UTF8')), 'hex') end;
+  xff := h->>'x-forwarded-for';
+  ip := nullif(trim(coalesce(h->>'cf-connecting-ip', case when xff is null then null else split_part(xff, ',', array_length(string_to_array(xff, ','), 1)) end)), '');
+  if ip is null then return null; end if;
+  select s.ip_pepper into pepper from public.sync_settings s where s.id;
+  return encode(sha256(convert_to(coalesce(pepper, '') || '|' || ip, 'UTF8')), 'hex');
 end $$;
 
 -- every write to tasks_sync, from any path (the functions, the edge functions' service role), keeps the
@@ -184,10 +214,11 @@ end $$;
 
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours;
--- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
--- can't fill the table (supabase/migrations/20261028_sync_limits.sql), and sync_guard has to let the write through:
--- false is also the answer for an account that is full or saving too often (sync_usage says which).
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours,
+-- :worker, :updates; the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key
+-- alone can't fill the table (supabase/migrations/20261028_sync_limits.sql), a row moved to v2 takes nothing but another
+-- moved marker, and sync_guard has to let the write through: false is also the answer for an account that is full or
+-- saving too often (sync_usage says which).
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
 -- still the version read (updated_at unchanged). false = someone else wrote in between: read and merge again.
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
@@ -197,8 +228,9 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
+  if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
   if p_prev is null then
     insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now()) on conflict (sync_key) do nothing;
@@ -216,8 +248,9 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
+  if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
   insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now())
     on conflict (sync_key) do update set doc = excluded.doc, updated_at = now();
@@ -232,7 +265,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then
@@ -248,14 +281,17 @@ begin
          when coalesce(cnt, 0) >= s.new_accounts_per_ip_hour then 'new_accounts' end;
 end $$;
 
--- the phone widget ticks a task off by its id
+-- the phone widget ticks a task off by its id (a key shaped like the app's, an existing row, and the same rate guard)
 create or replace function public.widget_complete_task(p_sync_key text, p_task_id text)
 returns boolean
 language plpgsql security definer
 set search_path = public
 as $$
-declare n int;
+declare n int; d jsonb;
 begin
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}$' or p_task_id is null or length(p_task_id) > 80 then return false; end if;
+  select doc into d from public.tasks_sync where sync_key = p_sync_key;
+  if not found or public.sync_guard(p_sync_key, d) is not null then return false; end if;
   update public.tasks_sync
      set doc = jsonb_set(doc, '{tasks}', (
            select jsonb_agg(case when t->>'id' = p_task_id
@@ -280,9 +316,12 @@ returns boolean
 language plpgsql security definer
 set search_path = public
 as $$
-declare n int;
+declare n int; d jsonb;
 begin
-  if p_sync_key not like 'tk_agent_%' or p_lane not in ('claude', 'local') then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_agent_[A-Za-z0-9_-]{13,}$' or p_lane not in ('claude', 'local')
+     or p_task_id is null or length(p_task_id) > 80 then return false; end if;
+  select doc into d from public.tasks_sync where sync_key = p_sync_key;
+  if not found or public.sync_guard(p_sync_key, d) is not null then return false; end if;
   update public.tasks_sync
      set doc = jsonb_set(doc, '{tasks}', (
            select jsonb_agg(case when t->>'id' = p_task_id
@@ -335,6 +374,8 @@ revoke all on table public.tasks_sync from anon, authenticated;
 revoke all on table public.app_secrets from anon, authenticated;
 
 revoke all on function public.sync_topic_of(text) from public;
+revoke all on function public.sync_is_moved(text) from public;
+revoke execute on function public.sync_is_moved(text) from anon, authenticated;
 revoke all on function public.sync_get(text, timestamptz) from public;
 revoke all on function public.sync_put(text, jsonb, timestamptz) from public;
 revoke all on function public.sync_set(text, jsonb) from public;
@@ -346,7 +387,7 @@ revoke execute on function public.tasks_sync_broadcast(), public.sync_topic_of(t
 grant execute on function public.sync_get(text, timestamptz), public.sync_put(text, jsonb, timestamptz), public.sync_set(text, jsonb),
   public.widget_complete_task(text, text), public.agent_claim_task(text, text, text, text) to anon, authenticated, service_role;
 
-revoke all on table public.sync_settings, public.sync_accounts, public.sync_new_accounts from anon, authenticated;
+revoke all on table public.sync_settings, public.sync_accounts, public.sync_new_accounts, public.sync_upload_tries from anon, authenticated;
 revoke all on function public.sync_account_of(text), public.sync_doc_size(jsonb), public.sync_caller_ip_hash(),
   public.tasks_sync_count_bytes(), public.sync_guard(text, jsonb), public.sync_usage(text) from public;
 revoke execute on function public.sync_account_of(text), public.sync_doc_size(jsonb), public.sync_caller_ip_hash(),
@@ -356,10 +397,137 @@ grant execute on function public.sync_usage(text) to anon, authenticated, servic
 -- ───────────── photo attachments ─────────────
 -- Photos attached to Agent tasks (renderer/js/agent-chat.js) and the mini PC's "I'm stuck" screenshots
 -- (agent/qwen-browser.js) go in a public bucket, small images only. Uploads land in a folder named by a hash
--- of the agent key (tk_agent_att_…), never the key itself: the addresses end up in task history.
+-- of the agent key (tk_agent_att_<40 hex>), never the key itself: the addresses end up in task history.
+-- The anon key alone can't use the bucket as free hosting: the name must be shaped like the app's, a folder
+-- holds at most 300 files, and one network uploads at most 60 an hour.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
   values ('agent-attachments', 'agent-attachments', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
   on conflict (id) do nothing;
+create or replace function public.attachment_upload_allowed(p_name text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare folder text; cnt int;
+begin
+  if p_name is null or p_name !~ '^tk_agent_att_[0-9a-f]{40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$' then return false; end if;
+  folder := split_part(p_name, '/', 1);
+  begin
+    select count(*) into cnt from storage.objects where bucket_id = 'agent-attachments' and name like folder || '/%';
+    if cnt >= 300 then return false; end if;
+  exception when others then null; end; -- cannot read the bucket's table here: the per-network cap still holds
+  delete from public.sync_upload_tries where hour < now() - interval '1 day';
+  insert into public.sync_upload_tries as u (ip_hash, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), date_trunc('hour', now()), 1)
+    on conflict (ip_hash, hour) do update set n = u.n + 1
+    returning u.n into cnt;
+  return cnt <= 60;
+end $$;
+revoke all on function public.attachment_upload_allowed(text) from public;
+grant execute on function public.attachment_upload_allowed(text) to anon, authenticated, service_role;
 drop policy if exists "agent attachments: app can upload" on storage.objects;
 create policy "agent attachments: app can upload" on storage.objects for insert to anon
-  with check (bucket_id = 'agent-attachments' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  with check (bucket_id = 'agent-attachments' and public.attachment_upload_allowed(name));
+
+-- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
+-- A device that already syncs shows a 12-character code (60 random bits) and leaves its sync code here, sealed; the
+-- new device types the code and takes it. The code never reaches the server: both devices stretch it (PBKDF2-SHA256,
+-- 600,000 rounds) into a lookup id and an AES-256-GCM key. A code lasts 10 minutes and works once; guesses and new
+-- codes are limited per network.
+create table if not exists public.sync_pairs (
+  id text primary key check (id ~ '^[0-9a-f]{64}$'),
+  sealed text check (sealed is null or length(sealed) <= 8192),
+  watch_hash text not null,
+  created_at timestamptz not null default now(),
+  taken_at timestamptz
+);
+alter table public.sync_pairs enable row level security;
+create table if not exists public.sync_pair_tries (
+  ip_hash text not null,
+  kind text not null check (kind in ('put', 'take')),
+  hour timestamptz not null,
+  n int not null default 0,
+  primary key (ip_hash, kind, hour)
+);
+alter table public.sync_pair_tries enable row level security;
+revoke all on table public.sync_pairs, public.sync_pair_tries from anon, authenticated;
+
+create or replace function public.sync_pair_allow(p_kind text, p_max int)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare cnt int;
+begin
+  delete from public.sync_pair_tries where hour < now() - interval '1 day';
+  insert into public.sync_pair_tries as t (ip_hash, kind, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), p_kind, date_trunc('hour', now()), 1)
+    on conflict (ip_hash, kind, hour) do update set n = t.n + 1
+    returning n into cnt;
+  return cnt <= p_max;
+end $$;
+
+create or replace function public.sync_pair_put(p_id text, p_sealed text, p_watch text)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if p_id is null or p_id !~ '^[0-9a-f]{64}$' or p_watch is null or p_watch !~ '^[0-9a-f]{64}$'
+     or p_sealed is null or length(p_sealed) > 8192 then return 'bad'; end if;
+  if not public.sync_pair_allow('put', 20) then return 'rate'; end if;
+  delete from public.sync_pairs where created_at < now() - interval '1 hour';
+  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 500 then return 'busy'; end if;
+  insert into public.sync_pairs (id, sealed, watch_hash) values (p_id, p_sealed, encode(sha256(convert_to(p_watch, 'UTF8')), 'hex'))
+    on conflict (id) do nothing;
+  return case when found then null else 'bad' end;
+end $$;
+
+create or replace function public.sync_pair_take(p_id text)
+returns table(sealed text, refused text)
+language plpgsql security definer
+set search_path = public
+as $$
+declare s text;
+begin
+  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
+  if p_id is null or p_id !~ '^[0-9a-f]{64}$' then return; end if;
+  select p.sealed into s from public.sync_pairs p
+   where p.id = p_id and p.taken_at is null and p.sealed is not null and p.created_at > now() - interval '10 minutes'
+   for update;
+  if s is null then return; end if;
+  update public.sync_pairs set sealed = null, taken_at = now() where id = p_id;
+  return query select s, null::text;
+end $$;
+
+create or replace function public.sync_pair_state(p_id text, p_watch text)
+returns text
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare r public.sync_pairs;
+begin
+  select * into r from public.sync_pairs
+   where id = p_id and watch_hash = encode(sha256(convert_to(coalesce(p_watch, ''), 'UTF8')), 'hex');
+  if not found then return 'gone'; end if;
+  if r.taken_at is not null then return 'taken'; end if;
+  if r.created_at <= now() - interval '10 minutes' then return 'expired'; end if;
+  return 'waiting';
+end $$;
+
+create or replace function public.sync_pair_cancel(p_id text, p_watch text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  delete from public.sync_pairs
+   where id = p_id and watch_hash = encode(sha256(convert_to(coalesce(p_watch, ''), 'UTF8')), 'hex');
+  return found;
+end $$;
+
+revoke all on function public.sync_pair_allow(text, int), public.sync_pair_put(text, text, text), public.sync_pair_take(text),
+  public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) from public;
+revoke execute on function public.sync_pair_allow(text, int) from anon, authenticated;
+grant execute on function public.sync_pair_put(text, text, text), public.sync_pair_take(text),
+  public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) to anon, authenticated, service_role;

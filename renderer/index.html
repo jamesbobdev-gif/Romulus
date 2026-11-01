@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<!-- Only the app's own scripts run here, and the page talks only to https sites (the sync project, pictures), the
+     agent browser's localhost socket (Watch) and the fonts. Text from the AI and from web pages is shown on this page,
+     so an injected <script> or a javascript: link must have nothing to run with. mobile/prepare-www.js drops this
+     line for the phone build (Capacitor's bridge is an inline script). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https: wss: ws://127.0.0.1:* http://127.0.0.1:* ws://localhost:* http://localhost:*; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Romulus</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
