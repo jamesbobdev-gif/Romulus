@@ -63,3 +63,17 @@ test('no sync set up: nothing to beat or read', async () => {
   assert.strictEqual(await worker.beat(null, {}), false);
   assert.strictEqual(await worker.present(null), null);
 });
+
+test('he hears once when the worker goes quiet and once when it comes back; nothing before it ever ran', () => {
+  const now = Date.now(), doc = (ago) => ({ v: 1, at: now - ago, name: 'Lupa Au Palatine', host: 'lupa' });
+  assert.strictEqual(worker.stateNotice(null, null, now).is, 'none');
+  assert.strictEqual(worker.stateNotice('none', null, now).title, null); // no worker set up: never a warning
+  assert.strictEqual(worker.stateNotice('up', doc(60 * 1000), now).title, null); // still fresh
+  const quiet = worker.stateNotice('up', doc(worker.FRESH_MS + 60 * 1000), now);
+  assert.strictEqual(quiet.is, 'quiet');
+  assert.strictEqual(quiet.title, 'Lupa Au Palatine stopped answering');
+  assert.match(quiet.body, /Last heard 7 min ago/);
+  assert.strictEqual(worker.stateNotice('quiet', doc(worker.FRESH_MS + 5 * 60 * 1000), now).title, null); // said once
+  assert.strictEqual(worker.stateNotice('quiet', doc(30 * 1000), now).title, 'Lupa Au Palatine is back');
+  assert.strictEqual(worker.stateNotice('none', doc(30 * 1000), now).title, null); // first heartbeat ever: no fanfare
+});

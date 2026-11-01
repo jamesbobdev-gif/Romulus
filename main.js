@@ -3,7 +3,7 @@
    agent/  the Agent tab: routing, the Claude runner, the mini PC (local) lane, and their helpers
    Each module gets what it shares with the others (config, the log, the window…) through init(ctx)
    and lists its IPC calls in `handlers`, which are registered here behind the trusted-page guard. */
-const { app, ipcMain, powerMonitor, powerSaveBlocker, safeStorage, shell } = require('electron');
+const { app, ipcMain, Notification, powerMonitor, powerSaveBlocker, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const calendars = require('./agent/calendars');
@@ -114,13 +114,21 @@ const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
 const { scheduleLocalRun } = localLane;
 let situationNow = null;
+let workerWas = null; // the local model's computer as last seen from here: 'none' | 'up' | 'quiet'
 async function refreshSituation() {
   const was = JSON.stringify(situationNow);
   const local = await localLane.localStatus().catch(() => ({ online: false }));
   const claude = usageMeter.snapshot().claude || {};
   // the local model's own computer (agent/worker.js) routes as if the cloud lane is up: his other computer runs
   // it, and the two must send the same tasks to the local model, or a task could wait for a lane nobody runs here
-  const here = require('./agent/worker').isWorker(readConfig());
+  const workerMod = require('./agent/worker');
+  const here = workerMod.isWorker(readConfig());
+  // it went quiet or came back: say so once, rather than tasks just waiting (the first look only sets where it stands)
+  if (!here) {
+    const n = workerMod.stateNotice(workerWas, workerMod.lastDoc());
+    if (workerWas !== null && n.title && Notification.isSupported()) new Notification({ title: n.title, body: n.body }).show();
+    workerWas = n.is;
+  }
   situationNow = { localUp: !!(local.configured && local.online), cloudUp: here || ai.cloudOrder().length > 0,
     claudeTight: !here && (!!claude.out || claude.pct >= 0.9 || claude.week >= 0.95) };
   routingMod.noteSituation(situationNow);

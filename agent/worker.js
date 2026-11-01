@@ -53,6 +53,24 @@ async function present(a, { now = Date.now() } = {}) {
 }
 // what present() last found, without a network call (for the run schedulers, which can't wait)
 const lastSeen = (now = Date.now()) => freshWorker(seen.doc, now);
+// the worker as another computer sees it: 'none' (no worker has ever said it's there), 'up' or 'quiet'
+function workerState(doc, now = Date.now()) {
+  if (!doc || typeof doc !== 'object' || !doc.at) return 'none';
+  return freshWorker(doc, now) ? 'up' : 'quiet';
+}
+/* What to tell him when the worker goes quiet or comes back (pure, for tests): {is, title, body}, with
+   title null when nothing changed. A worker that's quiet is off, asleep, crashed or off the network. */
+function stateNotice(was, doc, now = Date.now()) {
+  const is = workerState(doc, now);
+  const name = is === 'none' ? '' : String(doc.name || doc.host || 'The local model').slice(0, 60);
+  if (was === 'up' && is === 'quiet') {
+    const min = Math.max(1, Math.round((now - Number(doc.at)) / 60000));
+    return { is, title: name + ' stopped answering', body: 'Last heard ' + min + ' min ago. Local tasks wait for it, or run here if this computer can reach it.' };
+  }
+  if (was === 'quiet' && is === 'up') return { is, title: name + ' is back', body: 'It’s taking local tasks again.' };
+  return { is, title: null, body: null };
+}
+const lastDoc = () => seen.doc;
 const forget = () => { seen = { at: 0, doc: null }; };
 
 /* Which queued local-lane tasks this computer should start (pure, for tests):
@@ -66,4 +84,4 @@ function share(tasks, { worker, workerUp, isMoney, now = Date.now() }) {
   return tasks;
 }
 
-module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, present, lastSeen, forget, share };
+module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, present, lastSeen, forget, share, workerState, stateNotice, lastDoc };
