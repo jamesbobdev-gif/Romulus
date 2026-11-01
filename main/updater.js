@@ -3,6 +3,8 @@
    By default the app asks first: when a new version is out, the window shows "Romulus 1.0.9 is out" with
    Update / Not now (renderer/js/update-desktop.js) and the tray menu offers it too. Update downloads it,
    then the window offers "Restart now". Not now skips that version until the next one comes out.
+   The answer is shared through sync (renderer/js/update-sync.js): Update on one device updates the others
+   without asking (they download it and install on quit or when idle), and Not now holds for all of them.
    Settings → Updates can switch to "Automatically": the old way, downloading quietly in the background.
    Either way, a downloaded version installs on the next quit, or once the computer has sat idle a while
    and no agent work is running (the app lives in the tray and is rarely quit), or right away from
@@ -30,9 +32,23 @@ function shouldInstallNow({ idleSec, busy }) {
 // 'ask' (the default) or 'auto'
 function mode(cfg) { return cfg && cfg.updates === 'auto' ? 'auto' : 'ask'; }
 
-// what to do with a version that just turned up: download it, offer it, or nothing (he said Not now to it)
+// 1.0.10 is newer than 1.0.9 (the same as renderer/js/update-sync.js)
+function versionNewer(candidate, current) {
+  const a = String(candidate || '').replace(/^v/i, '').split('.').map(Number);
+  const b = String(current || '').replace(/^v/i, '').split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0, y = b[i] || 0;
+    if (isNaN(x) || isNaN(y)) return false;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+// what to do with a version that just turned up: download it (automatic, or he said Update to it here or on
+// another device), offer it, or nothing (he said Not now to it)
 function onAvailable(version, cfg) {
   if (mode(cfg) === 'auto') return 'download';
+  if (cfg && cfg.updateYes && !versionNewer(version, cfg.updateYes)) return 'download';
   return cfg && cfg.updateSkip === version ? 'skip' : 'offer';
 }
 
@@ -89,10 +105,13 @@ function start() {
     ctx.agentLog('update: ' + (e && e.message || e));
     if (downloading) { offered = downloading; downloading = null; tell(); } // the download broke: offer it again
   });
-  const check = () => autoUpdater.checkForUpdates().catch(() => {}); // offline: try again next time
-  setTimeout(check, 60 * 1000);
-  setInterval(check, CHECK_EVERY_MS);
+  started = true;
+  setTimeout(checkNow, 60 * 1000);
+  setInterval(checkNow, CHECK_EVERY_MS);
 }
+
+let started = false;
+function checkNow() { if (started) updater().checkForUpdates().catch(() => {}); } // offline: try again next time
 
 function download(version) {
   downloading = version; percent = 0;
@@ -104,7 +123,27 @@ function download(version) {
 // he said Update
 function accept() {
   if (!offered || downloading || ready) return state();
+  const cfg = ctx.readConfig();
+  if (!cfg.updateYes || versionNewer(offered, cfg.updateYes)) { cfg.updateYes = offered; ctx.writeConfig(cfg); }
   download(offered);
+  return state();
+}
+
+// the answer he gave on any device, from sync ({ yes, no }: renderer/js/update-sync.js)
+function shared(doc) {
+  if (!doc) return state();
+  const cfg = ctx.readConfig();
+  let changed = false;
+  if (doc.yes && (!cfg.updateYes || versionNewer(doc.yes, cfg.updateYes))) { cfg.updateYes = String(doc.yes); changed = true; }
+  if (doc.no && doc.no !== cfg.updateSkip) { cfg.updateSkip = String(doc.no); changed = true; }
+  if (changed) ctx.writeConfig(cfg);
+  if (offered && !downloading && !ready) {
+    const what = onAvailable(offered, cfg);
+    if (what === 'download') { ctx.agentLog('update: ' + offered + ' approved on another device'); download(offered); }
+    else if (what === 'skip') { offered = null; tell(); }
+  } else if (!offered && !downloading && !ready && cfg.updateYes && versionNewer(cfg.updateYes, ctx.version)) {
+    checkNow(); // a newer version he said yes to that this computer hasn't seen yet: look now, not in 4 hours
+  }
   return state();
 }
 
@@ -131,6 +170,7 @@ const handlers = {
   'update:state': () => state(),
   'update:accept': () => accept(),
   'update:skip': () => skip(),
+  'update:shared': (_e, doc) => shared(doc && typeof doc === 'object' ? { yes: doc.yes, no: doc.no } : null),
   'update:install': () => { installNow(); return state(); },
   'update:get-mode': () => mode(ctx.readConfig()),
   'update:set-mode': (_e, m) => {
@@ -142,4 +182,4 @@ const handlers = {
   },
 };
 
-module.exports = { init, start, installNow, shouldInstallNow, mode, onAvailable, handlers };
+module.exports = { init, start, installNow, shouldInstallNow, mode, onAvailable, versionNewer, shared, handlers };

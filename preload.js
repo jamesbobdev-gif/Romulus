@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld('desktop', {
   updateState: () => ipcRenderer.invoke('update:state'),
   updateAccept: () => ipcRenderer.invoke('update:accept'),
   updateSkip: () => ipcRenderer.invoke('update:skip'),
+  updateShared: (doc) => ipcRenderer.invoke('update:shared', doc),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updateGetMode: () => ipcRenderer.invoke('update:get-mode'),
   updateSetMode: (m) => ipcRenderer.invoke('update:set-mode', m),

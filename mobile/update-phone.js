@@ -7,7 +7,10 @@
    version baked into this build (window.ROMULUS_VERSION) it shows "Romulus 1.0.5 is out" with Update.
    Update hands the APK to the system browser, which downloads it; tapping the finished download installs
    it over this copy (the phone asks once to allow installs from the browser). Tasks and settings stay.
-   "Later" hides the banner for that version until the next one. */
+   "Later" hides the banner for that version until the next one.
+   The answer is shared with his other devices (renderer/js/update-sync.js): Update here makes the computers
+   update too, and an Update said on a computer shows this banner even after a Later here (Android still
+   needs his tap to install). A Not now said elsewhere keeps the banner away. */
 (function () {
   var cap = window.Capacitor;
   var version = window.ROMULUS_VERSION, releases = window.ROMULUS_RELEASES;
@@ -38,9 +41,16 @@
   if (window.ROMULUS_STORE !== 'github') return;
 
   var banner = null;
-  function show(rel) {
-    if (banner) return;
-    try { if (localStorage.getItem(SKIP_KEY) === rel.version) return; } catch (e) {}
+  // what he answered on his other devices: 'yes' | 'no' | null (update-sync.js, loaded with the page)
+  function sharedAnswer(version) {
+    if (typeof updateChoiceRead !== 'function') return Promise.resolve(null);
+    return updateChoiceRead().then(function (doc) { return updateAnswer(doc, version); }).catch(function () { return null; });
+  }
+  function share(answer, version) { if (typeof updateChoiceWrite === 'function') updateChoiceWrite(answer, version); }
+
+  function show(rel, answer) {
+    if (banner || answer === 'no') return;
+    try { if (answer !== 'yes' && localStorage.getItem(SKIP_KEY) === rel.version) return; } catch (e) {}
     banner = document.createElement('div');
     banner.id = 'phoneUpdateBar';
     banner.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:9999;' +
@@ -48,16 +58,16 @@
       'color:var(--fg,#eee);border:1px solid var(--border,#444);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:14px';
     var text = document.createElement('span');
     text.style.flex = '1';
-    text.textContent = 'Romulus ' + rel.version + ' is out';
+    text.textContent = 'Romulus ' + rel.version + (answer === 'yes' ? ' is out: your other devices are updating' : ' is out');
     var later = document.createElement('button');
     later.className = 'ghost mono';
     later.textContent = 'Later';
-    later.onclick = function () { try { localStorage.setItem(SKIP_KEY, rel.version); } catch (e) {} banner.remove(); banner = null; };
+    later.onclick = function () { try { localStorage.setItem(SKIP_KEY, rel.version); } catch (e) {} share('no', rel.version); banner.remove(); banner = null; };
     var go = document.createElement('button');
     go.className = 'btn-accent';
     go.textContent = 'Update';
     // Capacitor hands off-site URLs to the system browser, which downloads the APK; tapping it installs
-    go.onclick = function () { window.location.href = rel.apkUrl || rel.page; };
+    go.onclick = function () { share('yes', rel.version); window.location.href = rel.apkUrl || rel.page; };
     banner.appendChild(text); banner.appendChild(later); banner.appendChild(go);
     document.body.appendChild(banner);
   }
@@ -68,7 +78,10 @@
     try { localStorage.setItem(LAST_KEY, String(Date.now())); } catch (e) {}
     fetch('https://api.github.com/repos/' + releases + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (json) { var rel = pickRelease(json); if (rel && isNewer(rel.version, version)) show(rel); })
+      .then(function (json) {
+        var rel = pickRelease(json);
+        if (rel && isNewer(rel.version, version)) sharedAnswer(rel.version).then(function (answer) { show(rel, answer); });
+      })
       .catch(function () {}); // offline: next time
   }
 

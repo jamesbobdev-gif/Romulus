@@ -19,7 +19,7 @@ Romulus works the moment you install it: a to-do list on your computer, nothing 
 
 **From source:** `npm install` then `npm start` (Node 22 or newer).
 
-Updates ask first: the app checks every few hours, and when a new version is out it shows **Update** / **Not now** (the tray menu offers it too). Once downloaded it installs when you quit or when the computer has been idle, or right away with **Restart now**. Settings → Updates can switch it to **Automatically**. The phone shows an **Update** banner too.
+Updates ask first: the app checks every few hours, and when a new version is out it shows **Update** / **Not now** (the tray menu offers it too). Once downloaded it installs when you quit or when the computer has been idle, or right away with **Restart now**. Your answer reaches your other devices through sync: say **Update** on one and the computers update too (the phone shows its banner, since Android needs your tap), and **Not now** holds for all of them. Settings → Updates can switch it to **Automatically**. The phone shows an **Update** banner too.
 
 ## 2. Connect an AI
 
