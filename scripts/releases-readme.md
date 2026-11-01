@@ -73,7 +73,7 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 
 **Android phone**: download `Romulus-<version>.apk` on the phone and open it (the phone asks once to allow installs from your browser). Then **⚙ Settings → Device sync** and paste the sync code copied from your computer's Settings; the lists appear.
 
-**Updates** arrive by themselves. Computers check here every few hours and install the next version when they've been idle; the tray menu has **Restart to update** if you don't want to wait. The phone shows an **Update** banner when a newer version is here; tap it, then open the finished download. (Macs can't install updates on their own until the app is signed by Apple; download the new `.dmg` meanwhile.)
+**Updates** ask first. Computers check here every few hours and, when a new version is out, offer **Update** / **Not now**; after a yes it installs on quit, when the computer is idle, or right away with **Restart now**. Settings → Updates can make it automatic. The phone shows an **Update** banner when a newer version is here; tap it, then open the finished download. (Macs can't install updates on their own until the app is signed by Apple; download the new `.dmg` meanwhile.)
 
 ---
 

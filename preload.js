@@ -122,6 +122,14 @@ contextBridge.exposeInMainWorld('desktop', {
   onFinanceLocked: (cb) => ipcRenderer.on('finance:locked', (_event, why) => cb(why)),
   onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),
   // Speak on desktop: Windows dictation; partials stream in while listening
+  // a new version: asks before updating, unless Settings says automatically (main/updater.js)
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateAccept: () => ipcRenderer.invoke('update:accept'),
+  updateSkip: () => ipcRenderer.invoke('update:skip'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateGetMode: () => ipcRenderer.invoke('update:get-mode'),
+  updateSetMode: (m) => ipcRenderer.invoke('update:set-mode', m),
+  onUpdateState: (cb) => ipcRenderer.on('update:state', (_event, s) => cb(s)),
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
   voiceStop: () => ipcRenderer.invoke('voice:stop'),
   onVoicePartial: (cb) => { const h = (_event, text) => cb(text); ipcRenderer.on('voice:partial', h); return () => ipcRenderer.removeListener('voice:partial', h); }

@@ -265,6 +265,16 @@
       <summary class="settings-label">Theme</summary>
       <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
         <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button>
+    <details class="settings-panel settings-collapse" id="updateSection" hidden>
+      <summary class="settings-label">Updates</summary>
+      <p class="settings-hint">When a new version comes out, this computer can ask you first or update on its own. Either way it installs when you quit, or when the computer has been idle and the Agent isn't working.</p>
+      <div class="settings-row" style="align-items:center">
+        <select id="updateMode" class="settings-inp" style="width:auto;margin:0">
+          <option value="ask">Ask me</option>
+          <option value="auto">Automatically</option>
+        </select>
+      </div>
+    </details>
       </div>
       <details class="settings-sub">
       <summary class="settings-label">Custom CSS (advanced)</summary>
@@ -471,3 +481,4 @@
 <script src="js/init.js"></script>
 </body>
 </html>
+<script src="js/update-desktop.js"></script>

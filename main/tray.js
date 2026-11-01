@@ -6,7 +6,7 @@ function init(c) { ctx = c; }
 
 let tray = null;
 
-let update = null; // { version, install } once a new version has downloaded (main/updater.js)
+let update = null; // { label, click }: a new version to update to or restart into (main/updater.js)
 
 function createTray() {
   const { Tray, nativeImage } = require('electron');
@@ -21,7 +21,7 @@ function buildMenu() {
   const { app, Menu } = require('electron');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Tasks', click: ctx.showWindow },
-    ...(update ? [{ label: 'Restart to update (' + update.version + ')', click: update.install }] : []),
+    ...(update ? [{ label: update.label, click: update.click }] : []),
     {
       label: 'Start when I log in',
       type: 'checkbox',
@@ -34,8 +34,8 @@ function buildMenu() {
   ]));
 }
 
-function setUpdateReady(version, install) {
-  update = { version, install };
+function setUpdate(u) {
+  update = u;
   if (tray) buildMenu();
 }
 
@@ -65,4 +65,4 @@ function refreshTrayStatus(raw) {
   tray.setToolTip(trayTip(Array.isArray(data.tasks) ? data.tasks : []));
 }
 
-module.exports = { init, createTray, refreshTrayStatus, trayTip, setUpdateReady };
+module.exports = { init, createTray, refreshTrayStatus, trayTip, setUpdate };

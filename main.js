@@ -78,7 +78,8 @@ const ctx = {
   finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked() },
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
-  onUpdateReady: (version) => trayMod.setUpdateReady(version, updater.installNow),
+  onUpdate: (u) => trayMod.setUpdate(u),
+  sendToWindow: win.sendToRenderer, // this computer's window only: an update offer isn't the mini PC's business
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
   usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater];

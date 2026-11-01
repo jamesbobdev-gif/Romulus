@@ -19,7 +19,7 @@ Romulus works the moment you install it: a to-do list on your computer, nothing 
 
 **From source:** `npm install` then `npm start` (Node 22 or newer).
 
-Updates arrive on their own: the app checks every few hours and installs the next version when your computer has been idle (the tray menu has **Restart to update**). The phone shows an **Update** banner instead.
+Updates ask first: the app checks every few hours, and when a new version is out it shows **Update** / **Not now** (the tray menu offers it too). Once downloaded it installs when you quit or when the computer has been idle, or right away with **Restart now**. Settings → Updates can switch it to **Automatically**. The phone shows an **Update** banner too.
 
 ## 2. Connect an AI
 
