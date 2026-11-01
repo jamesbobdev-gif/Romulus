@@ -72,7 +72,7 @@ contextBridge.exposeInMainWorld('desktop', {
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
-  livePages: (taskId) => ipcRenderer.invoke('live:pages', taskId),
+  livePages: (taskId, where) => ipcRenderer.invoke('live:pages', taskId, where), // where 'lupa': the local model's browser
   liveOpen: (url, taskId) => ipcRenderer.invoke('live:open', url, taskId),
   // the hub mini PC (main/hub.js): this computer as its client, over Tailscale
   hubGet: () => ipcRenderer.invoke('hub:get'),
@@ -80,7 +80,7 @@ contextBridge.exposeInMainWorld('desktop', {
   hubSave: (change) => ipcRenderer.invoke('hub:save', change),
   hubSendSettings: () => ipcRenderer.invoke('hub:send-settings'),
   hubRestart: () => ipcRenderer.invoke('hub:restart'),
-  liveStart: () => ipcRenderer.invoke('live:start'),
+  liveStart: (where) => ipcRenderer.invoke('live:start', where),
   // course calendar feeds (Blackboard / D2L iCal links) → School list
   // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)
   howtosList: () => ipcRenderer.invoke('howtos:list'),

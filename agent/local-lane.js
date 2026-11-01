@@ -567,6 +567,7 @@ async function runLocalTask(c, t) {
     // A long task also has to stay inside the context (16k tokens, ~3.2 characters each, less room for the
     // answer), or Ollama drops the oldest messages: the task itself first
     const dropped = localAnswer.fitContext(messages, { keepFull: browser ? 1 : 2, limit: (16384 - 1400) * 3.2, fixed: JSON.stringify(tools).length });
+  let wall = null; // the last page only he could get past (a sign-in, a code, a robot check): { kind, host }
     if (dropped) agentLog('local: dropped ' + dropped + ' old step(s) to stay inside the context');
     // nudges ride on the latest tool result: a new user turn makes Qwen's chat template re-render the
     // earlier turns, and the mini PC then re-reads the whole conversation (5+ minutes on a long one)
@@ -699,6 +700,14 @@ async function runLocalTask(c, t) {
           // a site it just reached: what's known about it, once
           const host = siteNotes.hostOf(page.url);
           if (host && !visited.has(host)) {
+          } else if (!r.locked && !r.failed && page.url) {
+            // a password, a code sent to his phone, a robot check: his to do, in this browser (his Human tab shows it)
+            const kind = signinWatch.wallKind(page.url, page.title, r.text);
+            if (kind) {
+              wall = { kind, host: siteNotes.hostOf(page.url) || '' };
+              show('🔑 Needs you: ' + signinWatch.WALL_NAMES[kind] + '\n', true);
+              result = r.text + '\n\n(This page wants ' + signinWatch.WALL_NAMES[kind] + ' that only he can do. Don\'t try to get past it or make up a code. Answer "needs-you" now: say what it asks for; he does it in this browser and replies.)';
+            } else if (wall && siteNotes.hostOf(page.url) === wall.host) wall = null; // got past it after all
             visited.add(host);
             const fresh = siteNotesFor([page.url], 2).filter((n) => !noted.has(n.name));
             fresh.forEach((n) => noted.add(n.name));
@@ -729,19 +738,29 @@ async function runLocalTask(c, t) {
     else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on the local model: the site is slow or the local model is busy (low on memory).',
       fix: 'Reply “try again” in a bit, or switch it to Claude.' };
   }
-  // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task)
-  if (final.status !== 'done' && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t)) {
+  // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task).
+  // Not one waiting on his password or code: that's his to do, in this browser
+  if (final.status !== 'done' && !(stuck && stuck.verify) && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
     agentLog('local: couldn’t do it, passing it to the cloud AIs');
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160) }]);
     return;
   }
   if (money) { final.howto = null; final.site_tips = null; final.pref = null; } // nothing from his money kept where Claude reads
   if (!stuck && typeof final.howto === 'string') learnHowto(t, final.howto, [...visited].map((h) => 'https://' + h).concat(taskLinks(t)), 'local');
-  // a picture of what the browser showed, when it stopped there
-  const shot = stuck && browser ? await miniPcScreenshot().catch(() => null) : null;
+  // a picture of what the browser showed whenever it stopped short (stuck or waiting on him): the Agent tab
+  // shows it on top when the live browser can't be reached
+  const shot = final.status !== 'done' && browser ? await miniPcScreenshot().catch(() => null) : null;
   // tips it left about sites it actually worked on in the browser, for next time
   for (const tip of (Array.isArray(final.site_tips) ? final.site_tips : []).slice(0, 3)) {
     const host = [...visited].find((h) => tip && siteNotes.covers(String(tip.site || '').toLowerCase().replace(/^https?:\/\/|^www\.|\/.*$/g, ''), h));
+    // a password, MFA code or robot check in its way: the browser goes on top of his Human tab for him to do
+    // it there (renderer/js/agent-live-view.js). It said so itself counts too, when it used the browser
+    const saidWall = looked && signinWatch.WALL_NOTE.test(JSON.stringify([final.note, final.stuck || '']));
+    if (signedOut.length || wall || saidWall) {
+      if (!stuck || !signedOut.length && wall) stuck = { reason: 'The local model needs you for ' + (wall ? signinWatch.WALL_NAMES[wall.kind] + (wall.host ? ' on ' + wall.host : '') : 'a verification step') + '.',
+        fix: 'Do that step in its browser at the top of your Human tab, then press “Done, try again”.' };
+      stuck.verify = true;
+    }
     try { if (host && siteNotes.learn(siteNoteDirs()[1], host, tip.tip, new Date().toISOString().slice(0, 10))) agentLog('local: learned a tip about ' + host); } catch (e) {}
   }
   // options only with links it was actually shown: a made-up link is worse than none. Options it wrote

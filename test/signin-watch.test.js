@@ -82,3 +82,20 @@ test('the daily check opens each school site, reads where it landed, and closes 
     assert.ok(!sw.due(dir, new Date(new Date().setHours(12))));
   } finally { server.close(); }
 });
+
+test('pages only he can get past: a code sent to his phone, a robot check, a password box', () => {
+  assert.strictEqual(sw.wallKind('https://www.amazon.com/ap/mfa', 'Two-Step Verification', 'Enter the code we sent to your phone'), 'code');
+  assert.strictEqual(sw.wallKind('https://shop.example.com/x', 'Check', '- textbox "Enter the 6-digit code"\nWe texted a code to (•••) •••-12'), 'code');
+  assert.strictEqual(sw.wallKind('https://site.com/', 'Just a moment...', 'Verify you are human by completing the action below.'), 'robot');
+  assert.strictEqual(sw.wallKind('https://site.com/', 'Home', '- checkbox "I\'m not a robot"'), 'robot');
+  assert.strictEqual(sw.wallKind('https://www.walmart.com/account/login', 'Login', ''), 'sign-in');
+  assert.strictEqual(sw.wallKind('https://store.com/checkout', 'Checkout', '- textbox "Password" [ref=e12]'), 'sign-in');
+  assert.strictEqual(sw.wallKind('https://store.com/p/123', 'Blue mug', '- button "Add to cart"\n- link "Forgot your password?"'), null);
+  assert.strictEqual(sw.wallKind('https://news.com/a', 'How 2-factor apps work', ''), null);
+});
+
+test('what it wrote when it stopped: a code or password counts, anything else doesn\'t', () => {
+  assert.ok(sw.WALL_NOTE.test('It asked for a verification code sent to his phone.'));
+  assert.ok(sw.WALL_NOTE.test('The site wants his password.'));
+  assert.ok(!sw.WALL_NOTE.test('No showtimes left for Friday.'));
+});

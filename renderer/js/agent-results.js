@@ -116,6 +116,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(u.financeSeen)t.financeSeen=true; // The local model read his Finance for it: it never goes to a cloud AI (agent/routing.js) // a fresh answer needs a fresh look
       // it stopped for something in its way: why, what to do, and what its browser showed
       t.stuck=u.stuck&&(u.stuck.reason||u.stuck.fix)?{reason:String(u.stuck.reason||''),fix:String(u.stuck.fix||'')}:null;
+      if(t.stuck&&u.stuck.verify)t.stuck.verify=true; // a password, code or robot check: his, on top of the Human tab (agent-live-view.js)
       t.shot=u.shot&&/^https:\/\//i.test(String(u.shot))?String(u.shot):null;
       t.page=u.page&&/^https:\/\//i.test(String(u.page))?String(u.page):null; // ◉ Watch opens it
       t.reply=null; t.replyImages=null; t.repeatDue=false; t.waitUntil=null; delete t.triggered;

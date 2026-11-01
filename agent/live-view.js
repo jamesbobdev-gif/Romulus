@@ -6,6 +6,7 @@
 const { session } = require('electron');
 const { AGENT_BROWSER_PORT, agentBrowserUp, ensureAgentBrowser, closeWindowedAgentBrowser } = require('./agent-browser');
 const taskTabs = require('./task-tabs');
+const { QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, ensureQwenBrowser } = require('./qwen-browser');
 
 let ctx = null;
 const handlers = {};
@@ -15,7 +16,7 @@ const BASE = 'http://127.0.0.1:' + AGENT_BROWSER_PORT;
 function init(c) {
   ctx = c;
   const allow = () => session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['ws://127.0.0.1:' + AGENT_BROWSER_PORT + '/*'] },
+    { urls: ['ws://127.0.0.1:' + AGENT_BROWSER_PORT + '/*', 'ws://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/*'] },
     (d, cb) => {
       const fromApp = d.webContents && !d.webContents.isDestroyed() && d.webContents.getType() === 'window' && /^file:/i.test(d.webContents.getURL());
       if (fromApp) { const h = Object.assign({}, d.requestHeaders); delete h.Origin; delete h.origin; return cb({ requestHeaders: h }); }
@@ -36,7 +37,22 @@ async function pages(taskId) {
   const list = taskId ? await taskTabs.pagesFor(String(taskId)) : await fetch(BASE + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
   return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl).map(view) };
 }
-handle('live:pages', (_e, taskId) => pages(taskId));
+/* where = 'lupa': the local model's browser on the mini PC, through the SSH tunnel (agent/qwen-browser.js),
+   for the stuck task at the top of the Agent tab. Polled every 2 s, so the tunnel (an ssh that also wakes its
+   screen) is opened at most once a minute; it has no per-task tabs, so all of its tabs */
+let lupaTried = 0;
+async function lupaPages() {
+  if (!(await qwenBrowserUp())) {
+    if (Date.now() - lupaTried < 60 * 1000) return { up: false, pages: [] };
+    lupaTried = Date.now();
+    if (!(await ensureQwenBrowser().catch(() => false))) return { up: false, pages: [] };
+  }
+  const list = await fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
+  return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl)
+    .map((p) => Object.assign(view(p), { ws: 'ws://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/devtools/page/' + p.id })) }; // this end of the tunnel, whatever port it names
+}
+// not over the hub (main/hub.js relays Watch to its own agent browser's port only)
+handle('live:pages', (e, taskId, where) => where === 'lupa' ? (e && e.hub ? { up: false, pages: [] } : lupaPages()) : pages(taskId));
 // ◉ Watch on a task that needs him: its own tab, as the run left it (nothing reloaded). If that tab is gone
 // (the browser was closed), the page its run ended on, in a new tab of its own: never a sign-in step
 // (those only work once, and opening one again just shows an error) → the tab's id, for the view to show
@@ -55,6 +71,6 @@ async function openPage(url, taskId) {
 }
 handle('live:open', (_e, url, taskId) => openPage(url, taskId));
 // "Start it": it starts headless (no window); the view shows it
-handle('live:start', async () => ({ ok: await ensureAgentBrowser() }));
+handle('live:start', async (_e, where) => ({ ok: where === 'lupa' ? (lupaTried = 0, await ensureQwenBrowser().catch(() => false)) : await ensureAgentBrowser() }));
 
 module.exports = { init, handlers, pages };

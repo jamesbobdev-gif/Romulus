@@ -811,6 +811,7 @@ function render(){
   const openVis=open.filter(visible).slice().sort(function(a,b){ return getSortKey(a)-getSortKey(b); });
   navOrder=openVis.map(function(t){ return t.id; });
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
+  drawLupaStuck(onAgent||tab==='list',tab==='list'); // agent-live-view.js: the local model's browser, when it stopped on a task (Human tab: only a password/MFA step for him)
   drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
   drawYesPrompts(tab==='list'?needing:[]);
   drawSuggestions(tab==='list');

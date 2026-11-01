@@ -28,6 +28,53 @@ function watchButton(t){
   return b;
 }
 
+/* the local model stuck on a task: its browser on top of the Agent tab, live, so he can see what it sees and
+   click or type to sort it out (log in, pick the course), then reply. The picture it took when it stopped
+   shows instead while the live one can't be reached, or while a task on this computer has the view */
+let lupaStuckAt=0; // which one, when several are waiting
+// human: on the Human tab, only the ones waiting on a step only he can do (a password, an MFA code, a robot
+// check: agent/signin-watch.js wallKind), on top, with "Done, try again" for when he's through it
+function drawLupaStuck(show,human){
+  const box=$('lupaStuck'); if(!box)return;
+  const waiting=!show?[]:state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.lane==='local'&&!t.parked&&(!human||t.stuck&&t.stuck.verify); })
+    .sort(function(a,b){ return ((b.stuck||b.shot)?1:0)-((a.stuck||a.shot)?1:0)||getSortKey(a)-getSortKey(b); }); // stopped in the browser first
+  box.textContent='';
+  if(!waiting.length){ box.hidden=true; if(liveView&&liveView.src==='lupa')closeLiveView(); return; }
+  box.hidden=false;
+  const t=waiting[lupaStuckAt%waiting.length], key='lupa:'+t.id;
+  const head=el('div','lupa-stuck-head');
+  head.appendChild(el('b',null,human?'Your turn: the local model needs you to verify on':'The local model stopped on'));
+  const name=el('button','lupa-stuck-title',t.title); name.title='Open this task';
+  name.addEventListener('click',function(){ openTaskById(t.id); });
+  head.appendChild(name);
+  if(waiting.length>1){
+    const next=el('button','btn-ghost lupa-stuck-next',((lupaStuckAt%waiting.length)+1)+' of '+waiting.length+' ›'); next.title='The next one it stopped on';
+    next.addEventListener('click',function(){ lupaStuckAt++; render(); });
+    head.appendChild(next);
+  }
+  box.appendChild(head);
+  const why=t.stuck&&t.stuck.reason||String(t.note||'').replace(/\s+/g,' ').slice(0,220);
+  if(why)box.appendChild(el('div','lupa-stuck-why',why));
+  if(human){
+    const row=el('div','yes-btns');
+    const go=el('button','btn-accent','Done, try again'); go.title='You got past it in its browser: the local model picks the task up again';
+    go.addEventListener('click',function(){ const lt=liveTask(t); if(!lt.reply)lt.reply='I did the verification in your browser. Carry on.'; retryAgent(lt); });
+    row.appendChild(go);
+    box.appendChild(row);
+  }
+  // live: not while a task here is working (its card has the one view), not over the hub
+  const busyHere=state.tasks.some(function(x){ return taskWs(x)==='agent'&&!x.done&&x.status==='working'&&x.lane!=='local'; });
+  if(liveViewAvailable()&&!busyHere){
+    const slot=el('div','live-slot lupa-stuck-live'); box.appendChild(slot);
+    if(liveHidden[key]){
+      const b=el('button','btn-ghost agent-watch','◉ Show the browser');
+      b.addEventListener('click',function(){ delete liveHidden[key]; render(); });
+      slot.appendChild(b);
+    } else openLiveView(slot,key,null,'lupa');
+  } else if(liveView&&liveView.src==='lupa')closeLiveView();
+  if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot lupa-stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What its browser showed when it stopped. Click to enlarge'; } box.appendChild(ps); }
+}
+
 // a working task's card: the live view goes in its slot (one view at a time: the task that has it keeps it)
 function liveEmbed(slot,id){
   if(liveHidden[id]){
@@ -38,7 +85,9 @@ function liveEmbed(slot,id){
   if(liveView&&liveView.forId&&liveView.forId!==id&&(liveView.big||state.tasks.some(function(t){ return t.id===liveView.forId&&t.status==='working'; })))return;
   openLiveView(slot,id);
 }
-function openLiveView(host,forId,want){
+// src 'lupa': the local model's browser on the mini PC (the stuck task on top of the Agent tab), else this computer's
+function openLiveView(host,forId,want,src){
+  if(liveView&&liveView.src!==(src||null))closeLiveView(); // one view at a time, of one browser
   if(liveView){
     if(host){ liveView.host=host; liveView.forId=forId; if(!liveView.big)host.appendChild(liveView.box); }
     else liveBig(true);
@@ -62,7 +111,7 @@ function openLiveView(host,forId,want){
   const keys=el('textarea','live-keys'); keys.setAttribute('aria-label','Type into the agent browser'); keys.tabIndex=-1; box.appendChild(keys);
   (host||document.body).appendChild(box);
   liveView={box:box,keys:keys,img:img,msg:msg,where:where,tabs:tabs,dot:dot,bigBtn:big,ws:null,page:null,pages:[],meta:null,nextId:1,timer:null,touchedAt:0,seen:{},want:want||null,
-    host:host||null,forId:forId||null,big:!host};
+    host:host||null,forId:forId||null,big:!host,src:src||null};
   if(host)box.hidden=true; // until the browser shows a real page
 
   // closing the embedded view hides it for that task; closing the big one puts it back in the card
@@ -99,7 +148,7 @@ function liveShow(text,startBtn){
   v.msg.textContent=text||''; v.msg.hidden=!text; v.img.hidden=!!text;
   if(startBtn){
     const b=el('button','btn-accent','Start it now');
-    b.addEventListener('click',async function(){ b.disabled=true; b.textContent='Starting…'; await window.desktop.liveStart(); livePoll(); });
+    b.addEventListener('click',async function(){ b.disabled=true; b.textContent='Starting…'; await window.desktop.liveStart(v.src||undefined); livePoll(); });
     v.msg.appendChild(document.createElement('br')); v.msg.appendChild(b);
   }
 }
@@ -108,12 +157,14 @@ function liveShow(text,startBtn){
 // (unless he's been using the view in the last few seconds)
 async function livePoll(){
   const v=liveView; if(!v)return;
-  let r; try{ r=await window.desktop.livePages(v.forId||undefined); }catch(e){ r={up:false,pages:[]}; }
+  let r; try{ r=await window.desktop.livePages(v.src?undefined:v.forId||undefined,v.src||undefined); }catch(e){ r={up:false,pages:[]}; }
   if(liveView!==v)return;
   // its task finished: the card went (checked after the wait: a card being drawn isn't on the page yet)
   if(!v.big&&!v.box.isConnected){ closeLiveView(); return; }
   // in a card: only once the browser has a real page up (a run that only searches never shows it)
   if(!v.big)v.box.hidden=!r.up||!r.pages.some(function(p){ return p.url&&!/^(about:|chrome:|devtools:)/.test(p.url); });
+  if(!r.up&&v.src==='lupa'){ v.dot.className='live-dot'; v.where.textContent='Can’t reach the local model’s browser'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
+    liveShow('The local model’s browser isn’t reachable from here (is it on, and is Tailscale connected?).',true); return; }
   if(!r.up){ v.dot.className='live-dot'; v.where.textContent='Agent browser isn’t open'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
     liveShow('The Agent’s browser isn’t running. It starts by itself when the Agent needs the web.',true); return; }
   const first=Object.keys(v.seen).length===0;

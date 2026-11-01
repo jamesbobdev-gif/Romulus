@@ -29,6 +29,23 @@ function isLoginPage(url, title) {
   try { if (LOGIN_PATH.test(new URL(url).pathname)) return true; } catch (e) {}
   return LOGIN_TITLE.test(String(title || '').trim());
 }
+/* A page only he can get past, on any site: a sign-in, a code sent to his phone or email (MFA), a robot
+   check. A local task that stops on one puts the mini PC's browser at the top of his Human tab
+   (renderer/js/agent-live-view.js drawLupaStuck) so he can do that step there. `text` is the page as read */
+const CODE_TEXT = /\b(enter (the|your) (\d-digit |verification |security |one-time |sign-in |login )?code|we (just )?(sent|texted|emailed) (a|you a|your|the) (\d-digit |verification |security |one-time )?code|two-step verification|2-step verification|two-factor|2fa\b|multi-factor|authenticator app|approve (the|this) sign-in|verify (it['’]?s|that it['’]?s) you|confirm (it['’]?s|that it['’]?s) you|verify your identity)/i;
+const ROBOT_TEXT = /\b(i['’]?m not a robot|recaptcha|hcaptcha|press (and|&) hold|verify you are (a )?human|are you a robot|checking (if|that) (the site connection is secure|you are human))/i;
+const PASSWORD_TEXT = /\btextbox "[^"\n]{0,40}\bpassword\b|\bpassword\b[^\n]{0,30}\btextbox\b/i;
+function wallKind(url, title, text) {
+  const words = String(title || '') + '\n' + String(text || '').slice(0, 8000);
+  if (ROBOT_TEXT.test(words)) return 'robot';
+  if (CODE_TEXT.test(words)) return 'code';
+  if (isLoginPage(url, title) || PASSWORD_TEXT.test(words)) return 'sign-in';
+  return null;
+}
+// the same, from what the model wrote when it stopped ("it wants a verification code")
+const WALL_NOTE = /\b(verification code|security code|one-time code|2fa|two-factor|2-step|two-step|multi-factor|mfa|captcha|not a robot|password|sign ?in|log ?in|verify (it['’]?s|that it['’]?s) you|verify your identity)\b/i;
+const WALL_NAMES = { 'sign-in': 'a sign-in', code: 'a verification code', robot: 'a robot check' };
+
 // the to-do's title; the renderer finds it again by everything up to the first ':'
 const prefixFor = (site) => 'Sign in to ' + site.name + ' on the local model’s computer:';
 const todoTitle = (site) => prefixFor(site) + ' it signed you out. On its own screen, open ' + site.name +
@@ -109,4 +126,4 @@ async function dailyCheck({ port, sites, send, userData, log = () => {}, pauseMs
   return out;
 }
 
-module.exports = { isLoginPage, siteFor, todoTitle, prefixFor, tracker, dailyCheck, due };
+module.exports = { isLoginPage, wallKind, WALL_NOTE, WALL_NAMES, siteFor, todoTitle, prefixFor, tracker, dailyCheck, due };
