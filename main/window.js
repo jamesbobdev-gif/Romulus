@@ -10,6 +10,8 @@ let isQuitting = false;
 const ROOT = path.join(__dirname, '..');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
 const APP_PAGE = path.join(ROOT, 'renderer', 'index.html');
+const LINUX = process.platform === 'linux';
+const TITLE_H = 32; // the hidden title bar's strip: window buttons on the right, drag area across
 
 // True only for the app's own bundled page — never a website the window was
 // somehow pointed at.
@@ -46,6 +48,9 @@ function createWindow() {
     icon: ICON,
     backgroundColor: '#FBFBFA',
     autoHideMenuBar: true,
+    // Linux: no window-manager title bar (a plain white strip saying "Romulus" above the app's own
+    // header); Electron draws the window buttons top-right instead, in the page's colors
+    ...(LINUX ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#FBFBFA', symbolColor: '#71716C', height: TITLE_H } } : {}),
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
       contextIsolation: true,
@@ -71,6 +76,7 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', () => setTimeout(loadApp, 1500));
   // a fresh page starts off Finance: drop the capture block it may have left (it sets it again if it opens there)
   mainWindow.webContents.on('did-start-loading', () => protect(false));
+  if (LINUX) mainWindow.webContents.on('did-finish-load', titleBarFollowsPage);
 
   // Closing the window hides it to the tray; the app keeps running
   // so it can reappear when the screen wakes. Quit from the tray menu.
@@ -81,6 +87,37 @@ function createWindow() {
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// Linux without a title bar: the top strip of the page drags the window, and the window buttons take
+// the page's background and muted ink, again whenever light/dark or a custom theme changes them.
+// The page answers once straight away, then each time its colors change (a waiting promise, so
+// nothing in the page or preload has to know about it).
+const TITLE_COLORS = `new Promise((done) => {
+  const read = () => { const s = getComputedStyle(document.documentElement);
+    return { color: s.getPropertyValue('--bg').trim(), symbolColor: s.getPropertyValue('--muted').trim() }; };
+  if (!document.getElementById('winDrag')) {
+    const d = document.createElement('div'); d.id = 'winDrag'; document.body.prepend(d);
+    return done(read());
+  }
+  const was = JSON.stringify(read());
+  const mo = new MutationObserver(() => check()), mq = matchMedia('(prefers-color-scheme: dark)');
+  const check = () => { const now = read(); if (JSON.stringify(now) === was) return;
+    mo.disconnect(); mq.removeEventListener('change', check); done(now); };
+  mo.observe(document.documentElement, { attributes: true });
+  mo.observe(document.head, { childList: true, subtree: true, characterData: true });
+  mq.addEventListener('change', check);
+})`;
+let titleRun = 0;
+function titleBarFollowsPage() {
+  const wc = mainWindow.webContents, run = ++titleRun;
+  wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}`).catch(() => {});
+  const follow = () => wc.executeJavaScript(TITLE_COLORS).then((c) => {
+    if (run !== titleRun || !mainWindow || mainWindow.isDestroyed()) return;
+    if (c && c.color && c.symbolColor) { try { mainWindow.setTitleBarOverlay({ ...c, height: TITLE_H }); } catch (e) {} }
+    follow();
+  }).catch(() => {});
+  follow();
 }
 
 function showWindow() {
