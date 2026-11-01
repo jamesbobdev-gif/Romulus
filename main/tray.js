@@ -21,6 +21,7 @@ function buildMenu() {
   const { app, Menu } = require('electron');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Tasks', click: ctx.showWindow },
+    ...(ctx.openOverlay ? [{ label: 'Ask about my screen', click: ctx.openOverlay }] : []),
     ...(update ? [{ label: update.label, click: update.click }] : []),
     {
       label: 'Start when I log in',

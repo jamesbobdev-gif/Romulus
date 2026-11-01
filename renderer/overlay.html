@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file:; style-src 'unsafe-inline'; img-src data:">
+<title>Romulus screen helper</title>
+<style>
+  :root{--bg:#1B1B1F;--surface:#25262C;--line:#34353C;--ink:#E8E8EA;--muted:#A3A3AB;--faint:#75757E;--accent:#7C9CFF;--bad:#FF8A80;
+    font:14px/1.5 "Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg)}
+  body{display:flex;flex-direction:column;border:1px solid var(--line)}
+  .bar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);-webkit-app-region:drag;user-select:none}
+  .bar b{font-weight:600;flex:1}
+  .bar button,.bar .seg{-webkit-app-region:no-drag}
+  button{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:3px 9px;cursor:pointer}
+  button:hover{border-color:var(--faint)}
+  button:disabled{opacity:.5;cursor:default}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{border:0;border-radius:0;background:transparent;color:var(--muted)}
+  .seg button.on{background:var(--surface);color:var(--ink)}
+  .x{border:0;background:transparent;color:var(--muted);font-size:16px;padding:0 6px}
+  .shot{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .shot img{height:54px;border-radius:5px;border:1px solid var(--line);cursor:pointer}
+  .shot label{display:flex;align-items:center;gap:5px;cursor:pointer}
+  .shot .grow{flex:1}
+  #chat{flex:1;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+  .q{align-self:flex-end;background:var(--surface);border-radius:10px;padding:6px 10px;max-width:85%;white-space:pre-wrap}
+  .a{white-space:normal}
+  .a p{margin:0 0 6px}
+  .a .via{color:var(--faint);font-size:12px;margin-top:4px}
+  .a.bad{color:var(--bad)}
+  .a.wait{color:var(--muted)}
+  pre{background:#121215;border:1px solid var(--line);border-radius:7px;padding:8px 10px;overflow:auto;white-space:pre;font:12.5px/1.45 "Spline Sans Mono",ui-monospace,Consolas,monospace;margin:4px 0;position:relative}
+  pre button{position:absolute;top:4px;right:4px;font-size:11px;padding:1px 6px}
+  code{font-family:"Spline Sans Mono",ui-monospace,Consolas,monospace;font-size:12.5px;background:#121215;border-radius:4px;padding:0 4px}
+  pre code{background:none;padding:0}
+  a{color:var(--accent)}
+  .md-table{border-collapse:collapse}.md-table td,.md-table th{border:1px solid var(--line);padding:2px 6px}
+  .empty{color:var(--faint);margin:auto;text-align:center;font-size:13px}
+  form{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line)}
+  textarea{flex:1;resize:none;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 9px;height:38px;max-height:120px;outline:none}
+  textarea:focus{border-color:var(--accent)}
+  .foot{display:flex;gap:12px;padding:0 10px 8px;color:var(--faint);font-size:11.5px}
+  .foot label{display:flex;align-items:center;gap:4px;cursor:pointer}
+  .foot .grow{flex:1}
+  .foot a{cursor:pointer}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <b>Ask about my screen</b>
+    <div class="seg" role="group" aria-label="Who answers">
+      <button id="laneCloud" type="button" title="Your AI connections, in your order">Cloud</button>
+      <button id="laneLocal" type="button" title="Your own model on the mini PC: the picture stays home">Lupa</button>
+    </div>
+    <button class="x" id="close" type="button" title="Hide (Esc)" aria-label="Hide">✕</button>
+  </div>
+  <div class="shot">
+    <img id="shotImg" alt="Your screen" hidden>
+    <label id="shotLabel"><input type="checkbox" id="withShot" checked> Include my screen</label>
+    <span id="shotNote"></span>
+    <span class="grow"></span>
+    <button id="retake" type="button" title="Take a new picture of the screen">Retake</button>
+  </div>
+  <div id="chat"><div class="empty" id="empty">Ask anything about what’s on your screen.<br>Enter to ask · Shift+Enter for a new line · Esc to hide</div></div>
+  <form id="form">
+    <textarea id="q" placeholder="What does this error mean?" rows="1" autofocus></textarea>
+    <button id="send" type="submit">Ask</button>
+  </form>
+  <div class="foot">
+    <label title="Leave this helper out of screenshots and screen sharing"><input type="checkbox" id="hidden"> Hidden from screen share</label>
+    <span class="grow"></span>
+    <a id="newChat">New chat</a>
+    <a id="openApp">Open Romulus</a>
+    <span id="keyHint"></span>
+  </div>
+<script src="js/markdown.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>

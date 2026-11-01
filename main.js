@@ -38,6 +38,7 @@ const hub = require('./main/hub');
 const finance = require('./main/finance');
 const downloads = require('./main/downloads');
 const updater = require('./main/updater');
+const overlay = require('./main/overlay');
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
@@ -80,9 +81,10 @@ const ctx = {
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdate: (u) => trayMod.setUpdate(u),
   sendToWindow: win.sendToRenderer, // this computer's window only: an update offer isn't the mini PC's business
+  openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater];
+  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
 hub.init(ctx);
 const allHandlers = Object.assign({}, hub.localHandlers);
 for (const m of modules) {
@@ -179,6 +181,7 @@ if (!gotLock) {
     win.createWindow();
     trayMod.createTray();
     updater.start();
+    overlay.start(); // the screen helper's shortcut (Ctrl+Shift+Space, or the next free one)
     refreshTrayStatus();
     setInterval(() => refreshTrayStatus(), 60 * 60 * 1000);
     if (hub.role() === 'server') hub.startServer(allHandlers);
@@ -227,6 +230,7 @@ if (!gotLock) {
   });
 
   app.on('before-quit', () => win.setQuitting());
+  app.on('will-quit', () => overlay.stop());
 
   // Window closed -> keep running in the tray (don't quit).
   app.on('window-all-closed', () => {});

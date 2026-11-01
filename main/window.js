@@ -146,8 +146,14 @@ function setQuitting() { isQuitting = true; }
 
 // while Finance is on screen: Windows leaves the window out of every capture (screenshots, screen sharing,
 // Recall / Copilot, an AI assistant's screenshot tools); it shows as black there
+let protectedNow = false;
 function protect(on) {
+  protectedNow = !!on;
   if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.setContentProtection(!!on); } catch (e) {} }
+}
+// Finance is on screen right now (protected, and the window can be seen): the screen helper won't take a picture
+function financeShowing() {
+  return protectedNow && !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized();
 }
 // the main window's handle as a number (Windows Hello attaches its prompt to it), or null
 function windowHandle() {
@@ -156,4 +162,4 @@ function windowHandle() {
   return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
 }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle, protect };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle, protect, financeShowing };
