@@ -397,7 +397,7 @@ if(window.desktop&&window.desktop.aiStatus){
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
    config). Each item keeps its id (from the feed's own UID), so a re-import never adds copies. What the
    feed last said per item is remembered here, so: a deadline the teacher moves is followed unless he set
-   his own date; one he deleted (or finished and cleared) isn't brought back. */
+   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off. */
 const FEED_SEEN_KEY='tasks.feedSeen';
 async function importCourseFeeds(){
   if(!window.desktop||!window.desktop.feedsFetch)return null;
@@ -424,8 +424,17 @@ async function importCourseFeeds(){
     state.tasks.push(n); added++;
   });
   try{ localStorage.setItem(FEED_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
-  const tidy=tidySchool(r);
-  if(added||moved||tidy.merged||tidy.labeled||tidy.removed)touch();
+  /* gone from the school's calendar (the teacher deleted it, or put it back up as a new entry): an upcoming one
+     he hasn't touched (no date of his own, no steps, no plan) comes off. Only when every link answered in full,
+     so a feed that hiccups never empties the list */
+  const live={}; r.items.forEach(function(e){ live[e.id]=1; });
+  const today=formatDate(new Date());
+  const vanished=r.complete?state.tasks.filter(function(t){
+    return /^ics-/.test(t.id)&&!live[t.id]&&seen[t.id]&&!t.done&&t.due&&t.due>=today&&
+      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
+  }).map(function(t){ return t.id; }):[];
+  const tidy=tidySchool(r,vanished);
+  if(added||moved||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
   return {added:added,moved:moved,count:r.items.length,errors:r.errors,tidy:tidy};
 }
 /* Tidy the School list after each import, so each assignment is there once and labeled with its course:
@@ -455,8 +464,8 @@ function sameAssignment(a,b){
   if(small.size>=2&&common===small.size)return true;
   return common>=2&&common/(A.size+B.size-common)>=0.6;
 }
-function tidySchool(r){
-  const out={merged:0,labeled:0,removed:0};
+function tidySchool(r,vanished){
+  const out={merged:0,labeled:0,removed:0,gone:0};
   const daysApart=function(a,b){ return Math.abs((new Date(a+'T12:00')-new Date(b+'T12:00'))/864e5); };
   const drop=function(t){
     if(t.googleEventId&&window.desktop&&window.desktop.gcalDeleteEvent)window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
@@ -466,6 +475,8 @@ function tidySchool(r){
   // 1. entries the feed no longer counts as assignments
   const gone={}; (r.dropped||[]).forEach(function(id){ gone[id]=1; });
   state.tasks.filter(function(t){ return gone[t.id]&&!t.done&&!(t.subs&&t.subs.length); }).forEach(function(t){ drop(t); out.removed++; });
+  // and those no longer on the school's calendar at all (importCourseFeeds picked them)
+  (vanished||[]).forEach(function(id){ const t=state.tasks.find(function(x){ return x.id===id; }); if(t){ drop(t); out.gone++; } });
   const school=function(){ return state.tasks.filter(function(t){ return taskWs(t)==='school'&&!t.done; }); };
   // 2. course names → codes, learned from the feeds ("PHYS-1010-…-Astronomy-…" → astronomy = PHYS 1010)
   const alias={};
@@ -624,7 +635,7 @@ if(window.desktop&&window.desktop.feedsFetch){
     if(!r)return '';
     const d=r.tidy||{};
     const parts=[r.count+' upcoming'+(r.added?', '+r.added+' added':'')+(r.moved?', '+r.moved+' moved':'')+
-      (d.merged?', '+d.merged+' duplicates merged':'')+(d.removed?', '+d.removed+' extras removed':'')+(d.labeled?', labels fixed':'')];
+      (d.merged?', '+d.merged+' duplicates merged':'')+(d.removed?', '+d.removed+' extras removed':'')+(d.gone?', '+d.gone+' no longer listed removed':'')+(d.labeled?', labels fixed':'')];
     return parts.concat(r.errors).join(' · ');
   };
   $('feedsSaveBtn').addEventListener('click',async function(){
@@ -639,7 +650,7 @@ if(window.desktop&&window.desktop.feedsFetch){
     }catch(e){ $('feedsStatus').textContent='couldn’t import: '+e.message; }
   });
   // a little after start (sync has loaded the lists by then), then every 3 hours
-  const feedsTick=function(){ importCourseFeeds().then(function(r){ if(r&&(r.added||r.moved||r.errors.length||(r.tidy&&(r.tidy.merged||r.tidy.removed||r.tidy.labeled))))$('feedsStatus').textContent=feedsSay(r); }).catch(function(){}); };
+  const feedsTick=function(){ importCourseFeeds().then(function(r){ if(r&&(r.added||r.moved||r.errors.length||(r.tidy&&(r.tidy.merged||r.tidy.removed||r.tidy.labeled||r.tidy.gone))))$('feedsStatus').textContent=feedsSay(r); }).catch(function(){}); };
   setTimeout(feedsTick,20000); setInterval(feedsTick,3*60*60*1000);
 }
 /* "Hey Romulus" (phone app only): WakeWordPlugin.java / WakeWordService.java */

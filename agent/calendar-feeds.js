@@ -98,8 +98,10 @@ function normalUrl(u) {
   try { const x = new URL(s); return x.protocol === 'https:' ? x.href : null; } catch (e) { return null; }
 }
 
+// complete: every link answered with a calendar that has events, so an item missing from it really is gone
 async function fetchAll(urls) {
   const items = [], errors = [], dropped = [];
+  let complete = urls.length > 0;
   for (const raw of urls) {
     const u = normalUrl(raw);
     if (!u) { errors.push(String(raw).slice(0, 40) + '…: not an https link'); continue; }
@@ -107,7 +109,8 @@ async function fetchAll(urls) {
     try {
       const r = await fetch(u, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
       const text = await r.text();
-      if (!r.ok || !/BEGIN:VCALENDAR/.test(text)) { errors.push(host + ': ' + (r.ok ? 'not a calendar' : 'HTTP ' + r.status)); continue; }
+      if (!r.ok || !/BEGIN:VCALENDAR/.test(text)) { errors.push(host + ': ' + (r.ok ? 'not a calendar' : 'HTTP ' + r.status)); complete = false; continue; }
+      if (!/BEGIN:VEVENT/.test(text)) complete = false;
       const evs = parse(text).map((e) => Object.assign(e, { id: taskId(host + '|' + e.uid), kind: kindOf(e.title), source: host }));
       // one task per assignment: its "Due" entry, else its "Availability Ends"; "Available" (it opens) never is one
       const hasDue = new Set(evs.filter((e) => e.phase === 'due').map((e) => e.course + '|' + e.title));
@@ -115,9 +118,9 @@ async function fetchAll(urls) {
         if (e.phase === 'available' || (e.phase === 'ends' && hasDue.has(e.course + '|' + e.title))) dropped.push(e.id);
         else items.push(e);
       }
-    } catch (e) { errors.push(host + ': ' + (e.name === 'TimeoutError' ? 'timed out' : e.message)); }
+    } catch (e) { errors.push(host + ': ' + (e.name === 'TimeoutError' ? 'timed out' : e.message)); complete = false; }
   }
-  return { items, errors, dropped };
+  return { items, errors, dropped, complete: complete && !errors.length };
 }
 
 module.exports = { parse, fetchAll, normalUrl, courseCode, courseName, cleanTitle, kindOf, taskId };
