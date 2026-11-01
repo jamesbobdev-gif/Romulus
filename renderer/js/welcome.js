@@ -18,6 +18,11 @@ function openSettingsAt(groupId,panelId){
 }
 
 /* ── welcome card ── */
+// sync.js calls this once it finds lists already online: a device joining an account skips the card
+function markWelcomed(){
+  try{ if(!localStorage.getItem(WELCOME_KEY))localStorage.setItem(WELCOME_KEY,String(Date.now())); }catch(e){}
+  const card=$('welcomeCard'); if(card)card.hidden=true;
+}
 (function(){
   let seen=true; try{ seen=!!localStorage.getItem(WELCOME_KEY); }catch(e){}
   const card=$('welcomeCard'); if(!card)return;

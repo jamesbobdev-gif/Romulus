@@ -349,6 +349,7 @@ async function syncOnce(){
       // or by Claude), the upload is refused, so download again and merge that in too, never overwrite it
       for(let attempt=0;attempt<4;attempt++){
         const row=await syncPullRow(p);
+        if(row.doc&&typeof markWelcomed==='function')markWelcomed(); // the account already has lists, so it was welcomed on another device
         const r=mergeRemoteWs(row.doc,ws);
         if(r.changedLocal)anyLocal=true;
         if(!(r.changedRemote||!row.doc))break;
