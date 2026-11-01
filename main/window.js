@@ -12,6 +12,10 @@ const ICON = path.join(ROOT, 'assets', 'icon.png');
 const APP_PAGE = path.join(ROOT, 'renderer', 'index.html');
 const LINUX = process.platform === 'linux';
 const TITLE_H = 32; // the hidden title bar's strip: window buttons on the right, drag area across
+// Opened for a look on a computer where a background service normally runs the app (the mini PC's app-menu
+// launcher pauses the service and passes this): closing the window quits, so the service can come back.
+// GNOME shows no tray, so a copy that hid itself there could never be quit.
+const QUIT_ON_CLOSE = process.argv.includes('--quit-on-close');
 
 // True only for the app's own bundled page — never a website the window was
 // somehow pointed at.
@@ -81,10 +85,10 @@ function createWindow() {
   // Closing the window hides it to the tray; the app keeps running
   // so it can reappear when the screen wakes. Quit from the tray menu.
   mainWindow.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault();
-      mainWindow.hide();
-    }
+    if (isQuitting) return;
+    if (QUIT_ON_CLOSE) { quit(); return; }
+    e.preventDefault();
+    mainWindow.hide();
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
