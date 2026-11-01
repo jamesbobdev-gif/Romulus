@@ -235,7 +235,16 @@
       <p class="settings-hint">
         Sync with your phone via a free <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
-      <p class="settings-hint">Adding your phone? Press <b>Show code for phone</b> here, then <b>Scan the computer's code</b> in Settings → Device sync on the phone. (Or <b>Copy sync code</b> and paste it into the first box on the other device.)</p>
+      <p class="settings-hint">Adding a device? Press <b>Add a device</b> here and type the code it shows into <b>Pairing code</b> on the new one. (A phone can also scan <b>Show code for phone</b>.)</p>
+      <div class="settings-row">
+        <input id="pairCodeIn" class="settings-inp mono" placeholder="Pairing code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" style="max-width:220px">
+        <button id="pairUseBtn" class="btn-accent">Pair</button>
+        <button id="pairAddBtn" class="ghost mono">Add a device</button>
+      </div>
+      <div id="pairBox" hidden style="margin:8px 0 12px">
+        <div id="pairCode" class="mono" style="font-size:28px;letter-spacing:3px;user-select:all"></div>
+        <p id="pairInfo" class="settings-hint" style="margin:4px 0 0"></p>
+      </div>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKey" class="settings-inp" placeholder="Anon / publishable key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
@@ -470,6 +479,8 @@
 <script src="js/popups.js"></script>
 <script src="js/wiring.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/pair-server.js"></script>
+<script src="js/pair.js"></script>
 <script src="js/hub.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
