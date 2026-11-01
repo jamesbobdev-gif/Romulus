@@ -90,6 +90,15 @@ let localHeardAt = 0; // last time the mini PC streamed part of an answer
 // the mini PC didn't answer: for a couple of minutes, tasks go straight on to the cloud AIs without trying it again
 const LOCAL_DOWN_MS = 2 * 60 * 1000, UNREACHABLE = /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH/i;
 let localDownAt = 0;
+/* a computer the mini PC doesn't answer leaves its tasks to one it does: it claims a task only after it has
+   seen it queued for LOCAL_HOLD_MS with no taker, then passes it on as before (the mini PC may really be off) */
+const LOCAL_HOLD_MS = 2 * 60 * 1000;
+const heldSince = new Map(); // task id → when this computer first held it back
+function claimableWhileDown(queued, held, now = Date.now()) {
+  const ids = new Set(queued.map((t) => t.id));
+  for (const id of held.keys()) if (!ids.has(id)) held.delete(id);
+  return queued.filter((t) => { if (!held.has(t.id)) held.set(t.id, now); return now - held.get(t.id) >= LOCAL_HOLD_MS; });
+}
 // an answer saying something went out, and the buttons that send something
 const SUBMIT_CLAIM = /\b(was|were|has been|have been|is now|got|I)\s+(already\s+|successfully\s+)?(submitted|posted|sent|placed|published|turned in)\b|\bsuccessfully (submitted|posted|sent|placed)\b/i;
 const FINAL_BUTTON = /submit|post|send|apply|place|pay|book|publish|reply|turn in|confirm/i;
@@ -319,13 +328,22 @@ async function startLocalRun() {
   let slept = false; const onSuspend = () => { slept = true; agentLog('local: this computer went to sleep mid-task'); };
   ctx.powerMonitor.on('suspend', onSuspend);
   try {
-    const tasks = await claimAgentTasks(queued, 'local');
-    if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
-    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
     // the mini PC is off or off the network: one quick look (or one that failed just now) instead of
-    // waiting out a timeout on every task in turn; they all go to the cloud AIs at once
+    // waiting out a timeout on every task in turn; looked at before claiming, so a computer that can reach it gets them
     let down = Date.now() - localDownAt < LOCAL_DOWN_MS;
     if (!down && !(await localStatus()).online) { down = true; localDownAt = Date.now(); }
+    let mine = queued;
+    if (down) {
+      const before = heldSince.size;
+      mine = claimableWhileDown(queued, heldSince);
+      if (heldSince.size > before) agentLog('local: the mini PC isn’t reachable from here: leaving ' + (heldSince.size - before) + ' task(s) for a computer that can reach it');
+      if (!mine.length) return;
+    } else heldSince.clear();
+    const tasks = await claimAgentTasks(mine, 'local');
+    if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
+    tasks.forEach((t) => heldSince.delete(t.id));
+    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+    // nobody took them in time: they all go to the cloud AIs at once
     if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
     for (const t of tasks) {
       // this computer slept (mid-task or before this one): not a failure, it starts over now it's awake
@@ -743,4 +761,4 @@ async function checkSignins(force) {
 }
 
 const isBusy = () => localBusy || howtoCompacting;
-module.exports = { init, handlers, runHelperOn, localStatus, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins };
+module.exports = { init, handlers, runHelperOn, localStatus, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };

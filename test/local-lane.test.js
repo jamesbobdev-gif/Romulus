@@ -25,6 +25,15 @@ test('localApproved: his yes to what the mini PC asked', () => {
   assert.ok(lane.localApproved({ reply: 'yes, but first replace what you typed with exactly this text, then post it:\n\nHi all', history: asked }));
 });
 
+test('claimableWhileDown leaves a task to a computer that reaches the mini PC, then takes it', () => {
+  const held = new Map(), a = { id: 'a' }, b = { id: 'b' };
+  assert.deepStrictEqual(lane.claimableWhileDown([a], held, 1000), []); // first seen: held back
+  assert.deepStrictEqual(lane.claimableWhileDown([a, b], held, 1000 + lane.LOCAL_HOLD_MS - 1), []);
+  assert.deepStrictEqual(lane.claimableWhileDown([a, b], held, 1000 + lane.LOCAL_HOLD_MS), [a]); // no taker in time
+  assert.deepStrictEqual(lane.claimableWhileDown([b], held, 1000 + lane.LOCAL_HOLD_MS), []); // a was taken: forgotten
+  assert.ok(!held.has('a'));
+});
+
 test('cleanStuck trims and fills in the missing half', () => {
   assert.strictEqual(lane.cleanStuck(null), null);
   assert.strictEqual(lane.cleanStuck({}), null);
