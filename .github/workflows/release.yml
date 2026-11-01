@@ -117,6 +117,8 @@ jobs:
                    -c.win.azureSignOptions.certificateProfileName="$AZURE_CERT_PROFILE")
           fi
           if [ "${{ matrix.name }}" = mac ] && [ -z "$CSC_LINK" ]; then echo "no MAC_CSC_LINK secret: the Mac build is unsigned"; fi
+          # a signing variable that is set but empty is read as a path (CSC_LINK '' → "<repo> not a file"), so drop those
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do [ -n "${!v}" ] || unset "$v"; done
           npx electron-builder ${{ matrix.target }} --publish always "${extra[@]}"
       # SHA-256 of every installer this job built, so a download can be checked against the release page
       # (SECURITY.md and the releases repository's README say how). One file per OS: SHA256SUMS-<os>.txt.
