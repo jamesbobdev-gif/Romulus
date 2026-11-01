@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('desktop', {
   localGet: () => ipcRenderer.invoke('local:get'),
   localProbe: (url) => ipcRenderer.invoke('local:probe', url),
   localSave: (change) => ipcRenderer.invoke('local:save', change),
+  localWorker: (on) => ipcRenderer.invoke('local:worker', on),
   // routing: the user's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   // AI connections: Claude / Gemini / OpenRouter for the Agent lane, in his order

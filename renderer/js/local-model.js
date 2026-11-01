@@ -24,16 +24,30 @@ if(window.desktop&&window.desktop.localGet){
     try{ cur=await window.desktop.localGet(); }catch(e){ return; }
     $('localUrl').value=cur.url||'';
     $('localOffBtn').hidden=!cur.configured;
+    $('localWorkerRow').hidden=!cur.configured&&!cur.worker; $('localWorkerOn').checked=!!cur.worker;
+    window.localWorkerHere=!!cur.worker;
     if(cur.configured){
       const s=await window.desktop.localStatus().catch(function(){ return null; });
+      if(s&&s.via==='worker'){ say(s.name+' is taking local tasks for all your devices'+(s.model?' ('+s.model+')':'')+(s.busy?' · working on one now':'')); return; }
       say(s&&s.online?'using '+cur.model+' at '+cur.url+(s.loaded?' (loaded)':s.installed?'':' · model not found there'):'using '+cur.model+' at '+cur.url+' · not answering right now');
     } else {
       // nothing set up: see whether Ollama is already running on this computer
       const r=await probe(cur.defaultUrl,true);
       if(r.ok)say(r.models.length?'Ollama is running on this computer with '+r.models.length+' model'+(r.models.length===1?'':'s')+': pick one':'Ollama is running here but has no models yet: run "ollama pull" one first');
-      else say('Off. Install Ollama (link above), or type the address of a machine running it, then Find models.');
+      else{
+        // the model's own computer may be taking local tasks for every device: then nothing is needed here
+        const s=await window.desktop.localStatus().catch(function(){ return null; });
+        if(s&&s.via==='worker')say(s.name+' is taking local tasks for all your devices'+(s.model?' ('+s.model+')':'')+'. Nothing to set up here.');
+        else say('Off. Install Ollama (link above), or type the address of a machine running it, then Find models.');
+      }
     }
   };
+  $('localWorkerOn').addEventListener('change',async function(){
+    const on=$('localWorkerOn').checked;
+    const r=await window.desktop.localWorker(on);
+    if(!r.ok){ $('localWorkerOn').checked=!on; say(r.error,true); return; }
+    await draw(); if(typeof refreshLocalStatus==='function')refreshLocalStatus();
+  });
   $('localProbeBtn').addEventListener('click',function(){ probe($('localUrl').value.trim()||(cur&&cur.defaultUrl)); });
   $('localUrl').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); $('localProbeBtn').click(); } });
   $('localSaveBtn').addEventListener('click',async function(){

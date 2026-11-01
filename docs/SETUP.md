@@ -62,6 +62,8 @@ Install [Ollama](https://ollama.com/download) on this computer (or any computer 
 1. Leave the address as `http://localhost:11434`, or type the other computer's address.
 2. Press **Find models**, pick one, press **Use it**.
 
+**Model on a different computer (a mini PC, a gaming PC)?** You don't need to connect them over the network. Install Romulus on the computer that runs Ollama too, connect it to sync (step 3, the same way as a phone), set up the local model there with `http://localhost:11434`, and switch on **Run local tasks here for all my devices**. Leave the app open on that computer. It picks up local tasks from your phone and other computers through sync. Your other computers then show it as answering, with nothing to set up on them. Money questions stay with the computer that has your Finance tab.
+
 If Ollama is already running on this computer the panel notices and says so. Tasks that contain private words (bank, medical, password…) only ever go to the local model; see **Who does Agent tasks** to tune the words and rules.
 
 ## 3. Sync with your phone

@@ -97,6 +97,7 @@ function scheduleAgentRun(raw) {
   }
   if (live && raw != null) live.forward(raw); // he wrote on a task Claude is working on: it hears it now
   if ((readConfig().agentRunner || {}).enabled === false) return;
+  if ((readConfig().localModel || {}).worker) return; // the local model's own computer only works the local lane (agent/worker.js)
   if (!decided(raw)) return; // d1 is looking at new tasks first: this runs again when it's done
   const queued = queuedAgentTasks(raw);
   const n = queued.length;

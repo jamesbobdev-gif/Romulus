@@ -37,6 +37,7 @@ const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_fil
   parameters: { type: 'object', properties: { file: { type: 'string' } } } } });
 const { localWebSearch, localReadPage, searchMyData, LOCAL_TOOLS, FILL_FORM_TOOL } = require('./local-tools');
 const { enrichOption } = require('./previews');
+const worker = require('./worker');
 
 let ctx = null; // { userData, readConfig, dataFile, agentLog, sendToRenderer, powerSaveBlocker, powerMonitor }
 function init(c) { ctx = c; }
@@ -73,7 +74,16 @@ const isLocalLane = (t) => laneOf(t) === 'local';
 function queuedLocalTasks(raw) {
   let data;
   try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
-  return (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isLocalLane(t));
+  const queued = (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && isLocalLane(t));
+  // the local model's own computer takes these for every device (agent/worker.js): this one starts only its share
+  const here = worker.isWorker(readConfig());
+  return worker.share(queued, { worker: here, workerUp: !here && !!worker.lastSeen(), isMoney: (t) => !!t.financeSeen || routing.moneyQuestion(t) });
+}
+// the worker's heartbeat row (agent/worker.js), every couple of minutes while the app runs there
+function workerBeat() {
+  if (!worker.isWorker(readConfig())) return Promise.resolve(false);
+  const c = localCfg(), l = readConfig().localModel || {};
+  return worker.beat(require('./supabase').channel(readConfig()), { name: l.name, model: c && c.model, busy: isBusy() });
 }
 function scheduleLocalRun(raw) {
   if (!localCfg() || localBusy || !routing.decided(raw) || !queuedLocalTasks(raw).length) return;
@@ -108,7 +118,18 @@ handle('local:status', () => localStatus());
    like the browser's ssh host, is left as it is). */
 const OLLAMA_DEFAULT = 'http://localhost:11434';
 const cleanUrl = (u) => { u = String(u || OLLAMA_DEFAULT).trim().replace(/\/+$/, ''); if (!/^https?:\/\//i.test(u)) u = 'http://' + u; return /^https?:\/\/[a-z0-9._-]+(:\d+)?$/i.test(u) ? u : null; };
-handle('local:get', () => { const c = readConfig().localModel || {}; return { url: c.url || '', model: c.model || '', enabled: c.enabled !== false, configured: !!localCfg(), defaultUrl: OLLAMA_DEFAULT }; });
+handle('local:get', () => { const c = readConfig().localModel || {}; return { url: c.url || '', model: c.model || '', enabled: c.enabled !== false, configured: !!localCfg(), defaultUrl: OLLAMA_DEFAULT,
+  worker: !!c.worker, synced: !!require('./supabase').channel(readConfig()) }; });
+// "This computer runs the local model for all my devices" (agent/worker.js): on, it says so in Supabase right away
+handle('local:worker', async (_e, on) => {
+  const c = readConfig();
+  if (on && !localCfg()) return { ok: false, error: 'Pick a model first.' };
+  if (on && !require('./supabase').channel(c)) return { ok: false, error: 'Turn on sync first (Settings → Sync), so your other devices can reach it.' };
+  c.localModel = Object.assign({}, c.localModel); if (on) c.localModel.worker = true; else delete c.localModel.worker;
+  ctx.writeConfig(c);
+  if (on) { await workerBeat(); ctx.scheduleLocalRun && ctx.scheduleLocalRun(); }
+  return { ok: true };
+});
 handle('local:probe', async (_e, url) => {
   const u = cleanUrl(url);
   if (!u) return { ok: false, error: 'use an address like http://localhost:11434' };
@@ -134,8 +155,12 @@ handle('local:save', async (_e, change) => {
   if (c.localModel.enabled !== false) ctx.scheduleLocalRun && ctx.scheduleLocalRun();
   return { ok: true, status: await localStatus() };
 });
-async function localStatus() {
+async function localStatus({ direct = false } = {}) {
   const c = localCfg();
+  // another computer: the local model's own one says it's there (agent/worker.js), so it's answering, whether
+  // or not this one could reach it directly
+  const w = direct || worker.isWorker(readConfig()) ? null : await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
+  if (w) return { configured: true, online: true, via: 'worker', name: w.name, model: w.model || (c && c.model) || '', installed: true, loaded: true, busy: w.busy };
   if (!c) return { configured: false };
   try {
     // with every core busy on a task its replies can take a few seconds: 3 s showed "isn't reachable"
@@ -331,7 +356,7 @@ async function startLocalRun() {
     // the mini PC is off or off the network: one quick look (or one that failed just now) instead of
     // waiting out a timeout on every task in turn; looked at before claiming, so a computer that can reach it gets them
     let down = Date.now() - localDownAt < LOCAL_DOWN_MS;
-    if (!down && !(await localStatus()).online) { down = true; localDownAt = Date.now(); }
+    if (!down && !(await localStatus({ direct: true })).online) { down = true; localDownAt = Date.now(); }
     let mine = queued;
     if (down) {
       const before = heldSince.size;
@@ -348,6 +373,12 @@ async function startLocalRun() {
     for (const t of tasks) {
       // this computer slept (mid-task or before this one): not a failure, it starts over now it's awake
       if (slept) { sendToRenderer('agent:waiting', { ids: [t.id], until: Date.now(), slept: true }); continue; }
+      // the worker has no Finance: a money question no computer with Finance took is answered with where it can run
+      if (worker.isWorker(readConfig()) && (t.financeSeen || routing.moneyQuestion(t))) {
+        sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
+          note: 'This one is about your money, and your Finance tab lives on your computer, not here. Open the app on your computer (with Finance set up there), then reply “try again”.' }]);
+        continue;
+      }
       if (down) { await localFailed(c, t, 'fetch failed (not reachable)'); continue; }
       await (legion.isLegion(t) ? runLegionTask(c, t) : runLocalTask(c, t)).then(() => { localDownAt = 0; }).catch(async (e) => {
         const msg = String(e && e.message || e);
@@ -761,4 +792,4 @@ async function checkSignins(force) {
 }
 
 const isBusy = () => localBusy || howtoCompacting;
-module.exports = { init, handlers, runHelperOn, localStatus, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };
+module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };

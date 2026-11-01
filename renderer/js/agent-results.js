@@ -185,7 +185,7 @@ function fmtWhen(ms){
 // repeating agent tasks: when their time comes, put them back in Claude's queue (desktop only —
 // it's the device that runs Claude). Missed runs while the computer was off happen once on start.
 function runDueRepeats(){
-  if(!window.desktop||!window.desktop.onAgentResults)return;
+  if(!window.desktop||!window.desktop.onAgentResults||window.localWorkerHere)return; // not on the local model's own computer: his main one does it
   let changed=false; const now=Date.now();
   state.tasks.forEach(function(t){
     if(taskWs(t)!=='agent'||!t.repeat||!t.nextRun||t.nextRun>now)return;

@@ -66,6 +66,10 @@
           <button id="localOffBtn" class="ghost mono danger" hidden>Turn off</button>
           <span id="localStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
+        <div id="localWorkerRow" hidden style="margin-top:10px">
+          <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="localWorkerOn"><span class="track" aria-hidden="true"></span><span>Run local tasks here for all my devices</span></label>
+          <p class="settings-hint" style="margin:0">Turn this on on the computer that runs the model. It picks up local tasks from your phone and other computers through sync, so they don’t need to reach it on the network (no Tailscale or address needed). Leave this app open there.</p>
+        </div>
       </div>
       <div class="settings-sub adv" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
