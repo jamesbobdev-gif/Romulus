@@ -32,18 +32,19 @@ function watchButton(t){
    click or type to sort it out (log in, pick the course), then reply. The picture it took when it stopped
    shows instead while the live one can't be reached, or while a task on this computer has the view */
 let lupaStuckAt=0; // which one, when several are waiting
-// human: on the Human tab, only the ones waiting on a step only he can do (a password, an MFA code, a robot
-// check: agent/signin-watch.js wallKind), on top, with "Done, try again" for when he's through it
+// human: on top of the Human tab too, so he can put right what went wrong in its browser; a step only he can
+// do (a password, an MFA code, a robot check: agent/signin-watch.js wallKind) first. "Done, try again" when he has
+const isVerify=function(t){ return !!(t.stuck&&t.stuck.verify); };
 function drawLupaStuck(show,human){
   const box=$('lupaStuck'); if(!box)return;
-  const waiting=!show?[]:state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.lane==='local'&&!t.parked&&(!human||t.stuck&&t.stuck.verify); })
-    .sort(function(a,b){ return ((b.stuck||b.shot)?1:0)-((a.stuck||a.shot)?1:0)||getSortKey(a)-getSortKey(b); }); // stopped in the browser first
+  const waiting=!show?[]:state.tasks.filter(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.lane==='local'&&!t.parked; })
+    .sort(function(a,b){ return (isVerify(b)?1:0)-(isVerify(a)?1:0)||((b.stuck||b.shot)?1:0)-((a.stuck||a.shot)?1:0)||getSortKey(a)-getSortKey(b); }); // his step first, then stopped in the browser
   box.textContent='';
   if(!waiting.length){ box.hidden=true; if(liveView&&liveView.src==='lupa')closeLiveView(); return; }
   box.hidden=false;
   const t=waiting[lupaStuckAt%waiting.length], key='lupa:'+t.id;
   const head=el('div','lupa-stuck-head');
-  head.appendChild(el('b',null,human?'Your turn: the local model needs you to verify on':'The local model stopped on'));
+  head.appendChild(el('b',null,isVerify(t)?'Your turn: the local model needs you to verify on':'The local model stopped on'));
   const name=el('button','lupa-stuck-title',t.title); name.title='Open this task';
   name.addEventListener('click',function(){ openTaskById(t.id); });
   head.appendChild(name);
@@ -57,8 +58,8 @@ function drawLupaStuck(show,human){
   if(why)box.appendChild(el('div','lupa-stuck-why',why));
   if(human){
     const row=el('div','yes-btns');
-    const go=el('button','btn-accent','Done, try again'); go.title='You got past it in its browser: the local model picks the task up again';
-    go.addEventListener('click',function(){ const lt=liveTask(t); if(!lt.reply)lt.reply='I did the verification in your browser. Carry on.'; retryAgent(lt); });
+    const go=el('button','btn-accent','Done, try again'); go.title='You sorted it out in its browser: the local model picks the task up again from what the page shows now';
+    go.addEventListener('click',function(){ const lt=liveTask(t); if(!lt.reply)lt.reply=isVerify(t)?'I did the verification in your browser. Carry on.':'I fixed it in your browser: look at the page again and carry on.'; retryAgent(lt); });
     row.appendChild(go);
     box.appendChild(row);
   }
