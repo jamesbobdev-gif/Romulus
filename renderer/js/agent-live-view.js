@@ -65,7 +65,9 @@ function drawLupaStuck(show,human){
   }
   // live: not while a task here is working (its card has the one view), not over the hub
   const busyHere=state.tasks.some(function(x){ return taskWs(x)==='agent'&&!x.done&&x.status==='working'&&x.lane!=='local'; });
-  if(liveViewAvailable()&&!busyHere){
+  const inCard=!human&&state.expanded.has(t.id); // its card is open below: the view is there (lupaEmbed)
+  if(inCard)box.appendChild(el('div','lupa-stuck-why','Its browser is open in the task below.'));
+  else if(liveViewAvailable()&&!busyHere){
     const slot=el('div','live-slot lupa-stuck-live'); box.appendChild(slot);
     if(liveHidden[key]){
       const b=el('button','btn-ghost agent-watch','◉ Show the browser');
@@ -76,8 +78,21 @@ function drawLupaStuck(show,human){
   if(t.shot){ const ps=photoStrip([t.shot],'stuck-shot lupa-stuck-shot'); const im=ps.querySelector('img'); if(im){ im.alt='What the browser showed'; im.title='What its browser showed when it stopped. Click to enlarge'; } box.appendChild(ps); }
 }
 
-// a working task's card: the live view goes in its slot (one view at a time: the task that has it keeps it)
+// a local task's open card: the mini PC's browser in it (he's looking at this one, so it has the view)
+function lupaEmbed(panel,t){
+  const key='lupa:'+t.id, slot=el('div','live-slot lupa-card-live'); panel.appendChild(slot);
+  if(liveHidden[key]){
+    const b=el('button','btn-ghost agent-watch','◉ Show its browser');
+    b.title='The local model’s browser, live: click and type in it yourself';
+    b.addEventListener('click',function(e){ e.stopPropagation(); delete liveHidden[key]; render(); });
+    slot.appendChild(b); return;
+  }
+  openLiveView(slot,key,null,'lupa');
+}
+// a working task's card: the live view goes in its slot (one view at a time: the task that has it keeps it,
+// and so does the local model's browser while a card he opened shows it)
 function liveEmbed(slot,id){
+  if(liveView&&liveView.src==='lupa'&&liveView.host&&liveView.host.isConnected&&liveView.host.classList.contains('lupa-card-live'))return;
   if(liveHidden[id]){
     const b=el('button','btn-ghost agent-watch','◉ Show the browser');
     b.addEventListener('click',function(e){ e.stopPropagation(); delete liveHidden[id]; render(); });
@@ -113,7 +128,7 @@ function openLiveView(host,forId,want,src){
   (host||document.body).appendChild(box);
   liveView={box:box,keys:keys,img:img,msg:msg,where:where,tabs:tabs,dot:dot,bigBtn:big,ws:null,page:null,pages:[],meta:null,nextId:1,timer:null,touchedAt:0,seen:{},want:want||null,
     host:host||null,forId:forId||null,big:!host,src:src||null};
-  if(host)box.hidden=true; // until the browser shows a real page
+  if(host&&src!=='lupa')box.hidden=true; // until the browser shows a real page (the mini PC's: always, so he sees why when it can't connect)
 
   // closing the embedded view hides it for that task; closing the big one puts it back in the card
   close.addEventListener('click',function(e){ e.stopPropagation(); if(liveView.big&&liveView.host&&liveView.host.isConnected)liveBig(false); else { if(liveView.forId)liveHidden[liveView.forId]=true; closeLiveView(); if(liveView===null)render(); } });
@@ -163,7 +178,7 @@ async function livePoll(){
   // its task finished: the card went (checked after the wait: a card being drawn isn't on the page yet)
   if(!v.big&&!v.box.isConnected){ closeLiveView(); return; }
   // in a card: only once the browser has a real page up (a run that only searches never shows it)
-  if(!v.big)v.box.hidden=!r.up||!r.pages.some(function(p){ return p.url&&!/^(about:|chrome:|devtools:)/.test(p.url); });
+  if(!v.big&&v.src!=='lupa')v.box.hidden=!r.up||!r.pages.some(function(p){ return p.url&&!/^(about:|chrome:|devtools:)/.test(p.url); });
   if(!r.up&&v.src==='lupa'){ v.dot.className='live-dot'; v.where.textContent='Can’t reach the local model’s browser'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
     liveShow('The local model’s browser isn’t reachable from here (is it on, and is Tailscale connected?).',true); return; }
   if(!r.up){ v.dot.className='live-dot'; v.where.textContent='Agent browser isn’t open'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
