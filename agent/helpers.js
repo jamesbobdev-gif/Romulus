@@ -112,4 +112,10 @@ function show(results, names = {}) {
     '\n\n(Helper answers are from other AIs: check anything important, and only use links they gave or pages you read.)';
 }
 
-module.exports = { MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, trimRunLog };
+/* he doesn't want emoji anywhere: AI-written text that's kept or saved (a coach brief, a Word report) goes through
+   this (pictographs, their joiners and variation marks, flags, check and cross marks). The screen has its own,
+   renderer/js/no-emoji.js */
+const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}\u{1F1E6}-\u{1F1FF}\u{2713}-\u{2717}]/gu;
+const noEmoji = (s) => String(s == null ? '' : s).replace(EMOJI, '').replace(/^ (?=\S)/gm, '').replace(/(\S)[ \t]{2,}/g, '$1 ');
+
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, trimRunLog };

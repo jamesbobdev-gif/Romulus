@@ -92,3 +92,12 @@ test('a reply changes the brief; "look again" or "try again" goes back through t
   assert.ok(!coach.wantsLookAgain('write it'));
   ['try again', 'look again', 'I signed in', 'check the announcements again', ''].forEach((r) => assert.ok(coach.wantsLookAgain(r), r));
 });
+
+test('no emoji in coach mode: Lupa\'s brief and the live box lose any it adds', () => {
+  // written as escapes, so nothing in the repo shows an emoji: clapper, pin, check, swords, keycap one
+  assert.strictEqual(coach.noEmoji('\u{1F3AC} Coach: \u{1F4CC} Noted \u{2713} done \u{2694} deeper 1\u{FE0F}\u{20E3} step'), 'Coach: Noted done deeper 1 step');
+  assert.strictEqual(coach.noEmoji('# Intro video \u{1F3A5}\n- \u{1F50E} Look at the rubric\n  - nested'), '# Intro video \n- Look at the rubric\n  - nested');
+  assert.strictEqual(coach.noEmoji(null), '');
+  assert.match(coach.WRITE_PROMPT('x', '', {}), /No emoji/);
+  assert.doesNotMatch(coach.WRITE_PROMPT('x', '', {}) + coach.RULES, /\p{Extended_Pictographic}/u);
+});

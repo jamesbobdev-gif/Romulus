@@ -377,7 +377,7 @@ function fileRefusal(msg) {
   if (!bad.length) return null;
   const names = FILES.map(fileName);
   return (FILES.length ? 'Only his own files for forms can be uploaded: ' + names.join(', ') + ' (with the full path you were given). '
-    : 'He hasn\'t added any files for forms yet (⚙ Settings → About you → Files for forms), so nothing can be uploaded. ')
+    : 'He hasn\'t added any files for forms yet (Settings → About you → Files for forms), so nothing can be uploaded. ')
     + 'Not ' + bad.join(', ') + '. To close the file box without uploading, call browser_file_upload with no paths, then say in your note what the site asked for.';
 }
 

@@ -1,4 +1,4 @@
-/* ⚙ AI connections: which cloud AIs the Agent lane may use, in order. Keys stay in config.json on this
+/* AI connections: which cloud AIs the Agent lane may use, in order. Keys stay in config.json on this
    computer; the page only ever gets them back masked. */
 const providers = require('./providers');
 const usage = require('./usage-limit');

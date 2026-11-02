@@ -198,7 +198,7 @@ function start({ dir, tasks, send, node }) {
     // what it did, kept on its answer: the plan as it ended, then the steps
     thoughts(id) {
       const p = planFor(id);
-      const head = p.length ? 'Plan:\n' + p.map((x) => (x.status === 'completed' ? '☑ ' : '☐ ') + x.text).join('\n') + '\n\n' : '';
+      const head = p.length ? 'Plan:\n' + p.map((x) => (x.status === 'completed' ? '✓ ' : '○ ') + x.text).join('\n') + '\n\n' : '';
       return (head + steps[id]).trim().slice(-MAX_TEXT);
     },
     stop() { close(); clearTimeout(timer); timer = null; },

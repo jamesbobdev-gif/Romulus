@@ -130,15 +130,18 @@ const WRITE_PROMPT = (topic, due, dossier, { reply, before, gathered } = {}) => 
   'takes spoken, at ~130 words a minute, so the whole fits the time limit. Use the ideas, terms and examples from the course ' +
   'material and the topic facts. Written as he\'d say it: plain, first person, short sentences. Put [his own example] where only ' +
   'he can fill it in.)\n' +
-  '## Rubric check\n(every rubric criterion → where the script covers it; say if one isn\'t covered and how to cover it)\n' +
+  '## Rubric check\n(every rubric criterion, then where the script covers it; say if one isn\'t covered and how to cover it)\n' +
   '## Tips from the course\n(the professor\'s announcements, examples and his earlier feedback, as do\'s and don\'ts; skip if none)\n' +
   '## Couldn\'t find\n(anything that matters and wasn\'t in the course; skip if nothing)\n' +
   '## Where it came from\n(the pages and files, one per line)\n' +
-  'If the topic needed more research than the notes have, end with one line: "⚔ For a deeper look, add a #legion task: ' +
-  '<a research question that names the topic, not the course>".\nAnswer with the Markdown only.';
+  'If the topic needed more research than the notes have, end with one line: "For a deeper look, add a #legion task: ' +
+  '<a research question that names the topic, not the course>".\nNo emoji anywhere: he doesn\'t want them. Answer with the Markdown only.';
 
 // his reply sends Lupa back to the course (signed in now, "look again"), or just changes the brief
 const LOOK_AGAIN = /\b(try again|(look|check|go|read)\b[^.\n]{0,40}\bagain|re-?check|start over|from scratch|signed in|logged in|go back to|look (at|for|in)|find|open)\b/i;
 const wantsLookAgain = (reply) => !String(reply || '').trim() || LOOK_AGAIN.test(String(reply));
 
-module.exports = { isCoach, topicOf, RULES, SCHOOL_HOSTS, PARTS, MUST, KEEP_NOTE_TOOL, keepNote, missing, progress, dossierText, WRITE_PROMPT, wantsLookAgain };
+// he doesn't want emoji: what Lupa writes and the live box both go through this (agent/helpers.js)
+const { noEmoji } = require('./helpers');
+
+module.exports = { noEmoji, isCoach, topicOf, RULES, SCHOOL_HOSTS, PARTS, MUST, KEEP_NOTE_TOOL, keepNote, missing, progress, dossierText, WRITE_PROMPT, wantsLookAgain };

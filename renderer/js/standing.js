@@ -36,7 +36,7 @@ function standingRemove(line){ return standingEdit(function(lines){ return lines
 function allowBox(t,h){
   const box=el('div','conv-opts');
   box.appendChild(el('div',null,'• '+h.allow));
-  if(h.allowKept)box.appendChild(el('div',null,'Allowed from now on. (Undo it in ⚙ Settings → The Agent → Doesn’t ask again.)'));
+  if(h.allowKept)box.appendChild(el('div',null,'Allowed from now on. (Undo it in Settings → The Agent → Doesn’t ask again.)'));
   else if(h.allowDropped)box.appendChild(el('div',null,'Not allowed: it keeps asking.'));
   else{
     const row=el('div','conv-pref-btns');

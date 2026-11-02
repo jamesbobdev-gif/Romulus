@@ -32,12 +32,12 @@ const liveText={};        // task id → what the mini PC's model is doing right
 const livePlan={};        // task id → Claude's checklist while it works: [{text, status}]
 const liveHeard={};       // task id → times of his messages Claude has already taken mid-run
 const runLimit={};        // task id → when the desktop runner kills its current try (the stuck-run watchdog waits till then)
-// Claude's checklist, live: ☑ done, ▸ on it now, ☐ still to do
+// Claude's checklist, live: ✓ done, ▸ on it now, ○ still to do
 function fillPlan(box,items){
   box.textContent='';
   (items||[]).forEach(function(p){
     const li=el('li','plan-'+(p.status==='completed'?'done':p.status==='in_progress'?'now':'todo'));
-    li.appendChild(el('span','plan-mark',p.status==='completed'?'☑':p.status==='in_progress'?'▸':'☐'));
+    li.appendChild(el('span','plan-mark',p.status==='completed'?'✓':p.status==='in_progress'?'▸':'○'));
     li.appendChild(document.createTextNode(p.text));
     box.appendChild(li);
   });
@@ -366,7 +366,7 @@ function startEdit(t,span){
 // a long written answer (an essay, a letter, notes) is a document: it gets a download button
 function isDocAnswer(text){ return String(text||'').trim().split(/\s+/).length>=120; }
 function docButton(title,text){
-  const b=el('button','btn-ghost doc-dl','⬇ Download as Word');
+  const b=el('button','btn-ghost doc-dl','Download as Word');
   b.title='Save this answer as a Word document';
   b.addEventListener('click',function(e){ e.stopPropagation(); saveAnswerDoc(title,text); });
   return b;
@@ -409,13 +409,13 @@ function drawLupaFiles(show){
   box.hidden=!files.length;
   const key=JSON.stringify(files); if(key===lupaDrawn)return; lupaDrawn=key;
   box.textContent='';
-  box.appendChild(el('summary',null,'📄 Files on the local model ('+files.length+')'));
+  box.appendChild(el('summary',null,'Files on the local model ('+files.length+')'));
   const ul=el('ul','lupa-file-list');
   files.forEach(function(f){
     const li=el('li','lupa-file');
     li.appendChild(el('span','lupa-file-name',f.name.replace(/ \(\d+\)(?=\.[^.]+$|$)/,'')));
     li.appendChild(el('span','lupa-file-meta',fmtWhen(f.at)+' · '+fileSize(f.size)));
-    const b=el('button','btn-ghost doc-dl','⬇ Download');
+    const b=el('button','btn-ghost doc-dl','Download');
     b.title='Save a copy on this computer';
     b.addEventListener('click',function(e){
       e.stopPropagation(); b.disabled=true; b.textContent='Copying…';
@@ -423,7 +423,7 @@ function drawLupaFiles(show){
         if(r&&r.ok)pasteToast('Saved to '+r.path);
         else if(r&&!r.canceled)pasteToast('Couldn’t copy it: '+(r.error||'sync didn’t answer'));
       }).catch(function(err){ pasteToast('Couldn’t copy it: '+err.message); })
-        .then(function(){ b.disabled=false; b.textContent='⬇ Download'; });
+        .then(function(){ b.disabled=false; b.textContent='Download'; });
     });
     li.appendChild(b);
     // done with it: off the list, and to the local model’s trash with every copy of it (recoverable there)

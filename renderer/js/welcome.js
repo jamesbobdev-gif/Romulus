@@ -8,7 +8,7 @@
 const WELCOME_KEY='tasks.welcomed.v1';
 const isDesktopApp=!!(window.desktop&&window.desktop.aiStatus);
 
-// open ⚙ Settings with one group expanded and one panel in view
+// open Settings with one group expanded and one panel in view
 function openSettingsAt(groupId,panelId){
   setSettingsOpen(true);
   const g=groupId&&$(groupId); if(g&&'open' in g)g.open=true;

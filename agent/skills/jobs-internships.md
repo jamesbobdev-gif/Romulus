@@ -45,7 +45,7 @@ on the last page and show him what you entered, and press Submit yourself after 
    his resume in from his files for forms (the browser rules say how; it's `browser_file_upload` with
    the listed path, or `upload_file` with the file's name). "Autofill with resume" first is fine:
    use it, then check every field it filled. No resume set up → fill the rest and say in the note:
-   "Add your resume in ⚙ Settings → About you → Files for forms, then reply try again." Never
+   "Add your resume in Settings → About you → Files for forms, then reply try again." Never
    anything else from the computer.
 5. **Cover letter:** only when the posting requires one or has a box for it. Short (3 paragraphs),
    specific to the posting, built only from his details and the posting; paste it in the box. If it

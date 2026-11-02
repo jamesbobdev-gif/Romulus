@@ -117,7 +117,7 @@ function outline(snapshot, opts = {}) {
   walk(root, (n) => { if (POPUPS.has(n.role) || n.attrs && n.attrs.modal) popups.push(n); });
   for (const p of popups.slice(0, 2)) {
     const btns = []; walk(p, (c) => { if (c.ref && (c.role === 'button' || c.role === 'link') && c.name) btns.push('"' + clip(c.name, 40) + '" ' + tag(c)); });
-    head.push('⚠ A popup is open' + (p.name ? ' ("' + clip(p.name, 60) + '")' : '') + ': deal with it before anything else' +
+    head.push('Heads up: a popup is open' + (p.name ? ' ("' + clip(p.name, 60) + '")' : '') + ': deal with it before anything else' +
       (btns.length ? '. Its buttons: ' + btns.slice(0, 5).join(', ') : '') + '. Prefer "Reject"/"Close"/"No thanks" for cookie and ad popups.');
   }
 
@@ -129,7 +129,7 @@ function outline(snapshot, opts = {}) {
     else if (t && (PROBLEM.test(t) || (PLEASE.test(t) && nextToField(n))) && !FIELD_ROLES.has(n.role) && !CLICKABLE.has(n.role) && t.length < 200) msgs.push(t);
   });
   const uniq = [...new Set(msgs.map((m) => clip(m.replace(/\s+/g, ' ').trim(), 160)))].filter(Boolean);
-  if (uniq.length) head.push('⚠ The page says: ' + uniq.slice(0, 5).map((m) => '"' + m + '"').join(' · '));
+  if (uniq.length) head.push('Heads up: the page says: ' + uniq.slice(0, 5).map((m) => '"' + m + '"').join(' · '));
 
   // the form at a glance: filled vs still empty, required first; radios count once per group
   const fields = [];
@@ -153,8 +153,8 @@ function outline(snapshot, opts = {}) {
   if (fields.length) {
     const empty = fields.filter((f) => f.empty).sort((a, b) => b.req - a.req);
     head.push('Form: ' + fields.length + ' field(s), ' + (fields.length - empty.length) + ' filled.' + (empty.length
-      ? ' Still empty: ' + empty.slice(0, 12).map((f) => (f.req ? '⚠' : '') + '"' + clip(f.label, 50) + '" [' + f.ref + ']').join(', ') + (empty.length > 12 ? ', …' : '') +
-        (empty.some((f) => f.req) ? '  (⚠ = required)' : '') +
+      ? ' Still empty: ' + empty.slice(0, 12).map((f) => (f.req ? '*' : '') + '"' + clip(f.label, 50) + '" [' + f.ref + ']').join(', ') + (empty.length > 12 ? ', …' : '') +
+        (empty.some((f) => f.req) ? '  (* = required)' : '') +
         // clicking answers one by one costs a step each: a 30-page questionnaire never got to the end that way
         (empty.length >= 2 ? ' Use fill_form to answer all of these in one step (multiple-choice questions too).' : '')
       : ' Nothing left empty.'));
@@ -169,7 +169,7 @@ function outline(snapshot, opts = {}) {
     if (n.role === 'link' && url && !/^(#|javascript:)/.test(url)) line += ' → ' + clip(url, 90);
     if (n.attrs.disabled) line += ' (disabled)';
     if (n.attrs.selected || n.attrs.pressed === true || n.attrs.expanded === true) line += ' (on)';
-    if (n.role === 'button' && FINAL.test(name)) line += '  🔒 final step';
+    if (n.role === 'button' && FINAL.test(name)) line += '  (final step)';
     return line;
   };
   const render = (n, depth) => {
@@ -205,7 +205,7 @@ function outline(snapshot, opts = {}) {
       const opts = kids.filter((c) => c.role === 'option');
       if (opts.length) line += '  choices: ' + opts.slice(0, 15).map((o) => clip(o.name, 40)).join(' | ') + (opts.length > 15 ? ' | …(' + (opts.length - 15) + ' more)' : '');
       if (n.attrs.disabled) line += ' (disabled)';
-      if (isRequired(n.name) && isEmpty(n)) line += '  ⚠ required';
+      if (isRequired(n.name) && isEmpty(n)) line += '  (required)';
       body.push(line);
       for (const c of kids) if (c.role !== 'option') render(c, depth + 1);
       return;

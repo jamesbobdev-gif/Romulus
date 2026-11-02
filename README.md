@@ -108,7 +108,7 @@ The installed app starts at login (toggle in the tray menu), hides to the tray w
 
 ### Theme
 
-⚙ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin is a handful of overrides:
+Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin is a handful of overrides:
 
 ```css
 :root{

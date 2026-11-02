@@ -271,7 +271,7 @@ async function startAgentRun() {
   // his yes unlocks the order button only on the sites the ask was about
   const yesHosts = tasks.length === 1 && saidYes(tasks[0]) ? approvedHostsFor(tasks[0]) : [];
   const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · ') };
-  // the cloud AIs he connected, in his order (⚙ Settings → AI connections): a task one of them fails
+  // the cloud AIs he connected, in his order (Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
   // first; its pill follows whichever AI takes over. (Inbox runs: Claude only.)

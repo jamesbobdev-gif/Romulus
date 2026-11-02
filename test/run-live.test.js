@@ -28,7 +28,7 @@ test('Claude\'s checklist and steps become the task\'s plan and live log', async
   assert.deepStrictEqual(last.plan, [{ text: 'Find 32 oz bottles', status: 'completed' }, { text: 'Compare the top 3', status: 'pending' }]);
   assert.match(last.text, /Searching: 32 oz water bottle/);
   assert.match(last.text, /Opening amazon\.com\/dp\/B0X/);
-  assert.match(live.thoughts('a'), /^Plan:\n☑ Find 32 oz bottles\n☐ Compare the top 3/);
+  assert.match(live.thoughts('a'), /^Plan:\n✓ Find 32 oz bottles\n○ Compare the top 3/);
   live.stop();
 });
 

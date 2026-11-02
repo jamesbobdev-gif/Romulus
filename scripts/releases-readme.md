@@ -71,7 +71,7 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 
 **Linux**: download the `.AppImage`, make it executable (`chmod +x Romulus-*.AppImage`) and run it.
 
-**Android phone**: download `Romulus-<version>.apk` on the phone and open it (the phone asks once to allow installs from your browser). Then **⚙ Settings → Device sync** and paste the sync code copied from your computer's Settings; the lists appear.
+**Android phone**: download `Romulus-<version>.apk` on the phone and open it (the phone asks once to allow installs from your browser). Then **Settings → Device sync** and paste the sync code copied from your computer's Settings; the lists appear.
 
 **Updates** ask first. Computers check here every few hours and, when a new version is out, offer **Update** / **Not now**; after a yes it installs on quit, when the computer is idle, or right away with **Restart now**. Saying **Update** on one device updates your other computers too, through sync. Settings → Updates can make it automatic. The phone shows an **Update** banner when a newer version is here; tap it, then open the finished download. (Macs can't install updates on their own until the app is signed by Apple; download the new `.dmg` meanwhile.)
 
@@ -79,13 +79,13 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 
 ## Setup
 
-The first time it opens, a welcome card asks what you want: **just tasks**, **an AI assistant**, or **sync with my phone**. Pick one and it takes you to the right place. Everything below is also reachable from **⚙ Settings** (the gear, top right) at any time.
+The first time it opens, a welcome card asks what you want: **just tasks**, **an AI assistant**, or **sync with my phone**. Pick one and it takes you to the right place. Everything below is also reachable from **Settings** (the gear, top right) at any time.
 
 ### 1. Just tasks
 Nothing to do. Add a task above the list. Due date and time are optional; a tag groups tasks and becomes a filter chip. Drag to reorder. Click a task to expand it for subtasks, notes and repeats.
 
 ### 2. Connect an AI
-Open **⚙ Settings → Agent & AI → AI connections**, or press **Connect an AI** on the Agent tab. Each AI is a card with a switch. Switch one on and follow the button on the card. When several are on, the app tries them top to bottom; the ↑ arrows change the order.
+Open **Settings → Agent & AI → AI connections**, or press **Connect an AI** on the Agent tab. Each AI is a card with a switch. Switch one on and follow the button on the card. When several are on, the app tries them top to bottom; the ↑ arrows change the order.
 
 **Claude** (best if you have a Claude Pro or Max plan; the only one that can read your Gmail and your photos)
 1. **Install Claude Code**: one button, runs Anthropic's installer, a minute or two.
@@ -108,12 +108,12 @@ Press **Open Google AI Studio**, click Create API key, paste it, Save key. Use a
 **Your own model** (private, free, offline)
 1. Install [Ollama](https://ollama.com/download) on this computer or any machine on your network.
 2. Pull a model: `ollama pull qwen3:8b` to start (fits in 8 GB of RAM); `qwen3:30b-a3b` or similar if you have 32 GB and want it to handle forms and long documents.
-3. In **⚙ Settings → Local model**, leave the address as `http://localhost:11434` (or type the other machine's address), press **Find models**, pick one, press **Use it**.
+3. In **Settings → Local model**, leave the address as `http://localhost:11434` (or type the other machine's address), press **Find models**, pick one, press **Use it**.
    If Ollama is already running on this computer, the panel notices and says so.
 
 Then under **Who does Agent tasks**, decide which AI gets what: the default is "auto" (web and shopping to the cloud, writing and forms to the local model, private words always local). Add rules like "apply, form → local" if you like.
 
-**Tell it about you.** **⚙ Settings → About you**: preferences it reads before every task (how to sign emails, what time of day suits you); the **Locked** profile (resume, address, phone, IDs for forms; cloud AIs never see it); and **Files for forms** (your resume as a PDF).
+**Tell it about you.** **Settings → About you**: preferences it reads before every task (how to sign emails, what time of day suits you); the **Locked** profile (resume, address, phone, IDs for forms; cloud AIs never see it); and **Files for forms** (your resume as a PDF).
 
 ### 3. Sync with your phone
 Your lists are shared through a free [Supabase](https://supabase.com) project of your own, so the data is in your account, not ours. About ten minutes, once.
@@ -123,14 +123,14 @@ Your lists are shared through a free [Supabase](https://supabase.com) project of
 2. When it's ready, open **SQL Editor → New query**, paste the whole of [`supabase/setup.sql`](https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/setup.sql) from the source repository, press **Run**. It makes the one table the app uses and the functions that guard it. Safe to run again.
 3. Open **Project Settings → API**. Copy the **Project URL** (`https://xxxx.supabase.co`) and the **anon / publishable** key. Never the secret or service_role key.
 
-**Connect the computer**: **⚙ Settings → Device sync**. Paste the URL and the anon key, press **Generate key** for a sync key, press **Save & sync**. The sync key is the password to your list; anyone with it can read and change it.
+**Connect the computer**: **Settings → Device sync**. Paste the URL and the anon key, press **Generate key** for a sync key, press **Save & sync**. The sync key is the password to your list; anyone with it can read and change it.
 
 **Connect the phone**: install the Android app (`Romulus-<version>.apk` from the releases page; open it on the phone), then on the computer press **Copy sync code** in Device sync. Send it to yourself through something you trust (a password-manager note, not a group chat), paste it into the first box of the phone's Device sync and press **Save & sync**.
 
 That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
 ### 4. Calendars
-**⚙ Settings → Calendars.** Press **+ Google** or **+ Microsoft** and sign in; the official installer has sign-in built in. Or **+ Calendar link** for any subscribe link (iCloud, a shared calendar). For **course calendars** (Blackboard: Calendar → ⚙ → Share Calendar; D2L: Calendar → Subscribe), paste the link under Course calendars and due dates land on School. Per calendar, choose whether events become to-dos and whether your tasks appear on it.
+**Settings → Calendars.** Press **+ Google** or **+ Microsoft** and sign in; the official installer has sign-in built in. Or **+ Calendar link** for any subscribe link (iCloud, a shared calendar). For **course calendars** (Blackboard: Calendar → → Share Calendar; D2L: Calendar → Subscribe), paste the link under Course calendars and due dates land on School. Per calendar, choose whether events become to-dos and whether your tasks appear on it.
 
 ### 5. Finance
 Open the **Finance** tab; the first visit is the setup. Make an account at bridge.simplefin.org (about $15 a year) and connect your banks there, choose **New connection** and copy the setup token, paste it into the tab, and choose a passphrase. From then on the tab asks for the passphrase (or Windows Hello, once you turn it on) and locks itself after 30 minutes. Receipts from Gmail and stock prices are set up from the same tab.

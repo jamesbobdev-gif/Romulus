@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('desktop', {
   // the local lane's sites: the ones a run reached (remembered as allowed) and the ones it was refused (a to-do asks him)
   onLocalSitesSeen: (cb) => ipcRenderer.on('local:sites-seen', (_event, p) => cb(p)),
   onLocalSiteAsk: (cb) => ipcRenderer.on('local:site-ask', (_event, p) => cb(p)),
-  // ⚙ Local model: any Ollama (this computer by default)
+  // Local model: any Ollama (this computer by default)
   localGet: () => ipcRenderer.invoke('local:get'),
   localProbe: (url) => ipcRenderer.invoke('local:probe', url),
   localSave: (change) => ipcRenderer.invoke('local:save', change),
