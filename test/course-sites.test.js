@@ -50,3 +50,10 @@ test('only school tasks get the list', () => {
   assert.ok(!cs.relevant({ title: 'Order paper towels on Amazon' }, list));
   assert.ok(!cs.relevant({ title: 'Do the Syllabus Quiz' }, []), 'nothing known: nothing to add');
 });
+
+test('the app\'s own "From School →" line never reaches the model (it took the model\'s name for a course)', () => {
+  const { forModel } = require('../agent/local-lane');
+  const h = [{ who: 'sys', text: 'From School → Holo4-35B-A3B' }, { who: 'sys', text: 'Routed → The local model (school)' },
+    { who: 'sys', text: 'The browser was closed' }, { who: 'you', text: 'try again' }];
+  assert.deepStrictEqual(forModel(h).map((x) => x.text), ['The browser was closed', 'try again']);
+});
