@@ -44,6 +44,8 @@ handle('tasks:load', async () => {
   throw new Error('could not read ' + path.basename(file) + ' (' + problem + ')');
 });
 handle('tasks:restored', async () => restoredFrom);
+// this computer's name, as its claims on Agent tasks carry it ('relay@<host>', agent/task-context.js)
+handle('app:host', async () => require('os').hostname());
 
 /* The copies: tasks.json.bak (the file before the last save) and one dated copy a day in backups/, the
    last DAILY_KEEP days of them. A few small files, nothing to set up. */

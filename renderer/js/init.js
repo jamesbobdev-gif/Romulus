@@ -3,11 +3,19 @@
 'use strict';
 
 /* ── init ── */
+// a working task this computer may put back in the queue at start-up: unclaimed, claimed here, or left for 3 hours
+function claimIsMine(t,host){
+  if(!t.claimedBy||!host)return true;
+  if(String(t.claimedBy).split('@').slice(1).join('@')===host)return true;
+  return !!t.claimedAt&&Date.now()-t.claimedAt>3*60*60*1000;
+}
 $('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
 $('stamp').addEventListener('click',function(){ switchTab('calendar'); });
 store.load().then(async function(data){
   // desktop: the sync settings come from config.json (sync.js started reading them; nothing is kept in localStorage)
   if(syncState.ready){ try{ await syncState.ready; }catch(e){} }
+  // this computer's name: a run another computer claimed ('relay@lupa-…') isn't this one's to put back in the queue
+  let host=null; if(window.desktop&&window.desktop.hostName){ try{ host=await window.desktop.hostName(); }catch(e){} }
   if(data&&Array.isArray(data.tasks)){
     state.tasks=data.tasks.map(function(t){
       const out={
@@ -53,7 +61,8 @@ store.load().then(async function(data){
         if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
         // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
-        if(window.desktop&&out.status==='working'&&(out.lane!=='local'||window.desktop.localStatus))out.status='queued'; }
+        // only its own runs, or one nobody has touched for 3 hours: a computer opening at 19:53 put the mini PC's six running tasks back to queued
+        if(window.desktop&&out.status==='working'&&(out.lane!=='local'||window.desktop.localStatus)&&claimIsMine(out,host))out.status='queued'; }
       return out;
     });
     state.tombstones=Array.isArray(data.tombstones)?data.tombstones:[];

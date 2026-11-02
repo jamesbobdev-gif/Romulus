@@ -41,6 +41,7 @@ const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_fil
 const { localWebSearch, localReadPage, searchMyData, LOCAL_TOOLS, FILL_FORM_TOOL } = require('./local-tools');
 const courseSites = require('./course-sites');
 const runLog = require('./run-log');
+const APP_VERSION = (() => { try { return require('../package.json').version; } catch (e) { return null; } })();
 const runLogFile = () => path.join(ctx.userData(), 'local-runs.jsonl');
 const { enrichOption } = require('./previews');
 const worker = require('./worker');
@@ -90,7 +91,7 @@ function workerBeat() {
   if (!worker.isWorker(readConfig())) return Promise.resolve(false);
   const c = localCfg(), l = readConfig().localModel || {}, a = require('./supabase').channel(readConfig());
   syncFiles(); // what its browser downloaded, for his other computers
-  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), stats: runLog.summary(runLog.load(runLogFile())) });
+  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), doing: nowDoing(), version: APP_VERSION, stats: runLog.summary(runLog.load(runLogFile())) });
 }
 // the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
 const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
@@ -358,7 +359,7 @@ async function startLocalRun() {
   if (!c || localBusy || !routing.decided()) return;
   const queued = queuedLocalTasks();
   if (!queued.length) return;
-  localBusy = true;
+  localBusy = true; doing({ what: 'starting a run' }); // claiming, and checking it can reach its model
   // a long run on the mini PC (10–30 min) must not be cut off by this computer idling to sleep. Closing
   // the lid still sleeps it (Windows' lid setting), so a sleep during the run is noticed and the task starts over on waking
   const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
@@ -404,7 +405,7 @@ async function startLocalRun() {
       });
     }
   } finally {
-    localBusy = false;
+    localBusy = false; doing(null);
     ctx.powerSaveBlocker.stop(awake);
     ctx.powerMonitor.removeListener('suspend', onSuspend);
     scheduleLocalRun(); // anything queued meanwhile
@@ -478,6 +479,7 @@ function lupaThink(c, prompt, { schema, ms } = {}) {
     .then(() => { if (!out.trim()) throw new Error('the model gave no answer'); return out; });
 }
 async function runLegionTask(c, t) {
+  doing({ what: 'legion research', id: t.id, title: t.title });
   const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
   const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
   let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
@@ -543,6 +545,7 @@ function runLegionStep(c, t, report, plan) {
     'What your report found:\n' + found, plan ? 'What you said you would do: ' + plan : ''].filter(Boolean).join('\n\n') }));
 }
 async function runLocalTask(c, t) {
+  doing({ what: 'task', id: t.id, title: t.title, step: 0 });
   const [prefs, locked, standingText] = await Promise.all([agentRow(':prefs'), agentRow(':locked'), agentRow(':standing')]);
   let rules = ''; try { rules = fs.readFileSync(path.join(__dirname, 'local-prompt.md'), 'utf8'); } catch (e) {}
   const skills = loadSkills().filter((s) => s.match && s.match.test(skillText(t))).slice(0, 2);
@@ -641,6 +644,7 @@ async function runLocalTask(c, t) {
   let stepsUsed = 0;
   for (let step = 0; step < maxSteps && !final; step++) {
     stepsUsed = step + 1;
+    if (activity && activity.id === t.id) Object.assign(activity, { step: stepsUsed, of: maxSteps, stepAt: Date.now(), on: 'thinking' });
     const last = step === maxSteps - 1 || forceAnswer;
     // keep the model's memory small: only the latest tool result (two without a browser) stays in full.
     // Pages are long, and each step the processor re-reads everything after the first thing that changed.
@@ -710,6 +714,7 @@ async function runLocalTask(c, t) {
     }
     for (const call of calls) {
       const name = call.function && call.function.name, args = (call.function && call.function.arguments) || {};
+      if (activity && activity.id === t.id) activity.on = String(name || '').slice(0, 40);
       let result;
       if (money && name !== 'my_finances' && name !== 'search_my_data') {
         messages.push({ role: 'tool', tool_name: name, content: 'Not in this task: it is about his money, so there is no web or browser here. Use my_finances or search_my_data, or answer.' });
@@ -915,7 +920,7 @@ async function runLocalTask(c, t) {
 async function checkSignins(force) {
   if (!localCfg() || localBusy || howtoCompacting) return { ok: false, error: 'Busy, try again in a minute.' };
   if (!force && !signinWatch.due(ctx.userData())) return { ok: true, skipped: true };
-  localBusy = true;
+  localBusy = true; doing({ what: 'daily sign-in check' });
   try {
     if (!(await ensureQwenBrowser())) return { ok: false, error: 'The local model’s browser isn’t reachable.' };
     const r = routing.getRouting().sites;
@@ -923,10 +928,16 @@ async function checkSignins(force) {
     const out = await signinWatch.dailyCheck({ port: QWEN_BROWSER_LOCAL_PORT, sites, send: sendToRenderer, userData: ctx.userData(), log: agentLog });
     return { ok: true, sites: out };
   } finally {
-    localBusy = false;
+    localBusy = false; doing(null);
     scheduleLocalRun(); // a task that came in meanwhile
   }
 }
 
 const isBusy = () => localBusy || howtoCompacting;
+/* What it's doing right now, for the heartbeat (agent/worker.js), so "busy" can be told apart from stuck:
+   {what, id, title, step, of, on (the tool it's in, or 'thinking'), since, stepAt}. Earlier it said busy for an
+   hour with no task running, and nobody could see why */
+let activity = null;
+function doing(a) { activity = a ? Object.assign({ since: Date.now() }, a, a.title ? { title: String(a.title).slice(0, 80) } : {}) : null; }
+const nowDoing = () => activity ? Object.assign({}, activity) : howtoCompacting ? { what: 'tidying how-to notes' } : null;
 module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };
