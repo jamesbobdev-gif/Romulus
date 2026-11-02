@@ -90,7 +90,7 @@ as $$
          public.sync_topic_of(p_sync_key),
          (p_since is not null and s.updated_at = p_since)
   from (select 1) x left join public.tasks_sync s on s.sync_key = p_sync_key
-  where length(p_sync_key) >= 16;
+  where p_sync_key ~ '^tk_[A-Za-z0-9_-]{13,}(:[a-z]+)?$';
 $$;
 
 -- End-to-end encrypted sync (renderer/js/sync-crypto.js): a device that moves its lists to v2 leaves {"moved":"v2"}
@@ -156,7 +156,7 @@ begin
   return null;
 end $$;
 
--- null = the write may go ahead; otherwise why not ('new_accounts' | 'rate' | 'full' | 'server_full')
+-- null = the write may go ahead; otherwise why not ('weak_key' | 'new_accounts' | 'rate' | 'full' | 'server_full')
 create or replace function public.sync_guard(p_sync_key text, p_doc jsonb)
 returns text
 language plpgsql security definer
@@ -175,7 +175,11 @@ begin
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = a for update;
   if not found then
-    -- someone new: refused accounts leave no row behind, so a flood of them costs nothing to keep
+    -- someone new: refused accounts leave no row behind, so a flood of them costs nothing to keep. A new
+    -- account needs a key id of 32+ characters (the app's keys are 36, encrypted lists' lookup ids 32), so a
+    -- short hand-typed key someone else on the project could guess can't start one
+    -- (supabase/migrations/20261031_sync_key_hardening.sql)
+    if length(regexp_replace(p_sync_key, '^tk_(work_|agent_|school_)?([^:]+)(:.*)?$', '\2')) < 32 then return 'weak_key'; end if;
     if pg_database_size(current_database()) > s.max_total_bytes then return 'server_full'; end if;
     ip := public.sync_caller_ip_hash();
     if ip is not null then
@@ -215,10 +219,10 @@ end $$;
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
 -- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours,
--- :worker, :updates; the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key
--- alone can't fill the table (supabase/migrations/20261028_sync_limits.sql), a row moved to v2 takes nothing but another
--- moved marker, and sync_guard has to let the write through: false is also the answer for an account that is full or
--- saving too often (sync_usage says which).
+-- :worker, :updates, :finance, :files, :files-gone; the id is 13+ characters of letters, digits, - and _) and a document of at
+-- most 4 MB, so the anon key alone can't fill the table (supabase/migrations/20261028_sync_limits.sql), a row moved to v2
+-- takes nothing but another moved marker, and sync_guard has to let the write through: false is also the answer for an
+-- account that is full or saving too often (sync_usage says which).
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
 -- still the version read (updated_at unchanged). false = someone else wrote in between: read and merge again.
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
@@ -228,7 +232,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -248,7 +252,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -265,7 +269,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then
@@ -531,3 +535,47 @@ revoke all on function public.sync_pair_allow(text, int), public.sync_pair_put(t
 revoke execute on function public.sync_pair_allow(text, int) from anon, authenticated;
 grant execute on function public.sync_pair_put(text, text, text), public.sync_pair_take(text),
   public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) to anon, authenticated, service_role;
+
+
+-- ───────────── the local model's downloads ─────────────
+-- Files the local model's browser downloaded on its own computer (a worksheet off Blackboard) reach the other
+-- computers through this bucket (agent/worker-files.js), so no device has to reach the mini PC. Documents up to
+-- 25 MB, in the same hashed folder; the app adds and removes them with the anon key, in that folder only.
+-- (supabase/migrations/20261101_agent_files_bucket.sql)
+insert into storage.buckets (id, name, public, file_size_limit)
+  values ('agent-files', 'agent-files', true, 26214400)
+  on conflict (id) do nothing;
+-- ── the local model's downloads bucket (20261101_agent_files_bucket.sql): the same caps as the photo attachments ──
+-- A folder shaped like the app's (the hash of the agent key), a plain file name, at most 300 files in a folder and at most
+-- 60 uploads per network-hour (the counter is shared with agent-attachments), so the anon key alone can't fill the bucket.
+create or replace function public.agent_file_upload_allowed(p_name text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare folder text; cnt int;
+begin
+  if p_name is null or p_name !~ '^tk_agent_att_[0-9a-f]{40}/[A-Za-z0-9][A-Za-z0-9 ._()-]{0,119}$' then return false; end if;
+  folder := split_part(p_name, '/', 1);
+  begin
+    select count(*) into cnt from storage.objects where bucket_id = 'agent-files' and name like folder || '/%';
+    if cnt >= 300 then return false; end if;
+  exception when others then null; end;
+  delete from public.sync_upload_tries where hour < now() - interval '1 day';
+  insert into public.sync_upload_tries as u (ip_hash, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), date_trunc('hour', now()), 1)
+    on conflict (ip_hash, hour) do update set n = u.n + 1
+    returning u.n into cnt;
+  return cnt <= 60;
+end $$;
+revoke all on function public.agent_file_upload_allowed(text) from public;
+grant execute on function public.agent_file_upload_allowed(text) to anon, authenticated, service_role;
+drop policy if exists "agent files: app can upload" on storage.objects;
+create policy "agent files: app can upload" on storage.objects for insert to anon
+  with check (bucket_id = 'agent-files' and public.agent_file_upload_allowed(name));
+drop policy if exists "agent files: app can see" on storage.objects;
+create policy "agent files: app can see" on storage.objects for select to anon
+  using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+drop policy if exists "agent files: app can remove" on storage.objects;
+create policy "agent files: app can remove" on storage.objects for delete to anon
+  using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');

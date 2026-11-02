@@ -37,9 +37,10 @@ async function pages(taskId) {
   const list = taskId ? await taskTabs.pagesFor(String(taskId)) : await fetch(BASE + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
   return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl).map(view) };
 }
-/* where = 'lupa': the local model's browser on the mini PC, through the SSH tunnel (agent/qwen-browser.js),
-   for the stuck task at the top of the Agent tab. Polled every 2 s, so the tunnel (an ssh that also wakes its
-   screen) is opened at most once a minute; it has no per-task tabs, so all of its tabs */
+/* where = 'lupa': the local model's browser, on this computer when it is the worker (agent/qwen-browser.js), for
+   the stuck task at the top of the Agent tab. Polled every 2 s, so the browser (and its screen) is woken at most
+   once a minute; it has no per-task tabs, so all of its tabs. Another computer never reaches it this way: it
+   watches over Supabase instead (live:relay below). */
 let lupaTried = 0;
 async function lupaPages() {
   if (!(await qwenBrowserUp())) {
@@ -49,10 +50,9 @@ async function lupaPages() {
   }
   const list = await fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
   return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl)
-    .map((p) => Object.assign(view(p), { ws: 'ws://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/devtools/page/' + p.id })) }; // this end of the tunnel, whatever port it names
+    .map((p) => Object.assign(view(p), { ws: 'ws://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/devtools/page/' + p.id })) }; // the relay's port, whatever port it names
 }
-// not over the hub (main/hub.js relays Watch to its own agent browser's port only)
-handle('live:pages', (e, taskId, where) => where === 'lupa' ? (e && e.hub ? { up: false, pages: [] } : lupaPages()) : pages(taskId));
+handle('live:pages', (_e, taskId, where) => where === 'lupa' ? lupaPages() : pages(taskId));
 // ◉ Watch on a task that needs him: its own tab, as the run left it (nothing reloaded). If that tab is gone
 // (the browser was closed), the page its run ended on, in a new tab of its own: never a sign-in step
 // (those only work once, and opening one again just shows an error) → the tab's id, for the view to show
@@ -73,4 +73,21 @@ handle('live:open', (_e, url, taskId) => openPage(url, taskId));
 // "Start it": it starts headless (no window); the view shows it
 handle('live:start', async (_e, where) => ({ ok: where === 'lupa' ? (lupaTried = 0, await ensureQwenBrowser().catch(() => false)) : await ensureAgentBrowser() }));
 
-module.exports = { init, handlers, pages };
+/* The mini PC's browser over Supabase (renderer/js/live-relay.js), so no device has to reach it: the mini PC
+   (the worker) sends its screen on a Realtime channel while someone watches, and the clicks come back the
+   same way. The channel's name is a hash of the agent list's sync key and every message is sealed with a key
+   made from it (AES-GCM), so only his devices can watch or click. → {role: 'publish' | 'watch', url, key,
+   topic, secret (hex)}, or {role: null}: no worker, so nothing to watch. */
+const relayKeys = (syncKey) => ({
+  topic: 'live:' + require('crypto').createHash('sha256').update(String(syncKey) + ':live').digest('hex').slice(0, 40),
+  secret: require('crypto').createHash('sha256').update('romulus-live-v1|' + String(syncKey)).digest('hex'),
+});
+handle('live:relay', async () => {
+  const cfg = ctx.readConfig(), a = require('./supabase').channel(cfg);
+  if (!a) return { role: null };
+  const worker = require('./worker');
+  const role = worker.isWorker(cfg) ? 'publish' : (await worker.present(a).catch(() => null)) ? 'watch' : null;
+  return role ? Object.assign({ role, url: String(a.url).replace(/\/+$/, ''), key: a.key }, relayKeys(a.syncKey)) : { role: null };
+});
+
+module.exports = { init, handlers, pages, relayKeys };

@@ -106,14 +106,39 @@ test('Lupa not answering, nothing connected, or no AI coming back → an error',
 
 test('a follow-up is answered by Lupa alone, knowing what he said since the report', async () => {
   const l = lupa();
-  assert.deepEqual(await legion.followUp(TOPIC, '# report', 'which is lightest?', { think: l.think }), { answer: 'From the report: A.', research: false });
+  assert.deepEqual(await legion.followUp(TOPIC, '# report', 'which is lightest?', { think: l.think }), { answer: 'From the report: A.', research: false, task: false, lookup: '' });
   const j = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'Driving is out: you can\'t drive.', research: false }) : null });
   const f = await legion.followUp(TOPIC, '# report', 'why not the car?', { think: j.think, earlier: 'He said: I can\'t drive at all' });
   assert.equal(f.answer, 'Driving is out: you can\'t drive.');
   assert.match(j.thoughts[0].prompt, /Since the report\nHe said: I can't drive at all/);
 });
 
-test('a follow-up that needs new facts asks for the legion again', async () => {
-  const l = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'Flights for Dec 22–27', research: true }) : null });
-  assert.deepEqual(await legion.followUp(TOPIC, '# report', 'give me the flight options', { think: l.think }), { answer: 'Flights for Dec 22–27', research: true });
+test('a follow-up that needs new facts sends the legion out on that question', async () => {
+  const l = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'Flights for Dec 22–27', next: 'research', lookup: 'flights Boston to Denver Dec 22–27' }) : null });
+  assert.deepEqual(await legion.followUp(TOPIC, '# report', 'give me the flight options', { think: l.think }),
+    { answer: 'Flights for Dec 22–27', research: true, task: false, lookup: 'flights Boston to Denver Dec 22–27' });
+  // the older shape ({research:true}) still counts
+  const o = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'x', research: true }) : null });
+  assert.equal((await legion.followUp(TOPIC, '# report', 'more?', { think: o.think })).research, true);
+});
+
+test('a follow-up that asks for something done comes back as a task, no tag needed', async () => {
+  const l = lupa({ think: async (prompt) => /follow-up/.test(prompt) ? JSON.stringify({ answer: 'I’ll get stroller A ready to order', next: 'task' }) : null });
+  const f = await legion.followUp(TOPIC, '# report', 'order A for me', { think: l.think });
+  assert.equal(f.task, true); assert.equal(f.research, false);
+  assert.match(l.thoughts[0].prompt, /"task" when he wants something done/);
+});
+
+test('a request to get something done is a task; a question is not', () => {
+  assert.ok(legion.isTask('book the cheapest train to Boston for Dec 22'));
+  assert.ok(legion.isTask('Please buy a stroller for twins under $400'));
+  assert.ok(!legion.isTask('best stroller for my twins under $400'));
+});
+
+test('a follow-up legion keeps the bigger request hidden too', async () => {
+  const leaky = [...PIECES.slice(0, 2), { title: 'Whole', question: 'Best stroller for twins under $400 that fits a small apartment: which folds smallest?' }];
+  const l = lupa({ think: async (prompt) => /Split his request/.test(prompt) ? JSON.stringify({ pieces: leaky }) : /give away too much/.test(prompt) ? '{}' : null });
+  const p = await legion.planPieces('which folds smallest', '', { order: ['claude', 'gemini', 'openrouter'], think: l.think, whole: TOPIC });
+  assert.equal(p.pieces.length, 2);
+  assert.deepEqual(p.dropped.map((d) => d.title), ['Whole']);
 });

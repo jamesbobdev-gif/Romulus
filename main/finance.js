@@ -12,6 +12,11 @@
      something already running as him on this computer; he chose it for convenience. Off: finance:setHello.)
    - It never leaves this computer: not in config.json (so "Send my settings" to the hub mini PC can't carry
      it), not in tasks.json or Supabase, not one of the hub's remote calls, and the Agent can't read it.
+     The one exception is the access link alone (no bank data), so his other synced computers can connect
+     without a new token: finance:shareBox seals it under the same passphrase key (its own AAD), and the
+     Finance tab keeps that sealed copy in the <personal key>:finance sync row (end-to-end encrypted again
+     when the lists are). Someone holding the sync key (a paired device, the Claude connector) still needs
+     the passphrase to open it; finance:setupShared opens it on the other computer.
    - It only ever talks to simplefin.org over HTTPS, never follows redirects, and the log never gets amounts,
      names or the link.
    - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to Claude to be read,
@@ -41,6 +46,7 @@ const MIN_REFRESH_MS = 15 * 60 * 1000; // SimpleFIN Bridge allows only a couple 
 const STALE_MS = 6 * 60 * 60 * 1000; // older than this: refreshed by itself when he unlocks
 const KEEP_DAYS = 400; // history builds up past SimpleFIN's window, a year and a bit
 const AAD = Buffer.from('tasks-finance-v1');
+const SHARE_AAD = Buffer.from('tasks-finance-share-v1'); // the link's copy for his other computers: not a vault
 
 let ctx = null; // { userData, agentLog, sendToRenderer, powerMonitor, seal, unseal, fetch? }
 let key = null; // the AES key while unlocked
@@ -61,16 +67,16 @@ function deriveKey(passphrase, s, p) {
   const o = p || KDF;
   return scrypt(String(passphrase).normalize('NFKC'), s, 32, { N: o.N, r: o.r, p: o.p, maxmem: KDF.maxmem });
 }
-function encrypt(obj, k) {
+function encrypt(obj, k, aad) {
   const iv = crypto.randomBytes(12);
   const c = crypto.createCipheriv('aes-256-gcm', k, iv);
-  c.setAAD(AAD);
+  c.setAAD(aad || AAD);
   const data = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
   return { iv: iv.toString('base64'), tag: c.getAuthTag().toString('base64'), data: data.toString('base64') };
 }
-function decrypt(box, k) {
+function decrypt(box, k, aad) {
   const d = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(box.iv, 'base64'));
-  d.setAAD(AAD);
+  d.setAAD(aad || AAD);
   d.setAuthTag(Buffer.from(box.tag, 'base64'));
   return JSON.parse(Buffer.concat([d.update(Buffer.from(box.data, 'base64')), d.final()]).toString('utf8'));
 }
@@ -262,6 +268,41 @@ function pairPayload(accessUrl, kinds) {
   return withKinds.length <= 1600 ? withKinds : enc({ u: accessUrl, k: {} });
 }
 
+/* ── his other computers: the link sealed under the passphrase key, for the :finance sync row ──
+   Made once and kept in the vault, so the same copy goes up each time and the tab can tell it's already there. */
+function shareBox() {
+  if (!vault.shared || !vault.shared.data) {
+    vault.shared = Object.assign({ v: 1, kdf: 'scrypt', N: KDF.N, r: KDF.r, p: KDF.p, salt: salt.toString('base64') }, encrypt({ u: vault.accessUrl }, key, SHARE_AAD));
+    writeVault();
+  }
+  return vault.shared;
+}
+/* what came down from the sync row, before any scrypt runs on it: a made-up box could ask for gigabytes, and the
+   vault made from it is written with KDF's numbers (writeVault), so the key derived here must be KDF's too */
+function okShareBox(b) {
+  return !!(b && b.v === 1 && b.kdf === 'scrypt' && b.N === KDF.N && b.r === KDF.r && b.p === KDF.p &&
+    [b.salt, b.iv, b.tag, b.data].every((x) => typeof x === 'string' && x.length && x.length <= 4096));
+}
+function wrongTry() {
+  wrong++;
+  if (wrong >= 3) waitUntil = Date.now() + Math.min(300, 2 ** (wrong - 3) * 5) * 1000;
+  log('wrong passphrase (' + wrong + ')');
+}
+
+// a new vault around the link: after a setup token, or the link from his other computer
+async function startVault(accessUrl, s, k, shared) {
+  salt = s; key = k;
+  vault = { accessUrl, cache: { fetchedAt: 0, accounts: [], errors: [] } };
+  if (shared) vault.shared = shared;
+  writeVault();
+  watchPower(); stillHere();
+  rememberForHello().catch(() => false);
+  lookAtMail(true);
+  try { await refresh(false); } catch (e) { return { ok: true, warning: e.message }; }
+  keepBills();
+  return { ok: true };
+}
+
 // after either unlock: an old download refreshed, purchase emails looked at → a warning or undefined
 async function afterUnlock() {
   let warning;
@@ -400,16 +441,29 @@ const handlers = {
     try { accessUrl = await claim(token); } catch (e) { return { ok: false, error: e.message }; }
     const s = crypto.randomBytes(16);
     const k = await deriveKey(passphrase, s);
-    salt = s; key = k;
-    vault = { accessUrl, cache: { fetchedAt: 0, accounts: [], errors: [] } };
-    writeVault();
-    watchPower(); stillHere();
     log('connected');
-    rememberForHello().catch(() => false);
-    lookAtMail(true);
-    try { await refresh(false); } catch (e) { return { ok: true, warning: e.message }; }
-    keepBills();
-    return { ok: true };
+    return startVault(accessUrl, s, k);
+  },
+  // the sealed link for the :finance sync row (renderer/js/finance.js finShareUp), while unlocked
+  'finance:shareBox': () => {
+    if (!key) return { ok: false, error: 'locked' };
+    return { ok: true, box: shareBox() };
+  },
+  // connecting with the link his other computer shared: the same passphrase opens it, and stays this one's
+  'finance:setupShared': async (_e, box, passphrase) => {
+    if (isSetUp()) return { ok: false, error: 'Finance is already connected. Forget it first to connect again.' };
+    if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + status().waitSeconds + ' seconds.' };
+    if (!okShareBox(box)) return { ok: false, error: 'The connection your other computer shared can’t be read. Connect with a setup token instead.' };
+    const s = Buffer.from(box.salt, 'base64');
+    const k = await deriveKey(passphrase, s, box);
+    let inside;
+    try { inside = decrypt(box, k, SHARE_AAD); }
+    catch (e) { k.fill(0); wrongTry(); return { ok: false, error: 'Wrong passphrase. Use the Finance passphrase from your other computer.' }; }
+    const x = inside && checkSimplefinUrl(inside.u);
+    if (!x || !x.username || !x.password) { k.fill(0); return { ok: false, error: 'The shared connection isn’t a SimpleFIN link. Connect with a setup token instead.' }; }
+    wrong = 0; waitUntil = 0;
+    log('connected with the link from another computer');
+    return startVault(inside.u, s, k, box);
   },
   'finance:unlock': async (_e, passphrase) => {
     if (key) { stillHere(); return { ok: true }; }
@@ -419,9 +473,7 @@ const handlers = {
     if (!v) return { ok: false, error: 'Finance isn’t connected.' };
     try { await unlockWith(passphrase, v); }
     catch (e) {
-      wrong++;
-      if (wrong >= 3) waitUntil = Date.now() + Math.min(300, 2 ** (wrong - 3) * 5) * 1000;
-      log('wrong passphrase (' + wrong + ')');
+      wrongTry();
       return { ok: false, error: 'Wrong passphrase.' };
     }
     wrong = 0; waitUntil = 0;

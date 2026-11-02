@@ -30,6 +30,21 @@ function sendAsLegion(t){
   agentSay(t,'sys','Sent out as a legion of agents: your local model splits it into pieces for the other AIs, then writes the report');
   touch();
 }
+/* 🎬 Coach me, on a task only he can do (record the video, give the presentation): an Agent task of its own goes to
+   his local model, which reads the assignment on Blackboard / D2L and writes him what to do and what to say
+   (agent/coach.js). His task stays on his list. The same test as agent/coach.js isCoach, kept short here */
+const COACH_LOOK=/\b(record|film|shoot|make|create|do|tape|upload|submit|post)\b[^.\n]{0,40}\b(videos?|vlogs?|recordings?|voice ?threads?|flip ?grids?|podcasts?|screencasts?)\b|\b(video|oral|recorded|voice|audio) (presentation|reflection|response|introduction|intro|assignment|essay|pitch|report)s?\b|\b(presentation|speech|talk|pitch|toast|eulogy|oral (exam|report)|interview)s?\b/i;
+function looksHumanOnly(t){ return !!t&&!t.done&&!/^\s*(find|look up|search|research|watch|summari[sz]e|transcribe|download|compare)\b/i.test(t.title||'')&&COACH_LOOK.test(String(t.title||'')+'\n'+String(t.notes||'').slice(0,400)); }
+function coachMe(t){
+  if(state.tasks.some(function(x){ return x.coachFor===t.id&&!x.done; })){ voiceToast('Already on it: the coach task is on your Agent tab'); return; }
+  const nt={id:uid(),title:'Coach me: '+t.title,done:false,due:t.due||null,dueTime:t.dueTime||null,tag:t.tag||null,ws:'agent',subs:[],googleEventId:null,
+    created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],lane:'local',coachFor:t.id,
+    notes:[t.tag?'Class: '+t.tag:'',t.notes||''].filter(Boolean).join('\n')||null};
+  agentSay(nt,'sys','🎬 Coach: '+localModelName()+' reads the assignment on your course site and writes what to do and what to say. Your own task stays on your list.');
+  state.tasks.push(nt);
+  buzz('send'); touch();
+  voiceToast('Coach task added on your Agent tab');
+}
 function setLegion(on){
   legionOn=!!on; const b=$('legionBtn'); b.classList.toggle('on',legionOn); b.setAttribute('aria-pressed',String(legionOn));
   if(state.activeTab==='agent')$('newTitle').placeholder=legionOn?'What should the legion research?':'Add a task for the Agent…';

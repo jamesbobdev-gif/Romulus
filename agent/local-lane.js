@@ -18,6 +18,7 @@ const localAnswer = require('./local-answer');
 const providers = require('./providers');
 const helpers = require('./helpers');
 const legion = require('./legion');
+const coach = require('./coach');
 const { makeDocx } = require('./docx-writer');
 const usage = require('./usage-limit');
 const { parseUsageLimit, holdForUsage } = usage;
@@ -30,6 +31,7 @@ const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFo
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
 const mailSend = require('./mail-send');
 const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
+const workerFiles = require('./worker-files');
 const { formFiles } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
 const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_file',
@@ -82,9 +84,12 @@ function queuedLocalTasks(raw) {
 // the worker's heartbeat row (agent/worker.js), every couple of minutes while the app runs there
 function workerBeat() {
   if (!worker.isWorker(readConfig())) return Promise.resolve(false);
-  const c = localCfg(), l = readConfig().localModel || {};
-  return worker.beat(require('./supabase').channel(readConfig()), { name: l.name, model: c && c.model, busy: isBusy() });
+  const c = localCfg(), l = readConfig().localModel || {}, a = require('./supabase').channel(readConfig());
+  syncFiles(); // what its browser downloaded, for his other computers
+  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy() });
 }
+// the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
+const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
 function scheduleLocalRun(raw) {
   if (!localCfg() || localBusy || !routing.decided(raw) || !queuedLocalTasks(raw).length) return;
   clearTimeout(localTimer);
@@ -419,8 +424,9 @@ async function localFailed(c, t, msg) {
 }
 /* ⚔ a #legion task (agent/legion.js): Lupa splits it into general questions, each cloud AI in his pool gets one
    (so none can tell what he is researching), and Lupa puts the answers together into the report. The report is
-   also saved as Word + Markdown in Documents/Claude Agent/Research. A reply afterwards is answered by Lupa from that
-   report; a reply with #legion (or "dig deeper") sends the legion out again. */
+   also saved as Word + Markdown in Documents/Claude Agent/Research. A reply afterwards stays a legion without him
+   tagging it: Lupa answers it from the report, sends the legion out on the new question when the report doesn't have
+   it, or (for "book the 9am one") does it itself with its own browser. #legion (or "dig deeper") re-runs the whole. */
 // who leads a legion, as the live box and the report name it: localModel.name in config.json if set
 const legionLead = () => String((readConfig().localModel || {}).name || '').trim() || 'your local model';
 const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replace(/[^\w-]/g, '') + '.md');
@@ -444,21 +450,22 @@ async function runLegionTask(c, t) {
   const since = hist.slice(Math.max(0, hist.map((h) => String(h.text || '').slice(0, 200)).lastIndexOf(before.slice(0, 200)) + 1)).slice(-8);
   if (since.length && since[since.length - 1].who === 'you' && String(since[since.length - 1].text).trim() === reply) since.pop();
   const earlier = since.map((h) => (h.who === 'you' ? 'He said: ' : 'You answered: ') + String(h.text).trim().slice(0, 800)).join('\n\n');
-  let note, options = [];
+  let note, options = [], lookup = ''; // lookup: a follow-up question the legion goes out on (the report doesn't have it)
   if (!again) {
     const lead = legionLead();
     show('💬 ' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
     const f = await legion.followUp(topic, before, reply, { think, earlier });
-    if (f.research) { show('🔎 ' + (f.answer || 'The report doesn’t have that') + ': sending the legion out again\n'); again = true; }
+    if (f.task) return runLegionStep(c, t, before, f.answer);
+    if (f.research) { show('🔎 ' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
     else note = f.answer;
   }
   if (again) {
     // what he told us along the way ("I can't drive") goes with the legion, so the new report applies it
     const told = hist.filter((h) => h.who === 'you').map((h) => String(h.text).trim());
-    const extra = [t.notes, ...told.filter((x) => x !== reply), reply].filter(Boolean).join('\n').slice(-1500);
-    agentLog('legion: ' + topic.slice(0, 80) + ' (' + order.join(', ') + ')');
+    const extra = [lookup ? 'This is one part of his bigger request: ' + topic : '', t.notes, ...told.filter((x) => x !== reply), reply].filter(Boolean).join('\n').slice(-1500);
+    agentLog('legion: ' + (lookup || topic).slice(0, 80) + (lookup ? ' (follow-up)' : '') + ' (' + order.join(', ') + ')');
     const started = Date.now();
-    const r = await legion.research(topic, { order, run: runHelperOn, think, names, lead: legionLead(), extra,
+    const r = await legion.research(lookup || topic, { order, run: runHelperOn, think, names, lead: legionLead(), extra, whole: lookup ? topic : undefined,
       privateWords: routing.getRouting().private, locked: await agentRow(':locked'), onStep: show });
     if (r.error) {
       // Lupa itself not answering is a failure like any other local task's (it waits for him: never handed to the cloud)
@@ -467,22 +474,33 @@ async function runLegionTask(c, t) {
     } else {
       const full = r.report + '\n\n' + legion.credits(r, names, legionLead());
       const dir = path.join(ctx.documents(), 'Claude Agent', 'Research');
-      const base = (topic.replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
+      const base = ((lookup || topic).replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
       let saved = '';
       try {
         fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(path.dirname(legionFile(id)), { recursive: true });
         fs.writeFileSync(path.join(dir, base + '.md'), full);
         fs.writeFileSync(path.join(dir, base + '.docx'), makeDocx(topic.slice(0, 200), full));
-        fs.writeFileSync(legionFile(id), full);
+        // a follow-up's report goes after the earlier one, so later replies are answered from both
+        fs.writeFileSync(legionFile(id), lookup && before ? (before + '\n\n---\n\n' + full).slice(0, 30000) : full);
         saved = '\n\n📄 Saved: ' + path.join(dir, base + '.docx');
       } catch (e) { agentLog('legion: saving the report failed: ' + e.message); }
-      note = full.slice(0, 11000) + saved;
+      note = full.slice(0, 11000) + saved +
+        (!lookup && !reply && legion.isTask(topic) ? '\n\n▶ Reply “go ahead” (or pick an option) and ' + legionLead() + ' does it with its own browser, on your machine.' : '');
       options = (await Promise.all(r.options.map((o) => enrichOption(o).catch(() => o)))).filter(Boolean);
       agentLog('legion: done in ' + Math.round((Date.now() - started) / 1000) + 's, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' pieces answered');
     }
   }
   sendToRenderer('agent:results', [{ id, lane: 'local', status: 'needs-you', note: note || 'Your local model gave no answer. Reply to try again.',
     options: options.length ? options : null, pref: null, thoughts: live || undefined }]);
+}
+/* a legion's "book the 9am one" / "go ahead": Lupa does it as a local task with its own browser, knowing what the
+   report found. It stays a legion: the task never goes to the cloud whole (runLocalTask), its helper questions
+   mustn't give the request away, and his next reply comes back to runLegionTask to be sorted again. */
+function runLegionStep(c, t, report, plan) {
+  agentLog('legion: doing "' + String(t.reply || '').slice(0, 60) + '" locally');
+  const found = String(report || '').split(/\n---\n/)[0].slice(0, 3000);
+  return runLocalTask(c, Object.assign({}, t, { notes: [t.notes, 'This comes out of research you did for him (private: only you have seen all of it). ' +
+    'What your report found:\n' + found, plan ? 'What you said you would do: ' + plan : ''].filter(Boolean).join('\n\n') }));
 }
 async function runLocalTask(c, t) {
   const [prefs, locked, standingText] = await Promise.all([agentRow(':prefs'), agentRow(':locked'), agentRow(':standing')]);
@@ -517,14 +535,17 @@ async function runLocalTask(c, t) {
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
-  const taskNotes = siteNotesFor(taskLinks(t));
+  // a coach task (agent/coach.js) goes looking in his courses: the Blackboard and D2L notes come with it from the start
+  const coaching = !money && coach.isCoach(t);
+  const taskNotes = siteNotesFor(taskLinks(t).concat(coaching ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
-  let maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + calText +
+  // a coach task reads the assignment, its rubric and what it links to before writing: more room than shopping
+  let maxSteps = browser ? (coaching ? 60 : 40) : LOCAL_MAX_STEPS;
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -556,6 +577,7 @@ async function runLocalTask(c, t) {
   let looked = startSeen, checkedBlocker = false; // used the browser this run; sent back once to look before blaming a login
   let submittedNow = false, checkedClaim = false; // a final button went through this run; sent back once to check a "submitted" it didn't do
   let typed = null; // the last long text it typed into a page (a post, a message): what goes out on his yes
+  let wall = null; // the last page only he could get past (a sign-in, a code, a robot check): { kind, host }
   const madeCalls = new Set(); let repeats = 0; // searches and page reads already made, and how often it repeated one
   const formsFilled = {}; // fill_form runs per page address
   const started = Date.now();
@@ -569,7 +591,6 @@ async function runLocalTask(c, t) {
     // A long task also has to stay inside the context (16k tokens, ~3.2 characters each, less room for the
     // answer), or Ollama drops the oldest messages: the task itself first
     const dropped = localAnswer.fitContext(messages, { keepFull: browser ? 1 : 2, limit: (16384 - 1400) * 3.2, fixed: JSON.stringify(tools).length });
-  let wall = null; // the last page only he could get past (a sign-in, a code, a robot check): { kind, host }
     if (dropped) agentLog('local: dropped ' + dropped + ' old step(s) to stay inside the context');
     // nudges ride on the latest tool result: a new user turn makes Qwen's chat template re-render the
     // earlier turns, and the mini PC then re-reads the whole conversation (5+ minutes on a long one)
@@ -578,7 +599,8 @@ async function runLocalTask(c, t) {
     else if (browser && step === maxSteps - 5) nudge('Only 4 steps left. Finish what you are doing on the page, then answer with what you got done and what is left.');
     let content = '', calls = [];
     await ollamaChat(c, { model: c.model, stream: true, think: false, messages, tools: last || wantJson ? undefined : tools,
-      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: 1200 } }, (m) => {
+      // a coach brief carries a whole script: room for it in the one answer
+      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: coaching ? 2600 : 1200 } }, (m) => {
       if (m.content) { content += m.content; show(m.content); }
       if (Array.isArray(m.tool_calls)) calls.push(...m.tool_calls);
     });
@@ -644,7 +666,9 @@ async function runLocalTask(c, t) {
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
         } else if (canAsk && name === 'ask_helpers') {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
-          const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) }));
+          const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) ||
+            (legion.isLegion(t) && legion.tooRevealing(q, legion.topicOf(t)) ? 'it gives the research away' : null) ||
+            (coaching && legion.tooRevealing(q, coach.topicOf(t)) ? 'it gives the assignment away' : null) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
           refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the local model (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
@@ -688,6 +712,14 @@ async function runLocalTask(c, t) {
           if (page.url && signins.see(page.url, page.title) === 'signed-out') {
             show('🔑 Signed out: a sign-in page\n', true);
             result = r.text + '\n\n(This is a sign-in page: he is signed out here. Don\'t try to sign in. Answer "needs-you" now and say he needs to sign in on the mini PC\'s browser; a to-do for that is already on his list.)';
+          } else if (!r.locked && !r.failed && page.url) {
+            // a password, a code sent to his phone, a robot check: his to do, in this browser (his Human tab shows it)
+            const kind = signinWatch.wallKind(page.url, page.title, r.text);
+            if (kind) {
+              wall = { kind, host: siteNotes.hostOf(page.url) || '' };
+              show('🔑 Needs you: ' + signinWatch.WALL_NAMES[kind] + '\n', true);
+              result = r.text + '\n\n(This page wants ' + signinWatch.WALL_NAMES[kind] + ' that only he can do. Don\'t try to get past it or make up a code. Answer "needs-you" now: say what it asks for; he does it in this browser and replies.)';
+            } else if (wall && siteNotes.hostOf(page.url) === wall.host) wall = null; // got past it after all
           }
           if (!r.locked && !r.failed && (name === 'browser_click' && FINAL_BUTTON.test(what) || name === 'browser_press_key' && /enter/i.test(a.key || ''))) submittedNow = true;
           if (!r.locked && !r.failed && name === 'browser_type' && String(a.text || args.text || '').trim().length >= 120) typed = { text: String(a.text || args.text), where: String(what).slice(0, 120) };
@@ -702,14 +734,6 @@ async function runLocalTask(c, t) {
           // a site it just reached: what's known about it, once
           const host = siteNotes.hostOf(page.url);
           if (host && !visited.has(host)) {
-          } else if (!r.locked && !r.failed && page.url) {
-            // a password, a code sent to his phone, a robot check: his to do, in this browser (his Human tab shows it)
-            const kind = signinWatch.wallKind(page.url, page.title, r.text);
-            if (kind) {
-              wall = { kind, host: siteNotes.hostOf(page.url) || '' };
-              show('🔑 Needs you: ' + signinWatch.WALL_NAMES[kind] + '\n', true);
-              result = r.text + '\n\n(This page wants ' + signinWatch.WALL_NAMES[kind] + ' that only he can do. Don\'t try to get past it or make up a code. Answer "needs-you" now: say what it asks for; he does it in this browser and replies.)';
-            } else if (wall && siteNotes.hostOf(page.url) === wall.host) wall = null; // got past it after all
             visited.add(host);
             const fresh = siteNotesFor([page.url], 2).filter((n) => !noted.has(n.name));
             fresh.forEach((n) => noted.add(n.name));
@@ -730,6 +754,7 @@ async function runLocalTask(c, t) {
   }
   // finished: close its tabs. Not when it's waiting on him: a filled form waiting for his yes is in a tab
   if (browser && final.status === 'done') await tidyAgentTabs();
+  if (browser && worker.isWorker(readConfig())) syncFiles(); // a worksheet it saved shows up on his other computers
   if (final.status !== 'done') {
     stuck = cleanStuck(final.stuck) || stuck;
     const signedOut = signins.signedOut();
@@ -739,10 +764,19 @@ async function runLocalTask(c, t) {
       fix: 'Unlock the local model (or turn off its screen lock and sleep), then reply “try again”.' };
     else if (!stuck && loadTimeouts >= 2) stuck = { reason: 'Pages kept taking over a minute to load on the local model: the site is slow or the local model is busy (low on memory).',
       fix: 'Reply “try again” in a bit, or switch it to Claude.' };
+    // a password, MFA code or robot check in its way: the browser goes on top of his Human tab for him to do
+    // it there (renderer/js/agent-live-view.js). It said so itself counts too, when it used the browser
+    const saidWall = looked && signinWatch.WALL_NOTE.test(JSON.stringify([final.note, final.stuck || '']));
+    if (signedOut.length || wall || saidWall) {
+      if (!stuck || !signedOut.length && wall) stuck = { reason: 'The local model needs you for ' + (wall ? signinWatch.WALL_NAMES[wall.kind] + (wall.host ? ' on ' + wall.host : '') : 'a verification step') + '.',
+        fix: 'Do that step in its browser at the top of your Human tab, then press “Done, try again”.' };
+      stuck.verify = true;
+    }
   }
   // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task).
-  // Not one waiting on his password or code: that's his to do, in this browser
-  if (final.status !== 'done' && !(stuck && stuck.verify) && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
+  // Not one waiting on his password or code: that's his to do, in this browser. Not a coach brief either: "only
+  // you can record this" is the point of it, and no cloud AI can open his courses
+  if (final.status !== 'done' && !(stuck && stuck.verify) && !coaching && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
     agentLog('local: couldn’t do it, passing it to the cloud AIs');
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160) }]);
     return;
@@ -755,14 +789,6 @@ async function runLocalTask(c, t) {
   // tips it left about sites it actually worked on in the browser, for next time
   for (const tip of (Array.isArray(final.site_tips) ? final.site_tips : []).slice(0, 3)) {
     const host = [...visited].find((h) => tip && siteNotes.covers(String(tip.site || '').toLowerCase().replace(/^https?:\/\/|^www\.|\/.*$/g, ''), h));
-    // a password, MFA code or robot check in its way: the browser goes on top of his Human tab for him to do
-    // it there (renderer/js/agent-live-view.js). It said so itself counts too, when it used the browser
-    const saidWall = looked && signinWatch.WALL_NOTE.test(JSON.stringify([final.note, final.stuck || '']));
-    if (signedOut.length || wall || saidWall) {
-      if (!stuck || !signedOut.length && wall) stuck = { reason: 'The local model needs you for ' + (wall ? signinWatch.WALL_NAMES[wall.kind] + (wall.host ? ' on ' + wall.host : '') : 'a verification step') + '.',
-        fix: 'Do that step in its browser at the top of your Human tab, then press “Done, try again”.' };
-      stuck.verify = true;
-    }
     try { if (host && siteNotes.learn(siteNoteDirs()[1], host, tip.tip, new Date().toISOString().slice(0, 10))) agentLog('local: learned a tip about ' + host); } catch (e) {}
   }
   // options only with links it was actually shown: a made-up link is worse than none. Options it wrote

@@ -115,6 +115,12 @@ function buildRow(t,canDrag){
     lg.addEventListener('click',function(e){ e.stopPropagation(); sendAsLegion(t); });
     acts.appendChild(lg);
   }
+  // 🎬 a task only he can do (a video, a presentation): his local model reads the assignment and coaches him (task-actions.js coachMe)
+  if(!isAgentTask&&agentAvailable()&&looksHumanOnly(t)){
+    const cm=iconBtn(I.coach,'Coach me'); cm.title='Coach me: your local model reads the assignment on Blackboard / D2L and tells you what to do and what to say';
+    cm.addEventListener('click',function(e){ e.stopPropagation(); coachMe(t); });
+    acts.appendChild(cm);
+  }
   if(agentAvailable()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
     const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to To do (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';
@@ -291,6 +297,8 @@ function buildPanel(t){
     if(!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t)); // e.g. to log in, or check a cart (its own tabs: fine while another task runs)
     panel.appendChild(nb);
   }
+  // the local model's own browser on the mini PC, live, right in its card: he clicks and types where it couldn't
+  if(taskWs(t)==='agent'&&!t.done&&t.lane==='local'&&(t.status==='needs-you'||t.status==='working')&&liveViewAvailable())lupaEmbed(panel,t);
   // questions to tap through, one at a time (agent-ask.js)
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&Array.isArray(t.ask)&&t.ask.length)panel.appendChild(askSteps(t));
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose

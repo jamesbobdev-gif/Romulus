@@ -56,11 +56,11 @@ npm run dist     # installer into dist/
 ```
 
 - `main.js` starts the Electron main process and wires the modules: each gets what it shares with the others through `init(ctx)` and lists its IPC calls in `handlers`.
-- `main/` is the desktop plumbing: window and tray, saving tasks, config and encrypted secrets (`store.js`), calendar sync and accounts, Gmail dates, the morning look-ahead, Finance, the hub.
+- `main/` is the desktop plumbing: window and tray, saving tasks, config and encrypted secrets (`store.js`), calendar sync and accounts, Gmail dates, the morning look-ahead, Finance, downloads.
 - `agent/` is the Agent: routing between lanes, the Claude runner, the other cloud AIs (`providers.js`), the local-model lane and its tools and browser, AI connections (`ai-connections.js`, `claude-auth.js`, `openrouter-connect.js`), the usage-limit hold, the weekly memory tidy, skills and site notes.
 - `preload.js` is the bridge between the two.
 - `renderer/` is the UI. `index.html` holds the markup, `styles.css` the look, `js/*.js` the page scripts. Plain scripts, no bundler: they share one global scope and load in the order `index.html` lists them, ending with `init.js`. Declare a top-level name in one file only.
-- `mobile/` wraps the same UI in Capacitor for Android. `supabase/` holds the sync project's SQL (`setup.sql` is the one-paste version) and edge functions. `minipc/` has scripts for running the model or the whole agent on a second machine ([docs/second-machine.md](docs/second-machine.md)).
+- `mobile/` wraps the same UI in Capacitor for Android. `supabase/` holds the sync project's SQL (`setup.sql` is the one-paste version) and edge functions. `minipc/` has scripts for running the local model on a second machine, which takes local tasks for every device through sync ([docs/second-machine.md](docs/second-machine.md)).
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the ground rules; the one that matters most is that the Agent's "ask before anything final" stays enforced in code.
 

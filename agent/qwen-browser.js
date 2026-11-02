@@ -1,8 +1,9 @@
-/* Qwen's browser: a visible Chromium on the mini PC (minipc/qwen-browser.service), its remote control
-   listening on the mini PC's 127.0.0.1 only. This computer reaches it through an SSH tunnel and drives
-   it with the same launcher + Playwright tools as Claude's browser, in locked mode: only the task's
-   links and the sites he allows (Settings), and final clicks (submit, send, apply…) refused until his
-   latest reply is a yes to exactly that. Config: localModel.browser {ssh: 'user@host', port: 9334}. */
+/* The local model's browser: a visible Chromium on its own computer (minipc/qwen-browser.service), its remote
+   control listening on 127.0.0.1 only. The app on that computer (the worker, agent/worker.js) drives it with the
+   same launcher + Playwright tools as Claude's browser, in locked mode: only the task's links and the sites he
+   allows (Settings), and final clicks (submit, send, apply…) refused until his latest reply is a yes to exactly
+   that. His other computers never reach it: they watch it over Supabase (renderer/js/live-relay.js) and get what
+   it downloaded the same way (agent/worker-files.js). Config: localModel.browser {port: 9334}. */
 const path = require('path');
 const fs = require('fs');
 const { prepareAgentBrowser, agentBrowserDir, findNode, formFiles } = require('./agent-browser');
@@ -13,7 +14,6 @@ const readConfig = () => ctx.readConfig();
 const agentLog = (m) => ctx.agentLog(m);
 
 const QWEN_BROWSER_LOCAL_PORT = 9336;
-let qwenTunnel = null;
 const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
 /* After each task: one blank tab left, every other tab closed. Tabs piled up between tasks (Blackboard,
    D2L…) and kept their memory on a mini PC that froze when memory ran out. Logins stay (cookies). */
@@ -27,35 +27,45 @@ async function tidyAgentTabs() {
     agentLog('local: closed ' + pages.length + ' browser tab(s) on the mini PC');
   } catch (e) {} // the browser may be gone already: nothing to tidy
 }
-/* GNOME on the mini PC switched its displays to power-save (even with blanking set to "never"), and
-   with no screen on it stops drawing Chromium: every click timed out ("the screen appears locked").
-   Waking the displays before each browser run costs one quick ssh. Never fails a task. */
-function wakeMiniPcDisplay(ssh) {
+/* GNOME on the mini PC switched its displays to power-save (even with blanking set to "never"), and with no
+   screen on it stops drawing Chromium: every click timed out ("the screen appears locked"). So the displays are
+   woken before each browser run. Never fails a task. A plain local relay puts the browser's port where the tools
+   expect it (QWEN_BROWSER_LOCAL_PORT). */
+let localRelay = null;
+function wakeLocalDisplay() {
   return new Promise((resolve) => {
-    const cmd = 'export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus; ' +
-      'gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig ' +
-      '--method org.freedesktop.DBus.Properties.Set org.gnome.Mutter.DisplayConfig PowerSaveMode "<0>"';
-    const p = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '--', ssh, cmd], { windowsHide: true, stdio: 'ignore' });
-    const done = () => { clearTimeout(t); resolve(); };
-    const t = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(); }, 15000);
-    p.on('exit', done); p.on('error', done);
+    const p = require('child_process').spawn('gdbus', ['call', '--session', '--dest', 'org.gnome.Mutter.DisplayConfig', '--object-path', '/org/gnome/Mutter/DisplayConfig',
+      '--method', 'org.freedesktop.DBus.Properties.Set', 'org.gnome.Mutter.DisplayConfig', 'PowerSaveMode', '<0>'],
+    { stdio: 'ignore', env: Object.assign({ DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/' + (process.getuid ? process.getuid() : 0) + '/bus' }, process.env) });
+    const t = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(); }, 5000);
+    p.on('exit', () => { clearTimeout(t); resolve(); }); p.on('error', () => { clearTimeout(t); resolve(); });
   });
 }
-async function ensureQwenBrowser() {
-  const b = (readConfig().localModel || {}).browser;
-  if (!b || !b.ssh) return false;
-  // user@host or host only: ssh would read a value starting with "-" as an option (main/downloads.js has the same check)
-  if (!/^(?:[\w.-]+@)?[\w.-]+$/.test(String(b.ssh))) { agentLog('local: the mini PC\'s ssh address in Settings is not a plain user@host'); return false; }
-  await wakeMiniPcDisplay(b.ssh);
+async function ensureLocalBrowser(port) {
+  await wakeLocalDisplay();
   if (await qwenBrowserUp()) return true;
-  if (qwenTunnel) { try { qwenTunnel.kill(); } catch (e) {} qwenTunnel = null; }
-  qwenTunnel = require('child_process').spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30',
-    '-N', '-L', '127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + ':127.0.0.1:' + (Number(b.port) || 9334), '--', b.ssh], { windowsHide: true });
-  qwenTunnel.on('exit', () => { qwenTunnel = null; });
-  qwenTunnel.on('error', (e) => { agentLog('local: ssh tunnel failed to start: ' + e.message); qwenTunnel = null; }); // e.g. no ssh installed: unhandled, this would crash the app
-  for (let i = 0; i < 20; i++) { if (await qwenBrowserUp()) return true; await new Promise((r) => setTimeout(r, 500)); }
-  agentLog('local: Qwen\'s browser on the mini PC isn\'t reachable (is someone logged in there?)');
+  if (!localRelay) {
+    const net = require('net');
+    localRelay = net.createServer((c) => {
+      const up = net.connect(port, '127.0.0.1');
+      c.pipe(up).pipe(c);
+      c.on('error', () => up.destroy()); up.on('error', () => c.destroy());
+    });
+    const relay = localRelay;
+    await new Promise((r) => {
+      relay.once('error', (e) => { agentLog('local: browser relay failed: ' + e.message); if (localRelay === relay) localRelay = null; r(); });
+      relay.listen(QWEN_BROWSER_LOCAL_PORT, '127.0.0.1', r);
+    });
+  }
+  for (let i = 0; i < 10; i++) { if (await qwenBrowserUp()) return true; await new Promise((r) => setTimeout(r, 500)); }
+  agentLog('local: this computer\'s browser isn\'t answering on port ' + port + ' (is qwen-browser.service running?)');
   return false;
+}
+// the browser is only ever driven from its own computer: the worker. Anywhere else there is none to drive
+async function ensureQwenBrowser() {
+  const cfg = readConfig(), b = (cfg.localModel || {}).browser;
+  if (!require('./worker').isWorker(cfg)) return false;
+  return ensureLocalBrowser((b && b.port) || 9334);
 }
 // tools may save their output to a file on this computer when asked to: the model never needs that
 function noFileArgs(schema) {
@@ -113,8 +123,8 @@ async function startBrowserTools(lockFile, taskTitle) {
     close() { try { p.kill(); } catch (e) {} },
   };
 }
-/* When a mini PC run stops for something in its way, the user gets why, what to do, and a picture of
-   what its browser showed. The screenshot goes to his attachments bucket like the photos he adds. */
+/* When a local run stops for something in its way, the user gets why, what to do, and a picture of what
+   its browser showed. The screenshot goes to his attachments bucket like the photos he adds. */
 async function miniPcScreenshot() {
   const node = findNode();
   if (!node || !(await qwenBrowserUp())) return null;

@@ -168,7 +168,7 @@ If the two differ, don't run the file: delete it, download again from this page,
 
 - **Claude card says "not installed" after installing**: press **I already have it**, or restart Romulus so it sees the new PATH.
 - **Sign in to Claude never finishes**: close its window, run `claude auth login` in any terminal, then restart Romulus.
-- **Local model "not reachable"**: Ollama isn't running, or on another machine the address is wrong: it should listen on that machine only (`OLLAMA_HOST=127.0.0.1:11434`) and be published to your devices with `tailscale serve --bg --tcp 11434 tcp://127.0.0.1:11434` (the `minipc/setup.sh` script in the source repository does this), not opened to the whole network with `0.0.0.0`.
+- **Local model "not reachable"**: Ollama isn't running on this computer. For a model on another machine, install Romulus there too, connect it to sync, and switch on **Run local tasks here for all my devices** in its Settings → Local model; this computer then picks it up through sync, with nothing to open on the network.
 - **Phone and computer show different lists**: the sync key differs by a character.
 - **Anything else**: the app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log` that usually names the cause. Open an issue here with the relevant lines (strip anything personal).
 

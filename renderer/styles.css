@@ -6,9 +6,10 @@
   --mono:'Spline Sans Mono',ui-monospace,'SF Mono',Menlo,monospace;
 }
 :root{color-scheme:light}
-/* dark: the System setting follows the computer; Settings → Theme can pin either (html[data-theme]) */
+/* dark: the System setting follows the computer; Settings → Theme can pin either (html[data-theme]).
+   :where() keeps these at plain :root weight so Settings → Custom CSS (loaded later) can override them */
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
+  :root:where(:not([data-theme="light"])){
     color-scheme:dark;
     --bg:#15161A;--surface:#1E1F24;--ink:#E8E8EA;--muted:#A3A3AB;--faint:#75757E;
     --hairline:#2F3037;--chip:#282930;--accent:#6E86F5;--accent-dim:#5A72E6;
@@ -18,7 +19,7 @@
   :root:not([data-theme="light"]) .chip.st.needs,:root:not([data-theme="light"]) .cart-tag{background:#3A2E12;border-color:#5C4719;color:#F0C766}
   :root:not([data-theme="light"]) .chip.st.ready{background:#173222;border-color:#265238;color:#7BD69E}
 }
-:root[data-theme="dark"]{
+:root:where([data-theme="dark"]){
   color-scheme:dark;
   --bg:#15161A;--surface:#1E1F24;--ink:#E8E8EA;--muted:#A3A3AB;--faint:#75757E;
   --hairline:#2F3037;--chip:#282930;--accent:#6E86F5;--accent-dim:#5A72E6;
@@ -661,6 +662,18 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .swipe-done .big{font-size:22px;font-weight:700}
 .swipe-done .btn-accent{margin:8px auto 0;align-self:center;padding:12px 22px;font-size:15px}
 .swipe-hint{color:var(--faint);margin-top:10px;text-align:center}
+/* swiped down: to the Agent */
+.swipe-stamp.agent{top:auto;bottom:22px;left:50%;color:var(--accent);border-color:var(--accent);transform:translateX(-50%) rotate(3deg)}
+.swipe .go-agent{width:100%;max-width:440px;margin-top:10px;font-family:var(--display);font-size:14px;font-weight:600;border-radius:12px;padding:11px 10px;cursor:pointer;border:1px dashed var(--accent);background:transparent;color:var(--accent)}
+.swipe .go-agent:disabled{opacity:.35;cursor:default}
+.agent-flash{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;animation:agentFlashIn .32s cubic-bezier(.2,1.4,.4,1) both}
+.agent-flash.out{animation:agentFlashOut .35s ease-in both}
+.agent-flash-badge{width:112px;height:112px;border-radius:30px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 14px 40px rgba(39,66,200,.35)}
+.agent-flash-badge svg{width:64px;height:64px}
+.agent-flash-label{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:6px 12px}
+@keyframes agentFlashIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+@keyframes agentFlashOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.85) translateY(-14px)}}
+@media (prefers-reduced-motion:reduce){.agent-flash,.agent-flash.out{animation-duration:.01s}}
 /* what the mini PC did on the way to an answer, folded shut (agent-chat.js thoughtsBox) */
 .conv-thoughts{margin-top:8px}
 .conv-thoughts summary{cursor:pointer;font-size:12px;color:var(--muted);user-select:none}

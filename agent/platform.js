@@ -1,4 +1,4 @@
-/* Where things are on this computer: the laptop is Windows, the hub mini PC is Linux (Ubuntu).
+/* Where things are on this computer: the laptop is Windows, the local model's mini PC is Linux (Ubuntu).
    One place for the paths the agent needs (the claude CLI, Chrome, Node, npm's global folder),
    so the same code runs on both. No Electron here, so it can be tested on its own. */
 const path = require('path');
@@ -59,7 +59,7 @@ function chromeCandidates(env = process.env, win = isWin) {
       path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe')];
   }
   // Google Chrome's .deb first (a real Chrome, like his laptop's); Chromium only as a fallback
-  return ['/opt/google/chrome/chrome', '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+  return ['/opt/google/chrome/chrome', '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium'];
 }
 const findChrome = () => chromeCandidates().find(isFile) || null;
 
@@ -67,7 +67,11 @@ function findNode() {
   try {
     const out = require('child_process').execFileSync(isWin ? 'where' : 'which', ['node'], { encoding: 'utf8', windowsHide: true });
     return out.split(/\r?\n/)[0].trim() || null;
-  } catch (e) { return null; }
+  } catch (e) {
+    // a Node unpacked into the home folder (the mini PC's, no admin rights needed), which a service's PATH doesn't include
+    if (isWin) return null;
+    return [path.join(os.homedir(), '.local', 'bin', 'node'), path.join(os.homedir(), '.local', 'node', 'bin', 'node')].find(isFile) || null;
+  }
 }
 
 // folders npm -g may have put a CLI in, besides `npm root -g`

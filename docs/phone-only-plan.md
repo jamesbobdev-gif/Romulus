@@ -9,10 +9,12 @@ shopping and forms in a browser), mail dates, calendar sync, look-ahead, trigger
   calendars (`mobile/cal-phone.js`), Finance and updates. It syncs lists through Supabase.
 - Everything that *does* work lives in Electron's main process (`agent/`, `main/`), reached through
   `window.desktop.*`. On the phone `window.desktop` is missing, so the AI side is dead (`renderer/js/welcome.js:25`).
-- **The hub already splits the app in two.** `main/hub.js` runs the whole app on a server and answers an
-  allow-listed set of its IPC calls (`REMOTE`), streams live run text, takes a settings hand-over and relays
-  Watch. The laptop becomes a "client" of it. That's exactly the shape a phone-only user needs.
-  It's built for one person's tailnet: Tailscale, SSH, `deploy.ps1`, `claude /login` over SSH.
+- **The hub split the app in two, and is gone (2026-11-01).** `main/hub.js` ran the whole app on a server and
+  answered an allow-listed set of its IPC calls over Tailscale; it was never deployed, and the worker replaced it:
+  the local model's own computer takes local tasks through Supabase (`agent/worker.js`), its browser is watched
+  over Supabase Realtime (`renderer/js/live-relay.js`) and its downloads come through a bucket
+  (`agent/worker-files.js`). A cloud "agent server" would be built the same way: a worker that claims the cloud
+  lane's tasks through sync, not a gateway the phone calls.
 
 The browser Agent can't run on a phone (no headless Chrome, Android kills background work). So phone-only means
 **the phone is a hub client, and the hub runs in the cloud.**
@@ -22,15 +24,16 @@ The browser Agent can't run on a phone (no headless Chrome, Android kills backgr
 ### 1. A cloud hub that needs no computer to set up
 - Package the hub as a container image (Electron + Xvfb + the agent's Chromium), published with each v-tag
   release alongside the APK/installers.
-- The hub's gateway listens on the public internet over HTTPS (no Tailscale). That means hardening before
-  anything else: token and pairing, rate limits, the redirect/private-network fixes from
-  `docs/audit-2026-10-30.md`, and no route that reaches the hub's own network.
+- Nothing listens on the internet: the container is a worker that reaches out to Supabase, like the mini PC
+  does for the local lane. Still needed first: the redirect/private-network fixes from
+  `docs/audit-2026-10-30.md`, and no route that reaches the container's own network.
 - First start shows a **pairing code**. The phone scans or pastes it, the same way the sync code works today.
 
 ### 2. The phone as a hub client
-- A `mobile/hub-phone.js` stand-in for `window.desktop` that sends the `REMOTE` calls to the hub over HTTPS and
-  follows its event stream (`agent:live`). The renderer code stays the same on both platforms.
-- **Settings → Mini PC server** becomes **Settings → Agent server**, on the phone too: pair, test, send settings.
+- A `mobile/hub-phone.js` stand-in for `window.desktop` that puts the `REMOTE` calls on sync rows for the worker
+  to answer, and follows its live run text the way live-relay follows the browser. The renderer code stays the
+  same on both platforms.
+- A **Settings → Agent server** panel on the phone: pair (a code, like a device), test, send settings.
 - Sign-ins that today need the hub's terminal move into the app: Claude/ChatGPT logins as an in-app device-code
   flow, site logins through Watch (already works), calendar OAuth from the phone (`cal-phone.js` already
   signs in; hand the account to the hub like the laptop does).

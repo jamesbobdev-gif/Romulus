@@ -96,7 +96,7 @@ function privateRefusal(msg, here) {
    (config.json holds every key and token), javascript: runs script despite browser_evaluate being off,
    chrome:// reaches the browser's settings. A page that talks Claude into one of those gets a refusal. */
 const WEB_URL = /^(https?:\/\/|about:blank$)/i;
-// this computer, the LAN and private ranges: the browser's own debugging port, the hub, a router (same rule as agent/helpers.js isPublicUrl)
+// this computer, the LAN and private ranges: the browser's own debugging port, the mini PC, a router (same rule as agent/helpers.js isPublicUrl)
 function privateHost(url) {
   let h; try { h = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch (e) { return true; }
   if (!h || h === 'localhost' || /\.(localhost|local|internal|home|lan|arpa|test|invalid)$/.test(h) || !h.includes('.') && !h.includes(':')) return true;

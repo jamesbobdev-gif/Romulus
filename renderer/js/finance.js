@@ -65,10 +65,45 @@ async function renderFinance(){
   fin.data=d; drawFinMain(v);
 }
 
+/* ── his other computers (main/finance.js finance:shareBox): the SimpleFIN link, sealed under his Finance
+   passphrase, kept in the <personal key>:finance sync row. Connecting or unlocking here puts it there; a computer
+   on the same sync that isn't connected yet offers it, and opens it with that passphrase. No bank data goes. ── */
+function finShareProfile(){
+  const p=syncState.cfg&&syncState.cfg.personal;
+  return finApi===finNative&&finNative&&finNative.financeShareBox&&validProfile(p)?{url:p.url,key:p.key,syncKey:p.syncKey+':finance'}:null;
+}
+async function finShareUp(){
+  try{
+    if(syncState.ready)await syncState.ready;
+    const p=finShareProfile(); if(!p)return;
+    const r=await finNative.financeShareBox(); if(!r||!r.ok)return;
+    const row=await syncPullRow(p);
+    if(row.doc&&stableJson(row.doc.box)===stableJson(r.box))return; // already there
+    await syncPushDoc(p,{v:1,box:r.box});
+  }catch(e){} // sync down or the row not allowed yet: the other computers connect with a token, as before
+}
+async function finShareDown(){
+  try{
+    if(syncState.ready)await syncState.ready;
+    const p=finShareProfile(); if(!p)return null;
+    const row=await syncPullRow(p);
+    return row.doc&&row.doc.box||null;
+  }catch(e){ return null; }
+}
+// forgetting on a computer drops the shared copy too; a computer still connected puts it back when it next unlocks
+async function finShareClear(){
+  try{ const p=finShareProfile(); if(p)await syncPushDoc(p,{v:1,box:null}); }catch(e){}
+}
+
 /* ── first time: SimpleFIN setup token + a passphrase (on the phone: pairing with the computer) ── */
 function drawFinSetup(v,st){
   if(finApi.csv)return drawFinCsvSetup(v,st);
   if(finApi.phone)return drawFinPair(v);
+  if(fin.shared===undefined){ // asked once a visit: is another computer already connected?
+    fin.shared=null;
+    finShareDown().then(function(box){ fin.shared=box; if(box&&state.activeTab==='finance'&&!fin.busy)renderFinance(); });
+  }
+  if(fin.shared&&!fin.tokenInstead)return drawFinJoin(v,st);
   v.textContent='';
   const box=el('div','fin-card fin-setup');
   box.appendChild(el('h3',null,'Connect your bank accounts'));
@@ -93,13 +128,47 @@ function drawFinSetup(v,st){
     const r=await finApi.financeSetup(tok.value.trim(),p1.value).catch(function(e){ return {ok:false,error:e.message}; });
     tok.value=p1.value=p2.value=''; fin.busy=false;
     if(!r.ok){ finSay(r.error,true); return drawFinSetup(v,st); }
-    finSay(r.warning||'',!!r.warning); renderFinance();
+    fin.shared=undefined; fin.tokenInstead=false;
+    finSay(r.warning||'',!!r.warning); renderFinance(); finShareUp();
   });
   box.appendChild(go);
   box.appendChild(finMsgEl());
+  if(fin.shared){
+    const back=el('button','ghost mono','use the connection from your other computer');
+    back.addEventListener('click',function(){ fin.tokenInstead=false; finSay(''); renderFinance(); });
+    box.appendChild(back);
+  }
   box.appendChild(finCsvInstead());
   v.appendChild(box);
   tok.focus();
+}
+// another computer on this sync is connected: its passphrase opens the link here too
+function drawFinJoin(v,st){
+  v.textContent='';
+  const box=el('div','fin-card fin-setup');
+  box.appendChild(el('h3',null,'Your bank accounts are connected on another computer'));
+  box.appendChild(el('p','fin-note','Type your Finance passphrase from that computer to use the same SimpleFIN connection here. Your bank data is then downloaded and encrypted on this computer too, under the same passphrase.'));
+  const pass=finInput('password','Finance passphrase');
+  const go=el('button','btn-accent',fin.busy?'Connecting…':'Connect'); go.disabled=fin.busy;
+  const join=async function(){
+    if(!pass.value||fin.busy)return;
+    fin.busy=true; finSay(''); go.disabled=true; go.textContent='Connecting…';
+    const r=await finNative.financeSetupShared(fin.shared,pass.value).catch(function(e){ return {ok:false,error:e.message}; });
+    pass.value=''; fin.busy=false;
+    if(!r.ok){ finSay(r.error,true); return drawFinJoin(v,st); }
+    fin.shared=undefined;
+    finSay(r.warning||'',!!r.warning); renderFinance();
+  };
+  pass.addEventListener('keydown',function(e){ if(e.key==='Enter')join(); });
+  go.addEventListener('click',join);
+  const row=el('div','fin-row'); row.appendChild(pass); row.appendChild(go); box.appendChild(row);
+  box.appendChild(finMsgEl());
+  const other=el('button','ghost mono','connect with a new setup token instead');
+  other.addEventListener('click',function(){ fin.tokenInstead=true; finSay(''); renderFinance(); });
+  box.appendChild(other);
+  box.appendChild(finCsvInstead());
+  v.appendChild(box);
+  pass.focus();
 }
 function finCsvInstead(){
   const b=el('button','ghost mono','no SimpleFIN? use CSV files from your bank instead');
@@ -276,7 +345,7 @@ function drawFinLocked(v,st){
       const r=await finApi.financeHelloUnlock().catch(function(e){ return {ok:false,error:e.message}; });
       fin.busy=false;
       finSay(r.ok?(r.warning||''):r.error,!r.ok&&!!r.error||!!r.warning);
-      renderFinance();
+      renderFinance(); if(r.ok)finShareUp();
     };
     hb.addEventListener('click',helloUnlock);
     box.appendChild(hb);
@@ -293,7 +362,7 @@ function drawFinLocked(v,st){
     const r=await finApi.financeUnlock(pass.value).catch(function(e){ return {ok:false,error:e.message}; });
     pass.value=''; fin.busy=false;
     finSay(r.ok?(r.warning||''):r.error,!r.ok||!!r.warning);
-    renderFinance();
+    renderFinance(); if(r.ok)finShareUp();
   };
   pass.addEventListener('keydown',function(e){ if(e.key==='Enter')unlock(); });
   go.addEventListener('click',unlock);
@@ -317,7 +386,8 @@ function finForgetFold(label,note){
   go.addEventListener('click',async function(){
     if(go.disabled)return;
     go.disabled=true;
-    await finApi.financeForget(); fin.invalidated=false;
+    if(finShareProfile())await finShareClear();
+    await finApi.financeForget(); fin.invalidated=false; fin.shared=undefined; fin.tokenInstead=false;
     finSay(finApi.csv?'Forgotten. Your bank data is gone from here.':finApi.phone?'Removed from this phone. Pair again from the computer whenever you like.':'Forgotten. Remember to disable it on bridge.simplefin.org too.'); renderFinance();
   });
   const row=el('div','fin-row'); row.appendChild(word); row.appendChild(go); fold.appendChild(row);

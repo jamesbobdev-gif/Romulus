@@ -1,6 +1,7 @@
-# Qwen's browser on the mini PC: a visible Chromium with its own profile (log in to sites in it once),
-# controlled by the Tasks app over SSH. Remote control listens on 127.0.0.1 only, so nothing on the
-# network can reach it directly. Starts when you log in, and reopens itself if it closes or crashes.
+# The local model's browser on the mini PC: a visible Chromium with its own profile (log in to sites in it
+# once), driven by the Tasks app running on this same machine (the worker). Remote control listens on
+# 127.0.0.1 only, so nothing on the network can reach it. Your other computers watch it over sync.
+# Starts when you log in, and reopens itself if it closes or crashes.
 # Install: copy to ~/.config/systemd/user/ and run
 #   systemctl --user daemon-reload && systemctl --user enable --now qwen-browser
 [Unit]

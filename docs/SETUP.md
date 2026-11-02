@@ -122,7 +122,7 @@ Keys are never synced between devices and never leave the app except to the serv
 
 - **The Claude card says "not installed" after installing.** Press **I already have it**: the app looks again. If `claude` works in a terminal but not here, restart Romulus so it sees the new PATH.
 - **Sign in to Claude never finishes.** Close the terminal window it opened, run `claude auth login` yourself in any terminal, then press Sign in again (or just restart Romulus: it checks on start).
-- **"not reachable" on the Local model panel.** Ollama isn't running or isn't reachable from this computer. On the machine running it, `ollama serve` should be up; for another computer, publish it to your devices with Tailscale (`tailscale serve --bg --tcp 11434 tcp://127.0.0.1:11434`; [docs/second-machine.md](second-machine.md)) rather than opening it to the network with `0.0.0.0`.
+- **"not reachable" on the Local model panel.** Ollama isn't running on this computer (`ollama serve` should be up). For a model on another machine, don't point this computer at it over the network: install Romulus there, switch on **Run local tasks here for all my devices**, and this computer picks it up through sync ([docs/second-machine.md](second-machine.md)).
 - **Device sync says "fill in the three personal fields".** All three are needed: URL, anon key, sync key.
 - **The phone and computer show different lists.** Check the sync key matches exactly on both; one character off is a different (empty) list.
 - **Something else.** The app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log`; it usually names the problem. Open an issue with the relevant lines (strip anything personal).
