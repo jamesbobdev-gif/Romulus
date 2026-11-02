@@ -31,7 +31,7 @@ const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText,
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
 const mailSend = require('./mail-send');
-const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
+const { tidyAgentTabs, holdTabs, startTab, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const workerFiles = require('./worker-files');
 const { formFiles } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
@@ -39,6 +39,7 @@ const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_fil
   description: 'Put one of his files into the file box a site opened (click its Upload / Attach / Choose file button first). file = the file name: ' + files.map((f) => f.name).join(', ') + '. No file = close the box without uploading.',
   parameters: { type: 'object', properties: { file: { type: 'string' } } } } });
 const { localWebSearch, localReadPage, searchMyData, LOCAL_TOOLS, FILL_FORM_TOOL } = require('./local-tools');
+const courseSites = require('./course-sites');
 const { enrichOption } = require('./previews');
 const worker = require('./worker');
 
@@ -560,7 +561,7 @@ async function runLocalTask(c, t) {
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
     fs.writeFileSync(lockFile, JSON.stringify({ allow, approved: localApproved(t) }));
-    browser = await startBrowserTools(lockFile, t.title).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
+    browser = await startBrowserTools(lockFile, t.title, await startTab(t.id)).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
   const canAsk = !money && helpersFor(t);
@@ -576,13 +577,16 @@ async function runLocalTask(c, t) {
   // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
   const taskNotes = siteNotesFor(taskLinks(t).concat(coaching ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
+  // which of his classes is on Blackboard and which on D2L (agent/course-sites.js), from the School list
+  let classes = []; try { classes = courseSites.courseSites(JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks); } catch (e) {}
+  const classesText = !money && courseSites.relevant(t, classes, { coaching }) ? courseSites.show(classes) : '';
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
   let maxSteps = browser ? (coaching ? 80 : 40) : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText +
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -804,6 +808,7 @@ async function runLocalTask(c, t) {
   }
   // finished: close its tabs. Not when it's waiting on him: a filled form waiting for his yes is in a tab
   if (browser && final.status === 'done') await tidyAgentTabs();
+  else if (browser) await holdTabs(t.id); // waiting on him: the next task's tidy-up leaves these open
   if (browser && worker.isWorker(readConfig())) syncFiles(); // a worksheet it saved shows up on his other computers
   if (final.status !== 'done') {
     stuck = cleanStuck(final.stuck) || stuck;

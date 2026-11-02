@@ -6,7 +6,7 @@
 const { session } = require('electron');
 const { AGENT_BROWSER_PORT, agentBrowserUp, ensureAgentBrowser, closeWindowedAgentBrowser } = require('./agent-browser');
 const taskTabs = require('./task-tabs');
-const { QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, ensureQwenBrowser } = require('./qwen-browser');
+const { QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, ensureQwenBrowser, isHeld } = require('./qwen-browser');
 
 let ctx = null;
 const handlers = {};
@@ -49,8 +49,9 @@ async function lupaPages() {
     if (!(await ensureQwenBrowser().catch(() => false))) return { up: false, pages: [] };
   }
   const list = await fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
+  // a tab waiting on him (a sign-in) comes first, so that's what the view opens on
   return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl)
-    .map((p) => Object.assign(view(p), { ws: 'ws://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/devtools/page/' + p.id })) }; // the relay's port, whatever port it names
+    .sort((a, b) => isHeld(b.id) - isHeld(a.id)).map((p) => Object.assign(view(p), { ws: 'ws://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/devtools/page/' + p.id })) }; // the relay's port, whatever port it names
 }
 handle('live:pages', (_e, taskId, where) => where === 'lupa' ? lupaPages() : pages(taskId));
 // ◉ Watch on a task that needs him: its own tab, as the run left it (nothing reloaded). If that tab is gone

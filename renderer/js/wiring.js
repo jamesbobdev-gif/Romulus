@@ -407,12 +407,13 @@ async function importCourseFeeds(){
   const byId={}; state.tasks.forEach(function(t){ byId[t.id]=t; });
   const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
   const norm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
-  let added=0, moved=0;
+  let added=0, moved=0, sited=0;
   r.items.forEach(function(e){
     const was=seen[e.id], now=e.due+' '+(e.dueTime||'');
     seen[e.id]=now;
     const t=byId[e.id];
     if(t){
+      if(e.source&&t.ws==='school'&&t.site!==e.source){ t.site=e.source; sited++; } // which school site it's on (agent/course-sites.js)
       if(was&&was!==now&&!t.done&&(t.due+' '+(t.dueTime||''))===was){ t.due=e.due; t.dueTime=e.dueTime; moved++; }
       return;
     }
@@ -420,7 +421,7 @@ async function importCourseFeeds(){
     // he already put it on a list himself: same day, same name
     if(state.tasks.some(function(x){ return x.due===e.due&&norm(x.title)===norm(e.title); }))return;
     const n={id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime,tag:e.course||null,ws:ws,subs:[],googleEventId:null,created:Date.now()};
-    if(ws==='school'){ n.kind=e.kind; n.notes=[e.notes,e.url].filter(Boolean).join('\n\n')||null; }
+    if(ws==='school'){ n.kind=e.kind; n.notes=[e.notes,e.url].filter(Boolean).join('\n\n')||null; if(e.source)n.site=e.source; }
     state.tasks.push(n); added++;
   });
   try{ localStorage.setItem(FEED_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
@@ -434,7 +435,7 @@ async function importCourseFeeds(){
       (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
   }).map(function(t){ return t.id; }):[];
   const tidy=tidySchool(r,vanished);
-  if(added||moved||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
+  if(added||moved||sited||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
   return {added:added,moved:moved,count:r.items.length,errors:r.errors,tidy:tidy};
 }
 /* Tidy the School list after each import, so each assignment is there once and labeled with its course:

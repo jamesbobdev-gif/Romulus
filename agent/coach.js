@@ -93,8 +93,8 @@ ${Object.keys(PARTS).map((p) => '- ' + p + (MUST.includes(p) ? ' (must)' : '') +
 
 Where to look:
 1. Use search_my_data first for the course name or code if the task doesn't say it.
-2. Open the course on Blackboard or D2L (his school's address is in his preferences; the site notes
-   below say where things are). Find the assignment itself (Assignments / the module or week it's in /
+2. Open the course on the site "Where each of his classes is" names for it (Blackboard or D2L; if the
+   class isn't listed, his preferences have the schools' addresses; the site notes below say where things are). Find the assignment itself (Assignments / the module or week it's in /
    the calendar item) and read ALL of it. Signed out? Answer needs-you: he signs in on the mini PC's
    browser, then replies "try again".
 3. Every attachment on it (an instruction sheet, a template, a rubric file): click it to download, then
