@@ -41,8 +41,41 @@ function wakeMiniPcDisplay(ssh) {
     p.on('exit', done); p.on('error', done);
   });
 }
+/* On the mini PC itself (the worker, agent/worker.js): its browser is right here, so no SSH. A plain local
+   relay puts its port where the tools expect it (QWEN_BROWSER_LOCAL_PORT), and its screen is woken here. */
+let localRelay = null;
+function wakeLocalDisplay() {
+  return new Promise((resolve) => {
+    const p = require('child_process').spawn('gdbus', ['call', '--session', '--dest', 'org.gnome.Mutter.DisplayConfig', '--object-path', '/org/gnome/Mutter/DisplayConfig',
+      '--method', 'org.freedesktop.DBus.Properties.Set', 'org.gnome.Mutter.DisplayConfig', 'PowerSaveMode', '<0>'],
+    { stdio: 'ignore', env: Object.assign({ DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/' + (process.getuid ? process.getuid() : 0) + '/bus' }, process.env) });
+    const t = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(); }, 5000);
+    p.on('exit', () => { clearTimeout(t); resolve(); }); p.on('error', () => { clearTimeout(t); resolve(); });
+  });
+}
+async function ensureLocalBrowser(port) {
+  await wakeLocalDisplay();
+  if (await qwenBrowserUp()) return true;
+  if (!localRelay) {
+    const net = require('net');
+    localRelay = net.createServer((c) => {
+      const up = net.connect(port, '127.0.0.1');
+      c.pipe(up).pipe(c);
+      c.on('error', () => up.destroy()); up.on('error', () => c.destroy());
+    });
+    const relay = localRelay;
+    await new Promise((r) => {
+      relay.once('error', (e) => { agentLog('local: browser relay failed: ' + e.message); if (localRelay === relay) localRelay = null; r(); });
+      relay.listen(QWEN_BROWSER_LOCAL_PORT, '127.0.0.1', r);
+    });
+  }
+  for (let i = 0; i < 10; i++) { if (await qwenBrowserUp()) return true; await new Promise((r) => setTimeout(r, 500)); }
+  agentLog('local: this computer\'s browser isn\'t answering on port ' + port + ' (is qwen-browser.service running?)');
+  return false;
+}
 async function ensureQwenBrowser() {
-  const b = (readConfig().localModel || {}).browser;
+  const cfg = readConfig(), b = (cfg.localModel || {}).browser;
+  if ((!b || !b.ssh) && require('./worker').isWorker(cfg)) return ensureLocalBrowser((b && b.port) || 9334);
   if (!b || !b.ssh) return false;
   await wakeMiniPcDisplay(b.ssh);
   if (await qwenBrowserUp()) return true;

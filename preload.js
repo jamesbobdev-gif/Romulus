@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('desktop', {
   hubSendSettings: () => ipcRenderer.invoke('hub:send-settings'),
   hubRestart: () => ipcRenderer.invoke('hub:restart'),
   liveStart: (where) => ipcRenderer.invoke('live:start', where),
+  liveRelay: () => ipcRenderer.invoke('live:relay'), // the mini PC's browser over Supabase: which side this is, and the channel
   // course calendar feeds (Blackboard / D2L iCal links) → School list
   // what worked on earlier Agent tasks, for similar ones (Settings: see and delete)
   howtosList: () => ipcRenderer.invoke('howtos:list'),

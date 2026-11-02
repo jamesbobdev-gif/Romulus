@@ -80,7 +80,9 @@ async function prepareAgentBrowser() {
       fs.mkdirSync(toolDir, { recursive: true });
       if (!fs.existsSync(path.join(toolDir, 'package.json'))) fs.writeFileSync(path.join(toolDir, 'package.json'), '{"private":true}');
       agentLog('browser: installing ' + PLAYWRIGHT_MCP);
-      const p = require('child_process').spawn('npm', ['install', '--no-audit', '--no-fund', PLAYWRIGHT_MCP], { cwd: toolDir, shell: true, windowsHide: true });
+      // the npm that came with that Node (one unpacked into the home folder isn't on a service's PATH)
+      const env = Object.assign({}, process.env, { PATH: path.dirname(node) + path.delimiter + (process.env.PATH || '') });
+      const p = require('child_process').spawn('npm', ['install', '--no-audit', '--no-fund', PLAYWRIGHT_MCP], { cwd: toolDir, shell: true, windowsHide: true, env });
       p.on('error', () => resolve()); p.on('close', () => resolve());
     }).finally(() => { browserToolInstall = null; });
     await browserToolInstall;

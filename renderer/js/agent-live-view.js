@@ -164,7 +164,8 @@ function liveShow(text,startBtn){
   v.msg.textContent=text||''; v.msg.hidden=!text; v.img.hidden=!!text;
   if(startBtn){
     const b=el('button','btn-accent','Start it now');
-    b.addEventListener('click',async function(){ b.disabled=true; b.textContent='Starting…'; await window.desktop.liveStart(v.src||undefined); livePoll(); });
+    b.addEventListener('click',async function(){ b.disabled=true; b.textContent='Starting…';
+      if(v.relay)liveRelay.start(); else await window.desktop.liveStart(v.src||undefined); livePoll(); });
     v.msg.appendChild(document.createElement('br')); v.msg.appendChild(b);
   }
 }
@@ -173,15 +174,22 @@ function liveShow(text,startBtn){
 // (unless he's been using the view in the last few seconds)
 async function livePoll(){
   const v=liveView; if(!v)return;
-  let r; try{ r=await window.desktop.livePages(v.src?undefined:v.forId||undefined,v.src||undefined); }catch(e){ r={up:false,pages:[]}; }
+  // the mini PC's browser comes through Supabase when the mini PC runs the local model itself (live-relay.js)
+  v.relay=v.src==='lupa'&&typeof liveRelay!=='undefined'&&await liveRelay.watching().catch(function(){ return false; });
+  let r; try{ r=v.relay?liveRelay.pages():await window.desktop.livePages(v.src?undefined:v.forId||undefined,v.src||undefined); }catch(e){ r={up:false,pages:[]}; }
   if(liveView!==v)return;
   // its task finished: the card went (checked after the wait: a card being drawn isn't on the page yet)
   if(!v.big&&!v.box.isConnected){ closeLiveView(); return; }
   // in a card: only once the browser has a real page up (a run that only searches never shows it)
   if(!v.big&&v.src!=='lupa')v.box.hidden=!r.up||!r.pages.some(function(p){ return p.url&&!/^(about:|chrome:|devtools:)/.test(p.url); });
-  if(!r.up&&v.src==='lupa'){ v.dot.className='live-dot'; v.where.textContent='Can’t reach the local model’s browser'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
-    liveShow('The local model’s browser isn’t reachable from here (is it on, and is Tailscale connected?).',true); return; }
-  if(!r.up){ v.dot.className='live-dot'; v.where.textContent='Agent browser isn’t open'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.close(); }catch(e){} v.ws=null; v.page=null; }
+  // down: forget the page too, so the next poll that finds it up connects again
+  if(!r.up&&v.src==='lupa'){ v.dot.className='live-dot'; v.where.textContent='Can’t reach the local model’s browser'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.onclose=null; v.ws.close(); }catch(e){} } v.ws=null; v.page=null;
+    if(v.relay&&r.connecting)liveShow('Connecting to the mini PC…');
+    else if(v.relay&&r.quiet)liveShow('The mini PC isn’t answering. Is it on and online, with Romulus running?');
+    else if(v.relay)liveShow('The mini PC’s browser isn’t running.',true);
+    else liveShow('Can’t open the mini PC’s browser from here. It needs a direct line to the mini PC (SSH), or Romulus on the mini PC taking local tasks.',true);
+    return; }
+  if(!r.up){ v.dot.className='live-dot'; v.where.textContent='Agent browser isn’t open'; v.tabs.hidden=true; if(v.ws){ try{ v.ws.onclose=null; v.ws.close(); }catch(e){} } v.ws=null; v.page=null;
     liveShow('The Agent’s browser isn’t running. It starts by itself when the Agent needs the web.',true); return; }
   const first=Object.keys(v.seen).length===0;
   const fresh=r.pages.filter(function(p){ return !v.seen[p.id]; });
@@ -198,6 +206,7 @@ async function livePoll(){
   if(cur){ v.page.title=cur.title; v.page.url=cur.url; liveWhere(); }
   const follow=!first&&fresh.length&&Date.now()-v.touchedAt>5000;
   if(!cur||follow)liveConnect(follow?fresh[fresh.length-1]:r.pages[0],follow);
+  else if(!v.ws)liveConnect(cur,false); // its socket dropped ("trying again"): back on
   else v.tabs.value=v.page.id;
 }
 function liveWhere(){
@@ -212,7 +221,7 @@ function liveConnect(page,front){
   if(v.ws){ try{ v.ws.onclose=null; v.ws.close(); }catch(e){} }
   v.page=page; v.meta=null; v.tabs.value=page.id; liveWhere();
   liveShow('Connecting…');
-  const ws=new WebSocket(page.ws); v.ws=ws;
+  const ws=String(page.ws).indexOf('relay:')===0?liveRelay.socket(page):new WebSocket(page.ws); v.ws=ws;
   ws.onopen=function(){
     if(front)liveSend('Page.bringToFront'); // a tab in the back doesn't draw
     liveSend('Page.enable');

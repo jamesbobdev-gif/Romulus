@@ -73,4 +73,22 @@ handle('live:open', (_e, url, taskId) => openPage(url, taskId));
 // "Start it": it starts headless (no window); the view shows it
 handle('live:start', async (_e, where) => ({ ok: where === 'lupa' ? (lupaTried = 0, await ensureQwenBrowser().catch(() => false)) : await ensureAgentBrowser() }));
 
-module.exports = { init, handlers, pages };
+/* The mini PC's browser over Supabase (renderer/js/live-relay.js), so no device has to reach it: the mini PC
+   (the worker) sends its screen on a Realtime channel while someone watches, and the clicks come back the
+   same way. The channel's name is a hash of the agent list's sync key and every message is sealed with a key
+   made from it (AES-GCM), so only his devices can watch or click. → {role: 'publish' | 'watch', url, key,
+   topic, secret (hex)}, or {role: null}: no worker, so the SSH way above (or nothing). */
+const relayKeys = (syncKey) => ({
+  topic: 'live:' + require('crypto').createHash('sha256').update(String(syncKey) + ':live').digest('hex').slice(0, 40),
+  secret: require('crypto').createHash('sha256').update('romulus-live-v1|' + String(syncKey)).digest('hex'),
+});
+handle('live:relay', async (e) => {
+  if (e && e.hub) return { role: null };
+  const cfg = ctx.readConfig(), a = require('./supabase').channel(cfg);
+  if (!a) return { role: null };
+  const worker = require('./worker');
+  const role = worker.isWorker(cfg) ? 'publish' : (await worker.present(a).catch(() => null)) ? 'watch' : null;
+  return role ? Object.assign({ role, url: String(a.url).replace(/\/+$/, ''), key: a.key }, relayKeys(a.syncKey)) : { role: null };
+});
+
+module.exports = { init, handlers, pages, relayKeys };
