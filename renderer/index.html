@@ -32,19 +32,6 @@
     <div id="aiUsage" hidden></div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Agent &amp; AI</summary>
-      <div class="settings-sub adv" id="hubSection" hidden>
-        <h3 class="settings-subhead">Mini PC server</h3>
-        <p class="settings-hint">When it's on, the agent, its browser, mail dates and calendar sync run on your mini PC. This computer only shows them and syncs, over Tailscale.</p>
-        <input id="hubUrl" class="settings-inp mono" placeholder="https://tasks-hub.your-tailnet.ts.net" autocomplete="off" spellcheck="false">
-        <input id="hubToken" class="settings-inp mono" type="password" placeholder="hub token (from hub-token.txt on the mini PC)" autocomplete="off" style="margin-top:6px">
-        <div class="settings-row" style="margin-top:8px">
-          <button id="hubTestBtn" class="ghost mono">Test</button>
-          <button id="hubOnBtn" class="ghost mono">Use the mini PC</button>
-          <button id="hubSendBtn" class="ghost mono" hidden>Send my settings to it</button>
-          <button id="hubOffBtn" class="ghost mono" hidden>Run everything here again</button>
-        </div>
-        <span id="hubStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
-      </div>
       <div class="settings-sub" id="aiSection" hidden>
         <h3 class="settings-subhead">AI connections</h3>
         <p class="settings-hint">Tried top to bottom; if one is out, the next takes over.</p>
@@ -68,7 +55,7 @@
         </div>
         <div id="localWorkerRow" hidden style="margin-top:10px">
           <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="localWorkerOn"><span class="track" aria-hidden="true"></span><span>Run local tasks here for all my devices</span></label>
-          <p class="settings-hint" style="margin:0">Turn this on on the computer that runs the model. It picks up local tasks from your phone and other computers through sync, so they don’t need to reach it on the network (no Tailscale or address needed). Leave this app open there.</p>
+          <p class="settings-hint" style="margin:0">Turn this on on the computer that runs the model. It picks up local tasks from your phone and other computers through sync, so they don’t need to reach it on the network (no address to type). Files its browser downloads show up on your other computers the same way. Leave this app open there.</p>
         </div>
       </div>
       <div class="settings-sub adv" id="routingSection" hidden>
@@ -278,10 +265,6 @@
         <button id="reviewSampleBtn" class="ghost mono">Preview with made-up data</button>
       </div>
     </details>
-    <details class="settings-panel settings-collapse" id="themeSection">
-      <summary class="settings-label">Theme</summary>
-      <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
-        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button>
     <details class="settings-panel settings-collapse" id="updateSection" hidden>
       <summary class="settings-label">Updates</summary>
       <p class="settings-hint">When a new version comes out, this computer can ask you first or update on its own. Either way it installs when you quit, or when the computer has been idle and the Agent isn't working.</p>
@@ -292,6 +275,10 @@
         </select>
       </div>
     </details>
+    <details class="settings-panel settings-collapse" id="themeSection">
+      <summary class="settings-label">Theme</summary>
+      <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
+        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS">Custom</button>
       </div>
       <details class="settings-sub">
       <summary class="settings-label">Custom CSS (advanced)</summary>
@@ -488,7 +475,6 @@
 <script src="js/settings.js"></script>
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
-<script src="js/hub.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
 <script src="js/agent-results.js"></script>
@@ -500,8 +486,8 @@
 <script src="js/goals.js"></script>
 <script src="js/local-sites.js"></script>
 <script src="js/swipe.js"></script>
+<script src="js/update-sync.js"></script>
+<script src="js/update-desktop.js"></script>
 <script src="js/init.js"></script>
 </body>
 </html>
-<script src="js/update-sync.js"></script>
-<script src="js/update-desktop.js"></script>

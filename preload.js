@@ -74,12 +74,6 @@ contextBridge.exposeInMainWorld('desktop', {
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
   livePages: (taskId, where) => ipcRenderer.invoke('live:pages', taskId, where), // where 'lupa': the local model's browser
   liveOpen: (url, taskId) => ipcRenderer.invoke('live:open', url, taskId),
-  // the hub mini PC (main/hub.js): this computer as its client, over Tailscale
-  hubGet: () => ipcRenderer.invoke('hub:get'),
-  hubTest: (url, token) => ipcRenderer.invoke('hub:test', url, token),
-  hubSave: (change) => ipcRenderer.invoke('hub:save', change),
-  hubSendSettings: () => ipcRenderer.invoke('hub:send-settings'),
-  hubRestart: () => ipcRenderer.invoke('hub:restart'),
   liveStart: (where) => ipcRenderer.invoke('live:start', where),
   liveRelay: () => ipcRenderer.invoke('live:relay'), // the mini PC's browser over Supabase: which side this is, and the channel
   // course calendar feeds (Blackboard / D2L iCal links) → School list
@@ -120,10 +114,11 @@ contextBridge.exposeInMainWorld('desktop', {
   financeSetKind: (payee, kind) => ipcRenderer.invoke('finance:setKind', payee, kind),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
+  financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),
+  financeSetupShared: (box, passphrase) => ipcRenderer.invoke('finance:setupShared', box, passphrase),
   financeBills: () => ipcRenderer.invoke('finance:bills'),
   onFinanceLocked: (cb) => ipcRenderer.on('finance:locked', (_event, why) => cb(why)),
   onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),
-  // Speak on desktop: Windows dictation; partials stream in while listening
   // a new version: asks before updating, unless Settings says automatically (main/updater.js)
   updateState: () => ipcRenderer.invoke('update:state'),
   updateAccept: () => ipcRenderer.invoke('update:accept'),
@@ -133,6 +128,7 @@ contextBridge.exposeInMainWorld('desktop', {
   updateGetMode: () => ipcRenderer.invoke('update:get-mode'),
   updateSetMode: (m) => ipcRenderer.invoke('update:set-mode', m),
   onUpdateState: (cb) => ipcRenderer.on('update:state', (_event, s) => cb(s)),
+  // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
   voiceStop: () => ipcRenderer.invoke('voice:stop'),
   onVoicePartial: (cb) => { const h = (_event, text) => cb(text); ipcRenderer.on('voice:partial', h); return () => ipcRenderer.removeListener('voice:partial', h); }

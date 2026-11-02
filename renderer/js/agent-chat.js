@@ -385,8 +385,9 @@ function saveAnswerDoc(title,text){
   const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
 }
-/* files the mini PC's browser downloaded (a worksheet off Blackboard) land in the local model’s Downloads folder,
-   not on this computer: listed at the top of the Agent tab, each with a Download button */
+/* files the local model's browser downloaded (a worksheet off Blackboard) land in its own Downloads folder, not on
+   this computer; it puts them on sync (agent/worker-files.js), and they are listed at the top of the Agent tab, each
+   with a Download button */
 let lupaList=null, lupaAt=0, lupaLoading=false, lupaDrawn='';
 function loadLupaFiles(){
   if(lupaLoading)return; lupaLoading=true;
@@ -415,12 +416,12 @@ function drawLupaFiles(show){
     li.appendChild(el('span','lupa-file-name',f.name.replace(/ \(\d+\)(?=\.[^.]+$|$)/,'')));
     li.appendChild(el('span','lupa-file-meta',fmtWhen(f.at)+' · '+fileSize(f.size)));
     const b=el('button','btn-ghost doc-dl','⬇ Download');
-    b.title='Copy it from the mini PC to this computer';
+    b.title='Save a copy on this computer';
     b.addEventListener('click',function(e){
       e.stopPropagation(); b.disabled=true; b.textContent='Copying…';
       window.desktop.lupaFetch(f.name).then(function(r){
         if(r&&r.ok)pasteToast('Saved to '+r.path);
-        else if(r&&!r.canceled)pasteToast('Couldn’t copy it: '+(r.error||'the mini PC didn’t answer'));
+        else if(r&&!r.canceled)pasteToast('Couldn’t copy it: '+(r.error||'sync didn’t answer'));
       }).catch(function(err){ pasteToast('Couldn’t copy it: '+err.message); })
         .then(function(){ b.disabled=false; b.textContent='⬇ Download'; });
     });
@@ -431,7 +432,7 @@ function drawLupaFiles(show){
       e.stopPropagation(); x.disabled=true;
       const k=fileKey(f), copies=(lupaList||[]).filter(function(g){ return fileKey(g)===k; }).map(function(g){ return g.name; });
       window.desktop.lupaRemove(copies).then(function(r){
-        if(!r||!r.ok){ x.disabled=false; pasteToast('Couldn’t remove it: '+(r&&r.error||'the mini PC didn’t answer')); return; }
+        if(!r||!r.ok){ x.disabled=false; pasteToast('Couldn’t remove it: '+(r&&r.error||'sync didn’t answer')); return; }
         lupaList=(lupaList||[]).filter(function(g){ return copies.indexOf(g.name)===-1; });
         drawLupaFiles(state.activeTab==='agent');
       }).catch(function(err){ x.disabled=false; pasteToast('Couldn’t remove it: '+err.message); });

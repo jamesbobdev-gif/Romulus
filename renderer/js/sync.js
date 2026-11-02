@@ -62,14 +62,83 @@ const THEME_KEY='tasks.theme.v1';
 const themeStyle=document.createElement('style');
 document.head.appendChild(themeStyle);
 function applyTheme(css){ themeStyle.textContent=css||''; }
-try{ applyTheme(localStorage.getItem(THEME_KEY)||''); }catch(e){}
-// light / dark / system (the computer's setting): html[data-theme], read by styles.css
+// light / dark / system (the computer's setting): html[data-theme], read by styles.css.
+// custom: only the saved Custom CSS over the plain base colors (pinned light, so the computer's dark mode
+// never mixes in); the other modes keep it saved but switch it off
 const THEME_MODE_KEY='tasks.themeMode.v1';
+function themeModeSaved(){
+  const mode=localStorage.getItem(THEME_MODE_KEY);
+  if(mode)return mode;
+  return localStorage.getItem(THEME_KEY)?'custom':'system'; // CSS saved before the Custom chip existed
+}
 function applyThemeMode(mode){
   if(mode==='light'||mode==='dark')document.documentElement.dataset.theme=mode;
+  else if(mode==='custom')document.documentElement.dataset.theme='light';
   else delete document.documentElement.dataset.theme;
+  let css=''; try{ if(mode==='custom')css=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+  applyTheme(css);
+  themeGuard(mode==='custom');
 }
-try{ applyThemeMode(localStorage.getItem(THEME_MODE_KEY)||'system'); }catch(e){}
+
+/* Custom CSS can leave text the same colour as what's behind it (many styles.css colours are fixed, not
+   variables). While Custom is on, any visible text below 2:1 contrast (barely readable; the built-in
+   --faint is ~2.7:1, so deliberately quiet text is left alone) gets the theme's --ink or --surface,
+   whichever reads, else black/white; rechecked as the screen changes, undone when Custom goes off. */
+let themeGuardObs=null, themeGuardTimer=0;
+function themeGuardRgba(s){ const m=String(s).match(/[\d.]+/g); if(!m||m.length<3)return null; return [+m[0],+m[1],+m[2],m.length>3?+m[3]:1]; }
+function themeGuardLum(c){ const f=function(v){ v/=255; return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4); }; return .2126*f(c[0])+.7152*f(c[1])+.0722*f(c[2]); }
+function themeGuardOver(top,bot){ const a=top[3]; return [top[0]*a+bot[0]*(1-a),top[1]*a+bot[1]*(1-a),top[2]*a+bot[2]*(1-a),1]; }
+function themeGuardRatio(a,b){ const x=themeGuardLum(a), y=themeGuardLum(b); return (Math.max(x,y)+.05)/(Math.min(x,y)+.05); }
+function themeGuardBehind(el){
+  const layers=[];
+  for(let e=el;e;e=e.parentElement){ const c=themeGuardRgba(getComputedStyle(e).backgroundColor); if(c&&c[3]>0){ layers.push(c); if(c[3]>=1)break; } }
+  let b=themeGuardRgba(getComputedStyle(document.documentElement).getPropertyValue('--bg'))||[255,255,255,1];
+  if(!layers.length||layers[layers.length-1][3]<1){ const bodyBg=themeGuardRgba(getComputedStyle(document.body).backgroundColor); if(bodyBg&&bodyBg[3]>=1)b=bodyBg; }
+  for(let i=layers.length-1;i>=0;i--)b=themeGuardOver(layers[i],b);
+  return b;
+}
+function themeGuardUndo(){
+  document.querySelectorAll('[data-tfix]').forEach(function(el){
+    el.style.removeProperty('color');
+    if(el.dataset.tfix!=='-')el.style.color=el.dataset.tfix;
+    delete el.dataset.tfix;
+  });
+}
+function themeGuardRun(){
+  themeGuardUndo();
+  const probe=document.createElement('span'); document.body.appendChild(probe);
+  const pick=function(v){ probe.style.color='var('+v+')'; return themeGuardRgba(getComputedStyle(probe).color); };
+  const options=[pick('--ink'),pick('--surface'),[0,0,0,1],[255,255,255,1]].filter(Boolean);
+  probe.remove();
+  document.querySelectorAll('body *').forEach(function(el){
+    const tag=el.tagName;
+    if(tag==='SCRIPT'||tag==='STYLE'||tag==='svg'||el.closest('svg'))return;
+    let text=false;
+    for(const n of el.childNodes){ if(n.nodeType===3&&n.textContent.trim()){ text=true; break; } }
+    if(!text&&(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'))text=true;
+    if(!text)return;
+    const cs=getComputedStyle(el);
+    if(cs.visibility==='hidden'||+cs.opacity===0)return;
+    if(!el.getClientRects().length)return;
+    const fg=themeGuardRgba(cs.color); if(!fg)return;
+    const bg=themeGuardBehind(el);
+    if(themeGuardRatio(themeGuardOver(fg,bg),bg)>=2)return;
+    const best=options.find(function(c){ return themeGuardRatio(c,bg)>=4.5; })||options.reduce(function(a,c){ return themeGuardRatio(c,bg)>themeGuardRatio(a,bg)?c:a; });
+    el.dataset.tfix=el.style.color||'-';
+    el.style.setProperty('color','rgb('+best.slice(0,3).map(Math.round).join(',')+')','important'); // beats !important in the custom CSS
+  });
+}
+function themeGuard(on){
+  clearTimeout(themeGuardTimer);
+  if(themeGuardObs){ themeGuardObs.disconnect(); themeGuardObs=null; }
+  if(!on){ themeGuardUndo(); return; }
+  const later=function(){ clearTimeout(themeGuardTimer); themeGuardTimer=setTimeout(themeGuardRun,250); };
+  // our own fixes only touch style, which isn't watched, so this never loops
+  themeGuardObs=new MutationObserver(later);
+  themeGuardObs.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','hidden','open']});
+  later();
+}
+try{ applyThemeMode(themeModeSaved()); }catch(e){}
 
 /* ── device sync (Supabase-backed, per-task last-write-wins) ──
    Supports two independent channels ("workspaces"): personal and work.
@@ -236,12 +305,18 @@ const SYNC_REFUSED={
   full:'sync paused: this account’s online storage is full. Your lists are safe on this device; deleting old tasks frees space.',
   rate:'sync paused for a minute: it was saving too often',
   new_accounts:'sync couldn’t start: too many new sync keys from this network this hour. It tries again later.',
-  server_full:'sync paused: the sync server is full right now. Your lists are safe on this device.'
+  server_full:'sync paused: the sync server is full right now. Your lists are safe on this device.',
+  weak_key:'sync couldn’t start: that sync key is too short to be safe. Press Generate key in Settings → Sync.'
 };
 async function syncRefusal(p){
   try{
-    const r=(await syncRpc(p,'sync_usage',{p_sync_key:await syncRowKey(p)}))[0];
-    return r&&r.refused?(SYNC_REFUSED[r.refused]||'sync refused ('+r.refused+')'):'';
+    const rk=await syncRowKey(p);
+    const r=(await syncRpc(p,'sync_usage',{p_sync_key:rk}))[0];
+    if(r&&r.refused)return SYNC_REFUSED[r.refused]||'sync refused ('+r.refused+')';
+    // a new account on a key id under 32 characters is refused before it exists, so sync_usage can't say so
+    // (sync_guard, supabase/migrations/20261031_sync_key_hardening.sql)
+    if(r&&!Number(r.used_bytes)&&rk.replace(/^tk_(work_|agent_|school_)?/,'').replace(/:.*$/,'').length<32)return SYNC_REFUSED.weak_key;
+    return '';
   }catch(e){ return ''; } // an older database without sync_usage
 }
 function refusedError(msg){ const e=new Error(msg); e.refused=true; return e; }

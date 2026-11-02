@@ -1,17 +1,18 @@
 /* Downloading documents from the Agent tab.
    - doc:save: an AI's written answer (an essay, a letter) saved as a Word file where he picks.
    - sheet:save: the Finance tab's stocks saved as a spreadsheet (.csv) where he picks.
-   - lupa:files / lupa:fetch / lupa:remove: files the mini PC's browser downloaded (a worksheet off Blackboard) sit in
-     The local model’s ~/Downloads, not on this computer. These list them and copy one here, over the same SSH the
-     mini PC's browser uses (localModel.browser.ssh).
+   - lupa:files / lupa:fetch / lupa:remove: files the local model's browser downloaded (a worksheet off Blackboard)
+     sit in its own computer's ~/Downloads, not on this one. The worker puts them on sync (agent/worker-files.js);
+     these list them from there, copy one here, and remove one (it goes to the trash over there too).
    - forms:files / forms:add / forms:remove: his files for forms (the resume a job site asks for), kept on this
      computer where the browser launcher runs (agent/agent-files.js); Settings → About you lists them. */
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const { app, dialog, shell } = require('electron');
 const { makeDocx } = require('../agent/docx-writer');
 const agentFiles = require('../agent/agent-files');
+const workerFiles = require('../agent/worker-files');
+const supabase = require('../agent/supabase');
 
 let ctx = null;
 function init(c) { ctx = c; }
@@ -26,11 +27,9 @@ async function formAdd() {
   return out;
 }
 
-const sshHost = () => ((ctx.readConfig().localModel || {}).browser || {}).ssh || '';
+const channel = () => supabase.channel(ctx.readConfig());
 // a file name safe to use as a Windows file name
 const safeName = (s, fallback) => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || fallback;
-// "…" in single quotes for the mini PC's shell
-const shQuote = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 
 async function pickPath(name, filters) {
   const r = await dialog.showSaveDialog({ defaultPath: path.join(app.getPath('downloads'), name), filters });
@@ -59,59 +58,45 @@ async function saveSheet(_e, title, csv) {
   return { ok: true, path: file };
 }
 
-// one ssh command on the mini PC → stdout (a Buffer), or an error
-function onLupa(cmd, toFile) {
-  const host = sshHost();
-  if (!host) return Promise.reject(new Error('the mini PC’s SSH isn’t set up'));
-  return new Promise((resolve, reject) => {
-    const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', host, cmd], { windowsHide: true });
-    const out = [], err = [];
-    const sink = toFile ? fs.createWriteStream(toFile) : null;
-    const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 120 * 1000);
-    p.stdout.on('data', (d) => { if (sink) sink.write(d); else out.push(d); });
-    p.stderr.on('data', (d) => err.push(d));
-    p.on('error', (e) => { clearTimeout(killer); if (sink) sink.destroy(); reject(e); });
-    p.on('close', (code) => {
-      clearTimeout(killer);
-      const done = () => code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(Buffer.concat(err).toString().trim().slice(0, 200) || 'ssh exited ' + code));
-      if (sink) sink.end(done); else done();
-    });
-  });
-}
-
-// what's in the local model’s Downloads: [{name, size, at}] newest first (half-downloaded and installer files left out)
+// what the local model put on sync: [{name, size, at}] newest first; the full entries are kept for fetch/remove
+let known = [];
 async function lupaFiles() {
-  try {
-    const out = (await onLupa("find ~/Downloads -maxdepth 1 -type f -printf '%T@\\t%s\\t%f\\n'")).toString();
-    const files = out.split('\n').map((l) => l.split('\t')).filter((p) => p.length === 3 && p[2])
-      .map((p) => ({ name: p[2], size: Number(p[1]) || 0, at: Math.round(Number(p[0]) * 1000) || 0 }))
-      .filter((f) => !/\.(crdownload|part|tmp|deb|rpm|AppImage)$/i.test(f.name))
-      .sort((a, b) => b.at - a.at).slice(0, 100);
-    return { ok: true, files };
-  } catch (e) { return { ok: false, error: e.message }; }
+  const a = channel();
+  if (!a) return { ok: false, error: 'sync isn’t set up' };
+  try { known = await workerFiles.list(a); return { ok: true, files: known.map((f) => ({ name: f.name, size: f.size, at: f.at })) }; }
+  catch (e) { return { ok: false, error: e.message }; }
 }
+const entryFor = (name) => known.find((f) => f.name === name);
 
 async function lupaFetch(_e, name) {
   name = String(name || '');
   if (!name || /[\/\u0000]/.test(name) || name === '.' || name === '..') return { ok: false, error: 'bad file name' };
+  if (!entryFor(name)) await lupaFiles();
+  const f = entryFor(name);
+  if (!f) return { ok: false, error: 'it isn’t on sync any more' };
   // "Worksheet (3).docx" (the browser's copy number) saves as "Worksheet.docx"
   // (with no filters Windows' Save As box leaves the file name empty)
   const ext = (name.match(/\.([A-Za-z0-9]{1,8})$/) || [])[1];
   const file = await pickPath(safeName(name.replace(/ \(\d+\)(?=\.[^.]+$)/, ''), 'file'),
     (ext ? [{ name: ext.toUpperCase() + ' file', extensions: [ext] }] : []).concat([{ name: 'All files', extensions: ['*'] }]));
   if (!file) return { ok: false, canceled: true };
-  try { await onLupa('cat -- ~/Downloads/' + shQuote(name), file); }
-  catch (e) { try { fs.unlinkSync(file); } catch (e2) {} ctx.agentLog('downloads: copying ' + name + ' from the mini PC failed: ' + e.message); return { ok: false, error: e.message }; }
+  try { await workerFiles.download(f, file); }
+  catch (e) { try { fs.unlinkSync(file); } catch (e2) {} ctx.agentLog('downloads: copying ' + name + ' from sync failed: ' + e.message); return { ok: false, error: e.message }; }
   shell.showItemInFolder(file);
   return { ok: true, path: file };
 }
 
-// done with it: to the local model’s trash (not deleted for good), every copy the browser made
+// done with it: off sync, and to the local model’s trash (not deleted for good), every copy the browser made
 async function lupaRemove(_e, names) {
   names = (Array.isArray(names) ? names : [names]).map(String).filter((n) => n && !/[\/\u0000]/.test(n) && n !== '.' && n !== '..');
   if (!names.length) return { ok: false, error: 'bad file name' };
-  try { await onLupa('cd ~/Downloads && gio trash -- ' + names.map(shQuote).join(' ')); return { ok: true }; }
-  catch (e) { ctx.agentLog('downloads: removing ' + names.join(', ') + ' on the mini PC failed: ' + e.message); return { ok: false, error: e.message }; }
+  const a = channel();
+  if (!a) return { ok: false, error: 'sync isn’t set up' };
+  if (!names.every(entryFor)) await lupaFiles();
+  const entries = names.map(entryFor).filter(Boolean);
+  if (!entries.length) return { ok: true };
+  try { await workerFiles.remove(a, entries); known = known.filter((f) => !entries.includes(f)); return { ok: true }; }
+  catch (e) { ctx.agentLog('downloads: removing ' + names.join(', ') + ' failed: ' + e.message); return { ok: false, error: e.message }; }
 }
 
 const handlers = {

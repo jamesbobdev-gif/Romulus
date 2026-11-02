@@ -19,7 +19,7 @@ const MAIL_QUERY = 'newer_than:3d -category:promotions -category:social -categor
 const MAIL_MAX = 15;
 const PAGE_BYTES = 1024 * 1024;
 
-let ctx = null; // { readConfig, writeConfig, agentLog, dataFile, serverWork }
+let ctx = null; // { readConfig, writeConfig, agentLog, dataFile }
 function init(c) { ctx = c; }
 const readConfig = () => ctx.readConfig();
 const agentLog = (m) => ctx.agentLog(m);
@@ -103,7 +103,6 @@ async function checkPages(tasks, s) {
 }
 
 handle('triggers:tick', async () => {
-  if (ctx.serverWork && !ctx.serverWork()) return { skipped: 'hub client' };
   if ((readConfig().agentRunner || {}).enabled === false) return { skipped: 'runner off' };
   if (running) return { skipped: 'busy' };
   const tasks = armedTasks();

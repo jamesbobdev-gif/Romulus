@@ -19,7 +19,7 @@ function absHttps(img, pageUrl) {
   try { const u = new URL(String(img).replace(/&amp;/g, '&'), pageUrl).href; return /^https:\/\//i.test(u) ? u : null; } catch (e) { return null; }
 }
 async function pagePreviewImage(url, lane) {
-  if (!isPublicUrl(url)) return null; // never this computer, the hub or the LAN, whatever link an answer carries
+  if (!isPublicUrl(url)) return null; // never this computer, the mini PC or the LAN, whatever link an answer carries
   try {
     const r = await fetch(url, { headers: { 'User-Agent': PREVIEW_UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(10000) });
     if (r.ok) {

@@ -63,7 +63,7 @@ function drawLupaStuck(show,human){
     row.appendChild(go);
     box.appendChild(row);
   }
-  // live: not while a task here is working (its card has the one view), not over the hub
+  // live: not while a task here is working (its card has the one view)
   const busyHere=state.tasks.some(function(x){ return taskWs(x)==='agent'&&!x.done&&x.status==='working'&&x.lane!=='local'; });
   const inCard=!human&&state.expanded.has(t.id); // its card is open below: the view is there (lupaEmbed)
   if(inCard)box.appendChild(el('div','lupa-stuck-why','Its browser is open in the task below.'));

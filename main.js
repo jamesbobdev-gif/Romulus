@@ -34,7 +34,6 @@ const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
 const liveView = require('./agent/live-view');
-const hub = require('./main/hub');
 const finance = require('./main/finance');
 const downloads = require('./main/downloads');
 const updater = require('./main/updater');
@@ -58,17 +57,13 @@ const ctx = {
   documents: () => app.getPath('documents'),
   isPackaged: app.isPackaged,
   dataFile: store.dataFile, readConfig, writeConfig, agentLog: store.agentLog,
-  // the hub mini PC's window events reach the laptop's window too (main/hub.js)
-  sendToRenderer: (ch, p) => { win.sendToRenderer(ch, p); hub.broadcast(ch, p); }, showWindow, newHiddenWindow: win.newHiddenWindow,
+  sendToRenderer: win.sendToRenderer, showWindow, newHiddenWindow: win.newHiddenWindow,
   reloadWindow: win.reloadWindow, version: app.getVersion(),
-  relaunch: () => { app.relaunch(); win.quit(); },
-  // false on a hub client (the laptop, when the mini PC does the agent, mail and calendar work): none of that runs here
-  serverWork: () => !hub.isClient(),
   quit: win.quit, icon: win.ICON, refreshTrayStatus,
   openExternal: (u) => shell.openExternal(u),
   powerSaveBlocker, powerMonitor,
-  scheduleAgentRun: (raw) => { if (!hub.isClient()) runner.scheduleAgentRun(raw); },
-  scheduleLocalRun: (raw) => { if (!hub.isClient()) localLane.scheduleLocalRun(raw); },
+  scheduleAgentRun: (raw) => runner.scheduleAgentRun(raw),
+  scheduleLocalRun: (raw) => localLane.scheduleLocalRun(raw),
   memoryTidying: () => memoryTidy.isTidying(),
   compactHowtos: (asked) => localLane.compactHowtos(asked),
   // Windows' own encryption for a whole file's text (main/finance.js wraps its vault in it)
@@ -80,37 +75,17 @@ const ctx = {
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdate: (u) => trayMod.setUpdate(u),
-  sendToWindow: win.sendToRenderer, // this computer's window only: an update offer isn't the mini PC's business
+  sendToWindow: win.sendToRenderer,
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
   usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
-hub.init(ctx);
-const allHandlers = Object.assign({}, hub.localHandlers);
+const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);
   Object.assign(allHandlers, m.handlers || {});
 }
-// a hub client: the mini PC answers the agent's, mail's and calendars' calls (main/hub.js REMOTE)
-const ipcHandlers = Object.assign({}, allHandlers);
-if (hub.isClient()) {
-  for (const ch of hub.REMOTE) ipcHandlers[ch] = (_e, ...args) => hub.forward(ch, args);
-  // his rules changed: the mini PC routes, and this computer asks him about unmatched tasks too
-  ipcHandlers['routing:changed'] = async (e, ...args) => { await allHandlers['routing:changed'](e, ...args); return hub.forward('routing:changed', args); };
-  // signing in to a calendar needs his browser, so it happens here; the account then goes to the mini PC
-  ipcHandlers['cal:connect'] = async (e, ...args) => {
-    const r = await allHandlers['cal:connect'](e, ...args);
-    if (r && r.ok) await hub.sendCalAccounts().catch((err) => { r.warning = 'connected here, but the mini PC didn’t get it: ' + err.message; });
-    return r;
-  };
-  // Finance reads mail here, so the switch is saved here; the mini PC gets the accounts too
-  ipcHandlers['cal:set-receipts'] = async (e, ...args) => {
-    const r = await allHandlers['cal:set-receipts'](e, ...args);
-    await hub.sendCalAccounts().catch(() => {});
-    return r;
-  };
-}
-for (const [channel, fn] of Object.entries(ipcHandlers)) ipcMain.handle(channel, fn);
+for (const [channel, fn] of Object.entries(allHandlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
 const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
@@ -184,16 +159,6 @@ if (!gotLock) {
     overlay.start(); // the screen helper's shortcut (Ctrl+Shift+Space, or the next free one)
     refreshTrayStatus();
     setInterval(() => refreshTrayStatus(), 60 * 60 * 1000);
-    if (hub.role() === 'server') hub.startServer(allHandlers);
-    if (hub.isClient()) {
-      // the mini PC does the agent, mail and calendar work; this computer shows it and syncs
-      hub.followEvents();
-      agentLog('hub client: agent work runs on the mini PC');
-      powerMonitor.on('resume', () => { refreshTrayStatus(); showWindow(); });
-      if (process.platform === 'win32') powerMonitor.on('unlock-screen', showWindow);
-      app.on('activate', showWindow);
-      return;
-    }
     // tasks left waiting while the app was closed get picked up shortly after start
     const savedHold = (readConfig().agentRunner || {}).blockedUntil;
     if (savedHold && savedHold > Date.now()) { holdForUsage(queuedAgentTasks().map((t) => t.id), savedHold - 60 * 1000); }
@@ -205,7 +170,8 @@ if (!gotLock) {
     refreshSituation();
     setInterval(() => refreshSituation(), 2 * 60 * 1000);
     setTimeout(() => scheduleLocalRun(), 20 * 1000);
-    // the local model's own computer says it's there, for his other devices (agent/worker.js)
+    // the local model's own computer says it's there, for his other devices (agent/worker.js), and what its
+    // browser downloaded goes up for them (agent/worker-files.js)
     const beat = () => localLane.workerBeat().catch((e) => agentLog('worker heartbeat failed: ' + (e && e.message || e)));
     setTimeout(beat, 5 * 1000);
     setInterval(beat, require('./agent/worker').BEAT_MS);

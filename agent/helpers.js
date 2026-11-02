@@ -53,7 +53,7 @@ function isYes(text) {
 
 /* A web address on the public internet: http(s), and not this computer, the LAN or a private range.
    Everything the agent fetches or opens on its own (previews, the mini PC's page reader, option links)
-   goes through this, so a page can't point it at the hub, the browser's debugging port or a router. */
+   goes through this, so a page can't point it at the mini PC, the browser's debugging port or a router. */
 function isPublicUrl(url) {
   let u; try { u = new URL(String(url)); } catch (e) { return false; }
   if (!/^https?:$/.test(u.protocol)) return false;

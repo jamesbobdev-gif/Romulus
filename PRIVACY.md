@@ -15,7 +15,9 @@ no accounts with us, no analytics, no telemetry and no ads. What leaves your dev
 - Your tasks and lists, settings, API keys and sign-in tokens. On a computer, keys and tokens are encrypted
   with the operating system's own encryption (DPAPI, Keychain or the Linux keyring).
 - Finance (bank data and receipts): encrypted with AES-256-GCM under a passphrase that is never saved, and on
-  a phone under a key released only by your fingerprint. It is never sent to a cloud AI.
+  a phone under a key released only by your fingerprint. It is never sent to a cloud AI. When sync is on, the
+  SimpleFIN access link alone (no bank data) is kept in your sync storage so your other computers can connect,
+  encrypted under that same passphrase, which never leaves the computer you type it on.
 - The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.

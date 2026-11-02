@@ -1,4 +1,4 @@
-/* Where things are on this computer: the laptop is Windows, the hub mini PC is Linux (Ubuntu).
+/* Where things are on this computer: the laptop is Windows, the local model's mini PC is Linux (Ubuntu).
    One place for the paths the agent needs (the claude CLI, Chrome, Node, npm's global folder),
    so the same code runs on both. No Electron here, so it can be tested on its own. */
 const path = require('path');

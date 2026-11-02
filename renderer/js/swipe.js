@@ -24,7 +24,20 @@ function swipeDeck(){
     return rank(a)-rank(b)||String(a.due||'9999').localeCompare(String(b.due||'9999'))||String(a.dueTime||'99:99').localeCompare(String(b.dueTime||'99:99'))||(a.created||0)-(b.created||0);
   });
 }
-var swipe={ open:false, deck:[], i:0, history:[], counts:{today:0,tmrw:0,done:0} };
+var swipe={ open:false, deck:[], i:0, history:[], counts:{today:0,tmrw:0,done:0,agent:0} };
+// swiping down hands the task to the Agent, when there's an AI to take it
+function swipeAgentOk(){ return typeof agentAvailable==='function'&&agentAvailable(); }
+const AGENT_ICON_SVG='<svg viewBox="0 0 48 48" aria-hidden="true"><line x1="24" y1="5" x2="24" y2="11" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="5" r="3" fill="currentColor"/><rect x="8" y="11" width="32" height="26" rx="9" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="18" cy="23" r="3.5" fill="currentColor"/><circle cx="30" cy="23" r="3.5" fill="currentColor"/><path d="M18 30.5h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M4 21v8M44 21v8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M16 41h16" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+// the agent icon pops up for a moment to show where the card went
+function flashAgentIcon(){
+  const old=$('agentFlash'); if(old)old.remove();
+  const f=el('div','agent-flash'); f.id='agentFlash'; f.setAttribute('role','status');
+  const badge=el('div','agent-flash-badge'); badge.innerHTML=AGENT_ICON_SVG; f.appendChild(badge);
+  f.appendChild(el('div','agent-flash-label','Sent to Agent'));
+  document.body.appendChild(f);
+  setTimeout(function(){ f.classList.add('out'); },750);
+  setTimeout(function(){ f.remove(); },1100);
+}
 // a background sync swaps task objects, so always act on the live copy
 function liveTask(t){ return state.tasks.find(function(x){ return x.id===t.id; })||t; }
 function updatePlanBtn(){
@@ -33,7 +46,7 @@ function updatePlanBtn(){
   b.hidden=!n; b.textContent='Plan today · '+n;
 }
 function openSwipe(){
-  swipe.deck=swipeDeck(); swipe.i=0; swipe.history=[]; swipe.counts={today:0,tmrw:0,done:0};
+  swipe.deck=swipeDeck(); swipe.i=0; swipe.history=[]; swipe.counts={today:0,tmrw:0,done:0,agent:0};
   if(!swipe.deck.length)return;
   swipe.open=true;
   let ov=$('swipeOverlay');
@@ -99,6 +112,13 @@ function decide(dir){
   const t=liveTask(swipe.deck[swipe.i]);
   swipe.history.push({t:t,dir:dir,plan:t.plan||null,planSet:t.planSet||null});
   if(dir==='done')setDone(t,true); // swiped up: finished, the plan stays as it was
+  else if(dir==='agent'){ // swiped down: the Agent's now (moveTask gives it a new id, so keep the old task for undo)
+    const before=state.tasks.map(function(x){ return x.id; });
+    swipe.history[swipe.history.length-1].orig=Object.assign({},t,{subs:(t.subs||[]).map(function(s){ return Object.assign({},s); })});
+    moveTask(t,'agent');
+    const copy=state.tasks.find(function(x){ return before.indexOf(x.id)===-1; });
+    swipe.history[swipe.history.length-1].newId=copy&&copy.id;
+  }
   else { t.plan=dir==='today'?dayStr(0):dayStr(1); t.planSet=dayStr(0); }
   swipe.counts[dir]++; swipe.i++;
   if(swipe.i>=swipe.deck.length)setTimeout(function(){ buzz('done'); },180); // deck cleared
@@ -107,6 +127,15 @@ function decide(dir){
 function undoSwipe(){
   const h=swipe.history.pop(); if(!h)return;
   buzz('undo');
+  if(h.dir==='agent'){ // take the Agent's copy back out and put the original task back where it was
+    const now=Date.now();
+    state.tasks=state.tasks.filter(function(x){ return x.id!==h.newId; }).concat([Object.assign(h.orig,{updatedAt:now})]);
+    if(h.newId)state.tombstones.push({id:h.newId,deletedAt:now});
+    state.tombstones=state.tombstones.filter(function(x){ return x.id!==h.orig.id; });
+    swipe.counts.agent--; swipe.i--;
+    persist(); renderSwipe('agent');
+    return;
+  }
   const t=liveTask(h.t);
   if(h.dir==='done')setDone(t,false);
   if(h.plan)t.plan=h.plan; else delete t.plan;
@@ -119,6 +148,7 @@ function cardFor(t){
   c.appendChild(el('div','swipe-stamp today','Today'));
   c.appendChild(el('div','swipe-stamp tmrw','Tomorrow'));
   c.appendChild(el('div','swipe-stamp done','Done'));
+  c.appendChild(el('div','swipe-stamp agent','Agent'));
   c.appendChild(el('div','sc-title',t.title));
   const meta=el('div','sc-meta');
   if(t.due){ const info=dateInfo(t.due,t.dueTime); meta.appendChild(el('span','chip date'+(info.cls?' '+info.cls:''),info.text)); }
@@ -141,7 +171,8 @@ function renderSwipe(returnFrom){
   top.appendChild(el('h2',null,'Plan your day'));
   const x=el('button','swipe-close',left?'Later':'Close'); x.addEventListener('click',closeSwipe); top.appendChild(x);
   ov.appendChild(top);
-  ov.appendChild(el('div','mono swipe-sub',left?(swipe.i+1)+' of '+total+' · right = today, left = tomorrow, up = done':'All '+total+' sorted'));
+  const agentOk=swipeAgentOk();
+  ov.appendChild(el('div','mono swipe-sub',left?(swipe.i+1)+' of '+total+' · right = today, left = tomorrow, up = done'+(agentOk?', down = Agent':''):'All '+total+' sorted'));
   const stage=el('div','swipe-stage'); ov.appendChild(stage);
 
   const acts=el('div','swipe-actions');
@@ -149,13 +180,15 @@ function renderSwipe(returnFrom){
   bU.disabled=!swipe.history.length; bL.disabled=bR.disabled=!left;
   acts.appendChild(bL); acts.appendChild(bU); acts.appendChild(bR);
   ov.appendChild(acts);
-  if(!window.Capacitor)ov.appendChild(el('div','mono swipe-hint','← / → keys to sort · ↑ for done · Z to undo'));
+  let bA=null;
+  if(agentOk){ bA=el('button','go-agent','Agent ↓'); bA.disabled=!left; ov.appendChild(bA); }
+  if(!window.Capacitor)ov.appendChild(el('div','mono swipe-hint','← / → keys to sort · ↑ for done'+(agentOk?' · ↓ for Agent':'')+' · Z to undo'));
   bU.addEventListener('click',undoSwipe);
 
   if(!left){
     const d=el('div','swipe-done');
     d.appendChild(el('div','big','Day planned'));
-    d.appendChild(el('div','mono',swipe.counts.today+' for today · '+swipe.counts.tmrw+' for tomorrow'+(swipe.counts.done?' · '+swipe.counts.done+' done':'')));
+    d.appendChild(el('div','mono',swipe.counts.today+' for today · '+swipe.counts.tmrw+' for tomorrow'+(swipe.counts.done?' · '+swipe.counts.done+' done':'')+(swipe.counts.agent?' · '+swipe.counts.agent+' to the Agent':'')));
     const ok=el('button','btn-accent','Done'); ok.addEventListener('click',closeSwipe); d.appendChild(ok);
     stage.appendChild(d);
     return;
@@ -163,10 +196,22 @@ function renderSwipe(returnFrom){
   // the next card peeks out behind the current one
   if(swipe.deck[swipe.i+1]){ const b=cardFor(liveTask(swipe.deck[swipe.i+1])); b.classList.add('back'); stage.appendChild(b); }
   const card=cardFor(liveTask(swipe.deck[swipe.i])); stage.appendChild(card);
-  const stT=card.querySelector('.swipe-stamp.today'), stM=card.querySelector('.swipe-stamp.tmrw'), stD=card.querySelector('.swipe-stamp.done');
+  const stT=card.querySelector('.swipe-stamp.today'), stM=card.querySelector('.swipe-stamp.tmrw'), stD=card.querySelector('.swipe-stamp.done'), stA=card.querySelector('.swipe-stamp.agent');
 
   const fly=function(dir){
+    if(dir==='agent'&&!agentOk)return;
     if(card.dataset.gone)return; card.dataset.gone='1';
+    if(dir==='agent'){ // drops off the bottom, then the agent icon pops up
+      const m=/translate\(([-\d.]+)px/.exec(card.style.transform)||[0,0];
+      stT.style.opacity=0; stM.style.opacity=0; stD.style.opacity=0; stA.style.opacity=1;
+      buzz('send');
+      card.classList.add('anim');
+      card.style.transform='translate('+(+m[1])+'px,'+(stage.clientHeight+window.innerHeight*0.6)+'px) scale(.8)';
+      card.style.opacity='0';
+      flashAgentIcon();
+      setTimeout(function(){ decide('agent'); },220);
+      return;
+    }
     if(dir==='done'){ // shake where it was let go, then off the top
       const m=/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(card.style.transform)||[0,0,0];
       const x0=+m[1], y0=+m[2];
@@ -193,15 +238,18 @@ function renderSwipe(returnFrom){
   };
   bR.addEventListener('click',function(){ fly('today'); });
   bL.addEventListener('click',function(){ fly('tmrw'); });
+  if(bA)bA.addEventListener('click',function(){ fly('agent'); });
   swipe.fly=fly;
 
   if(returnFrom){ // undo: slide back in from where it went
-    card.style.transform=returnFrom==='done'?'translateY('+(-(stage.clientHeight+window.innerHeight*0.6))+'px)':'translateX('+(returnFrom==='today'?1:-1)*(stage.clientWidth+200)+'px)';
+    const offY=stage.clientHeight+window.innerHeight*0.6;
+    card.style.transform=returnFrom==='done'?'translateY('+(-offY)+'px)':returnFrom==='agent'?'translateY('+offY+'px)':'translateX('+(returnFrom==='today'?1:-1)*(stage.clientWidth+200)+'px)';
     requestAnimationFrame(function(){ requestAnimationFrame(function(){ card.classList.add('anim'); card.style.transform=''; setTimeout(function(){ card.classList.remove('anim'); },300); }); });
   }
 
-  let sx=0, sy=0, dx=0, dy=0, dragging=false, t0=0, armed=0; // armed: -1/0/1/2 = past the left/no/right/top line
+  let sx=0, sy=0, dx=0, dy=0, dragging=false, t0=0, armed=0; // armed: -1/0/1/2/-2 = past the left/no/right/top/bottom line
   const up=function(){ return -dy>Math.abs(dx); }; // heading up more than sideways
+  const down=function(){ return agentOk&&dy>Math.abs(dx); }; // heading down: to the Agent
   card.addEventListener('pointerdown',function(e){
     if(card.dataset.gone)return;
     dragging=true; sx=e.clientX; sy=e.clientY; dx=0; dy=0; t0=Date.now(); armed=0;
@@ -210,11 +258,12 @@ function renderSwipe(returnFrom){
   card.addEventListener('pointermove',function(e){
     if(!dragging)return;
     dx=e.clientX-sx; dy=e.clientY-sy;
-    const ty=up()?dy:dy*.25; // follows the finger upward; down and sideways stay damped
+    const ty=up()||down()?dy:dy*.25; // follows the finger up (and down, with an Agent); sideways stays damped
     card.style.transform='translate('+dx+'px,'+ty+'px) rotate('+(dx/18)+'deg)';
-    const p=Math.min(1,Math.abs(dx)/110), pu=up()?Math.min(1,-dy/110):0;
-    stT.style.opacity=!up()&&dx>0?p:0; stM.style.opacity=!up()&&dx<0?p:0; stD.style.opacity=pu;
-    const nowArmed=up()&&-dy>110?2:up()?0:dx>110?1:dx<-110?-1:0;
+    const p=Math.min(1,Math.abs(dx)/110), pu=up()?Math.min(1,-dy/110):0, pd=down()?Math.min(1,dy/110):0;
+    const side=!up()&&!down();
+    stT.style.opacity=side&&dx>0?p:0; stM.style.opacity=side&&dx<0?p:0; stD.style.opacity=pu; stA.style.opacity=pd;
+    const nowArmed=up()&&-dy>110?2:down()&&dy>110?-2:!side?0:dx>110?1:dx<-110?-1:0;
     if(nowArmed!==armed){ if(nowArmed)buzz('tick'); armed=nowArmed; }
   });
   const end=function(){
@@ -222,12 +271,14 @@ function renderSwipe(returnFrom){
     const ms=Math.max(1,Date.now()-t0);
     if(up()){
       if(-dy>110||(-dy/ms>0.6&&-dy>40)){ fly('done'); return; }
+    } else if(down()){
+      if(dy>110||(dy/ms>0.6&&dy>40)){ fly('agent'); return; }
     } else {
       const fast=Math.abs(dx)/ms>0.6&&Math.abs(dx)>40;
       if(Math.abs(dx)>110||fast){ fly(dx>0?'today':'tmrw'); return; }
     }
-    if(Math.abs(dx)>30||-dy>30)buzz('snap');
-    card.classList.add('anim'); card.style.transform=''; stT.style.opacity=0; stM.style.opacity=0; stD.style.opacity=0;
+    if(Math.abs(dx)>30||Math.abs(dy)>30)buzz('snap');
+    card.classList.add('anim'); card.style.transform=''; stT.style.opacity=0; stM.style.opacity=0; stD.style.opacity=0; stA.style.opacity=0;
   };
   card.addEventListener('pointerup',end); card.addEventListener('pointercancel',end);
 }
@@ -236,6 +287,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='ArrowRight'&&swipe.fly&&swipe.i<swipe.deck.length){ e.preventDefault(); e.stopImmediatePropagation(); swipe.fly('today'); }
   else if(e.key==='ArrowLeft'&&swipe.fly&&swipe.i<swipe.deck.length){ e.preventDefault(); e.stopImmediatePropagation(); swipe.fly('tmrw'); }
   else if(e.key==='ArrowUp'&&swipe.fly&&swipe.i<swipe.deck.length){ e.preventDefault(); e.stopImmediatePropagation(); swipe.fly('done'); }
+  else if(e.key==='ArrowDown'&&swipe.fly&&swipe.i<swipe.deck.length){ e.preventDefault(); e.stopImmediatePropagation(); swipe.fly('agent'); }
   else if((e.key==='z'||e.key==='Z')&&!e.altKey){ e.preventDefault(); e.stopImmediatePropagation(); undoSwipe(); }
   else if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); closeSwipe(); }
   else e.stopImmediatePropagation(); // list shortcuts (Delete, Space…) stay off while the deck is up

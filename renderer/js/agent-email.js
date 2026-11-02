@@ -1,7 +1,7 @@
 /* ── an email the Agent wrote, sent only by his Send ──
    The Agent ends its run "needs-you" with t.email ({to, cc, subject, body}) and never sends anything itself.
    This card shows the whole email, editable, and Send goes out from his own Gmail or Outlook through the
-   computer that holds the account (window.desktop.mailSend → agent/mail-send.js; on a hub client, the hub).
+   computer that holds the account (window.desktop.mailSend → agent/mail-send.js).
    His edits are kept per task while the app is open (emailEdits), not synced. */
 'use strict';
 const emailEdits={}; // task id → {to, cc, subject, body} while he's changing it

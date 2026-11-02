@@ -75,18 +75,29 @@ const COMPILE_PROMPT = (topic, findings, extra) => 'You split his research reque
   'and "options": up to 6 of the options for him to tap, [{"label":"name","desc":"one line: price, why","url":"https://…"}], ' +
   'only with a real link from the answers (an empty list if none).';
 
-const FOLLOW_SCHEMA = { type: 'object', properties: { answer: { type: 'string' }, research: { type: 'boolean' } }, required: ['answer', 'research'] };
+// "book the train", "buy it", "sign me up for…": a request to get something done, not just found out
+const TASKY = /^\s*(please\s+)?(book|buy|order|reserve|purchase|sign (me )?up|register|apply|schedule|subscribe|enroll|enrol|rent|get me|pay for|fill (out|in))\b/i;
+const isTask = (s) => TASKY.test(String(s || ''));
+
+const FOLLOW_SCHEMA = { type: 'object', properties: { answer: { type: 'string' }, next: { type: 'string', enum: ['answer', 'research', 'task'] },
+  lookup: { type: 'string' } }, required: ['answer', 'next'] };
 /* "why was the train worse?" is answered from the report and what he said since ("I can't drive"); "give me the
-   flight options" needs facts the report doesn't have, so research comes back true and the legion goes out again */
+   flight options" needs facts the report doesn't have, so next is research and the legion goes out on that question;
+   "book the 9am one" is something to do, so next is task and Lupa does it with its own browser */
 const FOLLOW_PROMPT = (topic, report, question, earlier) => 'Earlier you researched this for him and wrote the report below. ' +
   'Answer his follow-up from the report and from what he told you since (it changes the answer: if he can\'t do an option, ' +
   'that option is out). When he asks why one option beats another, explain it from the report\'s numbers: price, travel time, ' +
   'transfers, downsides. Don\'t make up facts or links.\n' +
-  'Set "research" to true only when he needs facts the report doesn\'t have (specific times, current prices, a list of choices ' +
-  'the report only names in passing); then "answer" is one line on what you will look up. Otherwise false.' +
+  'Set "next" to:\n' +
+  '- "research" when he needs facts the report doesn\'t have (specific times, current prices, a list of choices the report only ' +
+  'names in passing); then "answer" is one line on what you will look up, and "lookup" is that as a research request on its own ' +
+  '(with the details it needs from the report and from him);\n' +
+  '- "task" when he wants something done, not answered: book, buy, order, sign up, fill in a form, contact someone (also a plain ' +
+  '"yes" / "go ahead" / "do it" / an option he picks, when his request was something to get done); then "answer" is one line on what you will do;\n' +
+  '- "answer" otherwise.' +
   '\n\nResearch request: ' + topic + '\n\n## Your report\n\n' + report +
   (earlier ? '\n\n## Since the report\n' + earlier : '') + '\n\n## His question\n' + question +
-  '\n\nAnswer with JSON: {"answer":"Markdown, as short as the question allows","research":false}';
+  '\n\nAnswer with JSON: {"answer":"Markdown, as short as the question allows","next":"answer","lookup":""}';
 
 const json = (text) => { const s = String(text || ''); try { return JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1)); } catch (e) { return null; } };
 const pieceCount = (order) => Math.max(MIN_PIECES, Math.min(MAX_PIECES, (order || []).length));
@@ -95,10 +106,12 @@ const cleanPieces = (got, n) => (Array.isArray(got) ? got : []).filter((a) => a 
 
 /* Lupa's pieces → [{title, question}], each safe to send: private ones dropped, revealing ones rewritten once, then dropped.
    → {pieces, dropped:[{title, why}]} */
-async function planPieces(topic, extra, { order, think, privateWords, locked }) {
+async function planPieces(topic, extra, { order, think, privateWords, locked, whole }) {
   const n = pieceCount(order);
+  // a follow-up's pieces mustn't give away his bigger request (whole) either
+  const revealing = (q) => tooRevealing(q, topic) || (!!whole && tooRevealing(q, whole));
   let pieces = cleanPieces((json(await think(PLAN_PROMPT(topic, n, extra), { schema: PIECES_SCHEMA, ms: PLAN_MS })) || {}).pieces, n);
-  const telling = pieces.filter((p) => tooRevealing(p.question, topic));
+  const telling = pieces.filter((p) => revealing(p.question));
   if (telling.length) {
     let fixed = [];
     try { fixed = cleanPieces((json(await think(REWRITE_PROMPT(topic, telling), { schema: PIECES_SCHEMA, ms: PLAN_MS })) || {}).pieces, telling.length); } catch (e) {}
@@ -106,7 +119,7 @@ async function planPieces(topic, extra, { order, think, privateWords, locked }) 
   }
   const dropped = [];
   pieces = pieces.filter((p) => {
-    const why = leaksPrivate(p.question, { privateWords, locked }) || (tooRevealing(p.question, topic) ? 'it gave the request away' : null);
+    const why = leaksPrivate(p.question, { privateWords, locked }) || (revealing(p.question) ? 'it gave the request away' : null);
     if (why) dropped.push({ title: p.title, why });
     return !why;
   });
@@ -127,7 +140,7 @@ const findingsText = (scouts) => scouts.map((s, i) => '### ' + (i + 1) + '. ' + 
 
 /* the whole run → {report, options, scouts:[{piece, via, text|error}], dropped} | {error}
    onStep(line): progress for the live box. names: id → display name; lead: Lupa's name. */
-async function research(topic, { order, run, think, names = {}, lead = 'your local model', extra, privateWords, locked, onStep } = {}) {
+async function research(topic, { order, run, think, names = {}, lead = 'your local model', extra, privateWords, locked, whole, onStep } = {}) {
   const say = (s) => { if (onStep) onStep(s); };
   const Lead = lead.charAt(0).toUpperCase() + lead.slice(1); // at the start of a line
   const n = (id) => names[id] || id;
@@ -139,7 +152,7 @@ async function research(topic, { order, run, think, names = {}, lead = 'your loc
   say('⚔ Legion: ' + lead + ' leads, ' + order.length + ' AI' + (order.length > 1 ? 's' : '') + ' search (' + order.map(n).join(', ') + ')\n');
   say('🗺 ' + Lead + ' is splitting it into pieces no single AI can read the whole of…\n');
   let plan;
-  try { plan = await planPieces(topic, extra, { order, think, privateWords, locked }); }
+  try { plan = await planPieces(topic, extra, { order, think, privateWords, locked, whole }); }
   catch (e) { return { error: Lead + ' couldn’t split it (' + String(e && e.message || e).slice(0, 120) + ')' }; }
   plan.dropped.forEach((d) => say('  ✗ kept back "' + d.title + '": ' + d.why + '\n'));
   if (plan.pieces.length < 2) return { error: Lead + ' couldn’t split it into pieces that are safe to send', dropped: plan.dropped };
@@ -190,8 +203,11 @@ function credits(r, names = {}, lead = 'your local model') {
 async function followUp(topic, report, question, { think, earlier } = {}) {
   const out = await think(FOLLOW_PROMPT(topic, report, question, earlier), { schema: FOLLOW_SCHEMA, ms: PLAN_MS });
   const j = json(out);
-  if (j && typeof j.answer === 'string') return { answer: j.answer.trim(), research: j.research === true };
-  return { answer: String(out || '').trim(), research: false };
+  if (j && typeof j.answer === 'string') {
+    const next = j.next === 'research' || j.research === true ? 'research' : j.next === 'task' ? 'task' : 'answer';
+    return { answer: j.answer.trim(), research: next === 'research', task: next === 'task', lookup: next === 'research' ? String(j.lookup || '').trim() : '' };
+  }
+  return { answer: String(out || '').trim(), research: false, task: false, lookup: '' };
 }
 
-module.exports = { isLegion, topicOf, research, credits, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES };
+module.exports = { isLegion, topicOf, isTask, research, credits, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES };

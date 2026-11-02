@@ -196,3 +196,35 @@ test('The local model’s view of Finance: only while unlocked, plain text, read
   assert.strictEqual(finance.isUnlocked(), false);
   h['finance:forget']();
 });
+
+test('another computer connects with the shared link and the same passphrase', async () => {
+  const fetchOk = async (url, opts) => opts.method === 'POST' ? { ok: true, status: 200, text: async () => ACCESS }
+    : { ok: true, status: 200, json: async () => ({ accounts: [{ id: 'a1', name: 'Checking', balance: '5', transactions: [] }] }) };
+  const d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  finance.init({ userData: () => d8, agentLog: () => {}, sendToRenderer: () => {}, fetch: fetchOk });
+  assert.strictEqual(h['finance:shareBox']().ok, false, 'nothing to share while locked or not set up');
+  await h['finance:setup'](null, token, 'correct horse battery');
+  const box = h['finance:shareBox']().box;
+  assert.ok(!JSON.stringify(box).includes('pass@') && !JSON.stringify(box).includes('simplefin'), 'the link is sealed');
+  assert.deepStrictEqual(h['finance:shareBox']().box, box, 'the same copy each time');
+  h['finance:lock']();
+  await h['finance:unlock'](null, 'correct horse battery');
+  assert.deepStrictEqual(h['finance:shareBox']().box, box, 'kept in the vault');
+  h['finance:lock']();
+  // the second computer
+  const d9 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  const posts = [];
+  finance.init({ userData: () => d9, agentLog: () => {}, sendToRenderer: () => {}, fetch: async (u, o) => { if (o.method === 'POST') posts.push(u); return fetchOk(u, o); } });
+  assert.strictEqual((await h['finance:setupShared'](null, Object.assign({}, box, { N: 2 ** 24 }), 'correct horse battery')).ok, false, 'a box asking for a huge scrypt is refused');
+  assert.strictEqual((await h['finance:setupShared'](null, box, 'wrong passphrase!')).ok, false);
+  assert.strictEqual(fs.existsSync(path.join(d9, 'finance.vault')), false);
+  const r = await h['finance:setupShared'](null, box, 'correct horse battery');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(posts.length, 0, 'no setup token claimed');
+  assert.strictEqual(h['finance:data']().accounts[0].name, 'Checking');
+  assert.strictEqual((await h['finance:setupShared'](null, box, 'correct horse battery')).ok, false, 'already connected');
+  h['finance:lock']();
+  assert.strictEqual((await h['finance:unlock'](null, 'correct horse battery')).ok, true);
+  assert.deepStrictEqual(h['finance:shareBox']().box, box, 'it shares the same copy on from here');
+  h['finance:forget']();
+});

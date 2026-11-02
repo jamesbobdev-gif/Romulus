@@ -283,28 +283,37 @@ function setAdvanced(on){
 }
 try{ setAdvanced(!!localStorage.getItem(ADV_KEY)); }catch(e){}
 $('advOn').addEventListener('change',function(){ setAdvanced(this.checked); });
+function setThemeMode(mode){
+  try{ localStorage.setItem(THEME_MODE_KEY,mode); }catch(e){}
+  applyThemeMode(mode); drawThemeModes();
+}
 function drawThemeModes(){
-  let mode='system'; try{ mode=localStorage.getItem(THEME_MODE_KEY)||'system'; }catch(e){}
+  let mode='system'; try{ mode=themeModeSaved(); }catch(e){}
   document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
 }
 document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
   b.addEventListener('click',function(){
-    try{ localStorage.setItem(THEME_MODE_KEY,b.dataset.mode); }catch(e){}
-    applyThemeMode(b.dataset.mode); drawThemeModes();
+    let saved=''; try{ saved=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+    if(b.dataset.mode==='custom'&&!saved.trim()){ // nothing saved yet: open the box to paste into
+      $('themeCss').closest('details').open=true; $('themeCss').focus();
+      $('themeStatus').textContent='paste CSS, then Apply';
+      return;
+    }
+    setThemeMode(b.dataset.mode);
   });
 });
 drawThemeModes();
 $('themeApplyBtn').addEventListener('click',function(){
   const css=$('themeCss').value;
-  try{ localStorage.setItem(THEME_KEY,css); }catch(e){}
-  applyTheme(css);
-  $('themeStatus').textContent=css.trim()?'applied':'cleared';
+  try{ if(css.trim())localStorage.setItem(THEME_KEY,css); else localStorage.removeItem(THEME_KEY); }catch(e){}
+  setThemeMode(css.trim()?'custom':'system');
+  $('themeStatus').textContent=css.trim()?'saved as Custom':'cleared';
   setTimeout(function(){ $('themeStatus').textContent=''; },2000);
 });
 $('themeResetBtn').addEventListener('click',function(){
   $('themeCss').value='';
   try{ localStorage.removeItem(THEME_KEY); }catch(e){}
-  applyTheme('');
+  setThemeMode('system');
   $('themeStatus').textContent='reset to default';
   setTimeout(function(){ $('themeStatus').textContent=''; },2000);
 });
@@ -373,7 +382,9 @@ SYNC_CODE_FIELDS.slice(0,3).forEach(function(x){
 });
 // what the database accepts as a key (supabase/setup.sql sync_put / sync_set check the same shape)
 const SYNC_KEY_SHAPE=/^tk_[A-Za-z0-9_-]{13,}$/;
-function newSyncKey(){ return 'tk_'+(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,10)); }
+// the key is the password to the lists on a project others share, so it's always 122+ random bits: never the
+// clock or Math.random (the database won't start a new account on a key id under 32 characters)
+function newSyncKey(){ return 'tk_'+(crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),function(b){ return b.toString(16).padStart(2,'0'); }).join('')); }
 $('syncGenBtn').addEventListener('click',function(){ $('syncKey').value=newSyncKey(); });
 $('syncSaveBtn').addEventListener('click',function(){
   const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim(), sk=$('syncKey').value.trim();
