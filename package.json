@@ -1,7 +1,7 @@
 {
   "name": "romulus",
   "productName": "Romulus",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "Romulus",
   "main": "main.js",
   "engines": {
