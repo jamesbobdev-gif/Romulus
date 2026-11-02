@@ -85,7 +85,7 @@ async function enrichOption(o, lane) {
     const rating = (h.match(/([0-9.]+) out of 5 stars/) || [])[1];
     return Object.assign(base, { url: clean,
       image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1'),
-      price: price || null, rating: rating ? rating + '★' : null });
+      price: price || null, rating: rating ? rating + '/5' : null });
   } catch (e) { return amazonViaBrowser(base, clean, lane); }
 }
 // Amazon showed the app its bot check (or didn't answer): keep the link, and get the photo through

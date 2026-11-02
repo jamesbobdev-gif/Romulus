@@ -47,7 +47,7 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
     box.dataset.sig=sig; box.innerHTML=''; box.hidden=!items.length;
     items.forEach(function(x){
       const b=document.createElement('button'); b.className='settings-alert';
-      b.textContent='⚠ '+x.dataset.disconnected; b.appendChild(document.createElement('span')).textContent='Fix ↓';
+      b.textContent=x.dataset.disconnected; b.appendChild(document.createElement('span')).textContent='Fix ↓';
       b.addEventListener('click',function(){
         for(let d=x.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true;
         x.scrollIntoView({behavior:'smooth',block:'center'});
@@ -59,7 +59,7 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
   new MutationObserver(function(){ if(!queued){ queued=true; requestAnimationFrame(draw); } })
     .observe($('settingsPanel'),{subtree:true,childList:true,attributes:true,attributeFilter:['hidden','data-disconnected']});
 })();
-// Settings is its own page: ⚙ opens it in place of the lists; ⚙ again, ← Back or Esc returns
+// Settings is its own page: the gear opens it in place of the lists; the gear again, ← Back or Esc returns
 function setSettingsOpen(open){
   const p=$('settingsPanel'); if(p.hidden===!open)return;
   p.hidden=!open;
@@ -237,7 +237,7 @@ async function formFilesLoad(){
   if(!files.length){ list.appendChild(el('p','settings-hint','No files yet. Add your resume.')); return; }
   files.forEach(function(f){
     const row=el('div','settings-row');
-    row.appendChild(el('span','mono','📄 '+f.name+' · '+(f.size>=1048576?(f.size/1048576).toFixed(1)+' MB':Math.max(1,Math.round(f.size/1024))+' KB')));
+    row.appendChild(el('span','mono',f.name+' · '+(f.size>=1048576?(f.size/1048576).toFixed(1)+' MB':Math.max(1,Math.round(f.size/1024))+' KB')));
     const del=el('button','ghost mono danger','✕'); del.title='Remove this file';
     del.addEventListener('click',async function(){ try{ await window.desktop.formFileRemove(f.name); }catch(e){} formFilesLoad(); });
     row.appendChild(del); list.appendChild(row);
@@ -265,13 +265,13 @@ async function prefsLoad(){
 }
 $('prefsSaveBtn').addEventListener('click',async function(){
   const p=prefsProfile(); if(!p)return;
-  if(prefsLoadedAt===undefined){ $('prefsStatus').textContent='not loaded yet: reopen ⚙ and try again'; return; }
+  if(prefsLoadedAt===undefined){ $('prefsStatus').textContent='not loaded yet: reopen Settings and try again'; return; }
   $('prefsStatus').textContent='saving…';
   try{
     // Claude (or the weekly tidy) may have added a line since this box was filled: don't erase it
     if(await syncPushCas(p,{v:1,text:$('prefsText').value},prefsLoadedAt)){
       const r=await syncPullRow(p); prefsLoadedAt=r.updatedAt; $('prefsStatus').textContent='saved';
-    } else { $('prefsStatus').textContent='changed elsewhere since you opened this: copy your edit, reopen ⚙, and save again'; return; }
+    } else { $('prefsStatus').textContent='changed elsewhere since you opened this: copy your edit, reopen Settings, and save again'; return; }
   }catch(e){ $('prefsStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('prefsStatus').textContent=''; },2500);
 });

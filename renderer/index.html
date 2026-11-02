@@ -21,7 +21,7 @@
     <div class="top-right">
       <button class="plan-btn" id="planBtn" hidden>Plan today</button>
       <button class="mono stamp" id="stamp" title="Calendar view" aria-label="Open calendar view"></button>
-      <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings">⚙</button>
+      <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     </div>
   </header>
   <div class="mono counts" id="counts"></div>
@@ -66,7 +66,7 @@
       <div class="settings-sub adv" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>
         <p class="settings-hint"><span class="mono">#local</span> in a title beats everything below. Anything about your finances, and <span class="mono">#legion</span> research, always stays with the local model, even over <span class="mono">#claude</span>. Then: <span class="mono">#claude</span>, private words, rules (first match), default.</p>
-        <p class="settings-hint" style="margin-bottom:6px">🔒 <b>Private words</b> (or card/SSN numbers) → the local model.</p>
+        <p class="settings-hint" style="margin-bottom:6px"><b>Private words</b> (or card/SSN numbers) → the local model.</p>
         <textarea id="routingPrivate" class="settings-inp" rows="3" style="font-size:12.5px;resize:vertical;margin-bottom:14px" placeholder="password, bank, medical, grades"></textarea>
         <div id="routingRules"></div>
         <div class="settings-row" style="margin-top:8px">
@@ -214,7 +214,7 @@
       </div>
       <div class="settings-sub" id="feedsSection" hidden>
         <h3 class="settings-subhead">Course calendars</h3>
-        <p class="settings-hint">Paste calendar links, one per line; due dates land on School. <b>Blackboard:</b> Calendar → ⚙ → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
+        <p class="settings-hint">Paste calendar links, one per line; due dates land on School. <b>Blackboard:</b> Calendar → settings → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
         <textarea id="feedsText" class="settings-inp" rows="3" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="Blackboard calendar link&#10;D2L calendar link" autocomplete="off" spellcheck="false"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="feedsSaveBtn" class="btn-accent">Save &amp; import</button>
@@ -334,7 +334,7 @@
       <input type="time" id="newTime" class="sm" aria-label="Due time">
       <input id="newTag" class="sm" list="tagOptions" placeholder="tag" aria-label="Tag" autocomplete="off">
       <datalist id="tagOptions"></datalist>
-      <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report (#legion)" hidden>⚔ Legion</button>
+      <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report (#legion)" hidden>Legion</button>
       <button id="newAttBtn" class="att-btn" type="button" title="Add photos — or just paste a screenshot" hidden>+ Photo</button>
       <input id="newAttFile" type="file" accept="image/*" multiple hidden>
       <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
@@ -367,14 +367,14 @@
         <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Ideas</b> and <b>Hours</b> are extra views of the same tasks.</li>
         <li id="welcomeTrayTip">Closing the window hides Romulus in the tray by the clock; right-click the tray icon to quit.</li>
       </ul>
-      <p class="welcome-foot">You can change all of this later in ⚙ Settings. This card shows once.</p>
+      <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
     </div>
     <!-- January and February: last year's look back (year-review-view.js) -->
     <div id="reviewBanner" class="connect-card welcome yr-banner" hidden>
       <b>Your year in review</b>
       <p id="reviewBannerText"></p>
       <div class="welcome-choices"><button id="reviewBannerOpen" class="btn-accent">Open it</button><button id="reviewBannerLater" class="ghost">Not now</button></div>
-      <p class="welcome-foot">It stays in ⚙ Settings → Year in review through February.</p>
+      <p class="welcome-foot">It stays in Settings → Year in review through February.</p>
     </div>
     <!-- Agent tasks are waiting but nothing can run them (welcome.js) -->
     <div id="agentNudge" class="nudge" hidden><span id="agentNudgeText"></span> <button id="agentNudgeBtn" class="ghost mono">Connect an AI</button></div>
@@ -448,6 +448,7 @@
 
 <script src="js/sync-crypto.js"></script>
 <script src="js/sync.js"></script>
+<script src="js/no-emoji.js"></script>
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
 <script src="js/order-match.js"></script>

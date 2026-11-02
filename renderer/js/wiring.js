@@ -125,7 +125,7 @@ if(window.desktop&&window.desktop.aiStatus){
       if(broke){
         if(p.on)box.dataset.disconnected=ai.names[p.id]+': disconnected';
         const w=el('div','settings-row'); w.style.cssText='margin-top:6px;align-items:center';
-        const m=el('span','','⚠ Disconnected: '+broke); m.style.cssText='flex:1;font-size:13px;color:var(--late)';
+        const m=el('span','','Disconnected: '+broke); m.style.cssText='flex:1;font-size:13px;color:var(--late)';
         w.appendChild(m);
         const site=siteFor(p.id);
         if(site){ const go=el('button','ghost mono','Open '+site[0]+' ↗'); go.addEventListener('click',function(){ openExternal(site[1]); }); w.appendChild(go); }
@@ -199,7 +199,7 @@ if(window.desktop&&window.desktop.aiStatus){
           r.appendChild(b); box.appendChild(r);
         }
         // Google's terms: free-tier prompts may be used to improve its models and read by people; paid ones aren't
-        const gw=el('p','settings-hint','⚠️ Use a key with billing turned on. On a free key, Google may use your tasks to improve its models and people may read them. On a paid key it doesn’t.');
+        const gw=el('p','settings-hint','Use a key with billing turned on. On a free key, Google may use your tasks to improve its models and people may read them. On a paid key it doesn’t.');
         gw.style.margin='8px 0 0'; box.appendChild(gw);
       }
       if(p.id==='openai'){

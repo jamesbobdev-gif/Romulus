@@ -68,7 +68,7 @@ function buildRow(t,canDrag){
   const isAgentTask=taskWs(t)==='agent';
   if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; chips.appendChild(rc); }
   if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); chips.appendChild(rc); }
-  if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st','⚡ '+(TRIGGER_LABELS[t.trigger.kind]||'trigger')); tc.title='Starts '+triggerText(t.trigger); chips.appendChild(tc); }
+  if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st',TRIGGER_LABELS[t.trigger.kind]||'trigger'); tc.title='Starts '+triggerText(t.trigger); chips.appendChild(tc); }
   if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; chips.appendChild(gc); }
   if(isAgentTask&&t.goalId){ const sc2=el('span','chip st','step '+(t.goalStep||'?')); const gl=state.tasks.find(function(x){ return x.id===t.goalId; }); sc2.title=gl?'Step '+t.goalStep+' of the goal “'+gl.title+'”':'A step of a goal'; if(gl){ sc2.classList.add('tap'); sc2.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(gl.id); }); } chips.appendChild(sc2); }
   if(isAgentTask&&!t.done){
@@ -109,13 +109,13 @@ function buildRow(t,canDrag){
   const del=iconBtn(I.x,'Delete task');
   del.addEventListener('click',function(e){ e.stopPropagation(); deleteTask(t); });
   acts.appendChild(pen);
-  // ⚔ send an Agent task out as a legion: Lupa splits it so no cloud AI sees the whole of it (agent/legion.js)
+  // send an Agent task out as a legion: Lupa splits it so no cloud AI sees the whole of it (agent/legion.js)
   if(isAgentTask&&!t.done&&t.status!=='working'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
     const lg=iconBtn(I.legion,'Send out as a legion'); lg.title='Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report';
     lg.addEventListener('click',function(e){ e.stopPropagation(); sendAsLegion(t); });
     acts.appendChild(lg);
   }
-  // 🎬 a task only he can do (a video, a presentation): his local model reads the assignment and coaches him (task-actions.js coachMe)
+  // a task only he can do (a video, a presentation): his local model reads the assignment and coaches him (task-actions.js coachMe)
   if(!isAgentTask&&agentAvailable()&&looksHumanOnly(t)){
     const cm=iconBtn(I.coach,'Coach me'); cm.title='Coach me: your local model reads the assignment on Blackboard / D2L and tells you what to do and what to say';
     cm.addEventListener('click',function(e){ e.stopPropagation(); coachMe(t); });
@@ -327,7 +327,7 @@ function buildPanel(t){
         // email the link to yourself (the desktop sends it; nothing is picked or bought);
         // not when "Send me link" below already does exactly that
         if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
-        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','📧 Emailing you the link to '+label+'.'); buzz('send'); touch(); });
+        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); buzz('send'); touch(); });
         btns.appendChild(mb); } }
       if(canPick&&isLegionTask(t)){
         const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
@@ -341,10 +341,10 @@ function buildPanel(t){
         pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='amazon'?'The Agent gets the Amazon order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
         pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='amazon'?'. Buy it on Amazon.':kind==='tickets'?'. Book it.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
           // Amazon and ticket sites: The Agent builds the order and asks for a yes before placing it
-          if(kind==='amazon')agentSay(t,'sys','🛒 Getting the Amazon order ready. You’ll see it before anything is bought.');
-          else if(kind==='tickets')agentSay(t,'sys','🎟 Getting the booking ready. You’ll see the total before anything is bought.');
+          if(kind==='amazon')agentSay(t,'sys','Getting the Amazon order ready. You’ll see it before anything is bought.');
+          else if(kind==='tickets')agentSay(t,'sys','Getting the booking ready. You’ll see the total before anything is bought.');
           // other links: stage an email with it — the desktop sends it (never orders anything)
-          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'📧 Emailing you the model to print.':kind==='link'?'📧 Emailing you the link.':'📧 Emailing you the link to buy this.'); }
+          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); }
           touch(); });
         btns.appendChild(pb);
       }

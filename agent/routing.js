@@ -2,7 +2,7 @@
    own model on the mini PC). A task that already has a lane keeps it (switching changes it). A new one
    is routed by HIS rules, no AI involved: a #local / #claude tag in the title, then his rules in order
    (first match wins), then his default (claude, local, 'auto' = the app picks, or 'ask' = he picks). The
-   rules live next to the agent list (doc {v, rules:[{words, lane}], default}) and are edited in ⚙ Settings
+   rules live next to the agent list (doc {v, rules:[{words, lane}], default}) and are edited in Settings
    on any device.
    'auto' looks at what is up right now (main.js keeps noteSituation current: is the mini PC answering, is
    any cloud AI connected, is Claude near its limit) and at what the task needs: the inbox, the open web

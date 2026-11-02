@@ -2,6 +2,7 @@
    A .docx is a zip of a few XML files; this writes one uncompressed (Word opens those fine).
    Lines starting with # become headings, "- " / "* " lines bullets, **bold** stays bold.
    No Electron here, so it can be tested on its own. */
+const { noEmoji } = require('./helpers');
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -64,7 +65,7 @@ function heading(n, size) {
 
 /* title (may be empty) + text → Buffer of a .docx */
 function makeDocx(title, text) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const lines = noEmoji(String(text || '').replace(/\r/g, '')).split('\n'); // he doesn't want emoji, even in a saved report
   const body = (title ? [paragraph('# ' + title)] : []).concat(lines.map(paragraph)).join('');
   const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + body +
     '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';

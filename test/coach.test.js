@@ -56,10 +56,48 @@ test('both school sites have notes that come with a coach task', () => {
   assert.deepStrictEqual(notes.map((n) => n.name).sort(), ['Blackboard', 'D2L (Brightspace)']);
 });
 
-test('the brief asks for what to do and what to say, and keeps the course out of helper questions', () => {
-  assert.match(coach.RULES, /## What to do/);
-  assert.match(coach.RULES, /## What to say/);
-  assert.match(coach.RULES, /Rubric check/);
-  assert.match(coach.RULES, /never the assignment/);
-  assert.match(coach.RULES, /Never submit/);
+test('it gathers everything that makes a good video, the course first, and never submits', () => {
+  ['instructions', 'rubric', 'format', 'due_submit', 'attachments', 'course_material', 'announcements', 'examples', 'feedback', 'his_notes', 'topic_facts']
+    .forEach((p) => assert.match(coach.RULES, new RegExp('- ' + p)));
+  assert.match(coach.RULES, /read_file/);
+  assert.match(coach.RULES, /never the\s+assignment/);
+  assert.match(coach.RULES, /never submit/);
+});
+
+test('keep_note keeps what it found, says what is still missing, and stops when full', () => {
+  const d = {};
+  assert.deepStrictEqual(coach.missing(d), ['instructions', 'rubric', 'format', 'due_submit']);
+  assert.match(coach.keepNote(d, { part: 'nope', text: 'x' }), /part must be one of/);
+  assert.match(coach.keepNote(d, { part: 'rubric', text: '' }), /Nothing to keep/);
+  const r = coach.keepNote(d, { part: 'instructions', text: 'Record a 3-5 minute video introducing yourself.', source: 'https://x.blackboard.com/a' });
+  assert.match(r, /Kept \(instructions\)/);
+  assert.match(r, /Still to find: rubric, format, due_submit/);
+  assert.match(coach.dossierText(d), /### instructions\nRecord a 3-5 minute video[\s\S]*from: https:\/\/x\.blackboard\.com\/a/);
+  for (let i = 0; i < 12; i++) coach.keepNote(d, { part: 'course_material', text: 'y'.repeat(5000) });
+  assert.ok(coach.dossierText(d).length <= 26500);
+  assert.match(coach.keepNote(d, { part: 'rubric', text: 'z' }), /notes are full/);
+});
+
+test('the brief is written from the notes alone: what to do, what to say, rubric check', () => {
+  const d = {}; coach.keepNote(d, { part: 'rubric', text: 'Eye contact: 5 pts' });
+  const p = coach.WRITE_PROMPT('record the intro video', '2026-11-05', d);
+  ['## What to do', '## What to say', '## Rubric check', '## Before you start', 'Eye contact: 5 pts', 'due 2026-11-05', 'ONLY'].forEach((x) => assert.ok(p.includes(x), x));
+  const again = coach.WRITE_PROMPT('record the intro video', '', d, { reply: 'make it 2 minutes', before: '# Old brief' });
+  assert.match(again, /make it 2 minutes/); assert.match(again, /# Old brief/);
+});
+
+test('a reply changes the brief; "look again" or "try again" goes back through the course', () => {
+  assert.ok(!coach.wantsLookAgain('make it shorter, 2 minutes'));
+  assert.ok(!coach.wantsLookAgain('I want to use my job as the example'));
+  assert.ok(!coach.wantsLookAgain('write it'));
+  ['try again', 'look again', 'I signed in', 'check the announcements again', ''].forEach((r) => assert.ok(coach.wantsLookAgain(r), r));
+});
+
+test('no emoji in coach mode: Lupa\'s brief and the live box lose any it adds', () => {
+  // written as escapes, so nothing in the repo shows an emoji: clapper, pin, check, swords, keycap one
+  assert.strictEqual(coach.noEmoji('\u{1F3AC} Coach: \u{1F4CC} Noted \u{2713} done \u{2694} deeper 1\u{FE0F}\u{20E3} step'), 'Coach: Noted done deeper 1 step');
+  assert.strictEqual(coach.noEmoji('# Intro video \u{1F3A5}\n- \u{1F50E} Look at the rubric\n  - nested'), '# Intro video \n- Look at the rubric\n  - nested');
+  assert.strictEqual(coach.noEmoji(null), '');
+  assert.match(coach.WRITE_PROMPT('x', '', {}), /No emoji/);
+  assert.doesNotMatch(coach.WRITE_PROMPT('x', '', {}) + coach.RULES, /\p{Extended_Pictographic}/u);
 });

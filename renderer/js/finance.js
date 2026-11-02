@@ -629,7 +629,7 @@ function finDrawStocks(box,s,cur,load){
   [['value','Largest position'],['gain','Biggest % gain ('+short+')'],['loss','Biggest % loss ('+short+')']].forEach(function(o){ const opt=el('option',null,o[1]); opt.value=o[0]; sel.appendChild(opt); });
   let sort='value'; try{ sort=localStorage.getItem('finStockSort')||'value'; }catch(e){}
   sel.value=sort; if(!sel.value)sel.value='value';
-  const dl=el('button','ghost mono fin-sheet-dl','⬇ Spreadsheet');
+  const dl=el('button','ghost mono fin-sheet-dl','Spreadsheet');
   dl.title='Download your holdings as a spreadsheet (opens in Excel or Google Sheets)';
   dl.addEventListener('click',function(){ finSaveStocksSheet(rows,short,cur,s.at); });
   filt.appendChild(q); filt.appendChild(sel); filt.appendChild(dl);

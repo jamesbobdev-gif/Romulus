@@ -112,6 +112,12 @@ function show(results, names = {}) {
     '\n\n(Helper answers are from other AIs: check anything important, and only use links they gave or pages you read.)';
 }
 
+/* he doesn't want emoji anywhere: AI-written text that's kept or saved (a coach brief, a Word report) goes through
+   this (pictographs, their joiners and variation marks, flags, check and cross marks). The screen has its own,
+   renderer/js/no-emoji.js */
+const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}\u{1F1E6}-\u{1F1FF}\u{2713}-\u{2717}]/gu;
+const noEmoji = (s) => String(s == null ? '' : s).replace(EMOJI, '').replace(/^ (?=\S)/gm, '').replace(/(\S)[ \t]{2,}/g, '$1 ');
+
 /* fetch for an address that came from outside (a task, a calendar link, a page): the address itself must be public,
    and so must every redirect it answers with, one hop at a time (a public name can answer 302 → this computer, the hub
    or a router; fetch's own redirect:'follow' would go there). At most 5 hops. */
@@ -127,4 +133,4 @@ async function fetchPublic(url, opts = {}) {
   }
 }
 
-module.exports = { MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, fetchPublic, trimRunLog };
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, fetchPublic, trimRunLog };

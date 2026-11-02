@@ -165,7 +165,7 @@ function approvedHostsFor(t) {
 // the stores a shopping run may use (agent/runner.js keeps such a run to these plus the task's own links)
 const STORE_HOSTS = ['instacart.com', 'walmart.com', 'amazon.com', 'aldi.us', 'kroger.com', 'gianteagle.com', 'marcs.com', 'wholefoodsmarket.com',
   'target.com', 'costco.com', 'doordash.com', 'ubereats.com', 'samsclub.com', 'meijer.com', 'shipt.com'];
-// ⚙ "Open the Agent’s browser": make sure it's running; the page then shows it in the live view
+// "Open the Agent’s browser": make sure it's running; the page then shows it in the live view
 async function openAgentBrowser() {
   if (!findChrome()) return { ok: false, error: 'Chrome isn’t installed' };
   return { ok: await ensureAgentBrowser() };

@@ -23,5 +23,5 @@ match: \b(e-?mails?|gmail|outlook|inbox|write to|professors?|prof|teachers?|inst
   in) and stop before Send (the browser refuses Send and Enter in his mail until his latest reply
   is a yes). Sending is a final action, so the HARD RULE applies: list every email
   (to, subject, first line) in your note so one yes covers exactly those. If he isn't logged in
-  there, give him the finished emails to copy, and say he can log in via ⚙ Settings → Open Claude's
+  there, give him the finished emails to copy, and say he can log in via Settings → Open Claude's
   browser.

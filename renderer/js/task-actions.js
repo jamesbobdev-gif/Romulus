@@ -4,7 +4,7 @@
 
 /* ── task actions ── */
 let addingTask=false;
-/* ⚔ Legion (Agent tab): the task goes out as deep research, every connected AI on a different angle (agent/legion.js) */
+/* Legion (Agent tab): the task goes out as deep research, every connected AI on a different angle (agent/legion.js) */
 let legionOn=false;
 /* Book this, on a legion's report: a booking task of its own goes to the Agent with the trip and his pick. The
    legion stays private; this one AI sees the trip, which he agrees to here. It finds the exact times and prices,
@@ -20,7 +20,7 @@ function bookFromLegion(t,o,label){
       'Find the exact options for his dates (times, transfers, the all-in price), show the best 2–4 as options for him to pick, then get the one he picks ready on the booking site and stop at the review page. Book only after he replies yes.'};
   state.tasks.push(nt);
   t.bookedFrom=t.bookedFrom||[]; t.bookedFrom.push(label);
-  agentSay(t,'sys','🎟 Made a booking task for '+label+'. It shows you the exact options and asks before paying.');
+  agentSay(t,'sys','Made a booking task for '+label+'. It shows you the exact options and asks before paying.');
   buzz('send'); touch();
 }
 // an Agent task already on the list → a legion: Lupa (the local lane) takes it, from the start
@@ -30,7 +30,7 @@ function sendAsLegion(t){
   agentSay(t,'sys','Sent out as a legion of agents: your local model splits it into pieces for the other AIs, then writes the report');
   touch();
 }
-/* 🎬 Coach me, on a task only he can do (record the video, give the presentation): an Agent task of its own goes to
+/* Coach me, on a task only he can do (record the video, give the presentation): an Agent task of its own goes to
    his local model, which reads the assignment on Blackboard / D2L and writes him what to do and what to say
    (agent/coach.js). His task stays on his list. The same test as agent/coach.js isCoach, kept short here */
 const COACH_LOOK=/\b(record|film|shoot|make|create|do|tape|upload|submit|post)\b[^.\n]{0,40}\b(videos?|vlogs?|recordings?|voice ?threads?|flip ?grids?|podcasts?|screencasts?)\b|\b(video|oral|recorded|voice|audio) (presentation|reflection|response|introduction|intro|assignment|essay|pitch|report)s?\b|\b(presentation|speech|talk|pitch|toast|eulogy|oral (exam|report)|interview)s?\b/i;
@@ -40,7 +40,7 @@ function coachMe(t){
   const nt={id:uid(),title:'Coach me: '+t.title,done:false,due:t.due||null,dueTime:t.dueTime||null,tag:t.tag||null,ws:'agent',subs:[],googleEventId:null,
     created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],lane:'local',coachFor:t.id,
     notes:[t.tag?'Class: '+t.tag:'',t.notes||''].filter(Boolean).join('\n')||null};
-  agentSay(nt,'sys','🎬 Coach: '+localModelName()+' reads the assignment on your course site and writes what to do and what to say. Your own task stays on your list.');
+  agentSay(nt,'sys','Coach: '+localModelName()+' reads the assignment on your course site and writes what to do and what to say. Your own task stays on your list.');
   state.tasks.push(nt);
   buzz('send'); touch();
   voiceToast('Coach task added on your Agent tab');

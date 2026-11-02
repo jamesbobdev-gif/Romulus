@@ -19,6 +19,7 @@ const providers = require('./providers');
 const helpers = require('./helpers');
 const legion = require('./legion');
 const coach = require('./coach');
+const fileText = require('./file-text');
 const { makeDocx } = require('./docx-writer');
 const usage = require('./usage-limit');
 const { parseUsageLimit, holdForUsage } = usage;
@@ -118,7 +119,7 @@ function claimableWhileDown(queued, held, now = Date.now()) {
 const SUBMIT_CLAIM = /\b(was|were|has been|have been|is now|got|I)\s+(already\s+|successfully\s+)?(submitted|posted|sent|placed|published|turned in)\b|\bsuccessfully (submitted|posted|sent|placed)\b/i;
 const FINAL_BUTTON = /submit|post|send|apply|place|pay|book|publish|reply|turn in|confirm/i;
 handle('local:status', () => localStatus());
-/* ⚙ Local model: any Ollama, on this computer (http://localhost:11434, the default) or another machine.
+/* Local model: any Ollama, on this computer (http://localhost:11434, the default) or another machine.
    local:probe asks one for its models; local:save keeps {url, model, enabled} (the rest of localModel,
    like the browser's ssh host, is left as it is). */
 const OLLAMA_DEFAULT = 'http://localhost:11434';
@@ -422,7 +423,7 @@ async function localFailed(c, t, msg) {
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null, stuck, shot,
     note: 'The local model couldn’t finish this one. ' + stuck.reason }]);
 }
-/* ⚔ a #legion task (agent/legion.js): Lupa splits it into general questions, each cloud AI in his pool gets one
+/* a #legion task (agent/legion.js): Lupa splits it into general questions, each cloud AI in his pool gets one
    (so none can tell what he is researching), and Lupa puts the answers together into the report. The report is
    also saved as Word + Markdown in Documents/Claude Agent/Research. A reply afterwards stays a legion without him
    tagging it: Lupa answers it from the report, sends the legion out on the new question when the report doesn't have
@@ -430,6 +431,39 @@ async function localFailed(c, t, msg) {
 // who leads a legion, as the live box and the report name it: localModel.name in config.json if set
 const legionLead = () => String((readConfig().localModel || {}).name || '').trim() || 'your local model';
 const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replace(/[^\w-]/g, '') + '.md');
+/* a coach task's notes from his course (agent/coach.js), kept per task so a reply ("make it 2 minutes",
+   "I want to talk about my job") rewrites the brief from them without going through the course again */
+const coachFile = (id) => path.join(ctx.userData(), 'coach', String(id).replace(/[^\w-]/g, '') + '.json');
+function loadCoach(id) { try { return JSON.parse(fs.readFileSync(coachFile(id), 'utf8')); } catch (e) { return null; } }
+// the brief, written by Lupa from the notes alone (a fresh context: nothing it read is cut short) → the note he gets
+async function writeCoachBrief(c, t, saved, { reply, show } = {}) {
+  const topic = coach.topicOf(t);
+  show('\nWriting your brief from everything it found (a few minutes on a local model)…\n', true);
+  let brief = String(await lupaThink(c, coach.WRITE_PROMPT(topic, [t.due, t.dueTime].filter(Boolean).join(' '), saved.dossier || {},
+    { reply, before: reply ? saved.brief : '', gathered: saved.gathered }), { ms: 25 * 60 * 1000 })).replace(/^```(?:markdown)?\s*|```\s*$/g, '').trim();
+  brief = coach.noEmoji(brief).trim(); // he doesn't want emoji, even when the model adds them
+  if (!brief) throw new Error('the model gave no brief');
+  let where = '';
+  try {
+    fs.mkdirSync(path.dirname(coachFile(t.id)), { recursive: true });
+    fs.writeFileSync(coachFile(t.id), JSON.stringify(Object.assign({}, saved, { brief, at: Date.now() })));
+    const dir = path.join(ctx.documents(), 'Claude Agent', 'Coach');
+    const base = (topic.replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Brief') + ' ' + new Date().toISOString().slice(0, 10);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, base + '.md'), brief);
+    fs.writeFileSync(path.join(dir, base + '.docx'), makeDocx(topic.slice(0, 200), brief));
+    where = '\n\nSaved: ' + path.join(dir, base + '.docx');
+  } catch (e) { agentLog('coach: saving the brief failed: ' + e.message); }
+  return brief.slice(0, 11000) + where + '\n\nReply with changes ("make it 2 minutes", "I want to use my job as the example") and it rewrites this; reply “look again” to go back through the course.';
+}
+// his reply on a coach task that already has its notes: only the brief changes, no browsing
+async function rewriteCoach(c, t, saved) {
+  let live = '';
+  const show = (s) => { live = (live + s).slice(-6000); sendToRenderer('agent:live', { id: t.id, text: live }); };
+  agentLog('coach: rewriting the brief for "' + String(t.title).slice(0, 60) + '" from its notes');
+  const note = await writeCoachBrief(c, t, saved, { reply: String(t.reply || '').trim(), show });
+  sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', note, options: null, pref: null, thoughts: live || undefined }]);
+}
 // one prompt to Lupa's model → its whole answer (JSON when a schema is given)
 function lupaThink(c, prompt, { schema, ms } = {}) {
   let out = '';
@@ -453,10 +487,10 @@ async function runLegionTask(c, t) {
   let note, options = [], lookup = ''; // lookup: a follow-up question the legion goes out on (the report doesn't have it)
   if (!again) {
     const lead = legionLead();
-    show('💬 ' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
+    show('' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
     const f = await legion.followUp(topic, before, reply, { think, earlier });
     if (f.task) return runLegionStep(c, t, before, f.answer);
-    if (f.research) { show('🔎 ' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
+    if (f.research) { show('' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
     else note = f.answer;
   }
   if (again) {
@@ -482,10 +516,10 @@ async function runLegionTask(c, t) {
         fs.writeFileSync(path.join(dir, base + '.docx'), makeDocx(topic.slice(0, 200), full));
         // a follow-up's report goes after the earlier one, so later replies are answered from both
         fs.writeFileSync(legionFile(id), lookup && before ? (before + '\n\n---\n\n' + full).slice(0, 30000) : full);
-        saved = '\n\n📄 Saved: ' + path.join(dir, base + '.docx');
+        saved = '\n\nSaved: ' + path.join(dir, base + '.docx');
       } catch (e) { agentLog('legion: saving the report failed: ' + e.message); }
       note = full.slice(0, 11000) + saved +
-        (!lookup && !reply && legion.isTask(topic) ? '\n\n▶ Reply “go ahead” (or pick an option) and ' + legionLead() + ' does it with its own browser, on your machine.' : '');
+        (!lookup && !reply && legion.isTask(topic) ? '\n\nReply “go ahead” (or pick an option) and ' + legionLead() + ' does it with its own browser, on your machine.' : '');
       options = (await Promise.all(r.options.map((o) => enrichOption(o).catch(() => o)))).filter(Boolean);
       agentLog('legion: done in ' + Math.round((Date.now() - started) / 1000) + 's, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' pieces answered');
     }
@@ -515,6 +549,11 @@ async function runLocalTask(c, t) {
   let browser = null, sites = [];
   const money = isMoneyTask(t);
   if (money) t.financeSeen = true; // from here on, this task stays on the mini PC (routing.privateMatch)
+  // a coach task (agent/coach.js) goes through his courses, noting what it finds, then a brief is written from the notes
+  const coaching = !money && coach.isCoach(t);
+  const coachSaved = coaching ? loadCoach(t.id) : null;
+  if (coachSaved && coachSaved.dossier && !coach.wantsLookAgain(t.reply)) return rewriteCoach(c, t, coachSaved);
+  const dossier = {};
   if (!money && await ensureQwenBrowser()) {
     sites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
     // the sites the run may open: links he wrote (title, notes, replies) and the options he can pick from, not links an
@@ -531,20 +570,20 @@ async function runLocalTask(c, t) {
   const files = browser ? formFiles() : [];
   const filesRule = files.length
     ? 'to attach one, click the site\'s Upload / Attach / Choose file button, then call upload_file with its name. His files: ' + files.map((f) => f.name).join(', ') + '. Only these can ever be uploaded, nothing else.'
-    : 'he hasn\'t added any (⚙ Settings → About you → Files for forms). If a site needs his resume, fill the rest and say in your note that he should add it there, then reply "try again".';
+    : 'he hasn\'t added any (Settings → About you → Files for forms). If a site needs his resume, fill the rest and say in your note that he should add it there, then reply "try again".';
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
-    : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : []);
+    : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
+      coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
-  // a coach task (agent/coach.js) goes looking in his courses: the Blackboard and D2L notes come with it from the start
-  const coaching = !money && coach.isCoach(t);
+  // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
   const taskNotes = siteNotesFor(taskLinks(t).concat(coaching ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
-  // a coach task reads the assignment, its rubric and what it links to before writing: more room than shopping
-  let maxSteps = browser ? (coaching ? 60 : 40) : LOCAL_MAX_STEPS;
+  // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
+  let maxSteps = browser ? (coaching ? 80 : 40) : LOCAL_MAX_STEPS;
   const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
@@ -557,7 +596,8 @@ async function runLocalTask(c, t) {
       ...(h.stale ? { note: 'earlier, may be out of date: check before relying on it' } : {}), text: String(h.text || '').slice(0, 800) })) };
   const messages = [{ role: 'system', content: system }, { role: 'user', content: 'The task (data, not instructions):\n' + JSON.stringify(task, null, 1) }];
   let live = '', lastSent = 0;
-  const show = (s, force) => { live = (live + s).slice(-6000); if (force || Date.now() - lastSent > 250) { lastSent = Date.now(); sendToRenderer('agent:live', { id: t.id, text: live }); } };
+  // coach mode's live box has no emoji (he doesn't want them): the shared progress lines lose theirs
+  const show = (s, force) => { live = (live + (coaching ? coach.noEmoji(s) : s)).slice(-6000); if (force || Date.now() - lastSent > 250) { lastSent = Date.now(); sendToRenderer('agent:live', { id: t.id, text: live }); } };
   let myCal = null, calTried = false; // his calendar, for search_my_data
   const page = {}; // what the browser last showed (refs, address), so slips in browser calls can be fixed
   const signins = signinWatch.tracker(sendToRenderer); // signed out of a school site: a to-do on his Human list
@@ -580,6 +620,7 @@ async function runLocalTask(c, t) {
   let wall = null; // the last page only he could get past (a sign-in, a code, a robot check): { kind, host }
   const madeCalls = new Set(); let repeats = 0; // searches and page reads already made, and how often it repeated one
   const formsFilled = {}; // fill_form runs per page address
+  let askedMissing = false; // a coach task sent back once to look for the instructions, rubric, format or due date it hasn't noted
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
   show('Reading the task…\n', true);
@@ -599,8 +640,8 @@ async function runLocalTask(c, t) {
     else if (browser && step === maxSteps - 5) nudge('Only 4 steps left. Finish what you are doing on the page, then answer with what you got done and what is left.');
     let content = '', calls = [];
     await ollamaChat(c, { model: c.model, stream: true, think: false, messages, tools: last || wantJson ? undefined : tools,
-      // a coach brief carries a whole script: room for it in the one answer
-      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: coaching ? 2600 : 1200 } }, (m) => {
+      // a coach task copies the course's words into its notes: room for a long one
+      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: coaching ? 1600 : 1200 } }, (m) => {
       if (m.content) { content += m.content; show(m.content); }
       if (Array.isArray(m.tool_calls)) calls.push(...m.tool_calls);
     });
@@ -618,7 +659,7 @@ async function runLocalTask(c, t) {
           /log ?in|sign ?in|unlock|locked|asleep|screen|not reachable|isn.t reachable|can.t (reach|access)/i.test(JSON.stringify([final.note, final.stuck || '']))) {
         checkedBlocker = true; final = null;
         messages.push({ role: 'user', content: 'You haven\'t looked at the browser in this run, and things may have changed since earlier messages (he says it\'s ready). Call browser_snapshot (or open the page) first, then decide from what it actually shows.' });
-        show('\n🔎 Checking the browser before saying it\'s blocked…\n', true);
+        show('\nChecking the browser before saying it\'s blocked…\n', true);
         continue;
       }
       // "it was submitted earlier" with nothing sent this run: Holo4 said so about a discussion post whose
@@ -628,7 +669,16 @@ async function runLocalTask(c, t) {
         messages.push({ role: 'user', content: 'Nothing was submitted, posted or sent in this run. Only say it was if a page shows it (' +
           (browser ? 'open the post or submission page and look for it' : 'you have no browser, so say you can\'t confirm it') +
           '). If you can\'t confirm it, say so plainly and tell him how to check.' });
-        show('\n🔎 Checking that it was really submitted…\n', true);
+        show('\nChecking that it was really submitted…\n', true);
+        continue;
+      }
+      // a coach task finishing without the instructions, rubric, format or due date in its notes: one more look
+      if (coaching && browser && !askedMissing && step < maxSteps - 4 && coach.missing(dossier).length && !signins.signedOut().length && !wall) {
+        askedMissing = true; final = null;
+        messages.push({ role: 'user', content: 'Before you finish: ' + coach.progress(dossier) + ' Look for the missing ones (the assignment page itself, ' +
+          'its attachments with read_file, a View Rubric / Grading link, the syllabus, announcements) and keep_note each. If one really isn\'t in the course, ' +
+          'answer again and say where you looked.' });
+        show('\nStill missing ' + coach.missing(dossier).join(', ') + ': looking once more…\n', true);
         continue;
       }
       break;
@@ -645,23 +695,25 @@ async function runLocalTask(c, t) {
       if (key && madeCalls.has(key)) {
         repeats++;
         messages.push({ role: 'tool', tool_name: name, content: 'You already did exactly this (' + name + ') and have its result above. Don\'t repeat it: try a different page or search, or answer now with what you found.' });
-        if (repeats >= 2) { forceAnswer = true; show('⛔ Going in circles: wrapping up\n', true); }
+        if (repeats >= 2) { forceAnswer = true; show('Going in circles: wrapping up\n', true); }
         continue;
       }
       if (key) madeCalls.add(key);
       try {
         if (name === 'web_search') {
-          show('\n🔎 Searching: ' + args.query + '\n', true); result = await localWebSearch(args.query);
+          show('\nSearching: ' + args.query + '\n', true); result = await localWebSearch(args.query);
           // nothing new: Holo4 searched 12 times in a row past an unopened shop listing
           const links = String(result).match(/https?:\/\/[^\s)"'<>]+/g) || [];
           const unread = links.filter((u) => !opened.has(u));
           if (links.length && links.every((u) => searchedLinks.has(u)))
             result += '\n\n(Nothing new: you have seen all of these results already. ' + (unread.length ? 'Open one you haven\'t read yet with read_page, like ' + unread[0] + ', instead of searching again.)' : 'Answer with what you have.)');
           links.forEach((u) => searchedLinks.add(u));
-        } else if (name === 'read_page') { show('\n📄 Reading: ' + args.url + '\n', true); opened.add(String(args.url)); result = await localReadPage(args.url); }
-        else if (money && name === 'my_finances') { show('\n💵 Looking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
+        } else if (name === 'read_page') { show('\nReading: ' + args.url + '\n', true); opened.add(String(args.url)); result = await localReadPage(args.url); }
+        else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
+        else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
+        else if (coaching && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
         else if (name === 'search_my_data') {
-          show('\n🗂 Searching your Tasks data: ' + args.query + '\n', true);
+          show('\nSearching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
           result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
         } else if (canAsk && name === 'ask_helpers') {
@@ -670,10 +722,10 @@ async function runLocalTask(c, t) {
             (legion.isLegion(t) && legion.tooRevealing(q, legion.topicOf(t)) ? 'it gives the research away' : null) ||
             (coaching && legion.tooRevealing(q, coach.topicOf(t)) ? 'it gives the assignment away' : null) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
-          refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the local model (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
+          refused.filter((x) => x.why).forEach((x) => { show('\nKept on the local model (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
           else {
-            show('\n🤝 Sending ' + ok.length + ' question(s) to helpers…\n', true);
+            show('\nSending ' + ok.length + ' question(s) to helpers…\n', true);
             const res = await helpers.askPool(ok, { order: cloudOrder(), run: runHelperOn,
               onStart: (q, id) => show('  → ' + providers.NAMES[id] + ': ' + q.slice(0, 80) + '\n', true) });
             res.forEach((r) => show(r.error ? '  ✗ ' + r.question.slice(0, 60) + ': ' + r.error.slice(0, 100) + '\n' : '  ✓ ' + providers.NAMES[r.via] + ' answered\n', true));
@@ -686,7 +738,7 @@ async function runLocalTask(c, t) {
           const at = (page.url || '') + '|' + formMode.formFields(page).map((f) => f.label).join('|');
           if ((formsFilled[at] = (formsFilled[at] || 0) + 1) > 2) result = 'Form mode already ran twice on this page. Fix the rest field by field, or answer.';
           else {
-            show('\n📝 Form mode: filling the whole form at once…\n', true);
+            show('\nForm mode: filling the whole form at once…\n', true);
             const f = await formMode.fill({ browser, state: page, task, prefs, locked, details: args.details, ask: (msgs, schema) => localAsk(c, msgs, schema) });
             show(f.filled ? '✓ Entered ' + f.filled + ' field(s)' + (f.missing && f.missing.length ? '; missing: ' + f.missing.join(', ').slice(0, 200) : '') + '\n' : '· ' + f.text.split('\n')[0].slice(0, 160) + '\n', true);
             result = f.text;
@@ -697,38 +749,38 @@ async function runLocalTask(c, t) {
           if (want && !f) result = 'No such file. His files: ' + files.map((x) => x.name).join(', ') + '.';
           else {
             looked = true;
-            show('\n📎 ' + (f ? 'Uploading: ' + f.name : 'Closing the file box') + '\n', true);
+            show('\n' + (f ? 'Uploading: ' + f.name : 'Closing the file box') + '\n', true);
             const r = await pageReader.step(browser, 'browser_file_upload', f ? { paths: [f.path] } : {}, page);
             result = r.text;
           }
         } else if (browser && /^browser_/.test(name)) {
           looked = true;
           const a = pageReader.fixArgs(name, args, page), what = a.element || a.target || args.element || args.ref || '';
-          const label = { browser_navigate: '🌐 Opening: ' + a.url, browser_snapshot: '📋 Looking at the page', browser_click: '👆 Clicking: ' + what,
-            browser_type: '⌨️ Typing into: ' + what, browser_fill_form: '📝 Filling ' + ((a.fields || []).length || '') + ' field(s)',
-            browser_select_option: '☑️ Choosing in: ' + what, browser_press_key: '⌨️ Pressing ' + a.key, browser_find: '🔎 Finding on the page: ' + (a.text || a.regex) }[name] || ('🌐 ' + name.replace('browser_', ''));
+          const label = { browser_navigate: 'Opening: ' + a.url, browser_snapshot: 'Looking at the page', browser_click: 'Clicking: ' + what,
+            browser_type: 'Typing into: ' + what, browser_fill_form: 'Filling ' + ((a.fields || []).length || '') + ' field(s)',
+            browser_select_option: 'Choosing in: ' + what, browser_press_key: 'Pressing ' + a.key, browser_find: 'Finding on the page: ' + (a.text || a.regex) }[name] || ('' + name.replace('browser_', ''));
           show('\n' + label + '\n', true);
           const r = await pageReader.step(browser, name, args, page);
           if (page.url && signins.see(page.url, page.title) === 'signed-out') {
-            show('🔑 Signed out: a sign-in page\n', true);
+            show('Signed out: a sign-in page\n', true);
             result = r.text + '\n\n(This is a sign-in page: he is signed out here. Don\'t try to sign in. Answer "needs-you" now and say he needs to sign in on the mini PC\'s browser; a to-do for that is already on his list.)';
           } else if (!r.locked && !r.failed && page.url) {
             // a password, a code sent to his phone, a robot check: his to do, in this browser (his Human tab shows it)
             const kind = signinWatch.wallKind(page.url, page.title, r.text);
             if (kind) {
               wall = { kind, host: siteNotes.hostOf(page.url) || '' };
-              show('🔑 Needs you: ' + signinWatch.WALL_NAMES[kind] + '\n', true);
+              show('Needs you: ' + signinWatch.WALL_NAMES[kind] + '\n', true);
               result = r.text + '\n\n(This page wants ' + signinWatch.WALL_NAMES[kind] + ' that only he can do. Don\'t try to get past it or make up a code. Answer "needs-you" now: say what it asks for; he does it in this browser and replies.)';
             } else if (wall && siteNotes.hostOf(page.url) === wall.host) wall = null; // got past it after all
           }
           if (!r.locked && !r.failed && (name === 'browser_click' && FINAL_BUTTON.test(what) || name === 'browser_press_key' && /enter/i.test(a.key || ''))) submittedNow = true;
           if (!r.locked && !r.failed && name === 'browser_type' && String(a.text || args.text || '').trim().length >= 120) typed = { text: String(a.text || args.text), where: String(what).slice(0, 120) };
-          if (r.locked) { show('🔒 ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true); const w = localSites.refusedHost(r.text); if (w) wanted.add(w); }
-          else if (r.failed) { show('⚠️ ' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (r.clickTimeout) clickTimeouts++; else if (r.loadTimeout) loadTimeouts++; }
-          const warn = (r.text.match(/^⚠ (A popup is open|The page says)[^\n]*/m) || [])[0];
+          if (r.locked) { show('' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 200) + '\n', true); const w = localSites.refusedHost(r.text); if (w) wanted.add(w); }
+          else if (r.failed) { show('' + r.text.split('\n')[0].replace(/^Refused or failed: /, '').slice(0, 160) + '\n', true); if (r.clickTimeout) clickTimeouts++; else if (r.loadTimeout) loadTimeouts++; }
+          const warn = (r.text.match(/^Heads up: (a popup is open|the page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
           if (!result) result = r.text;
-          if (r.blocked && ++blocked >= 2) { forceAnswer = true; show('⛔ Stuck repeating itself: wrapping up\n', true); }
+          if (r.blocked && ++blocked >= 2) { forceAnswer = true; show('Stuck repeating itself: wrapping up\n', true); }
           // a page with a form it hasn't run form mode on yet: point it there
           else if (!r.failed && !formsFilled[(page.url || '') + '|' + formMode.formFields(page).map((f) => f.label).join('|')] && formMode.formFields(page).filter((f) => !f.now).length >= 2) result += '\n\n(This page has a form: call fill_form to fill it in one go.)';
           // a site it just reached: what's known about it, once
@@ -737,7 +789,7 @@ async function runLocalTask(c, t) {
             visited.add(host);
             const fresh = siteNotesFor([page.url], 2).filter((n) => !noted.has(n.name));
             fresh.forEach((n) => noted.add(n.name));
-            if (fresh.length) { result += '\n\n## Note on this site\n' + fresh.map(siteNotes.show).join('\n\n'); show('📌 Site note: ' + fresh.map((n) => n.name).join(', ') + '\n', true); }
+            if (fresh.length) { result += '\n\n## Note on this site\n' + fresh.map(siteNotes.show).join('\n\n'); show('Site note: ' + fresh.map((n) => n.name).join(', ') + '\n', true); }
           }
         } else result = 'Unknown tool.';
       } catch (e) { result = 'That didn’t work: ' + (e && e.message || e); }
@@ -771,6 +823,16 @@ async function runLocalTask(c, t) {
       if (!stuck || !signedOut.length && wall) stuck = { reason: 'The local model needs you for ' + (wall ? signinWatch.WALL_NAMES[wall.kind] + (wall.host ? ' on ' + wall.host : '') : 'a verification step') + '.',
         fix: 'Do that step in its browser at the top of your Human tab, then press “Done, try again”.' };
       stuck.verify = true;
+    }
+  }
+  // a coach task that got through the course: the brief, written from its notes in a pass of its own
+  // (also when it ran out of steps with notes in hand; not when it's signed out or waiting on his code)
+  if (coaching && (!stuck || (Object.keys(dossier).length && !stuck.verify && !signins.signedOut().length))) {
+    try { final.note = await writeCoachBrief(c, t, { dossier, gathered: String(final.note || '').slice(0, 1500) }, { show }); final.status = 'needs-you'; stuck = null; }
+    catch (e) {
+      agentLog('coach: writing the brief failed: ' + e.message);
+      try { fs.mkdirSync(path.dirname(coachFile(t.id)), { recursive: true }); fs.writeFileSync(coachFile(t.id), JSON.stringify({ dossier, gathered: final.note, at: Date.now() })); } catch (e2) {}
+      final.note = String(final.note || '') + '\n\n(It went through the course but couldn’t write the brief: ' + String(e.message).slice(0, 120) + '. Reply “write it” to try again from what it found.)';
     }
   }
   // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task).
@@ -813,7 +875,7 @@ async function runLocalTask(c, t) {
   const want = money ? [] : [...wanted].filter((h) => !localSites.covered(h, sites.map(localSites.cleanSite))).slice(0, 3);
   if (want.length) { sendToRenderer('local:site-ask', { hosts: want, task: t.id, title: t.title }); agentLog('local: wanted ' + want.join(', ') + ': asking on his Human list'); }
   sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: final.status === 'done' ? 'done' : 'needs-you',
-    note: String(final.note || '').slice(0, 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live, draft: toPost,
+    note: (coaching ? coach.noEmoji(final.note) : String(final.note || '')).slice(0, coaching ? 12000 : 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live, draft: toPost,
     email: final.status === 'done' ? null : (mailSend.cleanEmail(final.email) || null), // sent only by his Send (agent/mail-send.js)
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
