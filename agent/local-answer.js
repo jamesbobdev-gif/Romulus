@@ -125,4 +125,32 @@ function fitContext(messages, { keepFull = 1, limit = 44000, fixed = 0 } = {}) {
   return dropped;
 }
 
-module.exports = { readAnswer, fitContext, escapeInStrings, ANSWER_SCHEMA, ASK_FOR_JSON, keepDraft, linkSeen, optionsFromText };
+/* Tool calls written as text. Holo4 sometimes writes its call in the content instead of the tool-call slot,
+   in Qwen's XML form (<tool_call><function=search_my_data><parameter=query>…</parameter></function></tool_call>)
+   or as JSON inside <tool_call> tags. Read as the answer, that came out as a card reading "<tool_call>…".
+   → {calls: [{function: {name, arguments}}], text: the content without them}; only tools it was offered */
+function textToolCalls(content, names) {
+  const known = new Set(names || []), calls = [];
+  let text = String(content || '');
+  const blocks = text.match(/<tool_call>[\s\S]*?(<\/tool_call>|$)/g) || [];
+  for (const b of blocks) {
+    const inner = b.replace(/^<tool_call>/, '').replace(/<\/tool_call>$/, '').trim();
+    let call = null;
+    const fn = inner.match(/<function=([\w.-]+)>([\s\S]*?)(<\/function>|$)/);
+    if (fn) {
+      const args = {};
+      for (const m of fn[2].matchAll(/<parameter=([\w.-]+)>([\s\S]*?)(?:<\/parameter>|(?=<parameter=)|$)/g)) {
+        const v = m[2].trim();
+        let val = v; if (/^[[{]/.test(v)) { try { val = JSON.parse(v); } catch (e) {} } // a list or object as JSON
+        args[m[1]] = val;
+      }
+      call = { name: fn[1], arguments: args };
+    } else {
+      try { const j = JSON.parse(escapeInStrings(inner)); if (j && j.name) call = { name: j.name, arguments: j.arguments || j.parameters || {} }; } catch (e) {}
+    }
+    if (call && known.has(call.name)) { calls.push({ function: call }); text = text.replace(b, ''); }
+  }
+  return { calls, text: text.trim() };
+}
+
+module.exports = { readAnswer, textToolCalls, fitContext, escapeInStrings, ANSWER_SCHEMA, ASK_FOR_JSON, keepDraft, linkSeen, optionsFromText };

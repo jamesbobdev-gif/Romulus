@@ -51,4 +51,24 @@ function relevant(t, list, { coaching } = {}) {
   return list.some((c) => squash.includes(c.course.toUpperCase().replace(/[\s-]+/g, '')));
 }
 
-module.exports = { siteKind, courseSites, show, relevant };
+/* About to ask him for what's on the class site ("I need the actual questions", "What exactly do you need?"):
+   Holo4 did that four times without opening the class. The nudge sends it there first, once. visited: the
+   hosts it reached this run. → the nudge, or null */
+const ASKS_HIM = /\b(i need (more|the|you to (share|send|paste|give|provide|tell))|could you (please )?(share|provide|send|paste|give|tell)|can you (share|provide|send|paste)|what exactly|which (assignment|class|course|quiz|chapter)|more (details|info(rmation)?)( about)?)\b/i;
+function lookFirst(note, { site, visited } = {}) {
+  if (!ASKS_HIM.test(String(note || ''))) return null;
+  const seen = [...(visited || [])];
+  if (site ? seen.includes(site.host) : seen.some((h) => siteKind(h))) return null; // it did look
+  return 'Before asking him: you haven\'t opened the class site in this run. ' +
+    (site ? 'Open ' + site.kind + ' (https://' + site.host + '), go to the class, ' : 'Open the class on the site "Where each of his classes is" names, ') +
+    'and find the assignment yourself: its page, its questions, the instructions and attached files. Ask him only for what really isn\'t there, and say where you looked.';
+}
+
+// a due date that has passed → what the model is told first (it spent whole runs on quizzes that had closed)
+function pastDue(due, today) {
+  if (!due || !today || due >= today) return null;
+  const days = Math.round((new Date(today + 'T12:00') - new Date(due + 'T12:00')) / 864e5);
+  return 'This was due ' + due + ' (' + days + ' day' + (days === 1 ? '' : 's') + ' ago). First check on its page whether it can still be done or submitted late. If it is closed, stop and say so right away (status "needs-you"), without doing the work.';
+}
+
+module.exports = { siteKind, courseSites, show, relevant, lookFirst, pastDue };

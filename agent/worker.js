@@ -26,8 +26,9 @@ function freshWorker(doc, now = Date.now()) {
   return { name: String(doc.name || doc.host || 'the local model').slice(0, 60), model: String(doc.model || '').slice(0, 80),
     host: String(doc.host || '').slice(0, 60), busy: !!doc.busy, at: Number(doc.at) };
 }
-const heartbeat = ({ name, model, busy }, now = Date.now()) =>
-  ({ v: 1, at: now, name: String(name || os.hostname()).slice(0, 60), model: String(model || '').slice(0, 80), host: os.hostname().slice(0, 60), busy: !!busy });
+// stats: how its runs went lately (agent/run-log.js summary), so his other computers can see it
+const heartbeat = ({ name, model, busy, stats }, now = Date.now()) =>
+  ({ v: 1, at: now, name: String(name || os.hostname()).slice(0, 60), model: String(model || '').slice(0, 80), host: os.hostname().slice(0, 60), busy: !!busy, ...(stats ? { stats } : {}) });
 
 // written compare-and-swap like every row; a write that lost a race reads again and tries once more
 async function beat(a, info) {
