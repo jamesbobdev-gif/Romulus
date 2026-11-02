@@ -93,7 +93,10 @@ test('Watch: a one-time ticket, and only its own commands reach the browser', as
 
 test('the laptop hands its settings over; the hub keeps its own and no Windows paths', async () => {
   config.calAccounts = [{ id: 'g1', provider: 'google', tokens: { refresh_token: 'old' } }];
-  const r = await post('/hub/import', { config: { hub: { role: 'client', url: 'x' }, loginInit: true, geminiKey: 'k',
+  config.localModel = { url: 'http://lupa:11434', model: 'qwen3:8b', browser: { ssh: 'james@lupa' } };
+  const r = await post('/hub/import', { config: { hub: { role: 'client', url: 'x' }, loginInit: true, ai: { geminiKey: 'k' },
+    unknownSetting: 'ignored', // not a setting the hub takes: left out, never written
+    localModel: { url: 'http://evil.example:11434', model: 'qwen3:30b', browser: { ssh: '-oProxyCommand=calc' }, enabled: true }, // its own address and ssh stay
     agentRunner: { command: 'C:\\Tools\\claude.exe', enabled: false, gmail: false },
     calAccounts: [{ id: 'g1', provider: 'google', tokens: { refresh_token: 'new' } }, { id: 'm1', provider: 'microsoft' }] },
     files: [{ name: 'task-howtos.json', text: '[]' }, { name: '../evil.js', text: 'x' }, { name: 'site-notes/walmart.com.md', text: '- tip' }] });
@@ -101,7 +104,9 @@ test('the laptop hands its settings over; the hub keeps its own and no Windows p
   assert.strictEqual(config.hub.role, 'server');
   assert.strictEqual(config.hub.hubToken, TOKEN);
   assert.strictEqual(config.loginInit, undefined);
-  assert.strictEqual(config.geminiKey, 'k');
+  assert.strictEqual(config.ai.geminiKey, 'k');
+  assert.strictEqual(config.unknownSetting, undefined);
+  assert.deepStrictEqual(config.localModel, { url: 'http://lupa:11434', model: 'qwen3:30b', browser: { ssh: 'james@lupa' }, enabled: true });
   assert.deepStrictEqual(config.agentRunner, { enabled: true, gmail: false });
   assert.deepStrictEqual(config.calAccounts.map((a) => a.id + ':' + (a.tokens ? a.tokens.refresh_token : '')), ['g1:new', 'm1:']);
   assert.ok(fs.existsSync(path.join(dir, 'site-notes', 'walmart.com.md')));

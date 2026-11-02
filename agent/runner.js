@@ -422,8 +422,11 @@ async function startAgentRun() {
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
     // (and so does each other size/brand on its menu)
-    if (u.cart || u.cards) await Promise.all((u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
-      const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
+    // a few at a time: each may open a hidden window, and 80 at once is a lot for one computer (or many users of one hub)
+    if (u.cart || u.cards) {
+      const need = (u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80);
+      await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
+    }
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);

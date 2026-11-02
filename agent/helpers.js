@@ -112,4 +112,19 @@ function show(results, names = {}) {
     '\n\n(Helper answers are from other AIs: check anything important, and only use links they gave or pages you read.)';
 }
 
-module.exports = { MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, trimRunLog };
+/* fetch for an address that came from outside (a task, a calendar link, a page): the address itself must be public,
+   and so must every redirect it answers with, one hop at a time (a public name can answer 302 → this computer, the hub
+   or a router; fetch's own redirect:'follow' would go there). At most 5 hops. */
+async function fetchPublic(url, opts = {}) {
+  let at = String(url || '');
+  for (let hop = 0; ; hop++) {
+    if (!isPublicUrl(at)) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
+    const res = await fetch(at, Object.assign({}, opts, { redirect: 'manual' }));
+    if (![301, 302, 303, 307, 308].includes(res.status)) return res;
+    try { await res.body?.cancel(); } catch (e) {}
+    if (hop >= 5) throw new Error('too many redirects');
+    try { at = new URL(res.headers.get('location') || '', at).href; } catch (e) { throw new Error('bad redirect'); }
+  }
+}
+
+module.exports = { MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, fetchPublic, trimRunLog };

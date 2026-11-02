@@ -253,7 +253,8 @@ function mailFilter(line) {
      until "approved" is true, which the dispatcher sets only when the user's latest reply is a yes */
 const LOCK_FILE = process.env.TASKS_BROWSER_LOCK || '';
 // "Apply" / "Easy Apply" on a job posting only opens the application form; what sends it is "Submit"
-const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate)\b/i;
+// (and the same buttons in German, Spanish and French: a store in another language is no way round the lock)
+const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate|absenden|senden|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|kaufen|bezahlen|buchen|löschen|bestätigen|veröffentlichen|enviar|realizar (el )?pedido|comprar|pagar|reservar|eliminar|borrar|confirmar|publicar|envoyer|commander|acheter|payer|réserver|supprimer|confirmer|publier|valider)\b/i;
 // signing out is never part of a task, even after a yes: it ends the logins the user made on the mini PC
 // (Blackboard, D2L…), and only he can sign back in
 const SIGN_OUT = /\b(sign|log) ?(out|off)\b|logout|signout|logoff/i;
@@ -326,11 +327,11 @@ function lockedOut(msg) {
    placed by the agent once the user's latest reply is a yes (TASKS_BROWSER_APPROVED, or "approved" in
    the local lane's lock file), so the order button itself is held back until then, whatever a page
    says. Card numbers, PINs and security codes are his to type, even after a yes. */
-const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order|booking)|buy now|buy tickets?|pay now|purchase|book (now|flight|trip|it)|confirm (and |& )?(pay|purchase|booking))\b/i;
+const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order|booking)|buy now|buy tickets?|pay now|purchase|book (now|flight|trip|it)|confirm (and |& )?(pay|purchase|booking)|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|jetzt bezahlen|realizar (el )?pedido|comprar ahora|pagar ahora|confirmar (el )?pedido|commander|acheter maintenant|payer maintenant|valider (la |ma )?commande)\b/i;
 const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
 // other steps that can't be taken back, on every lane (the lock's FINAL list covers the mini PC lane; Claude's
 // and the other cloud runs have no lock file): sending, deleting, paying, booking, posting, moving money
-const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|cancel (my |the |this |your )?(order|subscription|membership|account|booking|reservation|plan|flight|trip))\b/i;
+const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|cancel (my |the |this |your )?(order|subscription|membership|account|booking|reservation|plan|flight|trip)|senden|absenden|löschen|bezahlen|buchen|veröffentlichen|überweisen|enviar|eliminar|borrar|pagar|reservar|publicar|transferir|envoyer|supprimer|payer|réserver|publier|virer)\b/i;
 /* His yes is spent by the first final click (or Enter on the checkout) that goes through: a second order, a
    second application or a "send" after it waits for a fresh yes, whatever a page says next. */
 let spent = false;

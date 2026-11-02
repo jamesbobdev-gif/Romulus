@@ -499,7 +499,9 @@ async function runLocalTask(c, t) {
   if (money) t.financeSeen = true; // from here on, this task stays on the mini PC (routing.privateMatch)
   if (!money && await ensureQwenBrowser()) {
     sites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
-    const links = (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
+    // the sites the run may open: links he wrote (title, notes, replies) and the options he can pick from, not links an
+    // AI's earlier note mentioned, which a page could have put there to send the local model (and the Locked profile) its way
+    const links = (JSON.stringify([t.title, t.notes, t.reply, (Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'you'), t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
     fs.writeFileSync(lockFile, JSON.stringify({ allow, approved: localApproved(t) }));

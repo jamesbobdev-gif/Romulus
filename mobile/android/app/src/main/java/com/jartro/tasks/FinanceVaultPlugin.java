@@ -94,8 +94,10 @@ public class FinanceVaultPlugin extends Plugin {
                     .setKeySize(256)
                     .setUserAuthenticationRequired(true)
                     .setInvalidatedByBiometricEnrollment(true);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) b.setUserAuthenticationParameters(30, KeyProperties.AUTH_BIOMETRIC_STRONG);
-            else b.setUserAuthenticationValidityDurationSeconds(30);
+            // the key opens for a few seconds after a strong biometric (the prompt below, or the lock screen): the step that
+            // needs it runs right after the prompt, so 10 seconds is plenty and leaves little time for anything else
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) b.setUserAuthenticationParameters(10, KeyProperties.AUTH_BIOMETRIC_STRONG);
+            else b.setUserAuthenticationValidityDurationSeconds(10);
             kg.init(b.build());
             kg.generateKey();
         } catch (Exception e) {

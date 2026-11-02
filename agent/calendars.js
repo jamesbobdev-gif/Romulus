@@ -177,7 +177,8 @@ const ics = {
   name: 'Calendar link',
   async calendars(_token, acct) { return [{ id: 'feed', name: acct.name || acct.email || 'Calendar link', primary: true, canWrite: false }]; },
   async events(_token, _cal, from, to, acct) {
-    const r = await fetch(acct.url, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
+    // a subscribe link he pasted: public, and so must be every redirect it answers with (agent/helpers.js)
+    const r = await require('./helpers').fetchPublic(acct.url, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
     const text = await r.text();
     if (!r.ok || !/BEGIN:VCALENDAR/.test(text)) throw new Error(r.ok ? 'not a calendar' : 'HTTP ' + r.status);
     return parseIcs(text).filter((e) => {

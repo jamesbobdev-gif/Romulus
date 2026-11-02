@@ -46,6 +46,8 @@ Things the review found and left as they are, because the fix changes how lists 
 - **Ollama traffic is plain HTTP.** When the local model runs on another machine, the Locked profile and Finance answers cross your network unencrypted to a port with no password. Put it behind Tailscale (`minipc/setup.sh` does) or the SSH tunnel, never on open Wi-Fi.
 - **A sync peer can say yes to an update.** Anyone with your sync key can answer "Update" on your behalf (the `:updates` row); the installer still comes only from the official release feed and is checked against its `latest.yml`.
 - **An inbox run can use other connectors** you have allowed in your own Claude Code settings (Stripe, Linear, …): Romulus denies the ones it knows about, not a list it can't see.
+- **On the phone**, the Finance key opens for 10 seconds after any strong biometric (the prompt, or the lock screen), rather than being bound to the one prompt; the Google/Microsoft calendar tokens sit in the app's private preferences (excluded from backups) rather than in an encrypted store.
+- **A re-run of the release workflow** for an existing tag replaces that tag's installers and checksums (`--clobber`), so a published hash can change if someone with write access re-runs it.
 
 ## Design points worth knowing
 

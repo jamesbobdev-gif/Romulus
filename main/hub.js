@@ -29,6 +29,13 @@ const LIVE_METHODS = new Set(['Page.enable', 'Page.bringToFront', 'Page.startScr
   'Input.dispatchMouseEvent', 'Input.dispatchKeyEvent', 'Input.insertText']);
 // settings that stay with each computer when the laptop hands its settings over
 const KEEP_HERE = ['hub', 'loginInit'];
+// the settings a hand-over may bring: his sign-ins, keys, sync links, rules and switches. Anything else stays as it is
+// here, so a hand-over can't point the local model (and the Locked profile) at another machine, change where downloads
+// are fetched from with ssh, or set a key the hub never had a reason to hold.
+const IMPORT_KEYS = ['ai', 'calAccounts', 'calPrefs', 'sync', 'gcal', 'calendarFeeds', 'feeds', 'agentRunner', 'routing', 'lookAhead', 'mailEvents', 'mail',
+  'buyEmailTo', 'buyEmailUrl', 'buyEmailsSent', 'triggers', 'updates', 'standing', 'updateMode', 'updateYes', 'updateSkip', 'speak', 'overlay', 'localModel'];
+// inside localModel, the hub keeps its own address and browser (ssh) settings: only the model name and switches come over
+const LOCAL_MODEL_KEEP = ['url', 'browser'];
 // files of what the agent has learned, handed over with the settings (in the user-data folder)
 const LEARNED_FILES = ['task-howtos.json', 'local-learned.json'];
 
@@ -77,9 +84,15 @@ const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'applic
 function importSettings(body) {
   const incoming = body && typeof body.config === 'object' && body.config ? body.config : {};
   const c = ctx.readConfig();
+  let refused = 0;
   for (const [k, v] of Object.entries(incoming)) {
     if (KEEP_HERE.includes(k)) continue;
-    if (k === 'calAccounts' && Array.isArray(v)) {
+    if (!IMPORT_KEYS.includes(k)) { refused++; continue; }
+    if (k === 'localModel') {
+      const m = Object.assign({}, v && typeof v === 'object' ? v : {});
+      for (const keep of LOCAL_MODEL_KEEP) { delete m[keep]; if (c.localModel && c.localModel[keep] !== undefined) m[keep] = c.localModel[keep]; }
+      c.localModel = Object.assign({}, c.localModel, m);
+    } else if (k === 'calAccounts' && Array.isArray(v)) {
       const mine = Array.isArray(c.calAccounts) ? c.calAccounts : [];
       c.calAccounts = mine.filter((a) => !v.some((b) => b && b.id === a.id)).concat(v);
     } else if (k === 'agentRunner' && v && typeof v === 'object') {
@@ -97,7 +110,7 @@ function importSettings(body) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, f.text); files++;
   }
-  log('settings handed over from ' + String(body.from || 'the laptop').slice(0, 60) + ' (' + Object.keys(incoming).length + ' settings, ' + files + ' files)');
+  log('settings handed over from ' + String(body.from || 'the laptop').slice(0, 60) + ' (' + Object.keys(incoming).length + ' settings, ' + files + ' files' + (refused ? ', ' + refused + ' not taken' : '') + ')');
   setTimeout(() => ctx.reloadWindow(), 500); // its page picks up the sync links
   return { ok: true, files };
 }
