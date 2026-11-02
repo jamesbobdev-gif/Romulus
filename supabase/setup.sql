@@ -189,10 +189,19 @@ end $$;
 
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :finance, :files, :files-gone;
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone;
 -- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
 -- can't fill the table (supabase/migrations/20261028_sync_limits.sql), and sync_guard has to let the write through:
 -- false is also the answer for an account that is full or saving too often (sync_usage says which).
+-- A device that moves its lists to end-to-end encryption (renderer/js/sync-crypto.js) leaves {"moved":"v2"}
+-- under the old key; from then on that row takes no write but another moved marker, so an older build that
+-- only knows the old key can't upload its copy in the clear on top (supabase/migrations/20261031_sync_moved_v2.sql).
+create or replace function public.sync_is_moved(p_sync_key text)
+returns boolean
+language sql stable
+set search_path = public
+as $$ select coalesce((select doc->>'moved' = 'v2' from public.tasks_sync where sync_key = p_sync_key), false) $$;
+
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
 -- still the version read (updated_at unchanged). false = someone else wrote in between: read and merge again.
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
@@ -202,8 +211,9 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|finance|files|files-gone))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
+  if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
   if p_prev is null then
     insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now()) on conflict (sync_key) do nothing;
@@ -221,8 +231,9 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|finance|files|files-gone))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
+  if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
   insert into public.tasks_sync (sync_key, doc, updated_at) values (p_sync_key, p_doc, now())
     on conflict (sync_key) do update set doc = excluded.doc, updated_at = now();
@@ -237,7 +248,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|finance|files|files-gone))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then
@@ -347,6 +358,8 @@ revoke all on function public.sync_set(text, jsonb) from public;
 revoke all on function public.widget_complete_task(text, text) from public;
 revoke all on function public.agent_claim_task(text, text, text, text) from public;
 revoke all on function public.tasks_sync_broadcast() from public;
+revoke all on function public.sync_is_moved(text) from public;
+revoke execute on function public.sync_is_moved(text) from anon, authenticated;
 -- (new functions in public get execute for the API roles by default: take it back from the two helpers)
 revoke execute on function public.tasks_sync_broadcast(), public.sync_topic_of(text) from anon, authenticated;
 grant execute on function public.sync_get(text, timestamptz), public.sync_put(text, jsonb, timestamptz), public.sync_set(text, jsonb),
@@ -387,3 +400,120 @@ create policy "agent files: app can see" on storage.objects for select to anon
 drop policy if exists "agent files: app can remove" on storage.objects;
 create policy "agent files: app can remove" on storage.objects for delete to anon
   using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+
+-- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
+-- Pairing codes (renderer/js/pair.js). A device that already syncs shows a 12-character code (60 random
+-- bits) and leaves its sync code here, sealed; the new device types the code and takes it. The code itself
+-- never reaches the server: both devices stretch it (PBKDF2-SHA256, 600,000 rounds) into a lookup id and an
+-- AES-256-GCM key, and only the id and the sealed sync code are stored. So the database, its logs and
+-- whoever runs it can't open one, and a guess costs the stretching every time.
+-- A code lasts 10 minutes and works once (the sealed text is wiped as it's handed out). Guesses and new
+-- codes are limited per network, so a code can't be searched for from outside in the time it lives. The
+-- device that made a code can see whether it was taken, and withdraw it, with a watch token only it has.
+-- Everything is reached only through the functions below; the tables are closed to the API roles.
+
+create table if not exists public.sync_pairs (
+  id text primary key check (id ~ '^[0-9a-f]{64}$'),
+  sealed text check (sealed is null or length(sealed) <= 8192),
+  watch_hash text not null,
+  created_at timestamptz not null default now(),
+  taken_at timestamptz
+);
+alter table public.sync_pairs enable row level security;
+
+create table if not exists public.sync_pair_tries (
+  ip_hash text not null,
+  kind text not null check (kind in ('put', 'take')),
+  hour timestamptz not null,
+  n int not null default 0,
+  primary key (ip_hash, kind, hour)
+);
+alter table public.sync_pair_tries enable row level security;
+
+revoke all on table public.sync_pairs, public.sync_pair_tries from anon, authenticated;
+
+-- counts one more p_kind from the caller's network this hour; true while it's within p_max
+create or replace function public.sync_pair_allow(p_kind text, p_max int)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare cnt int;
+begin
+  delete from public.sync_pair_tries where hour < now() - interval '1 day';
+  insert into public.sync_pair_tries as t (ip_hash, kind, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), p_kind, date_trunc('hour', now()), 1)
+    on conflict (ip_hash, kind, hour) do update set n = t.n + 1
+    returning n into cnt;
+  return cnt <= p_max;
+end $$;
+
+-- a new code: null when it's stored, else why not ('bad' | 'rate' | 'busy')
+create or replace function public.sync_pair_put(p_id text, p_sealed text, p_watch text)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if p_id is null or p_id !~ '^[0-9a-f]{64}$' or p_watch is null or p_watch !~ '^[0-9a-f]{64}$'
+     or p_sealed is null or length(p_sealed) > 8192 then return 'bad'; end if;
+  if not public.sync_pair_allow('put', 20) then return 'rate'; end if;
+  delete from public.sync_pairs where created_at < now() - interval '1 hour';
+  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 500 then return 'busy'; end if;
+  insert into public.sync_pairs (id, sealed, watch_hash) values (p_id, p_sealed, encode(sha256(convert_to(p_watch, 'UTF8')), 'hex'))
+    on conflict (id) do nothing;
+  return case when found then null else 'bad' end;
+end $$;
+
+-- the new device takes a code: the sealed sync code once, while it's fresh; refused = 'rate' when this
+-- network has guessed too often. A wrong, used or run-out code all look the same (nothing).
+create or replace function public.sync_pair_take(p_id text)
+returns table(sealed text, refused text)
+language plpgsql security definer
+set search_path = public
+as $$
+declare s text;
+begin
+  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
+  if p_id is null or p_id !~ '^[0-9a-f]{64}$' then return; end if;
+  select p.sealed into s from public.sync_pairs p
+   where p.id = p_id and p.taken_at is null and p.sealed is not null and p.created_at > now() - interval '10 minutes'
+   for update;
+  if s is null then return; end if;
+  update public.sync_pairs set sealed = null, taken_at = now() where id = p_id;
+  return query select s, null::text;
+end $$;
+
+-- the device that made the code: 'waiting' | 'taken' | 'expired' | 'gone' (wrong watch token looks like gone)
+create or replace function public.sync_pair_state(p_id text, p_watch text)
+returns text
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare r public.sync_pairs;
+begin
+  select * into r from public.sync_pairs
+   where id = p_id and watch_hash = encode(sha256(convert_to(coalesce(p_watch, ''), 'UTF8')), 'hex');
+  if not found then return 'gone'; end if;
+  if r.taken_at is not null then return 'taken'; end if;
+  if r.created_at <= now() - interval '10 minutes' then return 'expired'; end if;
+  return 'waiting';
+end $$;
+
+-- the device that made the code withdraws it (hidden, closed, or a new one made)
+create or replace function public.sync_pair_cancel(p_id text, p_watch text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  delete from public.sync_pairs
+   where id = p_id and watch_hash = encode(sha256(convert_to(coalesce(p_watch, ''), 'UTF8')), 'hex');
+  return found;
+end $$;
+
+revoke all on function public.sync_pair_allow(text, int), public.sync_pair_put(text, text, text), public.sync_pair_take(text),
+  public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) from public;
+revoke execute on function public.sync_pair_allow(text, int) from anon, authenticated;
+grant execute on function public.sync_pair_put(text, text, text), public.sync_pair_take(text),
+  public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) to anon, authenticated, service_role;
