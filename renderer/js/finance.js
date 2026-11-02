@@ -1004,10 +1004,30 @@ function finSubsCard(s,cur){
     const who=el('span','fin-desc'); who.appendChild(el('span',null,x.name)); who.appendChild(el('span','fin-sub','since '+since(x.since)+(x.months>=12?' · over a year':'')));
     r.appendChild(who);
     r.appendChild(el('span','fin-amt',finMoney(x.monthly,cur)+'/mo'));
+    const open=finCancelTask(x.name);
+    const cb=el('button','ghost mono',open?'cancelling':'cancel');
+    cb.title=open?'On your Agent tab':'Have the Agent cancel '+x.name;
+    cb.addEventListener('click',function(){ if(finCancelSub(x.name)){ cb.textContent='cancelling'; cb.title='On your Agent tab'; } });
+    r.appendChild(cb);
     box.appendChild(r);
   });
   const flags=s.raised.length+s.fresh.length;
   return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo');
+}
+/* cancel, on a subscription: an Agent task of its own (agent/skills/life-admin.md finds the cancel steps, fills
+   the form and stops before the last click). Only the company's name leaves Finance: no amounts, no accounts */
+function finCancelTask(name){ return state.tasks.find(function(t){ return t.cancelFor===name&&!t.done; }); }
+function finCancelSub(name){
+  if(finCancelTask(name)){ voiceToast('Already on your Agent tab'); return false; }
+  if(!confirm('Cancel '+name+'?\n\nThe Agent gets only the name "'+name+'" (no amounts or accounts from Finance), finds how to cancel it and gets it ready.\n\nIt stops before the final cancel click, and never takes a retention offer for you.'))return false;
+  const nt={id:uid(),title:'Cancel my '+name+' subscription',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+    created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],cancelFor:name,
+    notes:'He wants to stop paying for '+name+'. Find the company’s own cancel steps, get the cancellation ready and stop before the final confirm. If they offer a discount or pause to stay, list it as a choice.'};
+  agentSay(nt,'sys','Cancelling '+name+': the Agent finds the steps and stops before the last click.');
+  state.tasks.push(nt);
+  buzz('send'); touch();
+  voiceToast('Cancel task added on your Agent tab');
+  return true;
 }
 // on a charge: how it counts; a tap moves every charge from that payee to the next kind
 function finKindTag(t,kind,redraw){
