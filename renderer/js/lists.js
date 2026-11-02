@@ -115,6 +115,12 @@ function buildRow(t,canDrag){
     lg.addEventListener('click',function(e){ e.stopPropagation(); sendAsLegion(t); });
     acts.appendChild(lg);
   }
+  // 🎬 a task only he can do (a video, a presentation): his local model reads the assignment and coaches him (task-actions.js coachMe)
+  if(!isAgentTask&&agentAvailable()&&looksHumanOnly(t)){
+    const cm=iconBtn(I.coach,'Coach me'); cm.title='Coach me: your local model reads the assignment on Blackboard / D2L and tells you what to do and what to say';
+    cm.addEventListener('click',function(e){ e.stopPropagation(); coachMe(t); });
+    acts.appendChild(cm);
+  }
   if(agentAvailable()){
     const back=t.fromWs==='school'&&schoolConfigured()?'school':t.fromWs==='work'&&workConfigured()?'work':'personal';
     const mvLabel=isAgentTask?(back==='school'?'Move back to School (I\u2019ll do it)':back==='work'?'Move back to Work (I\u2019ll do it)':'Move to To do (I\u2019ll do it)'):'Hand to the Agent (it does it for you)';

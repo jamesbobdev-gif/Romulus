@@ -18,6 +18,7 @@ const localAnswer = require('./local-answer');
 const providers = require('./providers');
 const helpers = require('./helpers');
 const legion = require('./legion');
+const coach = require('./coach');
 const { makeDocx } = require('./docx-writer');
 const usage = require('./usage-limit');
 const { parseUsageLimit, holdForUsage } = usage;
@@ -532,14 +533,17 @@ async function runLocalTask(c, t) {
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
-  const taskNotes = siteNotesFor(taskLinks(t));
+  // a coach task (agent/coach.js) goes looking in his courses: the Blackboard and D2L notes come with it from the start
+  const coaching = !money && coach.isCoach(t);
+  const taskNotes = siteNotesFor(taskLinks(t).concat(coaching ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
-  let maxSteps = browser ? 40 : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + calText +
+  // a coach task reads the assignment, its rubric and what it links to before writing: more room than shopping
+  let maxSteps = browser ? (coaching ? 60 : 40) : LOCAL_MAX_STEPS;
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -593,7 +597,8 @@ async function runLocalTask(c, t) {
     else if (browser && step === maxSteps - 5) nudge('Only 4 steps left. Finish what you are doing on the page, then answer with what you got done and what is left.');
     let content = '', calls = [];
     await ollamaChat(c, { model: c.model, stream: true, think: false, messages, tools: last || wantJson ? undefined : tools,
-      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: 1200 } }, (m) => {
+      // a coach brief carries a whole script: room for it in the one answer
+      ...(wantJson ? { format: localAnswer.ANSWER_SCHEMA } : {}), options: { temperature: 0.3, num_predict: coaching ? 2600 : 1200 } }, (m) => {
       if (m.content) { content += m.content; show(m.content); }
       if (Array.isArray(m.tool_calls)) calls.push(...m.tool_calls);
     });
@@ -660,7 +665,8 @@ async function runLocalTask(c, t) {
         } else if (canAsk && name === 'ask_helpers') {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
           const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) ||
-            (legion.isLegion(t) && legion.tooRevealing(q, legion.topicOf(t)) ? 'it gives the research away' : null) }));
+            (legion.isLegion(t) && legion.tooRevealing(q, legion.topicOf(t)) ? 'it gives the research away' : null) ||
+            (coaching && legion.tooRevealing(q, coach.topicOf(t)) ? 'it gives the assignment away' : null) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
           refused.filter((x) => x.why).forEach((x) => { show('\n🔒 Kept on the local model (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
@@ -766,8 +772,9 @@ async function runLocalTask(c, t) {
     }
   }
   // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task).
-  // Not one waiting on his password or code: that's his to do, in this browser
-  if (final.status !== 'done' && !(stuck && stuck.verify) && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
+  // Not one waiting on his password or code: that's his to do, in this browser. Not a coach brief either: "only
+  // you can record this" is the point of it, and no cloud AI can open his courses
+  if (final.status !== 'done' && !(stuck && stuck.verify) && !coaching && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
     agentLog('local: couldn’t do it, passing it to the cloud AIs');
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160) }]);
     return;

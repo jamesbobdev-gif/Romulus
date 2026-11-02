@@ -58,6 +58,7 @@ function dateInfo(due,time){
 
 /* ── icons ── */
 const I={
+  coach:'<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.2" y="3.4" width="6.6" height="5.2" rx="1.2" stroke="currentColor" stroke-width="1.3"/><path d="M7.8 5.4l3-1.6v4.4l-3-1.6" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   legion:'<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 1.5l7 7M10.5 1.5l-7 7M7.5 9.5l2 -2M4.5 9.5l-2-2M8.6 8.6l1.9 1.9M3.4 8.6l-1.9 1.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   check:'<svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.8 9.2 10 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   x:    '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
