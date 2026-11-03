@@ -357,6 +357,9 @@ function cleanStuck(s) {
 async function startLocalRun() {
   const c = localCfg();
   if (!c || localBusy || !routing.decided()) return;
+  // the worker's heartbeat as of now, not as of the last time the status line asked: with the window in the
+  // tray that copy goes stale, and this computer took Lupa's tasks while Lupa was answering
+  if (!worker.isWorker(readConfig())) await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
   const queued = queuedLocalTasks();
   if (!queued.length) return;
   localBusy = true; doing({ what: 'starting a run' }); // claiming, and checking it can reach its model
