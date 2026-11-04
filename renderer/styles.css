@@ -420,7 +420,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
-@media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}}
+@media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}
+  /* the scrollbar is hidden, so the bar fades at the right edge until it's scrolled to the end (wiring.js tabsEdge) */
+  .tabs.more-right{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}}
 @media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* a seventh tab (Finance) on a phone: the bar scrolls sideways instead of widening the page */
 
 /* ── ideas: note cards you sort into groups ── */
@@ -518,6 +520,7 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .cal-cell.today{border-color:#B9C2F2;box-shadow:0 0 0 1px #B9C2F2}
 .cal-num{font-family:var(--mono);font-size:10.5px;margin-bottom:4px;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%}
 .cal-cell.today .cal-num{background:var(--ink);color:var(--surface);font-weight:600;padding:0 3px}
+.cal-chip .cal-chip-time{color:var(--muted);font-family:var(--mono);font-size:10px}
 .cal-chip{font-size:11px;padding:2px 5px;border-radius:4px;margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;background:var(--chip);color:var(--ink);display:block;transition:opacity .12s}
 .cal-chip:hover{opacity:.75}
 .cal-chip.done{color:var(--muted);text-decoration:line-through}
