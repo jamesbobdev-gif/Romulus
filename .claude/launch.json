@@ -59,6 +59,14 @@
       ],
       "port": 8771,
       "autoPort": false
+    },
+    {
+      "name": "ballot-match",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/chopin/code/ballot-match/server.js"
+      ],
+      "port": 8781
     }
   ]
 }
