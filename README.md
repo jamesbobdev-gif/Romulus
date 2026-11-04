@@ -81,6 +81,9 @@ One version number (`package.json`) covers every device: the desktop installers 
 | `ANDROID_KEYSTORE_BASE64` | The Android signing keystore, base64-encoded (`base64 -w0 release.keystore`). Without it the phone build is skipped. |
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Its password, key alias and key password. |
 | `OAUTH_CLIENTS_JSON` | Optional: the app's own Google / Microsoft sign-in clients. |
+| `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_TEAM_ID` | Optional: an App Store Connect API key (Admin role). With them the iPhone app is built and uploaded to App Store Connect too. |
+
+The stores (Google Play, the App Store, the Microsoft Store) and the signing that removes the install warnings on Mac and Windows are covered in [docs/store-release.md](docs/store-release.md): each switches on once its secrets are set.
 
 Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The Mac and Windows installers stay unsigned until their signing secrets are set; the release workflow lists them.
 
@@ -98,6 +101,10 @@ cd android && ./gradlew assembleGithubDebug
 ```
 
 Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/github/debug/` (`assemblePlayDebug` makes the Google Play build instead, with no update banner); it updates an installed copy in place. Its version comes from the root `package.json`. Without a `mobile/sync-config.json` the build bakes in no keys, and the phone is connected by pasting the sync code into Settings → Device sync; that is how the public APK from the releases page is built (see Releases below).
+
+### Phone app (iPhone)
+
+The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
 
 ### Where your data lives
 

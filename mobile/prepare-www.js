@@ -39,15 +39,25 @@ const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.
 const financePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'finance-phone.js'), 'utf8') + '</script>';
 // "Update" banner when a newer release is on GitHub (update-phone.js)
 const updatePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'update-phone.js'), 'utf8') + '</script>';
-// store.js says which Android build this is (GitHub APK or Google Play); each build flavor brings its own
-// copy from android/app/src/<flavor>/assets/public, so it isn't in www/
+// store.js says which build of the phone app this is. On Android each build flavor brings its own copy from
+// android/app/src/<flavor>/assets/public ('github': the APK on the releases page, 'play': Google Play), so it
+// isn't in www/. iOS has no flavors: `node prepare-www.js --store appstore` writes www/store.js instead.
 const store = '<script src="store.js"></script>';
+const storeArg = process.argv.indexOf('--store');
+const storeName = storeArg > 0 ? process.argv[storeArg + 1] : null;
+if (storeArg > 0 && !/^[a-z]+$/.test(storeName || '')) { console.error('usage: node prepare-www.js [--store appstore]'); process.exit(1); }
 html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 // everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is
 fs.cpSync(rendererDir, outDir, { recursive: true, filter: (p) => path.resolve(p) !== path.resolve(src) });
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
+if (storeName) {
+  fs.writeFileSync(path.join(outDir, 'store.js'), '// Which build of the phone app this is (index.html loads it first; prepare-www.js --store wrote it).\n' +
+    'window.ROMULUS_STORE = ' + JSON.stringify(storeName) + ';\n');
+} else {
+  fs.rmSync(path.join(outDir, 'store.js'), { force: true }); // an Android build takes the flavor's copy, not one left by an iOS build
+}
 console.log('www/index.html written ' + (syncCfg ? 'with baked sync config' : 'without a sync config (none in mobile/; paste the sync code in Settings on the phone)') + ' (plus the rest of renderer/)');
 
 // the home-screen widget reads the same config natively from res/raw
