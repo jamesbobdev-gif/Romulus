@@ -64,6 +64,29 @@ function lookFirst(note, { site, visited } = {}) {
     'and find the assignment yourself: its page, its questions, the instructions and attached files. Ask him only for what really isn\'t there, and say where you looked.';
 }
 
+/* The companies' own sites, never a school's: with no school address to hand, Lupa put the site note's
+   /d2l/home on d2l.com and landed on D2L's community sign-in. A school's own is d2l.<school>.edu,
+   <school>.brightspace.com or <school>.blackboard.com, so only these exact hosts count. */
+const VENDOR = /^(www\.|community\.|login\.community\.|documentation\.|help\.)?(d2l\.com|brightspace\.com|blackboard\.com|anthology\.com|desire2learn\.com)$/;
+const isVendor = (host) => VENDOR.test(String(host || '').toLowerCase().replace(/\.$/, ''));
+
+// his school sites: the ones his classes are on, and any course-site address in his preferences
+function schoolHosts(list, prefs) {
+  const hosts = (list || []).map((c) => c.host);
+  for (const m of String(prefs || '').matchAll(/https?:\/\/([^/\s"'<>)]+)/gi)) hosts.push(m[1].toLowerCase());
+  return [...new Set(hosts.filter((h) => siteKind(h) && !isVendor(h)))];
+}
+
+// it opened a course-site company's own page → where to go instead, or null
+function wrongSite(host, known) {
+  if (!isVendor(host)) return null;
+  const kind = siteKind(host) || (/desire2learn/.test(host) ? 'D2L' : 'Blackboard');
+  const his = (known || []).filter((h) => siteKind(h) === kind);
+  return 'This is ' + host + ', the ' + kind + ' company\'s own site, not his school: he has no account here, so never sign in or ask him to. ' +
+    (his.length ? 'His ' + kind + ' is ' + his.map((h) => 'https://' + h).join(' or ') + ': open that instead.'
+      : 'His school\'s ' + kind + ' address is in his preferences; if it isn\'t there, answer "needs-you" and ask him for it.');
+}
+
 // a due date that has passed → what the model is told first (it spent whole runs on quizzes that had closed)
 function pastDue(due, today) {
   if (!due || !today || due >= today) return null;
@@ -71,4 +94,4 @@ function pastDue(due, today) {
   return 'This was due ' + due + ' (' + days + ' day' + (days === 1 ? '' : 's') + ' ago). First check on its page whether it can still be done or submitted late. If it is closed, stop and say so right away (status "needs-you"), without doing the work.';
 }
 
-module.exports = { siteKind, courseSites, show, relevant, lookFirst, pastDue };
+module.exports = { siteKind, courseSites, show, relevant, lookFirst, pastDue, isVendor, schoolHosts, wrongSite };

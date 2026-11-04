@@ -57,3 +57,15 @@ test('the app\'s own "From School →" line never reaches the model (it took the
     { who: 'sys', text: 'The browser was closed' }, { who: 'you', text: 'try again' }];
   assert.deepStrictEqual(forModel(h).map((x) => x.text), ['The browser was closed', 'try again']);
 });
+
+test('the companies\' own sites send it back to his school', () => {
+  assert.ok(cs.isVendor('login.community.d2l.com') && cs.isVendor('d2l.com') && cs.isVendor('www.blackboard.com'));
+  assert.ok(!cs.isVendor('d2llearn.tri-c.edu') && !cs.isVendor('tri-c.brightspace.com') && !cs.isVendor('bb-csuohio.blackboard.com'));
+  const known = cs.schoolHosts([{ course: 'ACT 222', kind: 'Blackboard', host: 'bb-csuohio.blackboard.com' }],
+    '## School\n- Tri-C\'s D2L: https://d2llearn.tri-c.edu\n- Bank: https://bankofamerica.com');
+  assert.deepStrictEqual(known, ['bb-csuohio.blackboard.com', 'd2llearn.tri-c.edu']);
+  assert.match(cs.wrongSite('login.community.d2l.com', known), /https:\/\/d2llearn\.tri-c\.edu: open that/);
+  assert.doesNotMatch(cs.wrongSite('login.community.d2l.com', known), /csuohio/);
+  assert.match(cs.wrongSite('blackboard.com', []), /in his preferences/);
+  assert.strictEqual(cs.wrongSite('d2llearn.tri-c.edu', known), null);
+});

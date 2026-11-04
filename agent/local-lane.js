@@ -591,6 +591,7 @@ async function runLocalTask(c, t) {
   // which of his classes is on Blackboard and which on D2L (agent/course-sites.js), from the School list
   let classes = []; try { classes = courseSites.courseSites(JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks); } catch (e) {}
   const classesText = !money && courseSites.relevant(t, classes, { coaching }) ? courseSites.show(classes) : '';
+  const schools = courseSites.schoolHosts(classes, prefs); // his real Blackboard / D2L, for when it strays onto the companies' sites
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
@@ -794,7 +795,12 @@ async function runLocalTask(c, t) {
             browser_select_option: 'Choosing in: ' + what, browser_press_key: 'Pressing ' + a.key, browser_find: 'Finding on the page: ' + (a.text || a.regex) }[name] || ('' + name.replace('browser_', ''));
           show('\n' + label + '\n', true);
           const r = await pageReader.step(browser, name, args, page);
-          if (page.url && signins.see(page.url, page.title) === 'signed-out') {
+          // D2L's or Blackboard's own site (community.d2l.com): not his school, so its sign-in isn't his to do
+          const stray = page.url && courseSites.wrongSite(siteNotes.hostOf(page.url), schools);
+          if (stray) {
+            show('Wrong site (the company\'s, not his school\'s)\n', true);
+            result = r.text.slice(0, 1500) + '\n\n(' + stray + ')';
+          } else if (page.url && signins.see(page.url, page.title) === 'signed-out') {
             show('Signed out: a sign-in page\n', true);
             result = r.text + '\n\n(This is a sign-in page: he is signed out here. Don\'t try to sign in. Answer "needs-you" now and say he needs to sign in on the mini PC\'s browser; a to-do for that is already on his list.)';
           } else if (!r.locked && !r.failed && page.url) {
