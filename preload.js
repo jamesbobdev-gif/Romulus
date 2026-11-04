@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktop', {
   load: () => ipcRenderer.invoke('tasks:load'),
   loadRestored: () => ipcRenderer.invoke('tasks:restored'),
+  hostName: () => ipcRenderer.invoke('app:host'),
   save: (raw) => ipcRenderer.invoke('tasks:save', raw),
 
   syncGetCfg: () => ipcRenderer.invoke('sync:get-cfg'),

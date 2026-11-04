@@ -626,7 +626,7 @@ function finDrawStocks(box,s,cur,load){
   const filt=el('div','fin-row');
   const q=finInput('search','Search tickers…'); q.value=fin.stockQuery||''; q.id='finStockSearch';
   const sel=el('select','fin-input fin-select');
-  [['value','Largest position'],['gain','Biggest % gain ('+short+')'],['loss','Biggest % loss ('+short+')']].forEach(function(o){ const opt=el('option',null,o[1]); opt.value=o[0]; sel.appendChild(opt); });
+  [['value','Largest position'],['dayGain','Biggest gain today'],['dayLoss','Biggest loss today'],['gain','Biggest % gain ('+short+')'],['loss','Biggest % loss ('+short+')']].forEach(function(o){ const opt=el('option',null,o[1]); opt.value=o[0]; sel.appendChild(opt); });
   let sort='value'; try{ sort=localStorage.getItem('finStockSort')||'value'; }catch(e){}
   sel.value=sort; if(!sel.value)sel.value='value';
   const dl=el('button','ghost mono fin-sheet-dl','Spreadsheet');
@@ -639,12 +639,26 @@ function finDrawStocks(box,s,cur,load){
   const drawRows=function(){
     table.textContent='';
     const headRow=el('div','fin-hold head');
-    ['','Shares','Price','Today',short,'Value','Gain'].forEach(function(h){ headRow.appendChild(el('span','mono fin-label',h)); });
+    const heads=['','Shares','Price','Today',short,'Value','Gain'];
+    // Today and the window header flip between biggest gain and biggest loss on each press; Value sorts by size
+    const sorts={3:['dayGain','dayLoss'],4:['gain','loss'],5:['value']};
+    heads.forEach(function(h,i){
+      const keys=sorts[i];
+      if(!keys)return headRow.appendChild(el('span','mono fin-label',h));
+      const on=keys.indexOf(sel.value);
+      const b=el('button','mono fin-label fin-sort'+(on>=0?' on':''),h+(on<0?'':on===1?' ▴':' ▾'));
+      b.title=keys.length>1?(on===0?'Showing biggest gain first. Press for biggest loss':'Sort by biggest gain'):'Sort by largest position';
+      b.addEventListener('click',function(){ sel.value=keys[on===0&&keys[1]?1:0]; try{ localStorage.setItem('finStockSort',sel.value); }catch(e){} drawRows(); });
+      headRow.appendChild(b);
+    });
     table.appendChild(headRow);
     const words=(fin.stockQuery||'').toLowerCase();
     const shown=rows.filter(function(x){ return !words||((x.r.symbol||'')+' '+(x.r.name||'')).toLowerCase().includes(words); });
-    // no prices for the window: last, whichever way it's sorted
-    const by=sel.value==='gain'?function(x){ return x.pct==null?-Infinity:x.pct; }:sel.value==='loss'?function(x){ return x.pct==null?-Infinity:-x.pct; }:function(x){ return x.r.value; };
+    // no prices for the window (or no live price for today): last, whichever way it's sorted
+    const day=function(x){ return x.r.live&&x.r.changePct!=null?x.r.changePct:null; };
+    const by=sel.value==='gain'?function(x){ return x.pct==null?-Infinity:x.pct; }:sel.value==='loss'?function(x){ return x.pct==null?-Infinity:-x.pct; }
+      :sel.value==='dayGain'?function(x){ return day(x)==null?-Infinity:day(x); }:sel.value==='dayLoss'?function(x){ return day(x)==null?-Infinity:-day(x); }
+      :function(x){ return x.r.value; };
     shown.sort(function(a,b){ return by(b)-by(a); });
     if(!shown.length)table.appendChild(el('p','fin-note','No holding matches “'+fin.stockQuery+'”.'));
     shown.forEach(function(x){
@@ -656,8 +670,10 @@ function finDrawStocks(box,s,cur,load){
       row.appendChild(el('span','fin-amt',finMoney(r.price,cur)));
       row.appendChild(el('span','fin-amt fin-delta '+(!r.live?'':r.changePct>=0?'up':'down'),r.live?(r.changePct>=0?'▲ ':'▼ ')+Math.abs(r.changePct).toFixed(2)+'%':'—'));
       row.appendChild(el('span','fin-amt fin-delta '+(x.pct==null?'':x.pct>=0?'up':'down'),x.pct==null?'—':(x.pct>=0?'▲ ':'▼ ')+Math.abs(x.pct).toFixed(1)+'%'));
-      row.appendChild(el('span','fin-amt',finMoney(r.value,cur)));
+      row.appendChild(el('span','fin-amt fin-hold-value',finMoney(r.value,cur)));
       row.appendChild(el('span','fin-amt fin-delta '+(r.gain==null?'':r.gain>=0?'up':'down'),r.gain==null?'—':finSigned(r.gain,cur)));
+      // on a phone the header row hides and each number carries its own label (styles.css)
+      Array.prototype.forEach.call(row.children,function(c,i){ if(i)c.dataset.label=heads[i]; });
       table.appendChild(row);
     });
   };

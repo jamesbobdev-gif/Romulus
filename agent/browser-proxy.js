@@ -323,7 +323,8 @@ function lockedOut(msg) {
   return null;
 }
 
-/* Buying, for every run. Grocery orders, Amazon orders and tickets (flights, games, concerts) are
+/* Buying, for every run. Grocery orders, store orders (Amazon, Walmart, Target, Best Buy, Shopify stores
+   through Shop Pay) and tickets (flights, games, concerts) are
    placed by the agent once the user's latest reply is a yes (TASKS_BROWSER_APPROVED, or "approved" in
    the local lane's lock file), so the order button itself is held back until then, whatever a page
    says. Card numbers, PINs and security codes are his to type, even after a yes. */

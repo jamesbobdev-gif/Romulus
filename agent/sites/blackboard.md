@@ -2,7 +2,8 @@
 name: Blackboard
 sites: blackboard.com
 ---
-Blackboard Ultra. His school's own address (<school>.blackboard.com) is in his preferences.
+Blackboard Ultra. His school's own address (<school>.blackboard.com) is in "Where each of his classes is" or his
+preferences. Never open blackboard.com itself: that's the company, not his school.
 - **Go by address, not the menu**: the left menu button didn't respond to clicks. Open these directly on his school's address:
   - his courses: /ultra/course
   - everything due, across courses: /ultra/calendar (the "Due Dates" view)

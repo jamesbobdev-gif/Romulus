@@ -360,6 +360,18 @@ function isAmazon(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
 }
+// a store the Agent orders from itself (after a yes) instead of emailing the link: the big stores where his
+// card is saved in his account, and Shopify stores (Shop Pay). → the store's name, or '' (shopping skill)
+function buyStoreOf(o){
+  const url=o&&o.url; let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return ''; }
+  if(isAmazon(url))return 'Amazon';
+  if(/(^|\.)walmart\.com$/.test(h))return 'Walmart';
+  if(/(^|\.)target\.com$/.test(h))return 'Target';
+  if(/(^|\.)bestbuy\.com$/.test(h))return 'Best Buy';
+  if(/\.myshopify\.com$/.test(h)){ const n=h.split('.').slice(-3)[0]; return n.charAt(0).toUpperCase()+n.slice(1); } // "<shop>.myshopify.com"
+  if(o.shop==='shopify')return siteName(url);
+  return '';
+}
 // a flight or event-ticket site: The Agent books it after a yes, like Amazon (tickets skill)
 function isTicketSite(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }

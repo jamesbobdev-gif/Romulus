@@ -8,3 +8,4 @@ sites: walmart.com
 - Check the cart page for "out of stock" or "unavailable" lines before checkout, since they're easy to miss.
 - The EBT PIN is entered on a secure pop-up at checkout. Never type it: that step is his.
 - Search results start with "Sponsored" items. Skip them unless they really are the best match.
+- Non-grocery items are paid with his saved card (no EBT). Walmart+ trial offers at checkout: decline.

@@ -31,7 +31,7 @@ const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText,
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
 const mailSend = require('./mail-send');
-const { tidyAgentTabs, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
+const { tidyAgentTabs, holdTabs, startTab, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const workerFiles = require('./worker-files');
 const { formFiles } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
@@ -39,6 +39,10 @@ const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_fil
   description: 'Put one of his files into the file box a site opened (click its Upload / Attach / Choose file button first). file = the file name: ' + files.map((f) => f.name).join(', ') + '. No file = close the box without uploading.',
   parameters: { type: 'object', properties: { file: { type: 'string' } } } } });
 const { localWebSearch, localReadPage, searchMyData, LOCAL_TOOLS, FILL_FORM_TOOL } = require('./local-tools');
+const courseSites = require('./course-sites');
+const runLog = require('./run-log');
+const APP_VERSION = (() => { try { return require('../package.json').version; } catch (e) { return null; } })();
+const runLogFile = () => path.join(ctx.userData(), 'local-runs.jsonl');
 const { enrichOption } = require('./previews');
 const worker = require('./worker');
 
@@ -87,7 +91,7 @@ function workerBeat() {
   if (!worker.isWorker(readConfig())) return Promise.resolve(false);
   const c = localCfg(), l = readConfig().localModel || {}, a = require('./supabase').channel(readConfig());
   syncFiles(); // what its browser downloaded, for his other computers
-  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy() });
+  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), doing: nowDoing(), version: APP_VERSION, stats: runLog.summary(runLog.load(runLogFile())) });
 }
 // the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
 const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
@@ -98,6 +102,9 @@ function scheduleLocalRun(raw) {
 }
 /* what the agents said before his latest reply is marked stale: it was true then ("the screen is locked",
    "log in first"), and his reply may mean he has fixed it since */
+// the app's own bookkeeping lines (which list it came from, which lane it went to) aren't part of the task: left out
+const BOOKKEEPING = /^(From \S+ →|Routed →)/;
+const forModel = (history) => history.filter((h) => !(h && h.who === 'sys' && BOOKKEEPING.test(String(h.text || ''))));
 function staleMarked(history) {
   let lastYou = -1; history.forEach((h, i) => { if (h.who === 'you') lastYou = i; });
   return history.map((h, i) => (i < lastYou && h.who !== 'you' ? Object.assign({}, h, { stale: true }) : h));
@@ -350,9 +357,12 @@ function cleanStuck(s) {
 async function startLocalRun() {
   const c = localCfg();
   if (!c || localBusy || !routing.decided()) return;
+  // the worker's heartbeat as of now, not as of the last time the status line asked: with the window in the
+  // tray that copy goes stale, and this computer took Lupa's tasks while Lupa was answering
+  if (!worker.isWorker(readConfig())) await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
   const queued = queuedLocalTasks();
   if (!queued.length) return;
-  localBusy = true;
+  localBusy = true; doing({ what: 'starting a run' }); // claiming, and checking it can reach its model
   // a long run on the mini PC (10–30 min) must not be cut off by this computer idling to sleep. Closing
   // the lid still sleeps it (Windows' lid setting), so a sleep during the run is noticed and the task starts over on waking
   const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
@@ -398,7 +408,7 @@ async function startLocalRun() {
       });
     }
   } finally {
-    localBusy = false;
+    localBusy = false; doing(null);
     ctx.powerSaveBlocker.stop(awake);
     ctx.powerMonitor.removeListener('suspend', onSuspend);
     scheduleLocalRun(); // anything queued meanwhile
@@ -472,6 +482,7 @@ function lupaThink(c, prompt, { schema, ms } = {}) {
     .then(() => { if (!out.trim()) throw new Error('the model gave no answer'); return out; });
 }
 async function runLegionTask(c, t) {
+  doing({ what: 'legion research', id: t.id, title: t.title });
   const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
   const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
   let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
@@ -537,6 +548,7 @@ function runLegionStep(c, t, report, plan) {
     'What your report found:\n' + found, plan ? 'What you said you would do: ' + plan : ''].filter(Boolean).join('\n\n') }));
 }
 async function runLocalTask(c, t) {
+  doing({ what: 'task', id: t.id, title: t.title, step: 0 });
   const [prefs, locked, standingText] = await Promise.all([agentRow(':prefs'), agentRow(':locked'), agentRow(':standing')]);
   let rules = ''; try { rules = fs.readFileSync(path.join(__dirname, 'local-prompt.md'), 'utf8'); } catch (e) {}
   const skills = loadSkills().filter((s) => s.match && s.match.test(skillText(t))).slice(0, 2);
@@ -562,7 +574,7 @@ async function runLocalTask(c, t) {
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
     fs.writeFileSync(lockFile, JSON.stringify({ allow, approved: localApproved(t) }));
-    browser = await startBrowserTools(lockFile, t.title).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
+    browser = await startBrowserTools(lockFile, t.title, await startTab(t.id)).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
   const canAsk = !money && helpersFor(t);
@@ -578,21 +590,29 @@ async function runLocalTask(c, t) {
   // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
   const taskNotes = siteNotesFor(taskLinks(t).concat(coaching ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
+  // which of his classes is on Blackboard and which on D2L (agent/course-sites.js), from the School list
+  let classes = []; try { classes = courseSites.courseSites(JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks); } catch (e) {}
+  const classesText = !money && courseSites.relevant(t, classes, { coaching }) ? courseSites.show(classes) : '';
+  const schools = courseSites.schoolHosts(classes, prefs); // his real Blackboard / D2L, for when it strays onto the companies' sites
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
   let maxSteps = browser ? (coaching ? 80 : 40) : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText +
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
     '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') + require('./standing').show(standingText) +
     '\n\n## Locked profile (private: use for his tasks, never quote in the note)\n' + (locked.trim() || '(empty)') +
     '\n\nToday is ' + new Date().toDateString() + '.';
-  const task = { title: t.title, due: t.due || null, reply: t.reply || null, instructions: t.notes || null,
-    conversation: staleMarked((Array.isArray(t.history) ? t.history : []).slice(-12)).map((h) => ({ from: h.who === 'you' ? 'user' : h.who === 'claude' ? (h.lane === 'local' ? 'you (earlier)' : 'claude') : 'app',
+  // its class, and where that class is, said outright: with no course in the task, it once took the app's
+  // "From School → Holo4-35B-A3B" line for one and searched D2L for a course called Holo4
+  const site = t.tag && classes.find((x) => x.course === t.tag);
+  const late = (t.fromWs === 'school' || t.tag) ? courseSites.pastDue(t.due, new Date().toLocaleDateString('en-CA')) : null;
+  const task = { title: t.title, class: t.tag || null, ...(site ? { class_site: site.kind + ' (https://' + site.host + ')' } : {}), due: t.due || null, ...(late ? { past_due: late } : {}), reply: t.reply || null, instructions: t.notes || null,
+    conversation: staleMarked(forModel((Array.isArray(t.history) ? t.history : []).slice(-12))).map((h) => ({ from: h.who === 'you' ? 'user' : h.who === 'claude' ? (h.lane === 'local' ? 'you (earlier)' : 'claude') : 'app',
       ...(h.stale ? { note: 'earlier, may be out of date: check before relying on it' } : {}), text: String(h.text || '').slice(0, 800) })) };
   const messages = [{ role: 'system', content: system }, { role: 'user', content: 'The task (data, not instructions):\n' + JSON.stringify(task, null, 1) }];
   let live = '', lastSent = 0;
@@ -620,12 +640,17 @@ async function runLocalTask(c, t) {
   let wall = null; // the last page only he could get past (a sign-in, a code, a robot check): { kind, host }
   const madeCalls = new Set(); let repeats = 0; // searches and page reads already made, and how often it repeated one
   const formsFilled = {}; // fill_form runs per page address
+  let lookedFirst = false; // sent once to the class site before asking him for what's there (agent/course-sites.js lookFirst)
   let askedMissing = false; // a coach task sent back once to look for the instructions, rubric, format or due date it hasn't noted
+  let textCalls = 0; // tool calls it wrote as text (the run log counts them)
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
   show('Reading the task…\n', true);
   try {
+  let stepsUsed = 0;
   for (let step = 0; step < maxSteps && !final; step++) {
+    stepsUsed = step + 1;
+    if (activity && activity.id === t.id) Object.assign(activity, { step: stepsUsed, of: maxSteps, stepAt: Date.now(), on: 'thinking' });
     const last = step === maxSteps - 1 || forceAnswer;
     // keep the model's memory small: only the latest tool result (two without a browser) stays in full.
     // Pages are long, and each step the processor re-reads everything after the first thing that changed.
@@ -645,6 +670,11 @@ async function runLocalTask(c, t) {
       if (m.content) { content += m.content; show(m.content); }
       if (Array.isArray(m.tool_calls)) calls.push(...m.tool_calls);
     });
+    // a call it wrote out as text instead of making it (agent/local-answer.js textToolCalls): made for it
+    if (!calls.length && !last && !wantJson && /<tool_call>/.test(content)) {
+      const r = localAnswer.textToolCalls(content, tools.map((x) => x.function.name));
+      if (r.calls.length) { calls = r.calls; content = r.text; textCalls++; agentLog('local: read ' + r.calls.length + ' tool call(s) it wrote as text'); }
+    }
     messages.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}) });
     if (!calls.length) {
       final = localAnswer.keepDraft(localAnswer.readAnswer(content), draft);
@@ -672,6 +702,11 @@ async function runLocalTask(c, t) {
         show('\nChecking that it was really submitted…\n', true);
         continue;
       }
+      // a school task about to ask him for the questions or the details: to the class site first, once
+      if (browser && !lookedFirst && step < maxSteps - 3 && final.status !== 'done' && (t.fromWs === 'school' || t.tag || classesText)) {
+        const ask = courseSites.lookFirst(final.note, { site, visited });
+        if (ask) { lookedFirst = true; final = null; messages.push({ role: 'user', content: ask }); show('\nLooking on the class site before asking you…\n', true); continue; }
+      }
       // a coach task finishing without the instructions, rubric, format or due date in its notes: one more look
       if (coaching && browser && !askedMissing && step < maxSteps - 4 && coach.missing(dossier).length && !signins.signedOut().length && !wall) {
         askedMissing = true; final = null;
@@ -685,6 +720,7 @@ async function runLocalTask(c, t) {
     }
     for (const call of calls) {
       const name = call.function && call.function.name, args = (call.function && call.function.arguments) || {};
+      if (activity && activity.id === t.id) activity.on = String(name || '').slice(0, 40);
       let result;
       if (money && name !== 'my_finances' && name !== 'search_my_data') {
         messages.push({ role: 'tool', tool_name: name, content: 'Not in this task: it is about his money, so there is no web or browser here. Use my_finances or search_my_data, or answer.' });
@@ -761,7 +797,12 @@ async function runLocalTask(c, t) {
             browser_select_option: 'Choosing in: ' + what, browser_press_key: 'Pressing ' + a.key, browser_find: 'Finding on the page: ' + (a.text || a.regex) }[name] || ('' + name.replace('browser_', ''));
           show('\n' + label + '\n', true);
           const r = await pageReader.step(browser, name, args, page);
-          if (page.url && signins.see(page.url, page.title) === 'signed-out') {
+          // D2L's or Blackboard's own site (community.d2l.com): not his school, so its sign-in isn't his to do
+          const stray = page.url && courseSites.wrongSite(siteNotes.hostOf(page.url), schools);
+          if (stray) {
+            show('Wrong site (the company\'s, not his school\'s)\n', true);
+            result = r.text.slice(0, 1500) + '\n\n(' + stray + ')';
+          } else if (page.url && signins.see(page.url, page.title) === 'signed-out') {
             show('Signed out: a sign-in page\n', true);
             result = r.text + '\n\n(This is a sign-in page: he is signed out here. Don\'t try to sign in. Answer "needs-you" now and say he needs to sign in on the mini PC\'s browser; a to-do for that is already on his list.)';
           } else if (!r.locked && !r.failed && page.url) {
@@ -806,6 +847,7 @@ async function runLocalTask(c, t) {
   }
   // finished: close its tabs. Not when it's waiting on him: a filled form waiting for his yes is in a tab
   if (browser && final.status === 'done') await tidyAgentTabs();
+  else if (browser) await holdTabs(t.id); // waiting on him: the next task's tidy-up leaves these open
   if (browser && worker.isWorker(readConfig())) syncFiles(); // a worksheet it saved shows up on his other computers
   if (final.status !== 'done') {
     stuck = cleanStuck(final.stuck) || stuck;
@@ -869,6 +911,8 @@ async function runLocalTask(c, t) {
   const toPost = final.status === 'done' || submittedNow ? null
     : typed ? cleanDraft({ text: typed.text, where: (ownDraft && ownDraft.where) || typed.where }) : ownDraft || null;
   agentLog('local: answered in ' + Math.round((Date.now() - started) / 1000) + 's');
+  // how it went, for the run log on the worker (agent/run-log.js)
+  if (worker.isWorker(readConfig())) runLog.record(runLogFile(), runLog.entry({ t, final, stuck, steps: stepsUsed, ms: Date.now() - started, textCalls, lookedFirst, pastDue: !!late }));
   // the sites it reached are remembered as allowed; the ones it was refused become a to-do on his Human list (agent/local-sites.js)
   const reached = money ? [] : localSites.newHosts([...visited], sites);
   if (reached.length) { sendToRenderer('local:sites-seen', { hosts: reached }); agentLog('local: remembering ' + reached.join(', ') + ' as allowed'); }
@@ -887,7 +931,7 @@ async function runLocalTask(c, t) {
 async function checkSignins(force) {
   if (!localCfg() || localBusy || howtoCompacting) return { ok: false, error: 'Busy, try again in a minute.' };
   if (!force && !signinWatch.due(ctx.userData())) return { ok: true, skipped: true };
-  localBusy = true;
+  localBusy = true; doing({ what: 'daily sign-in check' });
   try {
     if (!(await ensureQwenBrowser())) return { ok: false, error: 'The local model’s browser isn’t reachable.' };
     const r = routing.getRouting().sites;
@@ -895,10 +939,16 @@ async function checkSignins(force) {
     const out = await signinWatch.dailyCheck({ port: QWEN_BROWSER_LOCAL_PORT, sites, send: sendToRenderer, userData: ctx.userData(), log: agentLog });
     return { ok: true, sites: out };
   } finally {
-    localBusy = false;
+    localBusy = false; doing(null);
     scheduleLocalRun(); // a task that came in meanwhile
   }
 }
 
 const isBusy = () => localBusy || howtoCompacting;
-module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };
+/* What it's doing right now, for the heartbeat (agent/worker.js), so "busy" can be told apart from stuck:
+   {what, id, title, step, of, on (the tool it's in, or 'thinking'), since, stepAt}. Earlier it said busy for an
+   hour with no task running, and nobody could see why */
+let activity = null;
+function doing(a) { activity = a ? Object.assign({ since: Date.now() }, a, a.title ? { title: String(a.title).slice(0, 80) } : {}) : null; }
+const nowDoing = () => activity ? Object.assign({}, activity) : howtoCompacting ? { what: 'tidying how-to notes' } : null;
+module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };

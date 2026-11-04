@@ -16,17 +16,55 @@ const agentLog = (m) => ctx.agentLog(m);
 const QWEN_BROWSER_LOCAL_PORT = 9336;
 const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
 /* After each task: one blank tab left, every other tab closed. Tabs piled up between tasks (Blackboard,
-   D2L…) and kept their memory on a mini PC that froze when memory ran out. Logins stay (cookies). */
+   D2L…) and kept their memory on a mini PC that froze when memory ran out. Logins stay (cookies).
+   A run that stopped waiting on him (a sign-in, a code, a form for his yes) keeps its tabs: the next task's
+   tidy-up used to close them too, so he opened the view and found about:blank where the sign-in had been.
+   Held for a day, or until that task runs again. */
+const HOLD_MS = 24 * 60 * 60 * 1000;
+const holds = new Map(); // task id → {ids: [page ids], at}
+function heldIds(now = Date.now()) {
+  const out = new Set();
+  for (const [k, h] of holds) { if (now - h.at > HOLD_MS) holds.delete(k); else h.ids.forEach((i) => out.add(i)); }
+  return out;
+}
+const tabList = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/list', { signal: AbortSignal.timeout(3000) })
+  .then((r) => r.json()).then((l) => (Array.isArray(l) ? l : []).filter((p) => p.type === 'page'));
+// the pages that go: everything but the held ones (pure, for tests)
+const looseTabs = (pages, keep) => pages.filter((p) => !keep.has(p.id));
 async function tidyAgentTabs() {
   const base = 'http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json';
   try {
-    const pages = (await fetch(base + '/list', { signal: AbortSignal.timeout(3000) }).then((r) => r.json())).filter((p) => p.type === 'page');
-    if (pages.length === 1 && pages[0].url === 'about:blank') return;
+    const pages = await tabList(), loose = looseTabs(pages, heldIds());
+    if (loose.length === 1 && loose[0].url === 'about:blank') return;
     await fetch(base + '/new?about:blank', { method: 'PUT', signal: AbortSignal.timeout(3000) });
-    for (const p of pages) await fetch(base + '/close/' + p.id, { method: 'PUT', signal: AbortSignal.timeout(3000) }).catch(() => {});
-    agentLog('local: closed ' + pages.length + ' browser tab(s) on the mini PC');
+    for (const p of loose) await fetch(base + '/close/' + p.id, { method: 'PUT', signal: AbortSignal.timeout(3000) }).catch(() => {});
+    agentLog('local: closed ' + loose.length + ' browser tab(s) on the mini PC' + (pages.length > loose.length ? ', kept ' + (pages.length - loose.length) + ' waiting on him' : ''));
   } catch (e) {} // the browser may be gone already: nothing to tidy
 }
+// a run that's waiting on him: its web pages stay open (another task's held tabs aren't taken over)
+async function holdTabs(taskId) {
+  try {
+    const others = heldIds(), ids = (await tabList()).filter((p) => /^https?:/i.test(p.url) && !others.has(p.id)).map((p) => p.id);
+    if (ids.length) { holds.set(String(taskId), { ids, at: Date.now() }); agentLog('local: keeping ' + ids.length + ' tab(s) open for him'); }
+  } catch (e) {}
+}
+/* Where the next run starts (TASKS_BROWSER_TAB, agent/browser-proxy.js): the task's own held tab when it
+   runs again (its hold ends: tidied like any other once it's done), else a blank tab of its own while other
+   tasks hold theirs, so it never works in his sign-in page. '' = wherever Playwright starts */
+async function startTab(taskId) {
+  try {
+    const h = holds.get(String(taskId)); holds.delete(String(taskId));
+    const pages = await tabList();
+    const mine = h && pages.find((p) => h.ids.includes(p.id));
+    if (mine) return mine.url;
+    const keep = heldIds();
+    if (!keep.size) return '';
+    if (!looseTabs(pages, keep).some((p) => p.url === 'about:blank'))
+      await fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/new?about:blank', { method: 'PUT', signal: AbortSignal.timeout(3000) });
+    return 'about:blank';
+  } catch (e) { return ''; }
+}
+const isHeld = (id) => heldIds().has(id);
 /* GNOME on the mini PC switched its displays to power-save (even with blanking set to "never"), and with no
    screen on it stops drawing Chromium: every click timed out ("the screen appears locked"). So the displays are
    woken before each browser run. Never fails a task. A plain local relay puts the browser's port where the tools
@@ -75,7 +113,7 @@ function noFileArgs(schema) {
   return s;
 }
 // a small MCP client for the browser launcher (newline-delimited JSON-RPC over stdio)
-async function startBrowserTools(lockFile, taskTitle) {
+async function startBrowserTools(lockFile, taskTitle, tab) {
   if (!(await prepareAgentBrowser())) return null; // installs the tool + copies the launcher if needed
   const dir = agentBrowserDir(), node = findNode();
   const cli = path.join(dir, 'tool', 'node_modules', '@playwright', 'mcp', 'cli.js');
@@ -83,7 +121,7 @@ async function startBrowserTools(lockFile, taskTitle) {
     windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'],
     env: Object.assign({}, process.env, { TASKS_BROWSER_LOCK: lockFile, TASKS_BROWSER_ARGS: JSON.stringify(['--snapshot-mode', 'none', '--image-responses', 'omit']),
       TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // his resume and the like: the only uploads allowed (sent from this computer over CDP)
-      TASKS_BROWSER_ACTIONS: require('./agent-browser').actionsLogFile(), TASKS_BROWSER_TASK: String(taskTitle || '').slice(0, 120) }) }); // what it did, for Settings → What the Agent did
+      TASKS_BROWSER_ACTIONS: require('./agent-browser').actionsLogFile(), TASKS_BROWSER_TASK: String(taskTitle || '').slice(0, 120), TASKS_BROWSER_TAB: String(tab || '') }) }); // what it did, for Settings → What the Agent did
   let buf = '', id = 0; const pending = {};
   p.stdout.on('data', (d) => {
     buf += d; let i;
@@ -155,4 +193,4 @@ async function miniPcScreenshot() {
   return base + '/storage/v1/object/public/agent-attachments/' + file;
 }
 
-module.exports = { init, QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, tidyAgentTabs, ensureQwenBrowser, noFileArgs, startBrowserTools, miniPcScreenshot };
+module.exports = { init, QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, tidyAgentTabs, holdTabs, startTab, isHeld, looseTabs, ensureQwenBrowser, noFileArgs, startBrowserTools, miniPcScreenshot };
