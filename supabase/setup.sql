@@ -573,9 +573,11 @@ grant execute on function public.agent_file_upload_allowed(text) to anon, authen
 drop policy if exists "agent files: app can upload" on storage.objects;
 create policy "agent files: app can upload" on storage.objects for insert to anon
   with check (bucket_id = 'agent-files' and public.agent_file_upload_allowed(name));
+-- The app never lists this bucket through the storage API (it reads its own ':files' row and the public URLs), and a
+-- public bucket needs no select policy to serve a file by URL. The "can see" policy did one thing: let the anon key
+-- list the bucket's root, which gives away every folder name, and a folder name is all it takes to read or remove
+-- everything in it. Gone.
 drop policy if exists "agent files: app can see" on storage.objects;
-create policy "agent files: app can see" on storage.objects for select to anon
-  using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
 drop policy if exists "agent files: app can remove" on storage.objects;
 create policy "agent files: app can remove" on storage.objects for delete to anon
   using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
