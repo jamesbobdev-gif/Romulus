@@ -44,6 +44,11 @@ function describe(name, input) {
     if (b === 'browser_press_key') return 'Pressing ' + short(input.key, 20);
     if (b === 'browser_snapshot' || b === 'browser_take_screenshot') return 'Looking at the page';
     if (b === 'browser_tabs') return null;
+    // his Link wallet (the launcher's own tools, agent/browser-proxy.js)
+    if (b === 'link_pay_request') return 'Asking Link for a card: ' + short(input.total, 14) + ' at ' + short(input.merchant_name, 40);
+    if (b === 'link_wait') return 'Waiting for your approval in Link';
+    if (b === 'link_enter_card') return 'Entering the Link card';
+    if (b === 'link_cancel') return 'Withdrawing the Link request';
     return short(b.replace(/^browser_/, '').replace(/_/g, ' '), 40).replace(/^./, (c) => c.toUpperCase());
   }
   return null;

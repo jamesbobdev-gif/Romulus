@@ -67,12 +67,12 @@ const ACTIONS = new Set(['browser_click', 'browser_type', 'browser_fill_form', '
   'browser_drag', 'browser_press_key', 'browser_take_screenshot', 'browser_wait_for', 'browser_handle_dialog']);
 let own = 0;
 const pending = {};
-function ownCall(name, args) {
+function ownCall(name, args, ms = 10000) {
   return new Promise((resolve) => {
     const id = 'proxy-' + (++own);
     pending[id] = resolve;
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }) + '\n');
-    setTimeout(() => { if (pending[id]) { delete pending[id]; resolve(null); } }, 10000);
+    setTimeout(() => { if (pending[id]) { delete pending[id]; resolve(null); } }, ms);
   });
 }
 const resultText = (m) => (m && m.result && Array.isArray(m.result.content) ? m.result.content.map((c) => c.text || '').join('\n') : '');
@@ -431,6 +431,155 @@ function fileRefusal(msg) {
     + 'Not ' + bad.join(', ') + '. To close the file box without uploading, call browser_file_upload with no paths, then say in your note what the site asked for.';
 }
 
+/* His Link wallet (TASKS_LINK_CLI and friends, set by agent/agent-browser.js once he has connected Link in
+   Settings; agent/link-wallet.js is copied next to this file). Four tools this launcher adds to the browser's
+   own, for a store where he has no saved card: link_pay_request asks Link for a one-time card for this
+   checkout (he approves the exact amount in the Link app), link_wait waits for that approval,
+   link_enter_card types the card into the fields the AI points at, link_cancel withdraws a request. The first
+   three work only once his yes has unlocked the order button on this store (the same gate as buyRefusal),
+   and the AI never sees the number: the launcher keeps it in memory, types it, blanks it out of every page it
+   passes on afterwards, and refuses screenshots once a card is on the page. */
+const LINK = process.env.TASKS_LINK_CLI ? { node: process.execPath, cli: process.env.TASKS_LINK_CLI, auth: process.env.TASKS_LINK_AUTH || '',
+  test: process.env.TASKS_LINK_TEST === '1', pending: process.env.TASKS_LINK_PENDING || '', task: TASK_TITLE } : null;
+const LINK_NAMES = new Set(['link_pay_request', 'link_wait', 'link_enter_card', 'link_cancel']);
+const LINK_TOOLS = [
+  { name: 'link_pay_request', description: 'Pay at this store with a one-time card from the user\'s Link wallet (only after his yes to this order, on the store he said yes to). ' +
+    'Give the order exactly as the checkout shows it; he approves that amount in the Link app. Answers approved (then call link_enter_card) or waiting (then call link_wait).',
+    inputSchema: { type: 'object', properties: {
+      merchant_name: { type: 'string', description: 'The store, as its site names it' },
+      merchant_url: { type: 'string', description: 'The checkout page\'s address (https://…)' },
+      total: { type: 'string', description: 'The order total exactly as the checkout shows it, tax and shipping included, e.g. "$131.00"' },
+      items: { type: 'array', description: 'What is in the order', items: { type: 'object', properties: { name: { type: 'string' }, qty: { type: 'integer' }, price: { type: 'string', description: 'that line\'s price as shown' } }, required: ['name'] } },
+      subtotal: { type: 'string' }, shipping: { type: 'string' }, tax: { type: 'string' },
+      why: { type: 'string', description: 'One line on what it is for; he reads it in the Link app' } }, required: ['merchant_name', 'merchant_url', 'total'] } },
+  { name: 'link_wait', description: 'Wait (up to 90 seconds) for the user to approve the Link payment in the Link app. Call it a few times if needed.',
+    inputSchema: { type: 'object', properties: { seconds: { type: 'integer', description: 'How long to wait, up to 90' } } } },
+  { name: 'link_enter_card', description: 'Type the approved Link card into the checkout\'s card fields. Take a browser_snapshot first and pass the refs of the card number field, ' +
+    'the expiry field (a text field like MM/YY; dropdowns you pick yourself) and the CVC field. You never see the number.',
+    inputSchema: { type: 'object', properties: { number_ref: { type: 'string', description: 'ref of the card number field' }, expiry_ref: { type: 'string', description: 'ref of the expiry text field, if there is one' },
+      cvc_ref: { type: 'string', description: 'ref of the CVC / security code field' } }, required: ['number_ref'] } },
+  { name: 'link_cancel', description: 'Withdraw the Link payment request for this task (nothing is charged), e.g. when the store turned out not to take cards.', inputSchema: { type: 'object', properties: {} } },
+];
+let linkWallet = null; // made on first use (or handed in by the tests)
+function wallet() {
+  if (!linkWallet && LINK) linkWallet = require(require('path').join(__dirname, 'link-wallet.js')).wallet(LINK);
+  return linkWallet;
+}
+// the tools/list answer → the same, plus Link's tools (listIds: the ids of tools/list calls still waiting)
+const listIds = new Set();
+function withLinkTools(line) {
+  if (!LINK || !listIds.size || !line.includes('"tools"')) return line;
+  let m = null; try { m = JSON.parse(line); } catch (e) { return line; }
+  if (!m || !listIds.has(m.id) || !m.result || !Array.isArray(m.result.tools)) return line;
+  listIds.delete(m.id);
+  m.result.tools = m.result.tools.filter((t) => !LINK_NAMES.has(t.name)).concat(LINK_TOOLS);
+  return JSON.stringify(m) + '\n';
+}
+// the fields a card may go into, by the label the page gives them (learned from its snapshots)
+const CARD_NUMBER = /\b(card|credit|debit)\b[^\n]{0,20}\b(number|no\.?|#)|\bnumber on (the |your )?card|card ?number|\bpan\b/i;
+const NOT_CARD_NUMBER = /cvc|cvv|security|expir|\bexp\b|phone|zip|postal|gift|routing|account|coupon|promo|\bname\b|loyalty|rewards|member/i;
+const EXPIRY = /expir|\bexp\b|mm\s*\/?\s*yy|valid (thru|through|until)|\bdate\b/i;
+const CVC = /cvc|cvv|security code|security number|\bcsc\b|\bcid\b|card code|verification value|3.?digit|4.?digit/i;
+const NOT_CVC = /zip|postal|promo|coupon|discount|gift|verification code|one.?time|2fa|\bsms\b|\btexted\b|text message|phone|email/i; // (labels start with the role, e.g. "textbox CVC")
+let fillFields = (fields, ms) => ownCall('browser_fill_form', { fields }, ms);
+let typeField = (ref, text, ms) => ownCall('browser_type', { element: 'card field', ref, text, slowly: true }, ms);
+let cardOnPage = false; // a card has been typed into a page this run: no screenshots from here on
+const held = []; // the numbers typed this run, blanked out of everything Playwright sends back
+const yesNote = () => spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.'
+  : MAIL_APPROVED && !APPROVED_HOSTS.length ? ' His yes named no site: stop on the page where the final step is, say its address in your note, and ask again.' : '';
+// → a reason to refuse a Link tool call, or null
+function linkRefusal(name, a, here) {
+  if (!LINK_NAMES.has(name)) return null;
+  if (!LINK) return 'His Link wallet isn’t connected (Settings → Agent & AI → Link wallet), so the agent can’t pay here. Stop at checkout and say so in the note.';
+  if (name === 'link_cancel') return null;
+  const approved = !spent && MAIL_APPROVED && APPROVED_HOSTS.length > 0 && here != null && hostAllowed(String(here), APPROVED_HOSTS);
+  if (!approved) return 'Not without a yes: Link pays only once the user has said yes to this exact order in the task, and only on the store he said yes to. ' +
+    'List the items, total and arrival in your note and ask him to reply yes.' + yesNote() +
+    (MAIL_APPROVED && APPROVED_HOSTS.length && here != null && !hostAllowed(String(here), APPROVED_HOSTS) ? ' His yes was about ' + APPROVED_HOSTS.slice(0, 3).join(', ') + ', not this page.' : '');
+  if (name === 'link_pay_request' && !hostAllowed(String(a.merchant_url || ''), APPROVED_HOSTS))
+    return 'His yes was about ' + APPROVED_HOSTS.slice(0, 3).join(', ') + ', not ' + String(a.merchant_url || '').slice(0, 80) + '. merchant_url must be the checkout page of the store he said yes to.';
+  return null;
+}
+const mmyy = (c) => String(c.expMonth).padStart(2, '0') + '/' + String(c.expYear).slice(-2);
+const addressLine = (b) => b ? [b.name, b.line1, b.line2, [b.city, b.state].filter(Boolean).join(', '), b.postal_code, b.country].filter(Boolean).join(', ') : '';
+// what the AI is told about a request's state (never the number)
+function linkSay(r) {
+  const amt = r.amount != null ? '$' + (Number(r.amount) / 100).toFixed(2) + (r.currency && r.currency !== 'usd' ? ' ' + String(r.currency).toUpperCase() : '') : 'the amount';
+  const at = r.merchant ? ' at ' + r.merchant : '';
+  if (r.ok === false) return 'Link could not do that: ' + (r.error || 'unknown error') + (r.status === 'approved' ? '' : '. If this keeps failing, stop at checkout and say so in the note.');
+  switch (r.status) {
+    case 'approved': return 'Approved in Link: a one-time ' + r.card.brand + ' card ending ' + r.card.last4 + ' (expires ' + r.card.expiry + ') for ' + amt + at + '.' +
+      (r.card.billing ? ' Name on the card and billing address: ' + addressLine(r.card.billing) + '.' : '') +
+      ' Now take a browser_snapshot of the payment form and call link_enter_card with the refs of the card number, expiry (if it is a text field; expiry dropdowns you pick yourself) and CVC fields. ' +
+      'Fill the name on the card and the billing address yourself. Then place the order.';
+    case 'pending': return 'Waiting for his approval in the Link app: ' + amt + at + '. He can also open ' + r.approvalUrl + ' . Write one line for him now ("Approve ' + amt + at + ' in the Link app, or open that link"), then call link_wait, up to three times. ' +
+      'Still waiting after that: set the task to needs-you with "Approve ' + amt + at + ' in the Link app (or open ' + r.approvalUrl + '), then reply **yes** to place the order."';
+    case 'denied': return 'He declined this payment in Link. Don’t ask again: set the task to needs-you and ask what he wants to do.';
+    case 'expired': return 'The Link request expired before he approved it. Call link_pay_request again when he is ready, and ask him in the note to watch for Link’s approval.';
+    case 'action': return 'Link needs something from him first: ' + r.message + (r.actionUrl ? ' (' + r.actionUrl + ')' : '') + '. Put that in the note and set the task to needs-you.';
+    case 'used': return 'That Link request has already been paid with. If the order went through, report it; if not, call link_pay_request again for a new card.';
+    case 'canceled': return 'The Link request was withdrawn. Call link_pay_request again if he still wants the order.';
+    case 'failed': return 'The payment on that Link request failed. Call link_pay_request again for a new card, or stop and say so in the note.';
+    default: return 'Link request status: ' + String(r.status || 'unknown') + '. Try link_wait, or link_pay_request again.';
+  }
+}
+// link_enter_card: the card into the fields the AI named, checked against their labels first
+async function enterCard(a, here) {
+  const w = wallet(); const c = w && w.card();
+  if (!c) return { text: 'No card to enter yet: call link_pay_request (and link_wait until it says approved) first.', isError: true };
+  const want = [['number_ref', CARD_NUMBER, NOT_CARD_NUMBER, 'the card number', c.number], ['expiry_ref', EXPIRY, null, 'the expiry date (MM/YY)', mmyy(c)], ['cvc_ref', CVC, NOT_CVC, 'the security code (CVC)', c.cvc]];
+  const fields = [];
+  for (const [key, ok, not, what, value] of want) {
+    const ref = String(a[key] || '').trim(); if (!ref) continue;
+    const label = refLabels[ref];
+    if (!label) return { text: 'I don’t know the field ' + ref.slice(0, 20) + ': take a browser_snapshot and pass the refs of the card number, expiry and CVC fields as it lists them.', isError: true };
+    if (!ok.test(label) || (not && not.test(label))) return { text: '"' + label.trim().slice(0, 60) + '" (' + ref.slice(0, 20) + ') doesn’t look like ' + what + ' field. Pass the right ref from the snapshot.', isError: true };
+    if (value) fields.push({ ref, name: what, value });
+  }
+  if (!fields.some((f) => f.name === 'the card number')) return { text: 'number_ref is needed: the ref of the card number field.', isError: true };
+  const did = [], not = [];
+  for (const f of fields) { // one at a time, so a field that refuses doesn't stop the others
+    let r = await fillFields([{ name: f.name, type: 'textbox', ref: f.ref, value: f.value }], 20000);
+    if (!r || (r.result && r.result.isError)) r = await typeField(f.ref, f.value, 20000); // a masked field that wants key presses
+    (!r || (r.result && r.result.isError) ? not : did).push(f.name);
+  }
+  cardOnPage = true; held.push(c.number, c.cvc);
+  logAction('entered a Link card', { card: c.brand + ' ending ' + c.last4, url: String(here || '').slice(0, 200) });
+  return { text: (did.length ? 'Entered his Link card (' + c.brand + ' ending ' + c.last4 + ', expires ' + mmyy(c) + ') into ' + did.join(', ') + '.' : 'Could not enter the card.') +
+    (not.length ? ' Could not enter ' + not.join(', ') + ': take a snapshot and call link_enter_card again with that field’s ref.' : '') +
+    ' The number shows blanked out from here on and screenshots are off. Check the page (name on the card, billing address), then place the order.', isError: !did.length };
+}
+async function linkCall(msg, here) { // → {text, isError} for a Link tool
+  const name = msg.params.name, a = msg.params.arguments || {};
+  const refused = linkRefusal(name, a, here);
+  if (refused) return { text: refused, isError: true };
+  const w = wallet();
+  if (!w) return { text: 'His Link wallet isn’t available in this run.', isError: true };
+  if (name === 'link_enter_card') return enterCard(a, here);
+  if (name === 'link_cancel') { const r = await w.cancel(); return { text: r.ok ? 'The Link request was withdrawn; nothing was charged.' : 'Nothing to withdraw: ' + r.error, isError: !r.ok }; }
+  let r;
+  if (name === 'link_wait') r = await w.wait(Number(a.seconds) || 60);
+  else {
+    r = await w.request({ merchantName: a.merchant_name, merchantUrl: a.merchant_url, total: a.total, items: Array.isArray(a.items) ? a.items : [],
+      subtotal: a.subtotal, shipping: a.shipping, tax: a.tax, why: a.why, currency: a.currency });
+    if (r.ok !== false && r.id) logAction('asked Link to pay', { amount: r.amount, merchant: String(a.merchant_name || '').slice(0, 80), url: String(here || '').slice(0, 200) });
+  }
+  return { text: linkSay(r), isError: r.ok === false };
+}
+// no screenshots once a card is on the page: a picture would show the number
+const screenshotRefusal = (msg) => cardOnPage && msg.params && msg.params.name === 'browser_take_screenshot'
+  ? 'No screenshots while a card is on the page: use browser_snapshot (the number is blanked out there).' : null;
+// Playwright's answers with the card's number (and its code, next to its label) blanked out
+function blank(line) {
+  if (!held.length) return line;
+  for (let i = 0; i < held.length; i += 2) {
+    const number = held[i], cvc = held[i + 1];
+    if (number) line = line.replace(new RegExp(number.split('').join('[\\s-]?'), 'g'), '•••• •••• •••• ' + number.slice(-4));
+    if (cvc) line = line.replace(new RegExp('((?:cvc|cvv|security code|security number|csc|cid|card code)[^0-9]{0,80}?)' + cvc + '\\b', 'gi'), '$1•••');
+  }
+  return line;
+}
+
 /* Store checkers (TASKS_BROWSER_SHOP, set for "shop1".."shop3" in agent/agent-browser.js) share this
    browser with the main run and each other, so tab numbers shift under them. A checker may only close
    its own tab: whatever number it gives, "close" closes the tab this connection is on. It can't switch
@@ -468,7 +617,7 @@ function main() {
           continue; // ours (or a late answer to one of ours)
         }
       }
-      process.stdout.write(mailFilter(line));
+      process.stdout.write(mailFilter(blank(withLinkTools(line))));
     }
   });
 
@@ -481,11 +630,17 @@ function main() {
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i + 1); buf = buf.slice(i + 1);
       chain = chain.then(async () => {
+        if (LINK && /"method"\s*:\s*"tools\/list"/.test(line)) { try { const m = JSON.parse(line); if (m && m.id != null) listIds.add(m.id); } catch (e) {} } // its answer gets Link's tools added
         if (/"method"\s*:\s*"tools\/call"/.test(line)) {
           if (!started) { started = true; await ensureBrowser(); await setDownloadsDir(); if (!SHOP) await selectStartTab(); }
           let msg = null; try { msg = JSON.parse(line); } catch (e) {}
-          const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-          const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || await shopTabs(msg));
+          const here = msg && msg.params && (ACTIONS.has(msg.params.name) || LINK_NAMES.has(msg.params.name)) ? await frontCurrentTab() : null;
+          if (msg && msg.params && LINK_NAMES.has(msg.params.name)) { // the launcher's own tools: Playwright never sees them
+            const r = await linkCall(msg, here);
+            process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: r.text }], isError: !!r.isError } }) + '\n');
+            return;
+          }
+          const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || screenshotRefusal(msg) || await shopTabs(msg));
           if (refused) { // answer it ourselves; Playwright never sees the call
             process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
             return;
@@ -501,4 +656,7 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; } }; // tests
+else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
+  // his Link wallet
+  LINK_TOOLS, LINK_NAMES, withLinkTools, linkRefusal, linkCall, linkSay, blank, screenshotRefusal,
+  _link: { listIds, setWallet: (w) => { linkWallet = w; }, setFill: (f) => { fillFields = f; }, setType: (f) => { typeField = f; }, cardOnPage: () => cardOnPage } }; // tests

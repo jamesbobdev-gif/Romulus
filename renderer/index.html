@@ -97,6 +97,17 @@
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
+      <div class="settings-sub" id="linkSection" hidden>
+        <h3 class="settings-subhead">Link wallet</h3>
+        <p class="settings-hint">For stores where you have no card saved. The Agent asks Link (Stripe’s wallet) for a one-time card for that checkout, you approve the store and the exact amount in the Link app, and the Agent’s browser types the card in. The AI never sees the number, and the card is dead after that one purchase. Link pays for US and Canadian accounts.</p>
+        <div class="settings-row">
+          <button id="linkConnectBtn" class="ghost mono">Connect Link</button>
+          <button id="linkDisconnectBtn" class="ghost mono danger" hidden>Disconnect</button>
+          <span id="linkStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+        <p id="linkCode" class="settings-hint" style="margin-top:8px" hidden></p>
+        <label class="settings-row adv" style="gap:6px;cursor:pointer"><input type="checkbox" id="linkTest"> <span class="settings-hint" style="margin:0">Test mode: fake cards, nothing is charged (for trying it out)</span></label>
+      </div>
       <div class="settings-sub adv" id="standingSection" hidden>
         <h3 class="settings-subhead">Doesn’t ask again</h3>
         <p class="settings-hint">Steps you’ve said yes to once and for all, so the Agent stops asking on every task: logging in to a site, building a cart, opening a seat map. Buying, paying, sending, submitting and booking are never on this list: those always wait for your yes.</p>

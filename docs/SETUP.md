@@ -66,6 +66,10 @@ Install [Ollama](https://ollama.com/download) on this computer (or any computer 
 
 If Ollama is already running on this computer the panel notices and says so. Tasks that contain private words (bank, medical, password…) only ever go to the local model; see **Who does Agent tasks** to tune the words and rules.
 
+### Link wallet (pay at any store)
+
+The Agent orders by itself at Amazon, Walmart, Target, Best Buy and Shopify stores with Shop Pay, where your card is already on file. For any other store, connect a [Link](https://link.com) wallet (Stripe's; US and Canada): **⚙ Settings → Agent & AI → Link wallet → Connect Link**. The app installs Link's small command-line tool, opens its sign-in page and shows a phrase to enter in the Link app. From then on, when you say yes to an order at such a store, the Agent asks Link for a one-time card for that exact amount, Link asks you to approve it in the Link app, and the Agent's browser types the card into the checkout itself. The AI is told the last four digits only, the number is blanked out of every page it reads afterwards, and the card is dead after that one purchase. The store stays the merchant: returns and refunds go through it as usual. **Test mode** (under Advanced) uses fake cards and charges nothing, for trying it out.
+
 ## 3. Sync with your phone
 
 Your lists can be shared between your computer and your phone through a free [Supabase](https://supabase.com) project of your own. Your data lives in your project, under a sync key only your devices know. About ten minutes, once.
@@ -126,6 +130,8 @@ Everything you connect stays on the computer where you connected it, in the app'
 The sync key is a bearer secret: whoever has it can read and change the lists it opens, with nothing else to prove. On the computer it lives only in that encrypted config file (nothing is kept in the page's browser storage); on the phone it lives in the app's own storage, which is excluded from Google backups and device transfers, so a restored phone is paired again by hand. The Locked profile is encrypted on your device with a key made from the agent sync key before it is uploaded, so the sync project only ever holds ciphertext for it.
 
 Keys are never synced between devices and never leave the app except to the service they belong to. The one thing you do share by hand is the sync key, which is meant to be the same on every device.
+
+A Link wallet's sign-in lives in `link-wallet\auth.json` in the same folder, kept by Link's own tool, which rotates it. It can only ask Link for a one-time card that you then approve in the Link app, so on its own it buys nothing.
 
 ## 6. If something doesn't work
 

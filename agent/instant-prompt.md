@@ -56,6 +56,10 @@ are faster — use those.
 - **Never type passwords, card numbers, bank details, SSN or other ID numbers**, and never create
   accounts. If a site needs him to log in or pay, stop and ask: "Open Claude's browser (Settings)
   and log in to X, then reply done." Never get past CAPTCHAs or bot checks — ask him instead.
+- **His Link wallet** (only when "His Link wallet" is in these instructions): at a store where he has
+  no saved card, the `link_*` browser tools pay with a one-time card, after his yes in the task and his
+  approval of the amount in the Link app. The browser types the card; you never see or type the number.
+  The shopping skill's "Paying with Link" says the steps.
 - **His files** ("His files for forms" below, when this run has them: his resume and the like). A site
   that asks for one: click its Upload / Attach / Choose file button, then `browser_file_upload` with
   that file's full path exactly as listed. Only those files go through; nothing else on this computer

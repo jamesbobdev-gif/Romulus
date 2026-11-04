@@ -253,11 +253,61 @@ $('formFileAddBtn').addEventListener('click',async function(){
   setTimeout(function(){ $('formFilesStatus').textContent=''; },3000);
   formFilesLoad();
 });
+/* His Link wallet (Stripe's Link, desktop only: agent/link-wallet.js): connect by a device code he approves in the
+   Link app, watch that sign-in finish, disconnect, and test mode */
+if(window.desktop&&window.desktop.linkStatus){
+  $('linkSection').hidden=false;
+  let linkPoll=null, linkPolls=0;
+  const money=function(c){ return '$'+(Number(c)/100).toFixed(Number(c)%100?2:0); };
+  const stopPoll=function(){ if(linkPoll){ clearInterval(linkPoll); linkPoll=null; } };
+  const showCode=function(p){ // where he signs in, and the phrase the Link app asks for
+    const box=$('linkCode'); box.hidden=false; box.innerHTML='';
+    box.appendChild(document.createTextNode('Open '));
+    const a=el('a','',p.url.replace(/^https?:\/\//,'').split('?')[0]); a.href='#';
+    a.addEventListener('click',function(ev){ ev.preventDefault(); window.desktop.linkOpen(p.url); });
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(', sign in to Link and, when it asks, enter the phrase '));
+    box.appendChild(el('b','mono',p.phrase||''));
+    box.appendChild(document.createTextNode('. This updates by itself once it goes through.'));
+  };
+  const linkDraw=function(s){
+    $('linkConnectBtn').hidden=!!s.connected; $('linkDisconnectBtn').hidden=!s.connected;
+    $('linkConnectBtn').textContent=s.installed?'Connect Link':'Install and connect Link';
+    $('linkTest').checked=!!s.test;
+    const lim=s.limits&&s.limits.per_transaction&&s.limits.per_transaction.limit!=null?' · up to '+money(s.limits.per_transaction.limit)+' a purchase':'';
+    $('linkStatus').textContent=!s.node?'needs Node.js (see Setup)':s.connected?'connected'+(s.email?' as '+s.email:'')+lim+(s.test?' · test mode':''):s.pending?'waiting for your approval in Link…':'not connected';
+    if(s.connected){ $('linkCode').hidden=true; stopPoll(); }
+    else if(s.pending&&s.pending.url){ showCode(s.pending); startPoll(); }
+    else $('linkCode').hidden=true;
+  };
+  const startPoll=function(){ // a sign-in waits: ask every few seconds whether he has approved it
+    if(linkPoll)return; linkPolls=0;
+    linkPoll=setInterval(async function(){
+      if(++linkPolls>75){ stopPoll(); $('linkStatus').textContent='the sign-in timed out: press Connect again'; $('linkCode').hidden=true; return; }
+      try{ linkDraw(await window.desktop.linkStatus({poll:true})); }catch(e){}
+    },4000);
+  };
+  window.linkLoad=async function(){ try{ linkDraw(await window.desktop.linkStatus()); }catch(e){} };
+  $('linkConnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='getting Link ready…'; $('linkConnectBtn').disabled=true;
+    let r=null; try{ r=await window.desktop.linkConnect(); }catch(e){ r={ok:false,error:e.message}; }
+    $('linkConnectBtn').disabled=false;
+    if(!r||!r.ok){ $('linkStatus').textContent=(r&&r.error)||'could not start the sign-in'; return; }
+    $('linkStatus').textContent='waiting for your approval in Link…';
+    showCode(r); window.desktop.linkOpen(r.url); startPoll();
+  });
+  $('linkDisconnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='disconnecting…'; stopPoll();
+    try{ linkDraw(await window.desktop.linkDisconnect()); }catch(e){ $('linkStatus').textContent='could not disconnect'; }
+  });
+  $('linkTest').addEventListener('change',async function(){ try{ linkDraw(await window.desktop.linkSave({test:this.checked})); }catch(e){} });
+}
 let prefsLoadedAt; // updated_at of the version in the box: Save only replaces that version (undefined = never loaded)
 async function prefsLoad(){
   lockedLoad();
   routingLoad();
   formFilesLoad();
+  if(typeof linkLoad==='function')linkLoad();
   if(typeof standingLoad==='function')standingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
