@@ -59,6 +59,7 @@ function uniqueShortNames(titles){
 function switchTab(tab){
   closeDayPop();
   if(tab!==state.activeTab)state.selectedId=null;
+  if(tab==='hours'&&state.activeTab!=='hours'&&typeof hoursEnter==='function')hoursEnter(); // the Hours tab opens on today
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
   if(tab!=='finance')financeLeave();
