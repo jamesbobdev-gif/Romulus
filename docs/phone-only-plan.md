@@ -87,22 +87,28 @@ ciphertext and random-looking keys. Nobody but the user's own devices can read a
    rotated; fix `sync_doc_size`'s search path; point-in-time recovery is fine to turn on (backups hold only
    ciphertext once step 2 is done).
 
-### Built so far (2026-10-30, uncommitted, off for everyone)
+### Where it stands (2026-11-04: done, one button per user)
 - `renderer/js/sync-crypto.js` + `agent/sync-crypto.js`: the key split and sealing; `test/sync-crypto.test.js`
-  proves the page and Node agree.
+  proves the page and Node agree, and holds the vector the phone is tested against.
 - `renderer/js/sync.js`: a profile with `v2:true` reads and writes sealed rows under lookup ids; a device that
-  meets `{moved:'v2'}` switches itself over. Rotate sync key and "one key for every list" keep v2.
+  meets `{moved:'v2'}` switches itself over (shipped since 1.0.10, so every current build follows). Rotate sync
+  key and "one key for every list" keep v2.
 - `agent/supabase.js` readRow/writeRow and the Agent claim (`claimSealed` in `agent/task-context.js`,
   compare-and-swap instead of the server reading the task).
-- `syncMoveToV2()` in `renderer/js/settings.js` does the move, with no button yet.
-- `supabase/migrations/20261031_sync_moved_v2.sql` (not applied): no plain write onto a moved row.
+- Android widgets: `SyncCrypto.java` (HKDF + AES-GCM, `SyncCryptoTest` on the JVM), `SyncStore.java` opens
+  sealed rows (a baked `v2:true`, or the moved marker met once and remembered) and checks a task off on the
+  phone with a compare-and-swap `sync_put` instead of `widget_complete_task`.
+- `supabase/setup.sql`: a moved row takes no plain write (the 20261031_sync_moved_v2 migration, folded in).
+- **Encrypt my lists end to end** in Settings → Device sync runs `syncMoveToV2()`, which now also moves the
+  side rows added since (`:updates`, `:finance`, `:worker`, `:files`, `:files-gone`). docs/SETUP.md explains it.
+- The edge functions that read lists (`tasks-mcp`, `work-ics`, `school-ingest`) see the moved marker and stop
+  with a clear message instead of writing plain over it; they are off for an encrypted account. `buy-email`
+  never touched a list. No minimum-version gate was built: an older build meets the marker, can't write and
+  shows a sync error, which is safe.
 
-### Still to do before anyone is switched on
-1. Android widget (`SyncStore.java`, `TasksWidgetService.java`): lookup id, open sealed rows, mark done on
-   the phone instead of `widget_complete_task`.
-2. `tasks-mcp` (claude.ai connector), `work-ics`: move to the user's hub, or off for v2 accounts.
-3. `buy-email`, `school-ingest`: write to an inbox sealed to the user's public key.
-4. Apply the migration, then a Settings button for `syncMoveToV2` and a minimum app version.
+### Open
+- `buy-email`, `school-ingest` writing to an inbox sealed to the user's public key, and the connector / Work
+  feed moving to a user's hub, so they work for encrypted accounts too.
 
 ### Rolling it out
 - New app versions read both formats and write only v:2; each list is re-encrypted on its next sync. The

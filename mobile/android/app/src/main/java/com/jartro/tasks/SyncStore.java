@@ -23,6 +23,8 @@ import java.util.Set;
  * Shared by the home-screen widgets: reads the sync channels (personal / agent / school) from the
  * same Supabase rows the app uses, and checks a task off through the widget_complete_task database
  * function (one atomic update, so it can't clobber an edit made on another device at the same time).
+ * A list the app has encrypted end-to-end (SyncCrypto) is opened here and checked off by the phone itself,
+ * since the database can no longer read it.
  */
 final class SyncStore {
     private SyncStore() {}
@@ -32,10 +34,11 @@ final class SyncStore {
     static final int COLOR_MUTED = 0xFF71716C;
     static final int COLOR_INK = 0xFF161616;
 
-    /** A channel's row. */
+    /** A channel's row, its document opened when the list is end-to-end encrypted. */
     static final class Row {
         JSONObject doc;
         String updatedAt;
+        boolean v2;
     }
 
     static JSONObject config(Context ctx, String channel) {
@@ -53,14 +56,45 @@ final class SyncStore {
         }
     }
 
+    /* End-to-end encrypted lists (SyncCrypto, the app's renderer/js/sync-crypto.js): the database knows such a
+       list only by a lookup id and holds a sealed document. A baked config can say so ("v2": true); otherwise
+       the first read under the plain key meets the {"moved":"v2"} marker the app left there, and from then on
+       this channel is read under its lookup id (remembered in the widget's preferences). */
+    static boolean isV2(Context ctx, String channel, JSONObject cfg) {
+        return cfg.optBoolean("v2", false) || prefs(ctx).getBoolean("v2:" + channel, false);
+    }
+    private static void rememberV2(Context ctx, String channel) {
+        prefs(ctx).edit().putBoolean("v2:" + channel, true).apply();
+    }
+
     static Row fetch(Context ctx, String channel) throws Exception {
         JSONObject cfg = config(ctx, channel);
         if (cfg == null) return null;
-        // through the database function that needs the key (the table itself is closed to the anon key)
+        boolean v2 = isV2(ctx, channel, cfg);
+        Row r = fetchRaw(cfg, v2 ? SyncCrypto.rowKey(cfg.getString("syncKey")) : cfg.getString("syncKey"));
+        if (r == null) return null;
+        if (!v2 && "v2".equals(r.doc.optString("moved"))) { // the app moved this list: follow it
+            rememberV2(ctx, channel);
+            r = fetchRaw(cfg, SyncCrypto.rowKey(cfg.getString("syncKey")));
+            if (r == null) return null;
+            v2 = true;
+        }
+        if (v2 && r.updatedAt != null) {
+            // a plain row where a sealed one should be is not this list: show nothing rather than something else's
+            if (!SyncCrypto.isSealed(r.doc)) return null;
+            r.doc = SyncCrypto.open(cfg.getString("syncKey"), r.doc);
+        }
+        r.v2 = v2;
+        return r;
+    }
+
+    // one row as the database holds it (sealed or not), through the function that needs the key (the table
+    // itself is closed to the anon key); null = no answer, an empty doc with no updatedAt = no such row
+    private static Row fetchRaw(JSONObject cfg, String rowKey) throws Exception {
         HttpURLConnection c = open(cfg, base(cfg) + "/rest/v1/rpc/sync_get", "POST");
         c.setDoOutput(true);
         JSONObject body = new JSONObject();
-        body.put("p_sync_key", cfg.getString("syncKey"));
+        body.put("p_sync_key", rowKey);
         try (OutputStream os = c.getOutputStream()) { os.write(body.toString().getBytes("UTF-8")); }
         try {
             if (c.getResponseCode() != 200) return null;
@@ -74,23 +108,55 @@ final class SyncStore {
         } finally { c.disconnect(); }
     }
 
-    /** Mark one task done (agent tasks also get status "done") — one atomic update in the database. */
+    /** Mark one task done (agent tasks also get status "done"). A plain list: one atomic update in the database
+     *  (widget_complete_task). An encrypted one the database can't edit: the phone opens the list, stamps the task
+     *  and writes it back only if nobody wrote in between (sync_put's p_prev), trying again a few times if someone did. */
     static boolean complete(Context ctx, String channel, String taskId) {
         try {
             JSONObject cfg = config(ctx, channel);
             if (cfg == null) return false;
+            if (isV2(ctx, channel, cfg)) return completeSealed(cfg, channel, taskId);
             JSONObject body = new JSONObject();
             body.put("p_sync_key", cfg.getString("syncKey"));
             body.put("p_task_id", taskId);
-            HttpURLConnection c = open(cfg, base(cfg) + "/rest/v1/rpc/widget_complete_task", "POST");
-            c.setDoOutput(true);
-            try (OutputStream os = c.getOutputStream()) { os.write(body.toString().getBytes("UTF-8")); }
-            try {
-                return c.getResponseCode() == 200 && readAll(c.getInputStream()).trim().equals("true");
-            } finally { c.disconnect(); }
+            return rpcTrue(cfg, "widget_complete_task", body);
         } catch (Exception e) {
             return false;
         }
+    }
+    private static boolean completeSealed(JSONObject cfg, String channel, String taskId) throws Exception {
+        String syncKey = cfg.getString("syncKey"), rowKey = SyncCrypto.rowKey(syncKey);
+        for (int attempt = 0; attempt < 4; attempt++) {
+            Row r = fetchRaw(cfg, rowKey);
+            if (r == null || r.updatedAt == null || !SyncCrypto.isSealed(r.doc)) return false;
+            JSONObject doc = SyncCrypto.open(syncKey, r.doc);
+            JSONArray tasks = doc.optJSONArray("tasks");
+            if (tasks == null) return false;
+            boolean found = false;
+            for (int i = 0; i < tasks.length(); i++) {
+                JSONObject t = tasks.getJSONObject(i);
+                if (!taskId.equals(t.optString("id"))) continue;
+                t.put("done", true);
+                t.put("updatedAt", System.currentTimeMillis());
+                if ("agent".equals(channel)) t.put("status", "done");
+                found = true;
+            }
+            if (!found) return false;
+            JSONObject body = new JSONObject();
+            body.put("p_sync_key", rowKey);
+            body.put("p_doc", SyncCrypto.seal(syncKey, doc));
+            body.put("p_prev", r.updatedAt);
+            if (rpcTrue(cfg, "sync_put", body)) return true; // false: the list changed meanwhile, read it again
+        }
+        return false;
+    }
+    private static boolean rpcTrue(JSONObject cfg, String fn, JSONObject body) throws Exception {
+        HttpURLConnection c = open(cfg, base(cfg) + "/rest/v1/rpc/" + fn, "POST");
+        c.setDoOutput(true);
+        try (OutputStream os = c.getOutputStream()) { os.write(body.toString().getBytes("UTF-8")); }
+        try {
+            return c.getResponseCode() == 200 && readAll(c.getInputStream()).trim().equals("true");
+        } finally { c.disconnect(); }
     }
 
     /* ── checked-off-but-not-yet-confirmed ids, so the widget hides them right away ── */

@@ -14,6 +14,7 @@ function syncFillForm(){
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
+  const eb=$('syncV2Btn'); if(eb)eb.hidden=!(validProfile(p)&&!p.v2); // gone once the lists are encrypted
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
 const SETTINGS_OPEN_KEY='tasks.settingsOpen';
@@ -393,6 +394,7 @@ $('syncSaveBtn').addEventListener('click',function(){
   if(!SYNC_KEY_SHAPE.test(sk)){ setSyncStatus('a sync key starts with tk_ and has only letters, digits, - and _ (press Generate key)',true); return; }
   // the lists share the project; a key typed for one is its own, blank = made from the sync key
   const raw={personal:{url:url,key:key,syncKey:sk}};
+  const cur=syncState.cfg&&syncState.cfg.personal; if(cur&&cur.v2&&cur.syncKey===sk)raw.personal.v2=true; // the same key stays end-to-end encrypted
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
   for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
@@ -412,7 +414,7 @@ $('syncOffBtn').addEventListener('click',function(){
    sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
    back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
    Lists with a key of their own (not made from the sync key) are not touched. */
-const SYNC_SIDE_ROWS={personal:[':ideas',':hours'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone'],work:[],school:[]};
 const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
 function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
   const out=[];
@@ -573,4 +575,14 @@ async function syncMoveToV2(){
   b.title='Make a new sync key and move every list over to it; other devices must be paired again';
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',syncRotateKey);
+})();
+(function(){ // end-to-end encryption (syncMoveToV2): shows while the lists are still plain in the project
+  const b=document.createElement('button'); b.id='syncV2Btn'; b.className='ghost mono'; b.textContent='Encrypt my lists end to end'; b.hidden=true;
+  b.title='Re-upload every list encrypted on this device, so the sync project holds only ciphertext';
+  $('syncGenBtn').insertAdjacentElement('afterend',b);
+  b.addEventListener('click',async function(){
+    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nYour other devices follow on their next sync if they run Romulus 1.0.10 or newer; older ones show a sync error until they update. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
+    b.disabled=true;
+    try{ await syncMoveToV2(); }finally{ b.disabled=false; syncFillForm(); }
+  });
 })();

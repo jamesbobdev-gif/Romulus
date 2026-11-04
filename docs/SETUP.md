@@ -86,6 +86,15 @@ In **⚙ Settings → Device sync**:
 
 That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
+### Encrypt end to end (recommended)
+
+As set up above, the project holds your lists as readable JSON, closed to anyone without the sync key but open to whoever can log in to the project itself (you, Supabase staff, a backup). **Encrypt my lists end to end** in the same panel changes that: every list is uploaded again encrypted on your device, under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and its logs hold only ciphertext, and the sync key never leaves your devices.
+
+- Your other devices follow on their own at their next sync, with nothing to paste again. They need Romulus 1.0.10 or newer; an older copy shows a sync error until it updates. The Android widgets follow too.
+- The claude.ai connector, the Work calendar feed and the School feed (the optional edge functions in `supabase/functions`) run on the project and can no longer read the lists, so they stop. Keep the lists plain if you use them.
+- Run `supabase/setup.sql` again first if your project was set up before November 2026, so the database knows to refuse a plain write over the marker.
+- There is no way back from Settings, and no recovery without the sync key: the project can't restore a list for you. Keep the sync code somewhere safe.
+
 ### Connect the phone
 
 On the computer press **Copy sync code** in the same panel; it holds all three values. Send it to yourself through something you trust (a password-manager note, not a group chat), then on the phone open **⚙ Settings → Device sync**, paste it into the first box and press **Save & sync**.

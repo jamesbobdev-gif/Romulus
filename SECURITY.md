@@ -36,7 +36,7 @@ The Agent is an AI that reads your tasks, browses the web and fills forms for yo
 
 - A task's text and conversation go to whichever AI you connected and routed it to. Tasks containing your private words (bank, medical, password… editable) only go to a local model.
 - Cloud AIs get web search and, for some, the agent browser. Only Claude can read your Gmail, and only in read-only runs that have no internet tools open.
-- The sync project receives your lists, encrypted in transit, reachable only through server functions that need the sync key.
+- The sync project receives your lists, encrypted in transit, reachable only through server functions that need the sync key. After **Encrypt my lists end to end** (Settings → Device sync) it holds only ciphertext under lookup ids: the sync key stays on your devices, and nothing on the server, in its logs or in its backups can read a list.
 - Nothing is sent to the authors of this app. There is no telemetry.
 
 ## Known limits (as of the November 2026 review)

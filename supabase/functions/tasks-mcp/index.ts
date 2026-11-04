@@ -105,6 +105,8 @@ async function loadPrefs(): Promise<{ text: string; updated_at: string | null }>
   const r = await fetch(`${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(PREFS_KEY)}&select=doc,updated_at`, { headers: H });
   if (!r.ok) throw new Error(`load preferences: HTTP ${r.status}`);
   const rows = await r.json();
+  // moved to end-to-end encryption with its list: a plain write here would destroy the marker and never reach the real row
+  if (rows.length && rows[0].doc && rows[0].doc.moved === "v2") throw new UserError("The preferences are end-to-end encrypted on the devices; this server can't read or change them.");
   return { text: rows.length && rows[0].doc && typeof rows[0].doc.text === "string" ? rows[0].doc.text : "", updated_at: rows.length ? rows[0].updated_at : null };
 }
 // same compare-and-swap as the lists, so a change made in the app at the same moment isn't lost
