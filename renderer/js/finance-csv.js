@@ -17,7 +17,7 @@
   /* ── reading a bank's CSV ── */
   // quoted fields, doubled quotes, commas/newlines inside quotes; ; or tab when the file uses those instead
   function splitCsv(text) {
-    text = String(text || '').replace(/^﻿/, '');
+    text = String(text || '').replace(/^\uFEFF/, '');
     const first = text.split(/\r?\n/, 1)[0] || '';
     const sep = [',', ';', '\t'].sort((a, b) => first.split(b).length - first.split(a).length)[0];
     const rows = []; let row = [], cell = '', q = false;

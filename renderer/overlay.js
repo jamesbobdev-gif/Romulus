@@ -5,7 +5,7 @@
 function el(tag,cls,text){ const n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
 function openExternal(url){ window.open(url); } // main/overlay.js sends web links to the browser
 const $=function(id){ return document.getElementById(id); };
-let history=[], busy=false, st=null;
+let turns=[], busy=false, st=null;
 
 function draw(s){
   st=s;
@@ -38,7 +38,7 @@ function add(node){ $('empty').hidden=true; $('chat').appendChild(node); $('chat
 
 async function ask(){
   const question=$('q').value.trim();
-  if(busy||(!question&&history.length))return;
+  if(busy||(!question&&turns.length))return;
   busy=true; $('send').disabled=true;
   add(el('div','q',question||'What’s on my screen?'));
   $('q').value='';
@@ -46,21 +46,21 @@ async function ask(){
   // the picture goes with the first question of a chat, and again after a Retake
   const withShot=$('withShot').checked&&!!(st&&st.shot)&&!shotSent;
   let r;
-  try { r=await window.helper.ask({question:question,withShot:withShot,history:history}); }
+  try { r=await window.helper.ask({question:question,withShot:withShot,history:turns}); }
   catch(e){ r={why:String(e&&e.message||e)}; }
   wait.remove();
   if(r.text){
     if(withShot)shotSent=true;
     const a=add(answerNode(r.text));
     a.appendChild(el('div','via',r.via+(withShot?' · saw your screen':'')));
-    history.push({q:question,a:r.text});
+    turns.push({q:question,a:r.text});
   } else add(el('div','a bad',r.why||'No answer.'));
   busy=false; $('send').disabled=false; $('q').focus();
 }
 let shotSent=false;
 
 function newChat(){
-  history=[]; shotSent=false;
+  turns=[]; shotSent=false;
   $('chat').querySelectorAll('.q,.a').forEach(function(n){ n.remove(); });
   $('empty').hidden=false;
 }

@@ -78,6 +78,6 @@ test('private words, card/SSN numbers and locked-profile details never leave', (
 
 test('show() labels who answered and flags failures', () => {
   const out = helpers.show([{ question: 'a', via: 'gemini', answer: 'line1\nline2' }, { question: 'b', error: 'no helper answered' }], { gemini: 'Gemini' });
-  assert.match(out, /1\. a\n   Gemini says:\n   line1\n   line2/);
-  assert.match(out, /2\. b\n   \(no helper answered\)/);
+  assert.match(out, /1\. a\n {3}Gemini says:\n {3}line1\n {3}line2/);
+  assert.match(out, /2\. b\n {3}\(no helper answered\)/);
 });

@@ -52,6 +52,7 @@ Everything you connect stays on the computer where you connected it. Keys, token
 npm install
 npm start        # dev mode
 npm test         # unit tests (Node's built-in runner, files in test/)
+npm run lint     # ESLint, bug-finding rules only (eslint.config.js); CI runs both on every push
 npm run dist     # installer into dist/
 ```
 

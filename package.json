@@ -11,11 +11,15 @@
     "start": "electron .",
     "dist": "electron-builder",
     "test": "node --test \"test/*.test.js\"",
+    "lint": "eslint .",
     "release": "node scripts/release.js"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "electron": "33.4.11",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0"
   },
   "build": {
     "appId": "com.jartro.tasks",
