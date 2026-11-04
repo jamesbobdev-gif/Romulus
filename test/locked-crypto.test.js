@@ -84,7 +84,7 @@ test('the sync key shape the database checks matches every key the app makes', (
   const m = sql.match(/p_sync_key !~ '([^']+)'/);
   assert.ok(m, 'setup.sql checks the key shape');
   const re = new RegExp(m[1]);
-  const mig = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261102_sync_files_live.sql'), 'utf8');
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261103_review_final.sql'), 'utf8');
   assert.ok(mig.includes(m[1]), 'the latest migration carries the same regex');
   assert.ok(re.test('tk_' + '6f1d2c3b-4a5e-4f60-9b7c-8d9e0f1a2b3c' + ':updates'), 'the shared update answer row (renderer/js/update-sync.js)');
   const uuid = '6f1d2c3b-4a5e-4f60-9b7c-8d9e0f1a2b3c', short = 'm2k9x1a7' + 'q8w3e5r1'; // Generate key, and its fallback without randomUUID

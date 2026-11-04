@@ -32,6 +32,28 @@ async function ensureBrowser() {
   for (let i = 0; i < 40 && !(await browserUp()); i++) await new Promise((r) => setTimeout(r, 250));
 }
 
+/* TASKS_BROWSER_DOWNLOADS: where this browser saves downloads, set over CDP once it is up. The worker publishes
+   that folder to its other computers (agent/worker-files.js), so it must be the browser's own, never ~/Downloads. */
+async function setDownloadsDir() {
+  const dir = process.env.TASKS_BROWSER_DOWNLOADS;
+  if (!dir || typeof WebSocket === 'undefined') return;
+  try {
+    const info = await new Promise((resolve, reject) => {
+      const req = http.get(endpoint + '/json/version', { timeout: 2000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } }); });
+      req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+    if (!info.webSocketDebuggerUrl) return;
+    await new Promise((resolve) => {
+      const ws = new WebSocket(info.webSocketDebuggerUrl);
+      const done = () => { try { ws.close(); } catch (e) {} resolve(); };
+      const t = setTimeout(done, 3000);
+      ws.onopen = () => ws.send(JSON.stringify({ id: 1, method: 'Browser.setDownloadBehavior', params: { behavior: 'allow', downloadPath: dir, eventsEnabled: false } }));
+      ws.onmessage = () => { clearTimeout(t); done(); };
+      ws.onerror = () => { clearTimeout(t); done(); };
+    });
+  } catch (e) {} // an older browser without it keeps its own folder
+}
+
 // TASKS_BROWSER_ARGS (JSON list) replaces the defaults, e.g. a small model gets no automatic page
 // outlines or images: it asks for an outline when it needs one
 let extraArgs = ['--image-responses', 'allow'];
@@ -254,7 +276,7 @@ function mailFilter(line) {
 const LOCK_FILE = process.env.TASKS_BROWSER_LOCK || '';
 // "Apply" / "Easy Apply" on a job posting only opens the application form; what sends it is "Submit"
 // (and the same buttons in German, Spanish and French: a store in another language is no way round the lock)
-const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate|absenden|senden|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|kaufen|bezahlen|buchen|löschen|bestätigen|veröffentlichen|enviar|realizar (el )?pedido|comprar|pagar|reservar|eliminar|borrar|confirmar|publicar|envoyer|commander|acheter|payer|réserver|supprimer|confirmer|publier|valider)\b/i;
+const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate|(end|stop|terminate|close|discontinue|turn off|pause)\b[^.\n]{0,24}\b(membership|subscription|plan|account|service|auto-?renew(al)?|billing)|absenden|senden|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|kaufen|bezahlen|buchen|löschen|bestätigen|veröffentlichen|enviar|realizar (el )?pedido|comprar|pagar|reservar|eliminar|borrar|confirmar|publicar|envoyer|commander|acheter|payer|réserver|supprimer|confirmer|publier|valider)\b/i;
 // signing out is never part of a task, even after a yes: it ends the logins the user made on the mini PC
 // (Blackboard, D2L…), and only he can sign back in
 const SIGN_OUT = /\b(sign|log) ?(out|off)\b|logout|signout|logoff/i;
@@ -329,10 +351,10 @@ function lockedOut(msg) {
    the local lane's lock file), so the order button itself is held back until then, whatever a page
    says. Card numbers, PINs and security codes are his to type, even after a yes. */
 const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order|booking)|buy now|buy tickets?|pay now|purchase|book (now|flight|trip|it)|confirm (and |& )?(pay|purchase|booking)|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|jetzt bezahlen|realizar (el )?pedido|comprar ahora|pagar ahora|confirmar (el )?pedido|commander|acheter maintenant|payer maintenant|valider (la |ma )?commande)\b/i;
-const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
+const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation)|pass(word|code|phrase)|one.?time (code|password|passcode)|verification code|authenticat(or|ion) code|2fa|mfa|otp)\b/i;
 // other steps that can't be taken back, on every lane (the lock's FINAL list covers the mini PC lane; Claude's
 // and the other cloud runs have no lock file): sending, deleting, paying, booking, posting, moving money
-const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|cancel (my |the |this |your )?(order|subscription|membership|account|booking|reservation|plan|flight|trip)|senden|absenden|löschen|bezahlen|buchen|veröffentlichen|überweisen|enviar|eliminar|borrar|pagar|reservar|publicar|transferir|envoyer|supprimer|payer|réserver|publier|virer)\b/i;
+const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|yes,? cancel|confirm (the |my )?cancel+ation|finish cancel+ing|cancel\b[^.\n]{0,28}\b(order|subscription|membership|account|booking|reservation|plan|flight|trip|service)|(end|stop|terminate|close|discontinue|turn off|pause)\b[^.\n]{0,24}\b(membership|subscription|plan|account|service|auto-?renew(al)?|billing)|senden|absenden|löschen|bezahlen|buchen|veröffentlichen|überweisen|enviar|eliminar|borrar|pagar|reservar|publicar|transferir|envoyer|supprimer|payer|réserver|publier|virer)\b/i;
 /* His yes is spent by the first final click (or Enter on the checkout) that goes through: a second order, a
    second application or a "send" after it waits for a fresh yes, whatever a page says next. */
 let spent = false;
@@ -460,7 +482,7 @@ function main() {
       const line = buf.slice(0, i + 1); buf = buf.slice(i + 1);
       chain = chain.then(async () => {
         if (/"method"\s*:\s*"tools\/call"/.test(line)) {
-          if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
+          if (!started) { started = true; await ensureBrowser(); await setDownloadsDir(); if (!SHOP) await selectStartTab(); }
           let msg = null; try { msg = JSON.parse(line); } catch (e) {}
           const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
           const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || await shopTabs(msg));

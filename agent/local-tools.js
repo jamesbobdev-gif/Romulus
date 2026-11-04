@@ -12,7 +12,24 @@ const readConfig = () => ctx.readConfig();
 const dataFile = () => ctx.dataFile();
 const agentLog = (m) => ctx.agentLog(m);
 
-const htmlText = (h) => String(h).replace(/<(script|style|noscript|svg|head)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
+// script/style/svg/head blocks are cut out by a scan, not a regex: an unclosed <script in a big page made the regex
+// try every position against the rest of the file (minutes on the worker's main thread). At most 1.5 MB in.
+function stripBlocks(h) {
+  const low = h.toLowerCase(), re = /<(script|style|noscript|svg|head)\b/g;
+  let out = '', at = 0, m;
+  while ((m = re.exec(low))) {
+    if (m.index < at) { re.lastIndex = at; continue; }
+    out += h.slice(at, m.index);
+    const close = low.indexOf('</' + m[1], m.index);
+    if (close < 0) return out + ' '; // never closed: the rest is that block
+    const gt = low.indexOf('>', close);
+    at = gt < 0 ? h.length : gt + 1;
+    re.lastIndex = at;
+    out += ' ';
+  }
+  return out + h.slice(at);
+}
+const htmlText = (h) => stripBlocks(String(h).slice(0, 1500000)).replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 async function localWebSearch(query) {
   // SearXNG on the mini PC (config localModel.search): asks several engines, so no single one blocks it

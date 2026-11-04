@@ -90,7 +90,7 @@ as $$
          public.sync_topic_of(p_sync_key),
          (p_since is not null and s.updated_at = p_since)
   from (select 1) x left join public.tasks_sync s on s.sync_key = p_sync_key
-  where p_sync_key ~ '^tk_[A-Za-z0-9_-]{13,}(:[a-z]+)?$';
+  where p_sync_key ~ '^tk_[A-Za-z0-9_-]{13,}(:[a-z-]+)?$'; -- the side rows too (:files-gone has a hyphen)
 $$;
 
 -- End-to-end encrypted sync (renderer/js/sync-crypto.js): a device that moves its lists to v2 leaves {"moved":"v2"}
@@ -433,133 +433,55 @@ drop policy if exists "agent attachments: app can upload" on storage.objects;
 create policy "agent attachments: app can upload" on storage.objects for insert to anon
   with check (bucket_id = 'agent-attachments' and public.attachment_upload_allowed(name));
 
--- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
--- A device that already syncs shows a 12-character code (60 random bits) and leaves its sync code here, sealed; the
--- new device types the code and takes it. The code never reaches the server: both devices stretch it (PBKDF2-SHA256,
--- 600,000 rounds) into a lookup id and an AES-256-GCM key. A code lasts 10 minutes and works once; guesses and new
--- codes are limited per network.
-create table if not exists public.sync_pairs (
-  id text primary key check (id ~ '^[0-9a-f]{64}$'),
-  sealed text check (sealed is null or length(sealed) <= 8192),
-  watch_hash text not null,
-  created_at timestamptz not null default now(),
-  taken_at timestamptz
-);
-alter table public.sync_pairs enable row level security;
-create table if not exists public.sync_pair_tries (
-  ip_hash text not null,
-  kind text not null check (kind in ('put', 'take')),
-  hour timestamptz not null,
-  n int not null default 0,
-  primary key (ip_hash, kind, hour)
-);
-alter table public.sync_pair_tries enable row level security;
-revoke all on table public.sync_pairs, public.sync_pair_tries from anon, authenticated;
-
-create or replace function public.sync_pair_allow(p_kind text, p_max int)
-returns boolean
-language plpgsql security definer
-set search_path = public
-as $$
-declare cnt int;
-begin
-  delete from public.sync_pair_tries where hour < now() - interval '1 day';
-  insert into public.sync_pair_tries as t (ip_hash, kind, hour, n)
-    values (coalesce(public.sync_caller_ip_hash(), 'none'), p_kind, date_trunc('hour', now()), 1)
-    on conflict (ip_hash, kind, hour) do update set n = t.n + 1
-    returning n into cnt;
-  return cnt <= p_max;
-end $$;
-
-create or replace function public.sync_pair_put(p_id text, p_sealed text, p_watch text)
-returns text
-language plpgsql security definer
-set search_path = public
-as $$
-begin
-  if p_id is null or p_id !~ '^[0-9a-f]{64}$' or p_watch is null or p_watch !~ '^[0-9a-f]{64}$'
-     or p_sealed is null or length(p_sealed) > 8192 then return 'bad'; end if;
-  if not public.sync_pair_allow('put', 20) then return 'rate'; end if;
-  delete from public.sync_pairs where created_at < now() - interval '1 hour';
-  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 500 then return 'busy'; end if;
-  insert into public.sync_pairs (id, sealed, watch_hash) values (p_id, p_sealed, encode(sha256(convert_to(p_watch, 'UTF8')), 'hex'))
-    on conflict (id) do nothing;
-  return case when found then null else 'bad' end;
-end $$;
-
-create or replace function public.sync_pair_take(p_id text)
-returns table(sealed text, refused text)
-language plpgsql security definer
-set search_path = public
-as $$
-declare s text;
-begin
-  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
-  if p_id is null or p_id !~ '^[0-9a-f]{64}$' then return; end if;
-  select p.sealed into s from public.sync_pairs p
-   where p.id = p_id and p.taken_at is null and p.sealed is not null and p.created_at > now() - interval '10 minutes'
-   for update;
-  if s is null then return; end if;
-  update public.sync_pairs set sealed = null, taken_at = now() where id = p_id;
-  return query select s, null::text;
-end $$;
-
-create or replace function public.sync_pair_state(p_id text, p_watch text)
-returns text
-language plpgsql stable security definer
-set search_path = public
-as $$
-declare r public.sync_pairs;
-begin
-  select * into r from public.sync_pairs
-   where id = p_id and watch_hash = encode(sha256(convert_to(coalesce(p_watch, ''), 'UTF8')), 'hex');
-  if not found then return 'gone'; end if;
-  if r.taken_at is not null then return 'taken'; end if;
-  if r.created_at <= now() - interval '10 minutes' then return 'expired'; end if;
-  return 'waiting';
-end $$;
-
-create or replace function public.sync_pair_cancel(p_id text, p_watch text)
-returns boolean
-language plpgsql security definer
-set search_path = public
-as $$
-begin
-  delete from public.sync_pairs
-   where id = p_id and watch_hash = encode(sha256(convert_to(coalesce(p_watch, ''), 'UTF8')), 'hex');
-  return found;
-end $$;
-
-revoke all on function public.sync_pair_allow(text, int), public.sync_pair_put(text, text, text), public.sync_pair_take(text),
-  public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) from public;
-revoke execute on function public.sync_pair_allow(text, int) from anon, authenticated;
-grant execute on function public.sync_pair_put(text, text, text), public.sync_pair_take(text),
-  public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) to anon, authenticated, service_role;
-
-
 -- ───────────── the local model's downloads ─────────────
 -- Files the local model's browser downloaded on its own computer (a worksheet off Blackboard) reach the other
 -- computers through this bucket (agent/worker-files.js), so no device has to reach the mini PC. Documents up to
--- 25 MB, in the same hashed folder; the app adds and removes them with the anon key, in that folder only.
--- (supabase/migrations/20261101_agent_files_bucket.sql)
-insert into storage.buckets (id, name, public, file_size_limit)
-  values ('agent-files', 'agent-files', true, 26214400)
-  on conflict (id) do nothing;
--- ── the local model's downloads bucket (20261101_agent_files_bucket.sql): the same caps as the photo attachments ──
--- A folder shaped like the app's (the hash of the agent key), a plain file name, at most 300 files in a folder and at most
--- 60 uploads per network-hour (the counter is shared with agent-attachments), so the anon key alone can't fill the bucket.
+-- 10 MB, in a folder named by a hash of the agent key (never the key). The bucket is public, so a file is served by
+-- its exact address without any policy; everything else (adding, listing, removing) is allowed only to a request
+-- that proves the agent key in an x-romulus-key header, and only for that key's own folder. Without the proof the
+-- bucket lists nothing: a folder name was all it took to read or remove everything in it.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('agent-files', 'agent-files', true, 10485760, array['application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/vnd.oasis.opendocument.text',
+    'application/rtf', 'text/csv', 'text/plain', 'text/markdown', 'application/json', 'application/zip',
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'])
+  on conflict (id) do update set file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+-- the request proves the agent key (the storage server hands request headers to Postgres as request.headers, like
+-- PostgREST does): true when the object's folder is that key's folder, so a request sees, adds to and removes from
+-- its own folder only
+create or replace function public.agent_folder_proved(p_name text)
+returns boolean
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare k text;
+begin
+  begin k := (nullif(current_setting('request.headers', true), '')::json)->>'x-romulus-key'; exception when others then k := null; end;
+  if k is null or k !~ '^tk_agent_[A-Za-z0-9_-]{13,}$' then return false; end if;
+  return split_part(coalesce(p_name, ''), '/', 1) = 'tk_agent_att_' || left(encode(sha256(convert_to(k, 'UTF8')), 'hex'), 40);
+end $$;
+revoke all on function public.agent_folder_proved(text) from public;
+grant execute on function public.agent_folder_proved(text) to anon, authenticated, service_role;
+
+-- A plain file name (no page that a browser would render from this address), at most 300 files and 100 MB in a
+-- folder, at most 60 uploads per network-hour (the counter is shared with agent-attachments).
 create or replace function public.agent_file_upload_allowed(p_name text)
 returns boolean
 language plpgsql security definer
 set search_path = public
 as $$
-declare folder text; cnt int;
+declare folder text; cnt int; bytes bigint;
 begin
   if p_name is null or p_name !~ '^tk_agent_att_[0-9a-f]{40}/[A-Za-z0-9][A-Za-z0-9 ._()-]{0,119}$' then return false; end if;
+  if p_name ~* '\.(html?|xhtml|svg|xml|js|mjs)$' then return false; end if;
   folder := split_part(p_name, '/', 1);
   begin
-    select count(*) into cnt from storage.objects where bucket_id = 'agent-files' and name like folder || '/%';
-    if cnt >= 300 then return false; end if;
+    select count(*), coalesce(sum((metadata->>'size')::bigint), 0) into cnt, bytes
+      from storage.objects where bucket_id = 'agent-files' and name like folder || '/%';
+    if cnt >= 300 or bytes >= 100 * 1024 * 1024 then return false; end if;
   exception when others then null; end;
   delete from public.sync_upload_tries where hour < now() - interval '1 day';
   insert into public.sync_upload_tries as u (ip_hash, hour, n)
@@ -572,15 +494,13 @@ revoke all on function public.agent_file_upload_allowed(text) from public;
 grant execute on function public.agent_file_upload_allowed(text) to anon, authenticated, service_role;
 drop policy if exists "agent files: app can upload" on storage.objects;
 create policy "agent files: app can upload" on storage.objects for insert to anon
-  with check (bucket_id = 'agent-files' and public.agent_file_upload_allowed(name));
--- The app never lists this bucket through the storage API (it reads its own ':files' row and the public URLs), and a
--- public bucket needs no select policy to serve a file by URL. The "can see" policy did one thing: let the anon key
--- list the bucket's root, which gives away every folder name, and a folder name is all it takes to read or remove
--- everything in it. Gone.
+  with check (bucket_id = 'agent-files' and public.agent_folder_proved(name) and public.agent_file_upload_allowed(name));
 drop policy if exists "agent files: app can see" on storage.objects;
+create policy "agent files: app can see" on storage.objects for select to anon
+  using (bucket_id = 'agent-files' and public.agent_folder_proved(name));
 drop policy if exists "agent files: app can remove" on storage.objects;
 create policy "agent files: app can remove" on storage.objects for delete to anon
-  using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  using (bucket_id = 'agent-files' and public.agent_folder_proved(name));
 
 -- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
 -- Pairing codes (renderer/js/pair.js). A device that already syncs shows a 12-character code (60 random
@@ -640,7 +560,7 @@ begin
      or p_sealed is null or length(p_sealed) > 8192 then return 'bad'; end if;
   if not public.sync_pair_allow('put', 20) then return 'rate'; end if;
   delete from public.sync_pairs where created_at < now() - interval '1 hour';
-  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 500 then return 'busy'; end if;
+  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 5000 then return 'busy'; end if; -- each network makes at most 20 an hour
   insert into public.sync_pairs (id, sealed, watch_hash) values (p_id, p_sealed, encode(sha256(convert_to(p_watch, 'UTF8')), 'hex'))
     on conflict (id) do nothing;
   return case when found then null else 'bad' end;
@@ -655,8 +575,8 @@ set search_path = public
 as $$
 declare s text;
 begin
-  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
   if p_id is null or p_id !~ '^[0-9a-f]{64}$' then return; end if;
+  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
   select p.sealed into s from public.sync_pairs p
    where p.id = p_id and p.taken_at is null and p.sealed is not null and p.created_at > now() - interval '10 minutes'
    for update;

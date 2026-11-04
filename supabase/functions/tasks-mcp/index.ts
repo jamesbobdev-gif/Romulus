@@ -166,10 +166,11 @@ function checkTime(v: unknown): string | null {
   return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 function checkTitle(v: unknown): string {
-  const s = String(v ?? "").trim();
+  const s = String(v ?? "").trim().slice(0, 500); // bounded: a list past sync_put's 4 MB would refuse every save from the apps
   if (!s) throw new UserError("title is required");
   return s;
 }
+const MAX_SUBS = 50;
 
 // Accept a full id or a unique prefix (list output shows 8-char ids).
 function findIn(doc: Doc, id: string): Task[] {
@@ -409,12 +410,12 @@ async function callTool(name: string, a: any): Promise<string> {
       if (dueTime && !due) throw new UserError("due_time needs a due date");
       const now = Date.now();
       const t: Task = {
-        id: uid(), title, done: false, due, dueTime, tag: a.tag ? String(a.tag).trim() : null,
-        subs: (Array.isArray(a.subtasks) ? a.subtasks : []).map((s: unknown) => String(s).trim()).filter(Boolean)
+        id: uid(), title, done: false, due, dueTime, tag: a.tag ? String(a.tag).trim().slice(0, 80) : null,
+        subs: (Array.isArray(a.subtasks) ? a.subtasks : []).slice(0, MAX_SUBS).map((s: unknown) => String(s).trim().slice(0, 500)).filter(Boolean)
           .map((s: string) => ({ id: uid(), title: s, done: false, due: null })),
         googleEventId: null, created: now, updatedAt: now,
       };
-      if (list === "agent") { t.status = "queued"; t.note = a.note ? String(a.note) : null; }
+      if (list === "agent") { t.status = "queued"; t.note = a.note ? String(a.note).slice(0, 4000) : null; }
       await mutate(list, (d) => { d.tasks.push(t); });
       return `Added:\n${fmt(t, list)}`;
     }
@@ -458,9 +459,9 @@ async function callTool(name: string, a: any): Promise<string> {
           if (m.length !== 1) throw new UserError(`subtask "${sid}" not found (or ambiguous) on this task`);
           m[0].done = true;
         }
-        for (const s of Array.isArray(a.add_subtasks) ? a.add_subtasks : []) {
-          const title = String(s).trim();
-          if (title) t.subs.push({ id: uid(), title, done: false, due: null });
+        for (const s of (Array.isArray(a.add_subtasks) ? a.add_subtasks : []).slice(0, MAX_SUBS)) {
+          const title = String(s).trim().slice(0, 500);
+          if (title && t.subs.length < MAX_SUBS * 2) t.subs.push({ id: uid(), title, done: false, due: null });
         }
         t.updatedAt = Date.now();
         return t;

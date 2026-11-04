@@ -28,7 +28,7 @@ test('Not now skips that version only', () => {
 
 test('an Update said on any device covers that version and older ones', () => {
   assert.strictEqual(onAvailable('1.0.9', { updateYes: '1.0.9' }), 'download');
-  assert.strictEqual(onAvailable('1.0.8', { updateYes: '1.0.10' }), 'download');
+  assert.strictEqual(onAvailable('1.0.8', { updateYes: '1.0.10' }), 'offer'); // a yes names one version: a shared yes of "999" can't approve every release
   assert.strictEqual(onAvailable('1.0.10', { updateYes: '1.0.9' }), 'offer');
   assert.strictEqual(onAvailable('1.0.9', { updateYes: '1.0.9', updateSkip: '1.0.9' }), 'download');
 });

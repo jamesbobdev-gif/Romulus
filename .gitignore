@@ -45,3 +45,6 @@ oauth-clients.json
 *.keystore
 *.jks
 signing/
+
+# the Supabase CLI's link to the project (project ref, pooler address)
+supabase/.temp/

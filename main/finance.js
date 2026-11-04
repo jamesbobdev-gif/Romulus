@@ -463,7 +463,8 @@ const handlers = {
     if (!x || !x.username || !x.password) { k.fill(0); return { ok: false, error: 'The shared connection isn’t a SimpleFIN link. Connect with a setup token instead.' }; }
     wrong = 0; waitUntil = 0;
     log('connected with the link from another computer');
-    return startVault(inside.u, s, k, box);
+    const clean = { v: 1, kdf: 'scrypt', N: box.N, r: box.r, p: box.p, salt: box.salt, iv: box.iv, tag: box.tag, data: box.data }; // nothing else the row carried
+    return startVault(inside.u, s, k, clean);
   },
   'finance:unlock': async (_e, passphrase) => {
     if (key) { stillHere(); return { ok: true }; }
