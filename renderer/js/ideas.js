@@ -1,4 +1,4 @@
-/* The Ideas tab: note cards sorted into groups.
+/* The Notes tab (ids and sync key still say "ideas", its old name): note cards sorted into groups.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
@@ -165,7 +165,7 @@ function drawIdeas(){
       head.appendChild(col);
     }
     if(g.id){ // the default group stays: it's where new ideas start
-      const del=el('button','idea-gdel','×'); del.title='Remove group (its ideas move to '+(ib.name||'Unsorted')+')'; del.setAttribute('aria-label','Remove group');
+      const del=el('button','idea-gdel','×'); del.title='Remove group (its notes move to '+(ib.name||'Unsorted')+')'; del.setAttribute('aria-label','Remove group');
       del.addEventListener('click',function(){ ideaRemoveGroup(g.id); });
       head.appendChild(del);
     }
@@ -175,7 +175,7 @@ function drawIdeas(){
       const b=el('div','idea-card'); b.dataset.id=c.id;
       if(ideaUI.open===c.id||ideaUI.editing===c.id){ // tapped open: its notes drop down under the title; tap any text to edit
         b.classList.add('open');
-        const fold=el('button','idea-fold','▴'); fold.title='Collapse'; fold.setAttribute('aria-label','Collapse idea');
+        const fold=el('button','idea-fold','▴'); fold.title='Collapse'; fold.setAttribute('aria-label','Collapse note');
         fold.addEventListener('mousedown',function(e){ e.preventDefault(); });
         fold.addEventListener('click',function(){
           const a=document.activeElement; if(a&&b.contains(a))a.blur(); // saves what's being typed first
@@ -222,7 +222,7 @@ function drawIdeas(){
         foot.appendChild(el('span','mono',ideaUI.editing===c.id?'esc to save':''));
         const btns=el('span');
         const sure=ideaUI.confirmDel===c.id;
-        const del=el('button','x'+(sure?' sure':''),sure?'Tap again to delete':'Delete'); del.setAttribute('aria-label','Delete idea');
+        const del=el('button','x'+(sure?' sure':''),sure?'Tap again to delete':'Delete'); del.setAttribute('aria-label','Delete note');
         del.addEventListener('mousedown',function(e){ e.preventDefault(); });
         del.addEventListener('click',function(){
           if(!sure){ ideaUI.confirmDel=c.id; drawIdeas(); return; }
@@ -249,12 +249,12 @@ function drawIdeas(){
       const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','esc to save'));
       b.appendChild(ta); b.appendChild(foot); flow.appendChild(b); focusEl=ta;
     } else {
-      const add=el('button','idea-addb','+ Add an idea'); add.setAttribute('aria-label','Add an idea to this group');
+      const add=el('button','idea-addb','+ Add a note'); add.setAttribute('aria-label','Add a note to this group');
       add.addEventListener('click',function(){ ideaUI.editing=null; ideaUI.adding=g.id; drawIdeas(); });
       flow.appendChild(add);
     }
     if(!g.id&&!cards.length&&!state.ideas.groups.length&&ideaUI.adding!=='')
-      flow.insertBefore(el('div','idea-empty','Write ideas here, then make groups and drag them in.'),flow.firstChild);
+      flow.insertBefore(el('div','idea-empty','Write notes here, then make groups and drag them in.'),flow.firstChild);
     sec.appendChild(flow);
     const sz=el('div','idea-gsize'); sz.title='Drag to make the boxes wider or narrower'; sec.appendChild(sz);
     wrap.appendChild(sec);
