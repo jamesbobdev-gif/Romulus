@@ -6,6 +6,7 @@ const path = require('path');
 
 let mainWindow = null;
 let isQuitting = false;
+let onHidden = null; // runs once the window has hidden to the tray (main.js hands in the tray's first-time notice)
 
 const ROOT = path.join(__dirname, '..');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
@@ -89,6 +90,7 @@ function createWindow() {
     if (QUIT_ON_CLOSE) { quit(); return; }
     e.preventDefault();
     mainWindow.hide();
+    if (onHidden) onHidden();
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -141,6 +143,9 @@ function newHiddenWindow(opts) { return new BrowserWindow(opts); }
 // the page loads again (settings arrived from elsewhere)
 function reloadWindow() { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload(); }
 
+// what to do once the window has hidden to the tray
+function onHiddenToTray(fn) { onHidden = fn; }
+
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
@@ -162,4 +167,4 @@ function windowHandle() {
   return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
 }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle, protect, financeShowing };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, onHiddenToTray, quit, setQuitting, windowHandle, protect, financeShowing };

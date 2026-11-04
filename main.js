@@ -155,6 +155,7 @@ if (!gotLock) {
 
     win.createWindow();
     trayMod.createTray();
+    win.onHiddenToTray(trayMod.hiddenToTray); // Windows: the first time, a notice says the icon is under the ^ by the clock
     updater.start();
     overlay.start(); // the screen helper's shortcut (Ctrl+Shift+Space, or the next free one)
     refreshTrayStatus();

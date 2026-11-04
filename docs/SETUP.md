@@ -11,7 +11,7 @@ Romulus works the moment you install it: a to-do list on your computer, nothing 
 
 ## 1. Install
 
-**Windows:** download `Romulus-Setup-<version>.exe` from the [releases page](https://github.com/jamesbobdev-gif/romulus-releases/releases) and run it. The installer is not code-signed yet, so Windows shows an "unrecognized app" warning: click **More info → Run anyway**. Romulus starts when you log in and lives in the tray near the clock; closing the window hides it there. To pin it: Start menu → right-click **Romulus** → Pin to taskbar.
+**Windows:** download `Romulus-Setup-<version>.exe` from the [releases page](https://github.com/jamesbobdev-gif/romulus-releases/releases) and run it. The installer is not code-signed yet, so Windows shows an "unrecognized app" warning: click **More info → Run anyway**. Romulus starts when you log in and lives in the tray; closing the window hides it there. Windows keeps a new tray icon under the ^ by the clock until you drag it onto the taskbar (the first time the window hides, a notice says so). To pin it: Start menu → right-click **Romulus** → Pin to taskbar.
 
 **Mac:** download the `.dmg` from the same page and drag Romulus to Applications. It isn't signed by Apple yet, so the first open needs **System Settings → Privacy & Security → Open Anyway**, and updates have to be downloaded by hand until it is.
 
