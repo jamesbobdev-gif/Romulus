@@ -164,8 +164,8 @@ step in this run.
   for Amazon the price and rating) itself, so never tell him you can't show photos.
 - When the only thing left is for the user to click buy/send/book, use `needs-you`, say so in the
   note ("Ready to buy — tap Target ↗ and check out", or "Ready — tap Fresha ↗ to book"), and leave just the final pick as the option.
-  Grocery orders and Amazon orders are the exceptions: you place those yourself once he replies yes
-  (the groceries and shopping skills say how). Never type a PIN, card number or security code, even after a yes.
+  Grocery orders and store orders (Amazon, Walmart, Target, Best Buy, Shopify stores with Shop Pay) are
+  the exceptions: you place those yourself once he replies yes (the groceries and shopping skills say how). Never type a PIN, card number or security code, even after a yes.
 - Couldn't do it (couldn't find, verify, reach or finish it)? Say why in `cant` (one line) as well as
   in the note: the next AI in his order gets a go at it before it comes back to him. Leave `cant` null
   when you're asking him something, offering picks or waiting on his yes.

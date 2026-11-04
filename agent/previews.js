@@ -14,16 +14,20 @@ const agentLog = (m) => ctx.agentLog(m);
 // The preview picture a page publishes for link previews (og:image / twitter:image) — works for
 // most sites (3D-print sites, stores, booking pages…). Plain fetch first; sites behind a bot
 // check (Printables, Makerworld) get loaded in a hidden browser window, which passes it.
+// a Shopify store's page: its files come from Shopify's CDN and it names its shop (Shop Pay checks out there)
+const SHOPIFY_PAGE = /cdn\.shopify\.com\/|\bShopify\.shop\s*=|myshopify\.com/i;
 const PREVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 function absHttps(img, pageUrl) {
   try { const u = new URL(String(img).replace(/&amp;/g, '&'), pageUrl).href; return /^https:\/\//i.test(u) ? u : null; } catch (e) { return null; }
 }
-async function pagePreviewImage(url, lane) {
+// info (optional): filled in with what the page says about itself (info.shopify: a Shopify store, so Shop Pay)
+async function pagePreviewImage(url, lane, info) {
   if (!isPublicUrl(url)) return null; // never this computer, the mini PC or the LAN, whatever link an answer carries
   try {
     const r = await fetch(url, { headers: { 'User-Agent': PREVIEW_UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(10000) });
     if (r.ok) {
       const h = (await r.text()).slice(0, 600000);
+      if (info && SHOPIFY_PAGE.test(h)) info.shopify = true;
       const meta = (p) => (h.match(new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]*content=["']([^"']+)["']`, 'i'))
         || h.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${p}["']`, 'i')) || [])[1];
       const img = meta('og:image') || meta('og:image:url') || meta('twitter:image') || meta('twitter:image:src');
@@ -65,8 +69,11 @@ async function enrichOption(o, lane) {
   const m = url.match(/^https:\/\/(?:www\.)?amazon\.com\/(?:.*\/)?dp\/([A-Z0-9]{10})/i);
   if (!m) {
     if (!/^https:\/\//i.test(url) || !isPublicUrl(url)) return null;
-    const image = await pagePreviewImage(url, lane).catch(() => null);
-    return Object.assign(base, { url }, image ? { image } : {});
+    const info = {};
+    const image = await pagePreviewImage(url, lane, info).catch(() => null);
+    // a Shopify store: the Agent can order it through Shop Pay after his yes (the shopping skill)
+    const shopify = info.shopify || /(^|\.)myshopify\.com$/i.test(new URL(url).hostname);
+    return Object.assign(base, { url }, image ? { image } : {}, shopify ? { shop: 'shopify' } : {});
   }
   const clean = 'https://www.amazon.com/dp/' + m[1];
   try {
