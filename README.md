@@ -36,7 +36,7 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 |---|---|
 | **Human** | Your own to-dos: due dates, times, tags, subtasks, repeats, drag to reorder, search. |
 | **Agent** | Tasks the AI does. Live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI. |
-| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. |
+| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. One still open two days after its deadline comes off the list. |
 | **Work** | A second list, synced with the rest. |
 | **Calendar · Notes · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
 | **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
