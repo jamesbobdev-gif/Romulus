@@ -18,7 +18,7 @@ const bugsOnly = {
 };
 
 module.exports = [
-  { ignores: ['node_modules/**', 'dist/**', 'mobile/android/**', 'mobile/node_modules/**', 'mobile/www/**', 'site/**', 'supabase/functions/**', 'minipc/**'] },
+  { ignores: ['node_modules/**', 'dist/**', 'mobile/android/**', 'mobile/node_modules/**', 'mobile/www/**', 'site/**', 'supabase/functions/**', 'minipc/**', 'scripts/demo/build/**'] /* the demo build is a copy of renderer/ */ },
   // Electron main process, the Agent and the tests: CommonJS on Node
   {
     files: ['main.js', 'preload.js', 'main/**/*.js', 'agent/**/*.js', 'test/**/*.js', 'scripts/**/*.js', 'mobile/*.js', 'eslint.config.js'], ignores: ['mobile/update-phone.js'],

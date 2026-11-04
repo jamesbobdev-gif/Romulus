@@ -10,7 +10,8 @@
 
 Plus a School list that pulls due dates from course calendars, a Notes board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
 
-<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
+<p align="center"><img src="docs/images/demo.gif" width="560" alt="A 40-second walkthrough: a grocery order typed on the Agent tab, the Agent building the cart and waiting for a yes, the order placed, then the Finance tab with accounts, net worth, subscriptions and stocks"></p>
+<p align="center"><sub>Made-up demo data. <code>npm run demo</code> records this (scripts/demo).</sub></p>
 
 ## Install
 
@@ -21,6 +22,8 @@ Plus a School list that pulls due dates from course calendars, a Notes board, an
 **Linux, macOS and Android:** the `.AppImage`, `.dmg` and `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
 **From source:** Node 22 or newer, then `npm install` and `npm start`.
+
+<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
 
 Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.
 

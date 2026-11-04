@@ -94,7 +94,8 @@ h3{font-size:17px;letter-spacing:-.01em}
 .others a{font-weight:500}
 .others .sep{color:var(--faint)}
 
-.shots{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:56px;align-items:start}
+.shot.demo{max-width:680px;margin:56px auto 0}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;align-items:start}
 .shot{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
 .shot figcaption{padding:10px 14px;border-top:1px solid var(--hairline);display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:13px;color:var(--muted)}
 .shot figcaption b{color:var(--ink);font-weight:600}
@@ -206,6 +207,7 @@ footer a{color:var(--muted);font-weight:500}
   </div>
   <p class="others" id="others">Also for <a href="#download">every other platform</a>, or <a href="https://github.com/jamesbobdev-gif/Romulus#install">run it from source</a>.</p>
 
+  <figure class="shot demo"><img src="img/demo.gif" width="680" height="940" alt="A 40-second walkthrough: a grocery order typed on the Agent tab, the Agent building the cart and waiting for a yes, the order placed, then the Finance tab with accounts, net worth, subscriptions and stocks"><figcaption><b>40 seconds</b><span>a task handed to the Agent, its yes, and the Finance tab</span></figcaption></figure>
   <div class="shots">
     <figure class="shot" style="margin:0"><img src="img/human.png" width="660" height="1165" alt="The Human tab: a list of to-dos with due dates, times, tags and a weekly repeat"><figcaption><b>Human</b><span>your own to-dos</span></figcaption></figure>
     <figure class="shot" style="margin:0"><img src="img/agent.png" width="660" height="1340" alt="The Agent tab: tasks waiting, working and needing an answer, one opened to the Agent's question about which Denver flight to book"><figcaption><b>Agent</b><span>what the AI is doing, and its questions</span></figcaption></figure>
