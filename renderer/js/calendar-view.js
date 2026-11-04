@@ -18,8 +18,13 @@ function fitNeedsBar(){
   for(let i=chips.length-1;i>=0&&over();i--){ chips[i].remove(); hidden++; more.textContent='+'+hidden; }
   more.title=hidden+' more need you — open the Agent tab';
 }
-let fitNeedsTimer=null;
-window.addEventListener('resize',function(){ clearTimeout(fitNeedsTimer); fitNeedsTimer=setTimeout(function(){ if(!$('needsBar').hidden)renderActive(); },150); });
+let fitNeedsTimer=null, fitNeedsWidth=window.innerWidth;
+// the bar is one line, so only a change of width can change what fits. On a phone the keyboard opening and closing
+// is a resize too (height only): redrawing the list then would rebuild the box being typed in and close the keyboard
+window.addEventListener('resize',function(){
+  clearTimeout(fitNeedsTimer);
+  fitNeedsTimer=setTimeout(function(){ if(window.innerWidth===fitNeedsWidth)return; fitNeedsWidth=window.innerWidth; if(!$('needsBar').hidden)renderActive(); },150);
+});
 // a couple of words that say which task it is: "Look for motherboard that will allow…" → "motherboard"
 const SHORT_SKIP=('a an the my me i you your our some any for of on in at from up out into onto through about please under over near around by like '+
   'look find search get check see go use apply make do help try want need can could should would').split(' ');

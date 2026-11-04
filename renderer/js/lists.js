@@ -720,12 +720,21 @@ function buildPanel(t){
 }
 
 /* ── render ── */
+let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
   updatePlanBtn();
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
   const ae=document.activeElement;
-  if(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor)){
+  const typing=!!(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor));
+  // on a phone the rebuilt box can't take the keyboard back (only a tap opens it), so the redraw waits until you
+  // leave the box: a moment after, so a tap on Send or a chevron lands on the buttons it was aimed at
+  if(typing&&touchDevice()){
+    if(!renderWaiting){ renderWaiting=true; ae.addEventListener('blur',function(){ setTimeout(function(){ if(renderWaiting){ renderWaiting=false; render(); } },300); },{once:true}); }
+    return;
+  }
+  renderWaiting=false;
+  if(typing){
     const attr=ae.dataset.replyFor?'data-reply-for':'data-draft-for', id=ae.dataset.replyFor||ae.dataset.draftFor, s=ae.selectionStart, e=ae.selectionEnd;
     queueMicrotask(function(){
       const ta=document.querySelector('textarea['+attr+'="'+id+'"]');
