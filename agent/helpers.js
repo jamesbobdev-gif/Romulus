@@ -51,6 +51,15 @@ function isYes(text) {
   return (YES_WHOLE.test(t) || YES_START.test(t)) && !HOLD.test(t);
 }
 
+/* His yes to a particular ask (saidYes in agent-browser.js, localApproved in local-lane.js): everything isYes
+   takes and, when the ask was about cancelling (Finance's Cancel button: a subscription, membership, plan or
+   account), a yes whose only addition is the cancelling itself: "yes, cancel it", "ok cancel", "sure, go ahead
+   and end it". On their own those words are a hold ("yes, but cancel that"), which is right for every other ask. */
+const YES_CANCEL = /^\s*(yes|yep|yeah|yup|ok|okay|sure|alright|go ahead)[,!.]?\s*((go ahead|and|please|just),?\s+)*(cancel|end|stop|terminate|close)( it| this| that| the [a-z0-9 ]{0,30}?(subscription|membership|plan|account)| my [a-z0-9 ]{1,30})?[.!]*\s*$/i;
+function isYesTo(text, asked) {
+  return isYes(text) || (/\bcancel/i.test(String(asked || '')) && YES_CANCEL.test(String(text || '').slice(0, 240)));
+}
+
 /* A web address on the public internet: http(s), and not this computer, the LAN or a private range.
    Everything the agent fetches or opens on its own (previews, the mini PC's page reader, option links)
    goes through this, so a page can't point it at the mini PC, the browser's debugging port or a router. */
@@ -133,4 +142,4 @@ async function fetchPublic(url, opts = {}) {
   }
 }
 
-module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, fetchPublic, trimRunLog };
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, fetchPublic, trimRunLog };

@@ -12,7 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { isYes } = require('./helpers');
+const { isYesTo } = require('./helpers');
 
 const MAX_TEXT = 6000;
 
@@ -145,13 +145,14 @@ function start({ dir, tasks, send, node }) {
     for (const t of Array.isArray(data.tasks) ? data.tasks : []) {
       if (!ids.includes(t.id) || t.done) continue;
       const from = Number(t.runFrom) || runStart;
+      const asked = ((Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'claude').slice(-1)[0] || {}).text || ''; // its last ask: "yes, cancel it" answers a cancel ask
       for (const h of Array.isArray(t.history) ? t.history : []) {
         if (!h || h.who !== 'you' || !(Number(h.at) > from) || h.heard) continue;
         const name = h.at + '-' + ids.indexOf(t.id) + '.json';
         if (sent.has(name)) continue;
         const photos = Array.isArray(h.images) ? h.images.length : 0;
         const text = short(h.text, 2000);
-        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYes(text) });
+        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYesTo(text, asked) });
         try {
           const tmp = path.join(dir, name + '.tmp');
           fs.writeFileSync(tmp, JSON.stringify({ id: tasks.length > 1 ? String(ids.indexOf(t.id) + 1) : t.id, title: short(t.title, 80), text, at: h.at, photos: photos || undefined }));

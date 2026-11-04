@@ -11,6 +11,17 @@ test('isYes: a yes that stands, not one taken back', () => {
     'ok but what did you put for the salary question?', 'okay, show me the cart first', 'sure, which one do you recommend?', 'ok, Walmart', 'y tho?', 'yes?', 'sure thing, what was the total']) assert.ok(!helpers.isYes(t), String(t));
 });
 
+test('isYesTo: on a cancel ask, "yes, cancel it" is a yes; on any other ask those words still hold', () => {
+  const ask = 'Ready to cancel Netflix: the plan ends Nov 30, nothing is refunded. Reply **yes** to cancel.';
+  for (const t of ['yes', 'yes, cancel it', 'Yes, cancel the subscription', 'ok cancel', 'sure, go ahead and cancel it', 'yep, stop my plan', 'yes please cancel the netflix subscription', 'ok, end it.'])
+    assert.ok(helpers.isYesTo(t, ask), t);
+  for (const t of ['yes, but cancel that', 'Yes. Never mind, cancel it', 'cancel it', 'yes, cancel it and the other one', 'no, keep it', 'stop', 'yes, cancel it?', '', null])
+    assert.ok(!helpers.isYesTo(t, ask), String(t));
+  const order = 'The cart is ready: 12 items, $84.10, delivery 5–7pm. Reply **yes** to place the order.';
+  assert.ok(helpers.isYesTo('yes', order));
+  assert.ok(!helpers.isYesTo('yes, cancel it', order), 'on an order ask, cancel is a hold');
+});
+
 test('isPublicUrl: the web, not this computer or its network', () => {
   for (const u of ['https://www.walmart.com/checkout', 'http://example.org/', 'https://8.8.8.8/x', 'https://[2606:4700::1111]/'])
     assert.ok(helpers.isPublicUrl(u), u);

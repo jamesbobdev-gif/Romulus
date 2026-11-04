@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const platform = require('./platform');
 const { findChrome, findNode } = platform;
-const { isYes } = require('./helpers');
+const { isYes, isYesTo } = require('./helpers');
 
 let ctx = null; // { userData, readConfig, agentLog }
 function init(c) { ctx = c; }
@@ -143,12 +143,12 @@ function webGuardHooks() { // → the hook, for a run's --settings (agent/runner
   return { PreToolUse: [{ matcher: 'WebFetch|WebSearch|Agent',
     hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()), timeout: 15 }] }] };
 }
-// his latest reply is a yes to something Claude asked him to say yes to
+// his latest reply is a yes to something Claude asked him to say yes to (to a cancel ask, "yes, cancel it" too: helpers.isYesTo)
 function saidYes(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  return isYes(lastYou) && /reply\s*\**\s*yes/i.test(asked);
+  return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
 }
 const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
 /* The sites his yes was about: where the run stopped to ask (t.page), the cart's or options' links, and links he

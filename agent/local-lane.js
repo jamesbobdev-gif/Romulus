@@ -191,7 +191,7 @@ function localApproved(t) {
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude' && h.lane === 'local').slice(-1)[0] || {}).text || '';
   // Holo4 writes the ask its own ways: Reply **yes**, Reply "yes", **Reply “yes” to submit it.**
-  return helpers.isYes(lastYou) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
+  return helpers.isYesTo(lastYou, asked) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
 }
 const LOCAL_BROWSER_RULES = `
 
