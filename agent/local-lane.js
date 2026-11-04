@@ -648,11 +648,11 @@ async function runLocalTask(c, t) {
   let lookedFirst = false; // sent once to the class site before asking him for what's there (agent/course-sites.js lookFirst)
   let askedMissing = false; // a coach task sent back once to look for the instructions, rubric, format or due date it hasn't noted
   let textCalls = 0; // tool calls it wrote as text (the run log counts them)
+  let stepsUsed = 0; // steps the loop ran (the run log records it after the try below, so it is declared out here)
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
   show('Reading the task…\n', true);
   try {
-  let stepsUsed = 0;
   for (let step = 0; step < maxSteps && !final; step++) {
     stepsUsed = step + 1;
     if (activity && activity.id === t.id) Object.assign(activity, { step: stepsUsed, of: maxSteps, stepAt: Date.now(), on: 'thinking' });
