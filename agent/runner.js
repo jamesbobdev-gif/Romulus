@@ -453,8 +453,12 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // takes the web tools out entirely, whatever his Claude settings allow.
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
-      // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway)
-      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)'];
+      // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway). The work folder
+      // also holds the local model's Research and Coach reports (agent/local-lane.js), written there so that no
+      // cloud AI sees them: Claude Code lets Read open anything under its working folder without asking, so the
+      // allow list above doesn't keep it out of them; only a deny does
+      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)',
+        'Read(./Research/**)', 'Read(./Coach/**)'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
