@@ -6,7 +6,8 @@
    it downloaded the same way (agent/worker-files.js). Config: localModel.browser {port: 9334}. */
 const path = require('path');
 const fs = require('fs');
-const { prepareAgentBrowser, agentBrowserDir, findNode, formFiles } = require('./agent-browser');
+const { prepareAgentBrowser, agentBrowserDir, findNode, formFiles, playwrightCli } = require('./agent-browser');
+const { nodeEnv } = require('./platform');
 
 let ctx = null; // { readConfig, agentLog }
 function init(c) { ctx = c; }
@@ -116,10 +117,10 @@ function noFileArgs(schema) {
 async function startBrowserTools(lockFile, taskTitle, tab) {
   if (!(await prepareAgentBrowser())) return null; // installs the tool + copies the launcher if needed
   const dir = agentBrowserDir(), node = findNode();
-  const cli = path.join(dir, 'tool', 'node_modules', '@playwright', 'mcp', 'cli.js');
+  const cli = playwrightCli();
   const p = require('child_process').spawn(node, [path.join(dir, 'browser-proxy.js'), cli, 'remote', 'unused', String(QWEN_BROWSER_LOCAL_PORT)], {
     windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'],
-    env: Object.assign({}, process.env, { TASKS_BROWSER_LOCK: lockFile, TASKS_BROWSER_ARGS: JSON.stringify(['--snapshot-mode', 'none', '--image-responses', 'omit']),
+    env: Object.assign({}, process.env, nodeEnv(node), { TASKS_BROWSER_LOCK: lockFile, TASKS_BROWSER_ARGS: JSON.stringify(['--snapshot-mode', 'none', '--image-responses', 'omit']),
       TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // his resume and the like: the only uploads allowed (sent from this computer over CDP)
       TASKS_BROWSER_ACTIONS: require('./agent-browser').actionsLogFile(), TASKS_BROWSER_TASK: String(taskTitle || '').slice(0, 120), TASKS_BROWSER_TAB: String(tab || '') }) }); // what it did, for Settings → What the Agent did
   let buf = '', id = 0; const pending = {};
@@ -173,7 +174,7 @@ async function miniPcScreenshot() {
   } catch (e) { return null; }
   const out = await new Promise((resolve) => {
     let buf = '';
-    const p = require('child_process').spawn(node, [script, String(QWEN_BROWSER_LOCAL_PORT)], { windowsHide: true });
+    const p = require('child_process').spawn(node, [script, String(QWEN_BROWSER_LOCAL_PORT)], { windowsHide: true, env: Object.assign({}, process.env, nodeEnv(node)) });
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 30 * 1000);
     p.stdout.on('data', (d) => { buf += d; });
     p.on('error', () => { clearTimeout(killer); resolve({}); });

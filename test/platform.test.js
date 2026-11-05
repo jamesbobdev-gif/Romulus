@@ -20,3 +20,12 @@ test('the user’s own claude command wins; otherwise claude is looked for, and 
   const found = platform.claudeExe({});
   assert.ok(/claude(\.exe|\.cmd)?$/i.test(found) || found.includes('claude-code'), found);
 });
+
+test('helpers run on an installed Node as is; the app ships Playwright and npm for when there is none', () => {
+  // plain Node (these tests): nothing to add. Inside the app, its own Node gets ELECTRON_RUN_AS_NODE (agent/platform.js nodeEnv)
+  assert.deepStrictEqual(platform.nodeEnv(process.execPath), {});
+  assert.deepStrictEqual(platform.nodeEnv(null), {});
+  assert.ok(platform.bundled('@playwright', 'mcp', 'cli.js'), 'npm install puts @playwright/mcp in node_modules');
+  assert.ok(platform.bundled('npm', 'bin', 'npm-cli.js'));
+  assert.strictEqual(platform.bundled('nope', 'missing.js'), null);
+});

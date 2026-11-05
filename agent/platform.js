@@ -48,7 +48,9 @@ const claudeInstalled = (cfg) => isFile(claudeExe(cfg));
    CLI bills that key instead of a Claude subscription sign-in; without one, the CLI's own sign-in is used. */
 function claudeEnv(cfg, base = process.env) {
   const key = cfg && cfg.ai && String(cfg.ai.anthropicKey || '').trim();
-  return key ? Object.assign({}, base, { ANTHROPIC_API_KEY: key }) : base;
+  // the hooks and MCP servers Claude starts may be the app's own Node (findNode), and they inherit this
+  const asNode = nodeEnv(findNode());
+  return key || asNode.ELECTRON_RUN_AS_NODE ? Object.assign({}, base, asNode, key ? { ANTHROPIC_API_KEY: key } : {}) : base;
 }
 
 function chromeCandidates(env = process.env, win = isWin) {
@@ -63,7 +65,7 @@ function chromeCandidates(env = process.env, win = isWin) {
 }
 const findChrome = () => chromeCandidates().find(isFile) || null;
 
-function findNode() {
+function systemNode() {
   try {
     const out = require('child_process').execFileSync(isWin ? 'where' : 'which', ['node'], { encoding: 'utf8', windowsHide: true });
     return out.split(/\r?\n/)[0].trim() || null;
@@ -72,6 +74,21 @@ function findNode() {
     if (isWin) return null;
     return [path.join(os.homedir(), '.local', 'bin', 'node'), path.join(os.homedir(), '.local', 'node', 'bin', 'node')].find(isFile) || null;
   }
+}
+/* A Node to run the agent's helpers with (the browser launcher, the wallet, hooks, Codex, Gemini): one
+   installed on this computer, else the app's own (Electron run as Node), so people without Node still
+   get everything. Whoever starts it adds nodeEnv(cmd) to its environment. */
+const builtInNode = () => (process.versions.electron ? process.execPath : null);
+function findNode() {
+  return (process.env.TASKS_NO_SYSTEM_NODE ? null : systemNode()) || builtInNode();
+}
+// what a Node from findNode() needs in its environment: the app's own one has to be told to act as Node
+const nodeEnv = (cmd) => (cmd && process.versions.electron && cmd === process.execPath ? { ELECTRON_RUN_AS_NODE: '1' } : {});
+/* A bundled package's file (package.json "asarUnpack"): inside the installed app it lives in
+   app.asar.unpacked, where a Node other than the app's own can read it. → the path, or null */
+function bundled(...parts) {
+  const p = path.join(__dirname, '..', 'node_modules', ...parts).replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
+  return isFile(p) ? p : null;
 }
 
 // folders npm -g may have put a CLI in, besides `npm root -g`
@@ -95,4 +112,4 @@ function chromeMajor(chrome) {
   return '140';
 }
 
-module.exports = { isWin, claudeExe, claudeEnv, claudeInstalled, forgetClaude, chromeCandidates, findChrome, findNode, npmGlobalRoots, chromeUA, chromeMajor };
+module.exports = { isWin, claudeExe, claudeEnv, claudeInstalled, forgetClaude, chromeCandidates, findChrome, findNode, nodeEnv, bundled, npmGlobalRoots, chromeUA, chromeMajor };

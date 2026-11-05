@@ -125,7 +125,7 @@ async function runBrowserPreview(urls, lane) {
   try { if (fs.readFileSync(script, 'utf8') !== src) fs.writeFileSync(script, src); } catch (e) { fs.writeFileSync(script, src); }
   return new Promise((resolve) => {
     let out = '';
-    const p = require('child_process').spawn(node, [script, String(local ? QWEN_BROWSER_LOCAL_PORT : AGENT_BROWSER_PORT), ...urls], { windowsHide: true });
+    const p = require('child_process').spawn(node, [script, String(local ? QWEN_BROWSER_LOCAL_PORT : AGENT_BROWSER_PORT), ...urls], { windowsHide: true, env: Object.assign({}, process.env, require('./platform').nodeEnv(node)) });
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, 90 * 1000);
     p.stdout.on('data', (d) => { out += d; });
     p.on('error', () => { clearTimeout(killer); resolve({}); });

@@ -28,6 +28,12 @@
       "assets/**",
       "agent/**"
     ],
+    "asarUnpack": [
+      "node_modules/@playwright/mcp/**",
+      "node_modules/playwright/**",
+      "node_modules/playwright-core/**",
+      "node_modules/npm/**"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -60,7 +66,9 @@
     }
   },
   "dependencies": {
+    "@playwright/mcp": "0.0.83",
     "electron-updater": "^6.8.9",
+    "npm": "10.9.10",
     "qrcode": "^1.5.4"
   }
 }

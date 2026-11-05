@@ -104,6 +104,9 @@ if(window.desktop&&window.desktop.aiStatus){
     // the Agent tab's "Pick an AI" card and nudge (welcome.js) follow this
     const readyNow=!!(ai&&ai.ready);
     if(window.agentAiReady!==readyNow){ window.agentAiReady=readyNow; if(typeof render==='function')render(); }
+    // the Agent can't use websites (no Chrome, or its browser tool didn't set up): said here and at the top of Settings
+    const bi=$('aiBrowserIssue'); bi.hidden=!ai.browserIssue; bi.textContent=ai.browserIssue||'';
+    if(ai.browserIssue)bi.dataset.disconnected='Agent’s browser: '+(/Chrome/.test(ai.browserIssue)?'Chrome isn’t installed':'couldn’t start'); else delete bi.dataset.disconnected;
     const list=$('aiList'); list.innerHTML='';
     ai.order.forEach(function(p,i){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';

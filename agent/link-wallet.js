@@ -109,7 +109,7 @@ function serverFor({ node, dir, token, approved, approvedHosts, cdpPort, cardFla
   const env = { LINK_TOKEN: token, LINK_TEST: l.test ? '1' : '0', LINK_CAP_CENTS: String(capDollars(l) * 100), TASKS_CDP_PORT: String(cdpPort),
     TASKS_BROWSER_APPROVED: approved ? '1' : '0', TASKS_CARD_FLAG: cardFlag, TASKS_BROWSER_TAINT: mailSeenFile, TASKS_BROWSER_ACTIONS: actionsFile, TASKS_BROWSER_TASK: String(task || '').slice(0, 120) };
   if (approved && Array.isArray(approvedHosts) && approvedHosts.length) env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(approvedHosts);
-  return { command: node, args: [path.join(dir, 'link-pay.js')], env };
+  return { command: node, args: [path.join(dir, 'link-pay.js')], env: Object.assign(require('./platform').nodeEnv(node), env) };
 }
 
 module.exports = { init, handlers, tokenForRun, serverFor, status };

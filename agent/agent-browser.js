@@ -69,12 +69,23 @@ function chromeArgs(chrome) {
     '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
 }
 let browserToolInstall = null;
-// → path of the MCP config to hand Claude, or null (no Chrome/Node, or the install failed: the run goes on without a browser)
+// Playwright's MCP server: the copy that ships with the app, else one npm put in the agent browser's folder
+function playwrightCli() {
+  return platform.bundled('@playwright', 'mcp', 'cli.js') || path.join(agentBrowserDir(), 'tool', 'node_modules', '@playwright', 'mcp', 'cli.js');
+}
+// why the agent browser can't run, in words for Settings (null = it can)
+let browserProblem = null;
+const NO_CHROME = 'Google Chrome isn’t installed, so the Agent can’t use websites. Install Chrome from google.com/chrome, then try again.';
+const browserIssue = () => (!findChrome() ? NO_CHROME : browserProblem);
+// → path of the MCP config to hand Claude, or null (no Chrome, or the install failed: the run goes on without a browser)
 async function prepareAgentBrowser() {
   const dir = agentBrowserDir(), toolDir = path.join(dir, 'tool');
-  const cli = path.join(toolDir, 'node_modules', '@playwright', 'mcp', 'cli.js');
+  const cli = playwrightCli();
   const chrome = findChrome(), node = findNode();
-  if (!chrome || !node) { agentLog('browser: not available (' + (!chrome ? 'no Chrome' : 'no Node') + ')'); return null; }
+  if (!chrome || !node) {
+    browserProblem = !chrome ? NO_CHROME : 'The Agent’s browser couldn’t start (no Node found).';
+    agentLog('browser: not available (' + (!chrome ? 'no Chrome' : 'no Node') + ')'); return null;
+  }
   if (!fs.existsSync(cli)) {
     browserToolInstall = browserToolInstall || new Promise((resolve) => {
       fs.mkdirSync(toolDir, { recursive: true });
@@ -86,8 +97,9 @@ async function prepareAgentBrowser() {
       p.on('error', () => resolve()); p.on('close', () => resolve());
     }).finally(() => { browserToolInstall = null; });
     await browserToolInstall;
-    if (!fs.existsSync(cli)) { agentLog('browser: install failed'); return null; }
+    if (!fs.existsSync(cli)) { browserProblem = 'The Agent’s browser tool couldn’t be set up. Reinstalling Romulus should fix it.'; agentLog('browser: install failed'); return null; }
   }
+  browserProblem = null;
   const proxy = path.join(dir, 'browser-proxy.js');
   const src = fs.readFileSync(path.join(__dirname, 'browser-proxy.js'), 'utf8');
   try { if (fs.readFileSync(proxy, 'utf8') !== src) fs.writeFileSync(proxy, src); } catch (e) { fs.writeFileSync(proxy, src); }
@@ -95,7 +107,7 @@ async function prepareAgentBrowser() {
   const guardSrc = fs.readFileSync(path.join(__dirname, 'web-guard.js'), 'utf8');
   try { if (fs.readFileSync(guard, 'utf8') !== guardSrc) fs.writeFileSync(guard, guardSrc); } catch (e) { fs.writeFileSync(guard, guardSrc); }
   const cfgFile = path.join(dir, 'mcp.json');
-  fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { browser: { command: node,
+  fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { browser: { command: node, env: platform.nodeEnv(node),
     args: [proxy, cli, chrome, path.join(dir, 'profile'), String(AGENT_BROWSER_PORT), JSON.stringify(chromeArgs(chrome))] } } }));
   return cfgFile;
 }
@@ -135,7 +147,7 @@ handle('agent:actions', () => readActions());
    linkToken: a Link access token (agent/link-wallet.js tokenForRun): Claude's run gets the "wallet" tool */
 function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → this run's MCP config (startTab: see agent/task-tabs.js)
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
-  j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
+  j.mcpServers.browser.env = { ...platform.nodeEnv(j.mcpServers.browser.command), TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
     TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // the only things an upload may send
     TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120) };
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
@@ -224,5 +236,5 @@ async function closeWindowedAgentBrowser() {
   await new Promise((r) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000 }, () => r()));
 }
 
-module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
+module.exports = { init, handlers, playwrightCli, browserIssue, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
   mailSeenFile, mailSeen, cardFlagFile, scrubWalletToken, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

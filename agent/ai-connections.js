@@ -6,7 +6,8 @@ const meter = require('./usage-meter');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { claudeExe, claudeEnv } = require('./platform');
+const platform = require('./platform');
+const { claudeExe, claudeEnv } = platform;
 const claudeAuth = require('./claude-auth');
 const openrouterConnect = require('./openrouter-connect');
 
@@ -28,6 +29,7 @@ function aiStatus() {
   const c = readConfig(), s = providers.settings(c);
   return { order: s.order, names: providers.NAMES, used: providers.usedModels(), claudeModel: s.claudeModel, claudeLast: s.claudeLast, helpers: (c.ai || {}).helpers !== false, claudeBlockedUntil: usage.blockedUntil() > Date.now() ? usage.blockedUntil() : 0,
     ready: cloudOrder().length > 0, // at least one cloud AI is switched on and able to run
+    browserIssue: require('./agent-browser').browserIssue(), // why the Agent can't use websites, or null
     // Claude Code: installed? signed in (or an API key saved)?
     claude: Object.assign(claudeAuth.status(c), { key: maskKey(String((c.ai || {}).anthropicKey || '').trim()) }),
     gemini: Object.assign(providers.geminiStatus(c), { key: maskKey(s.geminiKey), model: s.geminiModel }),
@@ -48,30 +50,45 @@ handle('ai:save', (_e, change) => {
   scheduleAgentRun();
   return aiStatus();
 });
-let geminiInstall = null;
-handle('ai:gemini-install', () => {
-  geminiInstall = geminiInstall || new Promise((resolve) => {
-    agentLog('gemini: installing @google/gemini-cli');
-    let out = '';
-    const p = require('child_process').spawn('npm', ['install', '-g', '--no-audit', '--no-fund', '@google/gemini-cli'], { shell: true, windowsHide: true });
+/* npm install -g, for the Gemini and Codex CLIs. The npm on this computer if there is one; otherwise the one
+   that ships with the app, run on the app's own Node, into the folder npm -g uses by default (where
+   providers.js npmCli looks), so nobody has to install Node first. → {ok} or {ok, error} */
+function npmInstallGlobal(pkg) {
+  return new Promise((resolve) => {
+    let out = '', p;
+    const bundledNpm = platform.bundled('npm', 'bin', 'npm-cli.js');
+    const node = platform.findNode();
+    const own = !hasSystemNpm() && bundledNpm && node;
+    const args = ['install', '-g', '--no-audit', '--no-fund', pkg];
+    try {
+      if (own) {
+        const prefix = platform.isWin ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'npm') : path.join(os.homedir(), '.npm-global');
+        fs.mkdirSync(prefix, { recursive: true });
+        p = require('child_process').spawn(node, [bundledNpm, ...args, '--prefix', prefix],
+          { windowsHide: true, env: Object.assign({}, process.env, platform.nodeEnv(node)) });
+      } else p = require('child_process').spawn('npm', args, { shell: true, windowsHide: true });
+    } catch (e) { return resolve({ ok: false, error: e.message }); }
+    agentLog('npm: installing ' + pkg + (own ? ' (the app’s own npm)' : ''));
     p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { out += d; });
     p.on('error', (e) => resolve({ ok: false, error: e.message }));
     p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: out.trim().split('\n').slice(-3).join(' ').slice(0, 300) || 'npm exited ' + code }));
-  }).finally(() => { geminiInstall = null; });
-  return geminiInstall.then((r) => Object.assign(r, { status: aiStatus() }));
+  });
+}
+function hasSystemNpm() {
+  if (process.env.TASKS_NO_SYSTEM_NODE) return false;
+  try { require('child_process').execFileSync(platform.isWin ? 'where' : 'which', ['npm'], { windowsHide: true, stdio: 'ignore', timeout: 5000 }); return true; }
+  catch (e) { return false; }
+}
+let geminiInstall = null;
+handle('ai:gemini-install', () => {
+  geminiInstall = geminiInstall || npmInstallGlobal('@google/gemini-cli').finally(() => { geminiInstall = null; });
+  return geminiInstall.then((r) => { providers.forgetNpmRoot(); return Object.assign(r, { status: aiStatus() }); });
 });
 /* ChatGPT on his plan: OpenAI's Codex CLI, then `codex login`, which opens his browser to sign in with ChatGPT */
 let codexInstall = null, codexLogin = null;
 handle('ai:codex-install', () => {
-  codexInstall = codexInstall || new Promise((resolve) => {
-    agentLog('codex: installing @openai/codex');
-    let out = '';
-    const p = require('child_process').spawn('npm', ['install', '-g', '--no-audit', '--no-fund', '@openai/codex'], { shell: true, windowsHide: true });
-    p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { out += d; });
-    p.on('error', (e) => resolve({ ok: false, error: e.message }));
-    p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: out.trim().split('\n').slice(-3).join(' ').slice(0, 300) || 'npm exited ' + code }));
-  }).finally(() => { codexInstall = null; });
-  return codexInstall.then((r) => Object.assign(r, { status: aiStatus() }));
+  codexInstall = codexInstall || npmInstallGlobal('@openai/codex').finally(() => { codexInstall = null; });
+  return codexInstall.then((r) => { providers.forgetNpmRoot(); return Object.assign(r, { status: aiStatus() }); });
 });
 handle('ai:codex-login', () => {
   const cli = providers.codexCli();

@@ -167,6 +167,8 @@ function npmCli(pkgPath, binName) {
   }
   return null;
 }
+// after an install: ask npm again where its -g folder is (npm may not have been there before)
+function forgetNpmRoot() { if (!npmRoot) npmRoot = undefined; }
 const geminiCli = () => npmCli('@google/gemini-cli', 'gemini');
 function geminiStatus(cfg) {
   const s = settings(cfg), cli = geminiCli();
@@ -298,7 +300,7 @@ function runGeminiCli(s, cli, { prompt, workDir, browserMcpFile, timeoutMs, node
   if (browserMcpFile) args.push('--allowed-mcp-server-names', 'browser');
   args.push('--model', model);
   // trust: newer CLIs (0.6x) exit with code 55 in an untrusted folder when headless; the work folder is ours
-  const env = Object.assign({}, process.env, { GEMINI_TELEMETRY_ENABLED: 'false', GEMINI_API_KEY: s.geminiKey, GEMINI_CLI_TRUST_WORKSPACE: 'true' });
+  const env = Object.assign({}, process.env, require('./platform').nodeEnv(node), { GEMINI_TELEMETRY_ENABLED: 'false', GEMINI_API_KEY: s.geminiKey, GEMINI_CLI_TRUST_WORKSPACE: 'true' });
   return new Promise((resolve) => {
     let out = '', err = '', done = false, refused = null;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); resolve(r); } };
@@ -467,7 +469,7 @@ function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile
   return new Promise((resolve) => {
     let err = '', done = false, p;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); resolve(r); } };
-    const env = Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' });
+    const env = Object.assign({}, process.env, node ? require('./platform').nodeEnv(node) : { ELECTRON_RUN_AS_NODE: '1' });
     const browser = codexBrowser(browserMcpFile, browserDenied);
     try { p = spawn(node || process.execPath, codexArgs(cli.script, outFile, chosen, browser), { cwd: workDir, env, windowsHide: true }); }
     catch (e) { return resolve({ why: 'could not start Codex' }); }
@@ -500,7 +502,7 @@ function codexAsk(method, params, { node } = {}) {
   return new Promise((resolve) => {
     let out = '', done = false, p;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); try { p.kill(); } catch (e) {} resolve(r); } };
-    const env = Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' });
+    const env = Object.assign({}, process.env, node ? require('./platform').nodeEnv(node) : { ELECTRON_RUN_AS_NODE: '1' });
     try { p = spawn(node || process.execPath, [cli.script, 'app-server'], { cwd: os.tmpdir(), env, windowsHide: true }); }
     catch (e) { return resolve(null); }
     const killer = setTimeout(() => finish(null), 20000);
@@ -715,4 +717,4 @@ async function compatRun(id, s, { prompt, timeoutMs, note, onProc }, browser) {
   return r2;
 }
 
-module.exports = { rankModels, autoModels, modelChoices, usedModels, clearModelCache, CLAUDE_MODELS, PROVIDERS, NAMES, COMPAT, COMPAT_IDS, runCompat, compatModels, pickModel, OPENROUTER_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL, runOpenAI, settings, geminiCli, codexCli, codexStatus, codexArgs, codexLimits, geminiStatus, runGemini, runGeminiApi, runOpenRouter, openRouterCheck, CODEX_BROWSER_NOTE };
+module.exports = { forgetNpmRoot, rankModels, autoModels, modelChoices, usedModels, clearModelCache, CLAUDE_MODELS, PROVIDERS, NAMES, COMPAT, COMPAT_IDS, runCompat, compatModels, pickModel, OPENROUTER_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL, runOpenAI, settings, geminiCli, codexCli, codexStatus, codexArgs, codexLimits, geminiStatus, runGemini, runGeminiApi, runOpenRouter, openRouterCheck, CODEX_BROWSER_NOTE };
