@@ -14,7 +14,8 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const linkWallet = require('./link-wallet');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, scrubWalletToken, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog } = require('./helpers');
 const agentFiles = require('./agent-files');
 const supabase = require('./supabase');
@@ -308,8 +309,11 @@ async function startAgentRun() {
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id, limitMs: runTimeoutMs });
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const prompt = promptFor(pending, id);
+      // Link connected: Claude's run gets the wallet tool (one-time cards after his yes, agent/link-pay.js)
+      const linkToken = id === 'claude' && browserCfg ? await linkWallet.tokenForRun().catch(() => null) : null;
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
-          browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, browserOpts) }).finally(() => live.close())
+          browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, Object.assign({ linkToken }, browserOpts)) })
+          .finally(() => { live.close(); if (linkToken) scrubWalletToken(); })
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED,
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
@@ -462,6 +466,7 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
           args.push('--mcp-config', browserCfg);
           allowed.push('mcp__browser');
           denied.push(...BROWSER_DENIED);
+          if (/"wallet"/.test(fs.readFileSync(browserCfg, 'utf8'))) allowed.push('mcp__wallet'); // Link (agent/link-pay.js)
           // three store checkers, for comparing stores at the same time (agent/agent-browser.js)
           if (/"shop1"/.test(fs.readFileSync(browserCfg, 'utf8'))) {
             denied.splice(denied.indexOf('Agent'), 1);

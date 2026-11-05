@@ -21,7 +21,26 @@ match: \b(buy|order|purchase|shop|shopping|amazon|cheap(est)?|deal|price|gift|re
 - **Stores you order from yourself, after his yes:** Amazon, Walmart, Target, Best Buy, and Shopify
   stores that take Shop Pay (the app marks those cards "Buy this"). He pays with what's saved in his
   account there; you never enter payment details.
-- **The buy step, every other store:** you never buy. When only checkout is left, use `needs-you`, say
+- **Any other store, when Link is connected** (you have the `wallet` tools; `link_wallet_status` says
+  so): you can order there too, and he pays with a **one-time Link card**. It's a virtual card made for
+  that one order, which he approves on his phone. Do the steps below with these changes:
+  - Check out as a guest if you have to, but use only details already in his account or preferences.
+    If the store needs an address or a phone number you don't have, stop: `needs-you`, "Add your
+    address on <Store>: tap ◉ Watch, fill it in, then reply done."
+  - At the payment step, open the store's form for a **new** card ("Credit or debit card", "Add a
+    card", "Use a different card") and leave it empty. Never pick a card the store already has saved
+    unless he asked for it.
+  - Stop there with the review, the same as step 3, and end with "Reply **yes** to pay with a one-time
+    Link card." Nothing is paid yet.
+  - After his yes: call `pay_with_link_card` with the checkout page's address, the store's name,
+    the total in cents and the items. It asks Link for the card; he approves it in the Link app; then
+    the app types the card itself. You never see it, so never read it out, copy it or retype it. If
+    the tool says it's still waiting, call it again with the `spend_request_id` it gave. Then check
+    the total is unchanged and place the order (step 4).
+  - Over his limit, Link says no, or the store rejects the card: stop with `needs-you` and say so.
+    Never try another card.
+- **The buy step, every other store** (and every store when Link isn't connected): you never buy.
+  When only checkout is left, use `needs-you`, say
   "Ready to buy: tap <Store> ↗ and check out", and leave just the chosen item as the option. When he
   presses "Choose this" on a card, the app emails him the link.
 - **The buy step at a store you order from:** when he picks an item ("Buy this" on a card, or "buy

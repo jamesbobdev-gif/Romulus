@@ -382,6 +382,34 @@ function fileRefusal(msg) {
     + 'Not ' + bad.join(', ') + '. To close the file box without uploading, call browser_file_upload with no paths, then say in your note what the site asked for.';
 }
 
+/* Card numbers, for every run. A one-time Link card is typed into a checkout by the app itself (agent/link-pay.js),
+   never by the AI, and it must not come back to the AI through the page either: a snapshot shows what a field
+   holds. Payment fields' values (card number, CVC, expiry) are always masked in what goes back. Once the wallet
+   has filled a card (TASKS_CARD_FLAG, for 3 hours), so is any card-shaped number anywhere on the page, and
+   screenshots are off (a picture would show the number). */
+const CARD_FLAG = process.env.TASKS_CARD_FLAG || '';
+function cardShown(now = Date.now()) {
+  if (!CARD_FLAG) return false;
+  try { return now - (JSON.parse(require('fs').readFileSync(CARD_FLAG, 'utf8')).at || 0) < 3 * 3600 * 1000; } catch (e) { return false; }
+}
+const luhn = (d) => { let sum = 0; for (let i = 0; i < d.length; i++) { let n = d.charCodeAt(d.length - 1 - i) - 48; if (i % 2) { n *= 2; if (n > 9) n -= 9; } sum += n; } return sum % 10 === 0; };
+// a field's value in a snapshot line: - textbox "Card number" [ref=f1e5]: 4242 4242 4242 4242 (quotes come escaped inside the JSON line)
+// (the line is JSON: a line break inside the text is a backslash and an n, so a value ends at a backslash or a quote)
+const PAY_FIELD = /((?:textbox|spinbutton|combobox)\s+\\?"[^"\\]*?(?:card ?number|card no|cvc|cvv|csc|security code|expir|exp(?:\.|iry)? ?date|mm ?\/ ?yy)[^"\\]*?\\?"[^\\]*?\]:\s*)([^\\"]+)/gi;
+// 13–19 digits, together or in groups of 4 (Amex 4-6-5), passing the card checksum
+const CARD_NUM = /(?<!\d)(?:\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{1,7}|\d{4}[ -]\d{6}[ -]\d{5}|\d{13,19})(?!\d)/g;
+function maskCards(line, shown) {
+  if (!/\d/.test(line)) return line;
+  let out = line.replace(PAY_FIELD, (m, pre, val) => (/\d/.test(val) ? pre + '•••• (hidden)' : m));
+  // grouped like a card (4 4 4 4): always; a bare run of digits: only if it passes the checksum (order numbers mostly don't)
+  if (shown) out = out.replace(CARD_NUM, (m) => { const d = m.replace(/\D/g, ''); return d.length >= 13 && d.length <= 19 && (/[ -]/.test(m) || luhn(d)) ? '•••• ' + d.slice(-4) : m; });
+  return out;
+}
+function cardRefusal(msg, shown) {
+  if (!msg.params || msg.params.name !== 'browser_take_screenshot' || !shown) return null;
+  return 'Screenshots are off while a payment card is in a form on this browser. Use browser_snapshot to read the page.';
+}
+
 /* Store checkers (TASKS_BROWSER_SHOP, set for "shop1".."shop3" in agent/agent-browser.js) share this
    browser with the main run and each other, so tab numbers shift under them. A checker may only close
    its own tab: whatever number it gives, "close" closes the tab this connection is on. It can't switch
@@ -419,7 +447,7 @@ function main() {
           continue; // ours (or a late answer to one of ours)
         }
       }
-      process.stdout.write(mailFilter(line));
+      process.stdout.write(mailFilter(maskCards(line, cardShown())));
     }
   });
 
@@ -436,7 +464,7 @@ function main() {
           if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
           let msg = null; try { msg = JSON.parse(line); } catch (e) {}
           const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-          const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || await shopTabs(msg));
+          const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || cardRefusal(msg, cardShown()) || await shopTabs(msg));
           if (refused) { // answer it ourselves; Playwright never sees the call
             process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
             return;
@@ -452,4 +480,4 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests
+else module.exports = { maskCards, cardRefusal, luhn, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests

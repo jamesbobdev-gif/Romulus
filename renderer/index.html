@@ -163,6 +163,27 @@
           <span id="lookAheadStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
+      <div class="settings-sub" id="linkPaySection" hidden>
+        <h3 class="settings-subhead">Pay with Link</h3>
+        <p class="settings-hint">Lets the Agent check out at stores where you have no saved card. After you reply yes to an order, Stripe Link sends the payment to your phone. Approve it in the Link app, and Romulus types a one-time card made for that order. The Agent never sees the card number.</p>
+        <p class="settings-hint" id="linkPayState"></p>
+        <div class="settings-row" id="linkPayLogin" hidden>
+          <span class="mono" style="font-size:12px">Check that Link shows <b id="linkPayCode"></b>, then approve.</span>
+          <a href="#" id="linkPayOpen" class="mono" style="font-size:12px">Open Link ↗</a>
+        </div>
+        <div class="settings-row">
+          <button id="linkPayConnect" class="btn-accent">Connect Link</button>
+          <button id="linkPayDisconnect" class="ghost mono danger" hidden>Disconnect</button>
+          <span id="linkPayStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+        <div id="linkPayOptions" hidden>
+          <label class="switch" style="margin:8px 0"><input type="checkbox" id="linkPayTest"><span class="track" aria-hidden="true"></span><span>Test mode: test cards, nothing is charged</span></label>
+          <div class="settings-row">
+            <label for="linkPayCap" class="mono" style="font-size:12px">Most it can pay for one order: $</label>
+            <input id="linkPayCap" class="settings-inp" type="number" min="1" max="500" step="1" style="width:90px">
+          </div>
+        </div>
+      </div>
       <div class="settings-sub" id="wakeSection" hidden>
         <h3 class="settings-subhead">Hey Romulus</h3>
         <p class="settings-hint">Say <b>“Hey Romulus”</b>, wait for the chime, then speak. Screen-on only; 40 MB one-time download.</p>
@@ -485,6 +506,7 @@
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/look-ahead.js"></script>
+<script src="js/link-pay.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>
 <script src="js/goals.js"></script>
