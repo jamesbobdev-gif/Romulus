@@ -574,3 +574,24 @@ async function syncMoveToV2(){
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',syncRotateKey);
 })();
+
+/* Settings -> Tabs: switch tabs off on this device (To do always shows) */
+function tabsPicksDraw(){
+  const box=$('tabsPicks'); if(!box)return;
+  box.innerHTML='';
+  const off=tabsOff();
+  TAB_KEYS.forEach(function(p){
+    if($(p[0]).dataset.na==='1')return;
+    const l=el('label','switch');
+    l.innerHTML='<input type="checkbox"'+(off.indexOf(p[1])<0?' checked':'')+'><span class="track" aria-hidden="true"></span><span>'+p[2]+'</span>';
+    l.querySelector('input').addEventListener('change',function(){
+      const o=tabsOff().filter(function(k){ return k!==p[1]; });
+      if(!this.checked)o.push(p[1]);
+      try{ localStorage.setItem(TABS_OFF_KEY,JSON.stringify(o)); }catch(e){}
+      tabsApply();
+    });
+    box.appendChild(l);
+  });
+}
+tabsPicksDraw();
+tabsApply();

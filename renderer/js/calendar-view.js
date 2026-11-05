@@ -57,17 +57,18 @@ function switchTab(tab){
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
   if(tab!=='finance')financeLeave();
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabFinance','finance']].forEach(function(p){
+  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabFinance','finance'],['tabHealth','health']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
-  $('listView').hidden=tab==='calendar'||tab==='ideas'||tab==='hours'||tab==='finance';
+  $('listView').hidden=tab==='calendar'||isViewTab(tab);
   $('calView').hidden=tab!=='calendar';
   $('ideasView').hidden=tab!=='ideas';
   $('hoursView').hidden=tab!=='hours';
   $('financeView').hidden=tab!=='finance';
-  document.querySelector('.composer').hidden=tab==='ideas'||tab==='hours'||tab==='finance';
+  $('healthView').hidden=tab!=='health';
+  document.querySelector('.composer').hidden=isViewTab(tab);
   document.body.classList.toggle('ideas-mode',tab==='ideas');
   if(tab==='calendar')$('newTitle').placeholder='Add a task…'; // render() sets it on the list tabs; don't keep the last one's
-  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else if(tab==='hours') renderHours(); else if(tab==='finance') renderFinance(); else render();
+  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else if(tab==='hours') renderHours(); else if(tab==='finance') renderFinance(); else if(tab==='health') renderHealth(); else render();
 }

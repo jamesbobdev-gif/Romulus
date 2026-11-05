@@ -1,6 +1,6 @@
 # Romulus privacy policy
 
-Last updated: 30 October 2026
+Last updated: 4 November 2026
 
 Romulus is a task list with an AI agent, for Windows, macOS, Linux and Android. It is open source, and this
 policy covers every build of it: the installers on the releases page, the Android app on Google Play, and
@@ -21,6 +21,7 @@ no accounts with us, no analytics, no telemetry and no ads. What leaves your dev
 - The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.
+- Health data on Android (see below): read on the phone, never stored, synced or sent anywhere.
 
 ## What leaves your device, and where it goes
 
@@ -41,12 +42,29 @@ Romulus's use of information received from Google APIs follows the
 [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
 including its Limited Use requirements.
 
+## Health Connect (Android)
+
+When you tap **Connect Health Connect** on the Health tab and allow it, the Android app reads three things
+from Health Connect, read-only: **steps**, **sleep** and **exercise sessions**. It reads them only while the
+app is open, to add up today's steps, last night's sleep and today's workout minutes, and uses those totals
+for one thing: ticking off a to-do that names a goal, such as "Walk 8,000 steps".
+
+- The totals are kept in the app's memory and dropped when it closes. They are not saved, not synced to your
+  other devices, not sent to any AI service, and not sent to us or anyone else. What syncs is the ticked-off
+  to-do, as with any to-do you tick off yourself.
+- Romulus never writes to Health Connect.
+- Romulus's use of data from Health Connect follows Google Play's Health Connect permissions policy,
+  including its Limited Use requirements.
+- To stop it, tap **Manage** on the Health tab, or take the permissions back in Health Connect's own
+  settings.
+
 ## Permissions on Android
 
 - **Microphone**: to add a task by talking, and for "Hey Romulus" when you turn it on.
 - **Notifications**: reminders, and the notice that shows while "Hey Romulus" is listening.
 - **Biometrics**: to unlock Finance.
 - **Camera** (through Google's code scanner): to scan the pairing code from your computer.
+- **Health Connect: steps, sleep, exercise** (read only): to tick off goal to-dos, when you connect it.
 
 ## Deleting your data
 
