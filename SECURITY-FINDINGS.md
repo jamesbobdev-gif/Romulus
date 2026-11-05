@@ -96,3 +96,81 @@ sandboxed, own partition) that load arbitrary pages. Upgrade to a supported majo
 - Edge functions compare tokens in constant time through a hash; `buy-email` only mails the configured address;
   `school-ingest` and `work-ics` refuse to write over a `moved:v2` marker.
 - Release actions are SHA-pinned, `GITHUB_TOKEN` is read-only, secrets are scoped per OS job.
+
+# Fourth review pass (2026-11-04)
+
+What this pass looked at, which the third only skimmed: how a Claude run is launched (`agent/runner.js`,
+`agent/agent-browser.js`, `agent/task-tabs.js`, `agent/run-live.js`) and whether a task or a page can change
+any of it; the mini PC lane (`agent/local-lane.js`, `agent/local-tools.js`, `agent/worker.js`,
+`agent/worker-files.js`, `agent/qwen-browser.js`, `main/downloads.js`); pairing (`renderer/js/pair*.js`,
+`20261101_sync_pairing.sql`, the `sync_pair_*` functions) and the Realtime relay (`renderer/js/live-relay.js`,
+`agent/live-view.js`); the IPC handlers in `main/finance*.js`, `main/persistence.js`, `main/triggers.js`,
+`main/speak.js`, `main/gmail-dates.js` and `agent/mail-send.js`; and the Android side beyond the crypto
+(`MainActivity`, the plugins, the widgets, `AndroidManifest.xml`, `mobile/update-phone.js`). Same severity
+scale as above.
+
+## Fixed in this pass (commits on this branch)
+
+| Sev | Where | What |
+|---|---|---|
+| Medium | `agent/runner.js` | A Claude run works in `Documents/Claude Agent`, where the local lane also saves its Research and Coach reports, "written there so that no cloud AI sees them". The run's allow list (`Read(./attachments/**)`, `Read(./skills/**)`) does not keep Read out of them: Claude Code lets Read open anything under its working folder without asking, so only a deny rule does. `Read(./Research/**)` and `Read(./Coach/**)` are now denied. (Gemini already had `.geminiignore`; Codex runs in an empty temp folder with its shell tool disabled.) |
+| Medium | `agent/agent-browser.js` `approvedHostsFor` | His yes unlocked the order button on every host in the task's `cart` and `options` links, which the AI writes: a page could talk the AI into putting its own address in an option, and his yes to "order at Walmart" then unlocked the final click there too (the ask's own links were already left out). A cart or option link now counts only on a site his own words or the page name, or on a store from `STORE_HOSTS`. |
+| Low (a regression, not a hole) | `WidgetActionActivity.java`, `WakeWordService.java` | The first pass made `MainActivity` drop any page hook without the install's nonce (so another app can't start the microphone). The widget's "open this task" row tap and the "Hey Romulus" wake intent never carried it, so both have been silently ignored since. They carry it now; a test checks every sender does. |
+
+## Not fixed
+
+### Low: the live relay accepts a replay of an input message for 30 seconds
+
+`renderer/js/live-relay.js` drops a sealed message whose `at` is more than `STALE_MS` (30 s) off, but within
+that window the same ciphertext (a click or a key) is accepted again. Only someone who can read the channel
+can replay: its name is a hash of the agent sync key, so that is the Realtime server (the operator) or a
+device that already has the key. The harm is a repeated click within half a minute. A fix would be a
+per-sender counter in the sealed message; not worth the state unless the relay gains more than input.
+
+### Low: the phone's update banner trusts the release's APK as GitHub lists it
+
+`mobile/update-phone.js` hands `browser_download_url` of the newest release to the system browser; nothing
+on the phone checks a hash. Android refuses to install an APK over the app unless it is signed with the
+same key, so a swapped file on the releases page fails to install rather than running. That is the actual
+guard; the desktop updater's checksum step has no counterpart here, and can't short of a signed manifest.
+
+### Low: the pairing and relay limits share the third pass's caveat on `sync_caller_ip_hash()`
+
+`sync_pair_put` (20 an hour) and `sync_pair_take` (30 an hour) bucket by that hash. Behind a gateway that
+leaves the last `x-forwarded-for` entry as its own address, every user shares one bucket (one noisy device
+stops pairing for all); with none, a client can pick its own. The code space (60 bits, PBKDF2 600,000
+rounds, 10-minute life, one use) holds either way; only the rate limit's fairness depends on the deployment.
+
+## Already right, checked and left alone
+
+- A run's settings file (`--settings`, the hooks) and the MCP config are written by the app before the
+  spawn, under `userData`; Claude has no Write tool, Gemini only reading tools, Codex no shell. The
+  `--strict-mcp-config` flag keeps `.mcp.json` and the account's connectors out of web runs. Nothing a task
+  or a page says reaches the argument list: the only strings from outside are the task title (into an env
+  value for the actions log, cut to 120 chars) and the prompt on stdin.
+- Attachments for a run are only fetched from the app's own `agent-attachments` bucket, by parsed URL.
+- `task-tabs.json` holds Chrome tab ids; a tab's address goes back to the task as `page` only when the run
+  ended `needs-you` and never saw mail, and ◉ Watch opens `https:` pages only, never a sign-in step.
+- Mini PC lane: downloads go to `~/Downloads/Romulus` (set over CDP), runnable file types are never
+  published, a link to a file elsewhere is not a download (`lstat`), and the other computers rebuild every
+  file's address from its bucket path (`ownPath`) instead of taking it from the row. `read_file`, searches
+  and page reads go through the private-words check; `read_page` uses the DNS-checked `fetchPublic`.
+  `search_my_data` shows the local model the Locked profile by design, and its notes never leave the mini PC
+  (the Claude brief masks them). `gio trash` gets `--` before the paths; paths come from the local listing.
+- Pairing: the code never leaves the device; the server holds PBKDF2(code) and a sealed sync code, wiped on
+  the first take; the new device shows the project's host and asks before adopting it; the release build
+  writes `ROMULUS_PAIR` with `JSON.stringify`, so a repository variable can't inject into the page.
+- The relay's channel key and name come from HKDF over the agent sync key in main (`relayKeys`), messages are
+  AES-GCM with a random IV, and the renderer only lets `Input.*` CDP methods through to the mini PC's page.
+- `mail:send` sends only what `cleanEmail` passes (bare addresses, at most ten, a one-line subject), from a
+  connected account, and logs it; the Agent has no tool that sends mail. `voice:listen` and Windows Hello run
+  constant PowerShell scripts passed `-EncodedCommand`; the Hello message is quoted and the window handle
+  checked as an integer. `triggers:tick` fetches pages through `safeUrl` hop by hop. `finance:setup` only
+  claims a token that decodes to a SimpleFIN URL and fetches it with `redirect: 'error'`; a shared box is
+  shape-checked before any scrypt runs.
+- Android: the launcher activity is exported only as the app icon and the share target; the share intent
+  turns into one JSON object for the page (org.json escaping, no HTML); OAuth returns need PKCE and the
+  saved `state`; the calendar `api` call is pinned to the provider's base URL; the finance `http` bridge
+  allows SimpleFIN and Yahoo over https with no redirects; the wake-word model is hashed before unzipping and
+  each entry's canonical path checked; the widgets draw text with `setTextViewText`; backups exclude the
+  WebView storage (sync keys), the calendar tokens and the vault.
