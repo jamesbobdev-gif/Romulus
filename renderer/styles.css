@@ -33,6 +33,7 @@ button.chip{background:var(--chip)} /* not the browser's button grey, which goes
 body:not(.show-adv) #settingsPanel .adv{display:none!important}
 .settings-adv-switch{margin:22px 0 4px}
 *{box-sizing:border-box}
+[hidden]{display:none!important} /* beats a class's own display (.filters, .yes-prompts, .att-thumbs and .settings-row are flex or grid): hidden and empty, they kept their margins */
 html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--display);-webkit-font-smoothing:antialiased}
 main{max-width:620px;margin:0 auto;padding:60px 20px 100px}
@@ -159,9 +160,12 @@ select option,select optgroup{color:var(--ink);background:var(--surface)}
 
 .composer{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:6px 8px 8px;box-shadow:0 1px 2px rgba(20,20,20,.03);transition:border-color .15s,box-shadow .15s}
 .composer:focus-within{border-color:#B9C2F2;box-shadow:0 0 0 3px rgba(39,66,200,.07)}
-#newTitle{width:100%;border:0;outline:0;background:transparent;font-family:var(--display);font-size:15.5px;font-weight:500;padding:10px 8px;color:var(--ink)}
+.composer-line{display:flex;align-items:center;gap:6px;padding-right:4px}
+#newTitle{flex:1;min-width:0;width:auto;border:0;outline:0;background:transparent;font-family:var(--display);font-size:15.5px;font-weight:500;padding:10px 8px;color:var(--ink)}
 #newTitle::placeholder{color:#A9A9A3}
 .composer-meta{display:flex;gap:8px;align-items:center;padding:2px 8px 4px;flex-wrap:wrap}
+/* one line until it's in use: the row shows while you're in the box, or while it holds something (a title, a tag, photos, words being spoken) */
+.composer:not(:focus-within):not(:has(#newTitle:not(:placeholder-shown),#newTag:not(:placeholder-shown),#newAtts:not([hidden]),#micBtn.listening)) .composer-meta{display:none}
 .sm{border:1px solid var(--hairline);border-radius:7px;background:transparent;font-family:var(--mono);font-size:11.5px;color:var(--ink);padding:5px 8px;outline:0}
 .sm:focus-visible{border-color:var(--accent)}
 #newTag{width:110px}
@@ -206,7 +210,11 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0}
 .chips{display:flex;align-items:center;gap:7px;row-gap:6px;min-width:0;flex-wrap:wrap;justify-content:flex-end} /* chips wrap instead of crushing the title */
 .chips:empty{display:none}
-.acts{display:flex;align-items:center;gap:2px;flex:none}
+.acts{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;min-width:103px} /* five buttons' worth (snooze is only on today's and overdue rows), so the date column keeps one right edge */
+/* the date chip has a column of its own after the chips, so dates line up down the list and the tags line up before them */
+.date-slot{flex:none;display:flex;justify-content:flex-end}
+.list.has-dates .date-slot{min-width:123px} /* "tomorrow 11:00AM"; a longer one just takes more */
+@media(max-width:520px){.row .date-slot{order:-1}.list.has-dates .date-slot{min-width:0}.date-slot:empty{display:none}} /* a phone: the date leads the line under the title, as before */
 .progress{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .progress.sub-late{color:var(--late)}
 .chip{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:6px;white-space:nowrap}
@@ -621,7 +629,10 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 /* ── daily swipe deck: right = today, left = tomorrow ── */
 .chip.plan{background:var(--accent);color:#fff;border:0}
 .chip.plan.later{background:transparent;color:var(--muted);border:1px dashed var(--hairline);text-transform:none;letter-spacing:.02em}
-.plan-btn{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:999px;padding:4px 10px;cursor:pointer}
+.plan-btn{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+/* a narrow phone: the header stays one line; the button says "Plan · 1" and the date keeps its words */
+.stamp{white-space:nowrap}
+@media(max-width:430px){.plan-day{display:none}.top-right{gap:8px}}
 .plan-btn:hover{background:var(--accent);color:#fff}
 .swipe{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:max(18px,env(safe-area-inset-top)) 16px max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}
 .swipe[hidden]{display:none}
@@ -805,6 +816,8 @@ textarea.ask-other{min-height:70px}
 .fin-card h3{margin:0 0 8px;font-family:var(--display);font-size:16px}
 .fin-steps{margin:0 0 8px;padding-left:20px;font-size:13.5px;line-height:1.5;color:var(--ink)}
 .fin-note{font-size:12.5px;color:var(--muted);line-height:1.45;margin:8px 0}
+.fin-note a{color:var(--accent);text-decoration:none;cursor:pointer}
+.fin-note a:hover{text-decoration:underline}
 .fin-input{display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:8px 10px;border:1px solid var(--hairline);border-radius:8px;background:var(--bg);font:inherit;font-size:13.5px;color:var(--ink)}
 .fin-setup .btn-accent{margin:6px 0 0}
 .fin-row{display:flex;gap:8px;align-items:center}
@@ -893,6 +906,11 @@ textarea.ask-other{min-height:70px}
 .fin-fold-title{display:flex;align-items:baseline;gap:10px;width:100%;background:none;border:0;padding:0;margin:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer}
 .fin-fold-title h3{margin:0 auto 0 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} /* one line: side-by-side folded cards stay the same height */
 .fin-fold-title .fin-fold-sum{flex:none;white-space:nowrap}
+@media(max-width:520px){ /* a phone: the title keeps its words; the summary sits beside it when it fits, under it when not */
+  .fin-fold-title{flex-wrap:wrap}
+  .fin-fold-title h3{flex:0 0 auto;max-width:100%}
+  .fin-fold-title .fin-fold-sum{flex:1 1 auto;min-width:0;white-space:normal;text-align:right}
+}
 .fin-chev{width:12px;height:12px;flex:none;color:var(--muted);align-self:center;display:flex;transition:transform .15s}
 .fin-chev.open{transform:rotate(90deg)}
 .fin-fold-title:hover .fin-chev{color:var(--ink)}
@@ -905,11 +923,14 @@ textarea.ask-other{min-height:70px}
 .fin-charts{align-items:start}
 .fin-statements{margin:14px 0}
 .fin-stmt-title{font-family:var(--display);font-weight:600;font-size:14px;margin:6px 0 4px}
-.fin-stmt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.fin-stmt{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-.fin-stmt th{font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:4px 0 6px 14px;border-bottom:1px solid var(--ink);white-space:nowrap}
-.fin-stmt td{padding:3px 0 3px 14px;white-space:nowrap}
-.fin-stmt .st-name{padding-left:0;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+/* on a phone the months run past the card: a shadow at whichever edge hides more (the covers scroll with the table and hide it at the end) */
+.fin-stmt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(90deg,var(--surface) 30%,transparent) 0 0/40px 100% no-repeat local,linear-gradient(270deg,var(--surface) 30%,transparent) 100% 0/40px 100% no-repeat local,linear-gradient(90deg,color-mix(in srgb,var(--ink) 14%,transparent),transparent) 0 0/14px 100% no-repeat scroll,linear-gradient(270deg,color-mix(in srgb,var(--ink) 14%,transparent),transparent) 100% 0/14px 100% no-repeat scroll}
+/* fixed columns: a month holds a five-figure amount, the name column gives way (its full text is the cell's title), so four months fit the card on a computer */
+.fin-stmt{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.fin-stmt th{width:92px;font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:4px 0 6px 10px;border-bottom:1px solid var(--ink);white-space:nowrap}
+.fin-stmt th:first-child{width:170px}
+.fin-stmt td{padding:3px 0 3px 10px;white-space:nowrap}
+.fin-stmt .st-name{padding-left:0;overflow:hidden;text-overflow:ellipsis}
 .fin-stmt .st-num{text-align:right}
 .fin-stmt .partial{color:var(--muted)}
 .fin-stmt .st-head td{font-weight:600;padding-top:8px}
@@ -943,7 +964,8 @@ textarea.ask-other{min-height:70px}
 .fin-range{font-size:12px;margin-left:auto}
 .fin-holdings{margin:6px 0 10px}
 .fin-holdings-fold>.fin-row{margin-top:6px}
-.fin-hold{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(6,minmax(0,1fr));gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13px}
+/* each number column is as wide as a usual figure and grows for a wider one, so Value and Gain never run together; the name takes what is left */
+.fin-hold{display:grid;grid-template-columns:minmax(0,1fr) minmax(4em,max-content) minmax(5.6em,max-content) minmax(4.4em,max-content) minmax(4.4em,max-content) minmax(6.4em,max-content) minmax(6.4em,max-content);gap:6px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13px}
 .fin-hold:last-child{border-bottom:0}
 .fin-hold>.fin-amt,.fin-hold.head>span:not(:first-child){text-align:right}
 .fin-hold.head{padding-top:0}

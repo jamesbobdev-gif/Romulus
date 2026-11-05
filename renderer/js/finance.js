@@ -410,23 +410,29 @@ function finOrderEl(m){
   return box;
 }
 
-// how the purchase-email look is doing, beside "updated 5 min ago"
-function finMailWord(m){
-  if(!m)return '';
-  if(m.phone)return 'purchase emails show on the computer';
-  if(m.busy)return 'reading purchase emails…';
-  if(m.off)return 'connect Gmail in Settings → Calendars to match emails';
-  if(m.error)return 'emails: '+m.error;
-  return m.last?'emails '+finAgo(m.last).replace('updated ','checked '):'emails not read yet';
+// how the purchase-email look is doing: a quiet line at the top of Transactions, where the receipts it finds are matched to the rows
+function finMailLine(m){
+  if(!m)return null;
+  const p=el('p','fin-note fin-mail');
+  if(m.phone)p.textContent='Purchase emails show on the computer.';
+  else if(m.busy)p.textContent='Reading purchase emails…';
+  else if(m.off){
+    const a=el('a',null,'Connect Gmail'); a.href='#'; a.addEventListener('click',function(e){ e.preventDefault(); openSettingsAt('calGroup','gcalSection'); });
+    p.appendChild(a); p.appendChild(document.createTextNode(' in Settings → Calendars to match receipts to these.'));
+  }
+  else if(m.error)p.textContent='Purchase emails: '+m.error;
+  else p.textContent=m.last?'Receipts from Gmail, '+finAgo(m.last).replace('updated ','checked ')+'.':'Receipts from Gmail: not read yet.';
+  return p;
 }
 
-// any section folds up to its title (with a one-line summary while it's folded); remembered on this computer
-function finOpen(id,shut){ try{ const v=localStorage.getItem('finOpen.'+id); return v==null?!shut:v!=='0'; }catch(e){ return !shut; } }
-function finFoldable(card,id,title,summary,shut){
+/* any section folds up to its title, with a one-line summary while it's folded. Closed to start, so the tab opens as the tiles and
+   a list of summaries and you open what you came for (a section inside an open one starts open); remembered on this computer */
+function finOpen(id,openFirst){ try{ const v=localStorage.getItem('finOpen.'+id); return v==null?!!openFirst:v!=='0'; }catch(e){ return !!openFirst; } }
+function finFoldable(card,id,title,summary,openFirst){
   const h=card.querySelector(':scope > h3'); if(h)h.remove();
   const body=el('div','fin-fold-body');
   while(card.firstChild)body.appendChild(card.firstChild);
-  let open=finOpen(id,shut);
+  let open=finOpen(id,openFirst);
   const t=el('button','fin-fold-title');
   const chev=el('span','fin-chev'); chev.innerHTML='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   t.appendChild(chev); t.appendChild(el('h3',null,title));
@@ -485,7 +491,7 @@ function finWorthChart(accounts,cur){
     cols.appendChild(col);
   });
   box.appendChild(cols);
-  return finFoldable(box,'worth','Assets and debts','Net worth '+finMoney(w.net,cur));
+  return finFoldable(box,'worth','Assets and debts','Assets '+finCompact(w.assetTotal,cur)+' · Debts '+finCompact(w.debtTotal,cur)); // the net is on the tile above
 }
 // the two lines over the days, with a hairline grid and a hover readout
 function finWorthLine(host,tip,days,width,cur){
@@ -552,8 +558,8 @@ function finStocksCard(cur){
   return box;
 }
 function finSigned(n,cur){ return (n>0?'+':n<0?'−':'')+finMoney(Math.abs(n),cur); }
-// the card folds up to its title line (which then shows the total and today's move); remembered on this computer
-function finStocksOpen(){ try{ return localStorage.getItem('finStocksOpen')!=='0'; }catch(e){ return true; } }
+// the card folds up to its title line (which then shows the total and today's move); closed to start, like the other sections; remembered on this computer
+function finStocksOpen(){ try{ const v=localStorage.getItem('finStocksOpen'); return v==null?false:v!=='0'; }catch(e){ return false; } }
 function finStocksTitle(box,s,cur){
   const open=finStocksOpen();
   const t=el('button','fin-fold-title');
@@ -681,7 +687,7 @@ function finDrawStocks(box,s,cur,load){
   q.addEventListener('input',function(){ fin.stockQuery=q.value.trim(); drawRows(); });
   sel.addEventListener('change',function(){ try{ localStorage.setItem('finStockSort',sel.value); }catch(e){} drawRows(); });
   if(typing)setTimeout(function(){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); },0);
-  body.appendChild(finFoldable(holdBox,'holdings','Holdings',s.rows.length+(s.rows.length===1?' holding':' holdings')));
+  body.appendChild(finFoldable(holdBox,'holdings','Holdings',s.rows.length+(s.rows.length===1?' holding':' holdings'),true));
   const mix=portfolioMix(s.rows);
   if(mix.total>0)body.appendChild(finMixFold(mix,cur));
   body.appendChild(el('p','fin-note','Prices from Yahoo Finance. Only the ticker symbols (like AAPL) are sent to it, never your shares or amounts.'));
@@ -741,7 +747,7 @@ function finMixFold(mix,cur){
   });
   box.appendChild(bar); box.appendChild(note); box.appendChild(bars);
   draw();
-  return finFoldable(box,'mix','Portfolio mix',mix.sectors.length+(mix.sectors.length===1?' sector':' sectors'));
+  return finFoldable(box,'mix','Portfolio mix',mix.sectors.length+(mix.sectors.length===1?' sector':' sectors'),true);
 }
 // one line, its range zoomed to the values (a portfolio moves a little in a day), with a hover readout
 function finStockLine(host,tip,pts,width,cur,today){
@@ -968,7 +974,7 @@ function finInOutChart(d,cur){
   });
   box.appendChild(cols);
   const now=s.cols.length-1;
-  return finFoldable(box,'inout','In and out by month','this month: in '+finCompact(s.incomeTotal[now],cur)+' · out '+finCompact(s.expenseTotal[now],cur),true);
+  return finFoldable(box,'inout','In and out by month','this month: in '+finCompact(s.incomeTotal[now],cur)+' · out '+finCompact(s.expenseTotal[now],cur));
 }
 /* Debts (finance-insights.js debtPlan): each card and loan, what it charged in interest, the yearly rate that
    works out to, and how long the usual payment takes to clear it. Highest rate first: extra money there saves
@@ -1138,7 +1144,7 @@ function finPairFold(){
 function drawFinMain(v){
   const d=fin.data; v.textContent='';
   const bar=el('div','fin-bar');
-  bar.appendChild(el('span','mono fin-ago',d.csv?'from CSV files · '+finAgo(d.fetchedAt).replace('updated','last added'):finAgo(d.fetchedAt)+' · '+finMailWord(d.mail)));
+  bar.appendChild(el('span','mono fin-ago',d.csv?'from CSV files · '+finAgo(d.fetchedAt).replace('updated','last added'):finAgo(d.fetchedAt)));
   const refresh=el('button','ghost mono',d.csv?'add a csv':fin.busy?'refreshing…':'refresh'); refresh.disabled=fin.busy;
   refresh.addEventListener('click',async function(){
     if(d.csv){ fin.csvOpen=true; const f=v.querySelector('.fin-csv-fold'); if(f){ f.open=true; f.scrollIntoView({block:'center'}); } return; }
@@ -1224,6 +1230,7 @@ function drawFinMain(v){
   const txSection=el('div','fin-section');
   v.appendChild(txSection);
   txSection.appendChild(filt);
+  const mail=d.csv?null:finMailLine(d.mail); if(mail)txSection.appendChild(mail);
   const list=el('div','fin-card fin-txs');
   txSection.appendChild(list);
   const more=el('button','ghost mono','show more');

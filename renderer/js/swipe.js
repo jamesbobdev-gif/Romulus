@@ -43,7 +43,7 @@ function liveTask(t){ return state.tasks.find(function(x){ return x.id===t.id; }
 function updatePlanBtn(){
   if(!swipe)return;
   const n=swipe.open?0:swipeDeck().length, b=$('planBtn');
-  b.hidden=!n; b.textContent='Plan today · '+n;
+  b.hidden=!n; b.textContent='Plan'; b.appendChild(el('span','plan-day',' today')); b.appendChild(document.createTextNode(' · '+n)); // "Plan · 1" on a narrow phone (styles.css)
 }
 function openSwipe(){
   swipe.deck=swipeDeck(); swipe.i=0; swipe.history=[]; swipe.counts={today:0,tmrw:0,done:0,agent:0};
