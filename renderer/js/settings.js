@@ -568,20 +568,30 @@ async function syncUseOneKey(){
   if(btn)btn.disabled=false;
   startSyncLoop();
 }
-/* End-to-end encryption on (sync-crypto.js): every list and its side rows copied, sealed, under their lookup
-   ids, each read back; then this device switches; then the old rows get {moved:'v2'}, which tells a newer
-   device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
-   (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
+/* End-to-end encryption on (sync-crypto.js): every list and its side rows copied, sealed, under NEW keys'
+   lookup ids, each read back; then this device switches; then the old rows get {moved:'v2'}. The database
+   refuses plain writes onto a moved row (supabase/migrations/20261031_sync_moved_v2.sql), so an older build
+   can't put the lists back in the clear.
+   Why new keys: before this, the plain rows sat in the database under the sync key itself (the row id IS the
+   key), so the project, its logs and its backups already hold that key. The lookup id and the cipher key are
+   both made from the sync key alone, so sealing under the same key would keep nothing from whoever had that
+   access. The switch therefore rotates: a fresh sync key (and a fresh key for any list with one of its own),
+   never seen by the server, and the other devices are paired again with the new sync code. A device still on
+   the old key finds the marker, follows it under the old key's (now empty) sealed rows, and keeps its local copy
+   until it is paired again; it can't write a plain list back.
    Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
    (buy emails, school feeds, the work calendar) can't read sealed rows yet (docs/phone-only-plan.md). */
-const SYNC_MOVED={moved:'v2'};
-function syncV2Moves(c){
+const SYNC_MOVED={moved:'v2',rotated:true};
+/* The rows to copy: c the config as it is, newKey the new personal key, ownKeys {ws: newKey} for the lists
+   with a key of their own (made by the caller, so this can be tested). Derived lists follow the new personal key. */
+function syncV2Moves(c,newKey,ownKeys){
   const out=[];
   ['personal','work','agent','school'].forEach(function(ws){
     const prof=c[ws]; if(!validProfile(prof)||prof.v2)return;
+    const nk=ws==='personal'?newKey:(prof.derived?deriveSyncKey(newKey,ws):(ownKeys||{})[ws]);
+    if(!nk||nk===prof.syncKey)throw new Error('no new key for the '+ws+' list');
     [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
-      const k={url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx};
-      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:prof.syncKey,from:Object.assign({v2:false},k),to:Object.assign({v2:true},k)});
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx,v2:false},to:{url:prof.url,key:prof.key,syncKey:nk+sfx,v2:true}});
     });
   });
   return out;
@@ -591,22 +601,25 @@ async function syncMoveToV2(){
   if(!c||!validProfile(c.personal)){ setSyncStatus('save the sync settings first',true); return false; }
   if(!syncCryptoOk()){ setSyncStatus('this device can’t encrypt (no WebCrypto)',true); return false; }
   clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
-  setSyncStatus('encrypting your lists…');
+  setSyncStatus('encrypting your lists under new keys…');
   let ok=false;
   try{
     for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
     await syncNow(); // this device's latest edits reach the old rows first
     clearTimeout(syncState.pushTimer); liveStop();
-    const moves=syncV2Moves(c);
+    const newKey=newSyncKey(), ownKeys={};
+    syncOwnKeyLists(c).forEach(function(ws){ ownKeys[ws]=deriveSyncKey(newSyncKey(),ws); }); // its own fresh key, in the shape the list needs (tk_agent_…)
+    const moves=syncV2Moves(c,newKey,ownKeys);
     await syncCopyRows(moves);
-    const raw=Object.assign({},c,{personal:Object.assign({},c.personal,{v2:true})});
-    syncOwnKeyLists(c).forEach(function(ws){ raw[ws]=Object.assign({},c[ws],{v2:true}); });
+    const raw={personal:Object.assign({},c.personal,{syncKey:newKey,v2:true})};
+    syncOwnKeyLists(c).forEach(function(ws){ raw[ws]=Object.assign({},c[ws],{syncKey:ownKeys[ws],v2:true}); });
     syncState.cfg=normalizeSyncCfg(raw);
     await syncCfgPersist(syncState.cfg);
     syncState.docs={};
     let left=0;
     for(const m of moves){ try{ await syncPushDoc(m.from,SYNC_MOVED); }catch(e){ left++; } }
-    setSyncStatus('your lists are end-to-end encrypted'+(left?' ('+left+' old rows could not be cleared; try again later)':''));
+    syncFillForm();
+    setSyncStatus('your lists are end-to-end encrypted under a new sync key: pair your other devices again with Copy sync code'+(left?' ('+left+' old rows could not be cleared; try again later)':''));
     ok=true;
   }catch(e){
     setSyncStatus('stopped before switching: '+e.message+' (this device is unchanged)',true);
@@ -631,7 +644,7 @@ async function syncMoveToV2(){
   b.title='Re-upload every list encrypted on this device, so the sync project holds only ciphertext';
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',async function(){
-    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nYour other devices follow on their next sync if they run Romulus 1.0.10 or newer; older ones show a sync error until they update. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
+    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under a NEW sync key and ids that give nothing away, and the old rows are replaced by a marker. The project already holds your current key (the plain rows were filed under it), so a new one is made that it has never seen. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nEvery other device (phone, mini PC, widgets) stops syncing until you pair it again: press Copy sync code here afterwards and paste it there. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
     b.disabled=true;
     try{ await syncMoveToV2(); }finally{ b.disabled=false; syncFillForm(); }
   });

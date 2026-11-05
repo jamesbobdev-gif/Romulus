@@ -20,23 +20,20 @@ assumption worth checking.
 | Low | `agent/browser-proxy.js` | Link's card number and CVC were used as regex source when blanking; now escaped. |
 | Low | `renderer/js/grocery-list.js`, `renderer/js/seat-map.js` | The only `href`s set from synced agent data without a scheme check (the phone build has no main-process guard). Now `http(s)` only. |
 | Low | `supabase/functions/tasks-mcp/index.ts` | `update_task` took `note` and `tag` unbounded (a 4 MB note would make `sync_put` refuse every save from the apps); `list_tasks` `search` unbounded. Bounded like `add_task`. |
+| High | `renderer/js/settings.js` (`syncMoveToV2`) | Turning on end-to-end encryption sealed the lists under the **same** sync key, which the project already held as the plain rows' id. The switch now rotates: a fresh sync key (and a fresh own key per list that has one), rows copied sealed under the new lookup ids, the old rows marked moved, and the other devices paired again. Lists encrypted by an earlier build stay under the old key until **Rotate sync key** is pressed once (`SECURITY.md` says so). See the next section for what that doesn't cover. |
 | Medium | `.github/workflows/release.yml` | A re-run for an existing tag replaced the published installers and checksums (electron-builder overwrites same-named assets), so a verified copy stopped matching. The build now stops when the tag's release already carries installers unless started by hand with `overwrite`. The Android and iOS jobs ran even when the desktop job (tests, `npm audit`) failed; they now need it green. `release-gate.patch` was folded in and removed (its `--clobber` removal would have left stale checksums). |
 
 ## Not fixed: needs a product decision or a deployment check
 
-### High: the "end-to-end" move keeps the old key, which the server already holds
+### Medium: lists encrypted by a build before this fix are still under a key the server holds
 
-`syncMoveToV2` / `syncAdoptV2` (`renderer/js/settings.js`, `renderer/js/sync.js`) switch a list to v2 under the
-**same** sync key. Before the move, the row id in `tasks_sync` *is* the raw key (`tk_<uuid>`), and after it the
-`{moved:'v2'}` marker stays under that raw key for good. The v2 lookup id and the AES-256-GCM content key are
-both HKDF-derived from that key alone (`agent/sync-crypto.js`, `renderer/js/sync-crypto.js`, `SyncCrypto.java`).
-So anyone with read access to the database, its backups or its logs from the v1 days — the project operator
-included — can derive every migrated list's content key and read the "sealed" rows. For a list that was
-*created* on v2 this does not apply; for a migrated one the encryption keeps out only someone who never saw the
-old row.
-
-Fix: a move to v2 must make a fresh key (and re-pair the other devices, by QR), or derive the content key from
-something the server never saw. Say so plainly in `SECURITY.md` until then.
+Until this pass, `syncMoveToV2` sealed a list under the **same** sync key that had been the plain rows' id in
+`tasks_sync`, and the `{moved:'v2'}` marker still sits under that raw key. The v2 lookup id and the AES-256-GCM
+content key are both HKDF-derived from the key alone, so anyone with the database, its backups or its logs from
+before the move can read those rows. The switch now rotates the key (fixed above), but a user who encrypted with
+an earlier build has to press **Rotate sync key** once; the app does not do it for them, and nothing in the UI
+flags it. Worth a one-time notice in Settings for a v2 profile whose key still has a plain-days marker row.
+Data that was ever stored plain is in old backups regardless; rotation protects what is written from then on.
 
 ### Medium: Electron 33.4.11 is past its support window
 
