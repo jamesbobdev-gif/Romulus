@@ -17,7 +17,7 @@ function buildRow(t,canDrag){
   check.setAttribute('aria-label',t.done?'Mark as not done':'Mark as done');
   check.addEventListener('click',function(e){ e.stopPropagation(); toggleDone(t,li,check); });
   const title=el('span','title',t.title);
-  const meta=el('div','meta'), chips=el('div','chips'); // chips wrap in their own box; the buttons sit beside it, so every row's chips end at the same edge
+  const meta=el('div','meta'), chips=el('div','chips'), dateSlot=el('span','date-slot'); // chips wrap in their own box; the date gets a column of its own after them (styles.css), so dates line up down the list; the buttons sit beside it
 
   // subtask progress — turn red if any sub is overdue
   if(t.subs.length){
@@ -40,7 +40,7 @@ function buildRow(t,canDrag){
       state.calYear=p[0]; state.calMonth=p[1]-1;
       switchTab('calendar');
     });
-    chips.appendChild(dateBtn);
+    dateSlot.appendChild(dateBtn);
   }
   if(t.tag){
     const tagChip=el('button','chip tag',t.tag); tagChip.setAttribute('aria-label','Filter by tag '+t.tag);
@@ -128,7 +128,7 @@ function buildRow(t,canDrag){
     mv.addEventListener('click',function(e){ e.stopPropagation(); moveTask(t,isAgentTask?back:'agent'); });
     acts.appendChild(mv);
   }
-  acts.appendChild(chev); acts.appendChild(del); meta.appendChild(chips); meta.appendChild(acts);
+  acts.appendChild(chev); acts.appendChild(del); meta.appendChild(chips); meta.appendChild(dateSlot); meta.appendChild(acts);
   row.appendChild(check); row.appendChild(title); row.appendChild(meta);
   row.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); });
   li.appendChild(row);
@@ -834,6 +834,7 @@ function render(){
   drawSuggestions(tab==='list');
   const ol=$('openList'); ol.innerHTML='';
   openVis.forEach(function(t){ ol.appendChild(buildRow(t,true)); });
+  ol.classList.toggle('has-dates',openVis.some(function(t){ return !!t.due; })); // the date column is only there while a row has one
 
   const es=$('emptyState');
   if(unconnected){ es.hidden=true; }
@@ -853,6 +854,7 @@ function render(){
     $('clearDone').textContent=state.confirmClear?'sure?':'clear';
     const dlst=$('doneList'); dlst.hidden=!state.showDone; dlst.innerHTML='';
     if(state.showDone)doneVis.forEach(function(t){ dlst.appendChild(buildRow(t,false)); });
+    dlst.classList.toggle('has-dates',state.showDone&&doneVis.some(function(t){ return !!t.due; }));
   } else { ds.hidden=true; state.confirmClear=false; }
 }
 

@@ -339,7 +339,11 @@
   </div>
 
   <section class="composer" aria-label="Add a task">
-    <input id="newTitle" placeholder="Add a task…" autocomplete="off">
+    <!-- one line until it's in use; the mic stays on it, the date, time and tag row shows once you're in the box (styles.css .composer-meta) -->
+    <div class="composer-line">
+      <input id="newTitle" placeholder="Add a task…" autocomplete="off">
+      <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
+    </div>
     <div class="composer-meta">
       <input type="date" id="newDue" class="sm" aria-label="Due date">
       <input type="time" id="newTime" class="sm" aria-label="Due time">
@@ -348,7 +352,6 @@
       <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report (#legion)" hidden>Legion</button>
       <button id="newAttBtn" class="att-btn" type="button" title="Add photos — or just paste a screenshot" hidden>+ Photo</button>
       <input id="newAttFile" type="file" accept="image/*" multiple hidden>
-      <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
       <button id="addBtn" class="btn-accent">Add</button>
     </div>
     <div id="newAtts" class="att-thumbs" style="padding:2px 8px 6px" hidden></div>
