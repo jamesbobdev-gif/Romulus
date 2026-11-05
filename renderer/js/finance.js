@@ -17,7 +17,7 @@ function finSwitchSource(csv){
   finApi=finUseCsv()?(window.csvFinance||null):finNative; fin.data=null; finSay(''); renderFinance();
 }
 if(window.csvFinance)window.csvFinance.onFinanceLocked(function(){ if(finApi===window.csvFinance){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); } });
-if(finApi)$('tabFinance').hidden=false;
+if(finApi)$('tabFinance').dataset.na=''; // shown by tabsApply (settings.js) unless switched off in Settings -> Tabs
 if(finNative){
   // SimpleFIN's own lock and update events count only while it's the one showing
   finNative.onFinanceLocked(function(){ if(finApi!==finNative)return; fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });

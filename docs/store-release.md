@@ -57,6 +57,14 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
   time the user set are a core feature of a task and calendar app.
 - **Health, financial features**: Finance is a personal budget view, not a financial service: answer no to
   loans, banking and crypto.
+- **Health Connect** (`READ_STEPS`, `READ_SLEEP`, `READ_EXERCISE`): fill in the Health apps declaration
+  (App content → Health apps) and the Health Connect permissions form. Purpose for each: "Ticks off the
+  user's own goal to-dos (for example 'Walk 8,000 steps') when Health Connect shows the goal was met. Read
+  only, while the app is open; the totals stay in memory on the phone and are never stored, synced or
+  shared." Category: fitness / habit tracking. Data safety: add *Health and fitness → Health info and
+  Fitness info*, "processed ephemerally", not collected, not shared. Play asks for a video: the
+  Health tab → Connect, the Health Connect permission screen, then a "Walk 1,000 steps" to-do ticking itself
+  off. The privacy policy already has the Health Connect section the review checks for.
 - **AI-generated content**: Romulus shows replies from AI services the user connects. If review treats it as
   a generative-AI app, it will ask for an in-app way to report offensive output; that isn't built yet.
 

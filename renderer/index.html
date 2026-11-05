@@ -275,6 +275,11 @@
         </select>
       </div>
     </details>
+    <details class="settings-panel settings-collapse" id="tabsSection">
+      <summary class="settings-label">Tabs</summary>
+      <p class="settings-hint">Which tabs show on this device.</p>
+      <div id="tabsPicks" class="tabs-picks"></div>
+    </details>
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
       <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
@@ -319,7 +324,8 @@
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Ideas</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
-    <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
+    <button id="tabFinance" class="tab"     role="tab" aria-selected="false" data-na="1" hidden>Finance</button>
+    <button id="tabHealth" class="tab"      role="tab" aria-selected="false" data-na="1" hidden>Health</button>
   </div>
 
   <section class="composer" aria-label="Add a task">
@@ -442,6 +448,9 @@
 
   <!-- Finance (SimpleFIN on the computer and phone, CSV files anywhere; js/finance.js draws it) -->
   <div id="financeView" hidden></div>
+
+  <!-- Health (Android: Health Connect; js/health.js draws it) -->
+  <div id="healthView" hidden></div>
 </main>
 
 <script src="js/sync-crypto.js"></script>
@@ -484,6 +493,7 @@
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
+<script src="js/health.js"></script>
 <script src="js/look-ahead.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>
