@@ -22,6 +22,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      overwrite:
+        description: Replace the installers already on this version's release (a re-run otherwise refuses to)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -62,6 +67,21 @@ jobs:
           perms=$(gh api repos/jamesbobdev-gif/romulus-releases --jq '.permissions' 2>&1) || { echo "RELEASES_TOKEN can't read the releases repository: $perms"; exit 1; }
           echo "token permissions on romulus-releases: $perms"
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to romulus-releases"; exit 1; }
+      # A version that is already out stays as published: electron-builder would replace its installers (and the
+      # steps below their checksums) under the same tag, so a copy someone verified yesterday would no longer match.
+      # A re-run for an existing tag stops here unless started by hand with "overwrite" ticked.
+      - name: Refuse to overwrite a published release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.overwrite) }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('./package.json').version")"; fi
+          assets=$(gh release view --repo jamesbobdev-gif/romulus-releases "$TAG" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          if echo "$assets" | grep -Eq '\.(exe|AppImage|dmg|zip|apk)$'; then
+            echo "::error::$TAG is already published with installers ($(echo "$assets" | tr '\n' ' ')). Bump the version, or re-run by hand with overwrite ticked."
+            exit 1
+          fi
       - run: npm ci
       # Known vulnerabilities. Critical only for now: electron and electron-builder still carry known highs
       # until they're upgraded; raise this to --audit-level=high once Electron is current. What ships in the
@@ -176,7 +196,8 @@ jobs:
   android:
     runs-on: ubuntu-latest
     needs: build # the release exists once the desktop builds have published to it
-    if: ${{ always() && needs.build.result != 'cancelled' }}
+    # only after the desktop job passed: its tests and `npm audit` gate the whole release, the phone included
+    if: ${{ needs.build.result == 'success' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Signing key
@@ -272,7 +293,7 @@ jobs:
   ios:
     runs-on: macos-latest
     needs: build
-    if: ${{ always() && needs.build.result != 'cancelled' }}
+    if: ${{ needs.build.result == 'success' }} # the same gate as the Android job
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: App Store Connect key
