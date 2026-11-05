@@ -75,6 +75,19 @@ function isPublicUrl(url) {
   if (h.includes(':')) return !(h === '::1' || h === '::' || /^(fc|fd|fe[89ab])/i.test(h) || /^::ffff:/i.test(h));
   return h.includes('.'); // a bare name is a LAN machine
 }
+const privateAddress = (h) => !isPublicUrl('http://' + (h.includes(':') ? '[' + h + ']' : h) + '/');
+/* A public-looking name can still point here: 127.0.0.1.nip.io, or a name whose DNS record an attacker set to the
+   router's address. isPublicUrl can't see that, so before fetching, the name is looked up and refused when any of
+   its addresses is private (one lookup per name per run). A name that doesn't resolve is left to fetch to fail. */
+let lookup = (host) => require('dns').promises.lookup(host, { all: true, verbatim: true });
+const resolvedPrivate = new Map(); // host → Promise<boolean>
+function resolvesPrivate(url) {
+  let h; try { h = new URL(String(url)).hostname.toLowerCase(); } catch (e) { return Promise.resolve(false); }
+  if (!h || h.startsWith('[') || /^\d+(\.\d+){3}$/.test(h)) return Promise.resolve(false); // an address: isPublicUrl judged it
+  if (!resolvedPrivate.has(h)) resolvedPrivate.set(h, Promise.resolve().then(() => lookup(h)).then((rs) => (rs || []).some((r) => privateAddress(String(r.address).toLowerCase())), () => false));
+  return resolvedPrivate.get(h);
+}
+const setLookup = (f) => { lookup = f; resolvedPrivate.clear(); }; // tests
 
 /* A run's log, for "why didn't it answer?": the tool calls and the shape of what came back, with every long
    string cut short, so pages and emails the run read aren't kept whole on disk. */
@@ -133,7 +146,7 @@ const noEmoji = (s) => String(s == null ? '' : s).replace(EMOJI, '').replace(/^ 
 async function fetchPublic(url, opts = {}) {
   let at = String(url || '');
   for (let hop = 0; ; hop++) {
-    if (!isPublicUrl(at)) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
+    if (!isPublicUrl(at) || await resolvesPrivate(at)) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
     const res = await fetch(at, Object.assign({}, opts, { redirect: 'manual' }));
     if (![301, 302, 303, 307, 308].includes(res.status)) return res;
     try { await res.body?.cancel(); } catch (e) {}
@@ -142,4 +155,4 @@ async function fetchPublic(url, opts = {}) {
   }
 }
 
-module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, fetchPublic, trimRunLog };
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, resolvesPrivate, fetchPublic, trimRunLog, _net: { setLookup } };
