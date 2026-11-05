@@ -1,7 +1,7 @@
 {
   "name": "romulus",
   "productName": "Romulus",
-  "version": "1.0.27",
+  "version": "1.1.0",
   "description": "Romulus",
   "main": "main.js",
   "engines": {
@@ -31,8 +31,20 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "hardenedRuntime": true
     },
@@ -40,7 +52,9 @@
       "displayName": "Romulus",
       "applicationId": "Romulus",
       "backgroundColor": "transparent",
-      "languages": ["en-US"]
+      "languages": [
+        "en-US"
+      ]
     },
     "win": {
       "target": "nsis",
