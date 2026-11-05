@@ -163,8 +163,9 @@ function listCardsChanged(cards,ch){
 function cardsStrip(t){
   const box=el('div','mini-cards');
   t.cards.slice(0,40).forEach(function(it){
-    const c=el(it.url?'a':'div','mini-card');
-    if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
+    const link=/^https?:\/\//i.test(String(it.url||'')); // a synced card's link: web pages only
+    const c=el(link?'a':'div','mini-card');
+    if(link){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
     const ph=el('div','mini-pic');
     if(it.image&&/^https:\/\//i.test(String(it.image))){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
