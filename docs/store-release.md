@@ -42,13 +42,25 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
   gambling or user-to-user chat. Expect Everyone / PEGI 3.
 - **Target audience**: 18 and over (the Agent can shop and fill forms for you), so no Families policy.
 - **Data safety**:
-  - Data collected *by the developer*: none. Data shared with third parties: none by us; the app sends data
-    to services the user connects themselves, which Play counts as user-initiated transfer, not sharing.
+  - Data collected *by the developer*: sync goes through the Romulus server by default
+    (renderer/js/hosted-sync.js), but lists are end-to-end encrypted on the device, and Play doesn't count
+    end-to-end encrypted data as collected. What the server does see: photos on Agent tasks and the files the
+    Agent downloads (not end-to-end encrypted; declare **Photos** and **Files and docs** as collected, for app
+    functionality, deletable), plus a hashed key id, usage counts and a day-old IP hash (abuse limits, which
+    Play counts as **Device or other IDs** for fraud prevention/security). Data shared with third parties:
+    none by us; the app sends data to services the user connects themselves, which Play counts as
+    user-initiated transfer, not sharing.
   - Still declare what the app processes and sends on the user's behalf, marked "processed ephemerally" /
     "not collected" as appropriate: personal info (name, email, address in the Locked profile), financial
     info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks).
-  - Encrypted in transit: yes. Users can request deletion: data lives on their device and in their own
-    sync project; they delete it there (see PRIVACY.md).
+  - Encrypted in transit: yes. Users can request deletion: yes, in the app (Settings → Device sync →
+    Delete my synced data, which needs the `sync-delete` function deployed; see below). Play's
+    account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
+    the privacy policy's "Deleting your data" section as the deletion web link when Play asks for one.
+  - **Payments**: the $5 sync plan is a Stripe link, and Play requires Play Billing for subscriptions bought
+    inside the app, so the Play build never shows it (`hostedInStore` in hosted-sync.js, keyed on
+    `window.ROMULUS_STORE`). Someone who pays on a computer gets the space on their phone too. The same goes
+    for an iPhone build: give it its own `ROMULUS_STORE` value and the button stays hidden.
 - **Foreground service: microphone** (`WakeWordService`). Declare it as *user-initiated, ongoing*: "Hey
   Romulus" is a wake word the user turns on in Settings; it listens only while the screen is on and shows
   a persistent notification. Play asks for a short video: turn it on in Settings, show the notification,
@@ -164,6 +176,12 @@ of the plugins in `mobile/android/app/src/main/java/com/jartro/tasks/` and Widge
 Android uses for `versionCode` (1.0.27 → 1000027), so every tag uploads a build Apple accepts as newer.
 
 ## Before any store goes public
+
+- **Data deletion on the server**: paste `supabase/migrations/20261106_sync_delete_account.sql` into the SQL
+  editor (after `20261106_sync_paid_plan.sql`), deploy `supabase/functions/sync-delete` with JWT
+  verification off, and add an `app_secrets` row `stripe_api_key` (a Stripe restricted key with
+  Subscriptions: write) so deleting also cancels a paid plan. Until the function is deployed the button
+  says it couldn't delete.
 
 - **Gmail access**: the Gmail scope is *restricted*. While the Google sign-in client is in testing mode only
   listed test users can use it; publishing it to everyone needs Google's verification and a yearly security

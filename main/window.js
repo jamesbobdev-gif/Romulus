@@ -12,6 +12,9 @@ const ROOT = path.join(__dirname, '..');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
 const APP_PAGE = path.join(ROOT, 'renderer', 'index.html');
 const LINUX = process.platform === 'linux';
+// Windows and Linux: no system title bar (a strip in the system's colors above the app's own header);
+// Electron draws the window buttons top-right instead, in the page's colors. Mac keeps its own.
+const OWN_TITLE_BAR = LINUX || process.platform === 'win32';
 const TITLE_H = 32; // the hidden title bar's strip: window buttons on the right, drag area across
 // Opened for a look on a computer where a background service normally runs the app (the mini PC's app-menu
 // launcher pauses the service and passes this): closing the window quits, so the service can come back.
@@ -53,9 +56,7 @@ function createWindow() {
     icon: ICON,
     backgroundColor: '#FBFBFA',
     autoHideMenuBar: true,
-    // Linux: no window-manager title bar (a plain white strip saying "Romulus" above the app's own
-    // header); Electron draws the window buttons top-right instead, in the page's colors
-    ...(LINUX ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#FBFBFA', symbolColor: '#71716C', height: TITLE_H } } : {}),
+    ...(OWN_TITLE_BAR ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#FBFBFA', symbolColor: '#71716C', height: TITLE_H } } : {}),
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
       contextIsolation: true,
@@ -81,7 +82,7 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', () => setTimeout(loadApp, 1500));
   // a fresh page starts off Finance: drop the capture block it may have left (it sets it again if it opens there)
   mainWindow.webContents.on('did-start-loading', () => protect(false));
-  if (LINUX) mainWindow.webContents.on('did-finish-load', titleBarFollowsPage);
+  if (OWN_TITLE_BAR) mainWindow.webContents.on('did-finish-load', titleBarFollowsPage);
 
   // Closing the window hides it to the tray; the app keeps running
   // so it can reappear when the screen wakes. Quit from the tray menu.
@@ -95,7 +96,7 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// Linux without a title bar: the top strip of the page drags the window, and the window buttons take
+// Without a system title bar: the top strip of the page drags the window, and the window buttons take
 // the page's background and muted ink, again whenever light/dark or a custom theme changes them.
 // The page answers once straight away, then each time its colors change (a waiting promise, so
 // nothing in the page or preload has to know about it).
@@ -117,7 +118,9 @@ const TITLE_COLORS = `new Promise((done) => {
 let titleRun = 0;
 function titleBarFollowsPage() {
   const wc = mainWindow.webContents, run = ++titleRun;
-  wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}`).catch(() => {});
+  // the strip can't be clicked through, and the window buttons sit on its right: pop-ups that reach the top start below it
+  wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}
+    .lb-close{top:${TITLE_H + 14}px} .live-view{top:${TITLE_H + 8}px} .swipe{padding-top:${TITLE_H + 10}px}`).catch(() => {});
   const follow = () => wc.executeJavaScript(TITLE_COLORS).then((c) => {
     if (run !== titleRun || !mainWindow || mainWindow.isDestroyed()) return;
     if (c && c.color && c.symbolColor) { try { mainWindow.setTitleBarOverlay({ ...c, height: TITLE_H }); } catch (e) {} }

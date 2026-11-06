@@ -31,6 +31,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      # the project the supporters line at the bottom reads from: the same publishable project the app's release
+      # build uses (repository variables PAIR_URL, PAIR_KEY). Without them the line just doesn't show.
+      - name: Point the page at the Romulus server
+        env:
+          PAIR_URL: ${{ vars.PAIR_URL }}
+          PAIR_KEY: ${{ vars.PAIR_KEY }}
+        run: |
+          node -e "if (process.env.PAIR_URL && process.env.PAIR_KEY) require('fs').writeFileSync('site/romulus-server.js', 'window.ROMULUS_SERVER=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }) + ';\n')"
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: site

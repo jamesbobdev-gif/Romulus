@@ -116,9 +116,11 @@ test('the migration in last position carries every side row, the moved check and
   assert.strictEqual((sql.match(/sync_is_moved\(p_sync_key\)/g) || []).length, 2);
   // a later migration (the :devices row) re-creates the three write functions: it must carry every side row the
   // review's file knew plus its own, the moved check and the guard, or applying the files in order would undo them
-  const last = fs.readdirSync(path.join(__dirname, '..', 'supabase', 'migrations')).sort().pop();
-  assert.strictEqual(last, '20261106_sync_devices_key.sql');
-  const lastSql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', last), 'utf8');
+  const dir = path.join(__dirname, '..', 'supabase', 'migrations');
+  const writes = fs.readdirSync(dir).sort().filter((f) => /create or replace function (public\.)?sync_put\(/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+  const last = writes.pop();
+  assert.strictEqual(last, '20261106_sync_devices_key.sql'); // the newest file that re-creates the write functions
+  const lastSql = fs.readFileSync(path.join(dir, last), 'utf8');
   for (const fn of ['sync_put', 'sync_set', 'sync_usage']) assert.ok(lastSql.includes('create or replace function public.' + fn + '('), fn);
   assert.strictEqual((lastSql.match(/prefs\|locked\|routing\|standing\|ideas\|hours\|worker\|updates\|finance\|files\|files-gone\|devices/g) || []).length, 3);
   assert.strictEqual((lastSql.match(/sync_is_moved\(p_sync_key\)/g) || []).length, 2);

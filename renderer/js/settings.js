@@ -376,8 +376,27 @@ function openOutside(url){
 $('supabaseLink').addEventListener('click',function(e){ e.preventDefault(); openOutside('https://supabase.com'); });
 // the first device: nothing to pair with, so Device sync opens on the steps for making the project
 const SETUP_SQL_URL='https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/setup.sql';
-$('syncOpenSupabase').addEventListener('click',function(){ openOutside('https://supabase.com/dashboard/new'); });
+const SETUP_SQL_RAW='https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/supabase/setup.sql';
+// once a Project URL is in the box, this opens that project's SQL Editor; before that, a new project
+function supabaseRef(u){ const m=/^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/i.exec(String(u||'').trim()); return m?m[1].toLowerCase():''; }
+$('syncOpenSupabase').addEventListener('click',function(){
+  const ref=supabaseRef($('syncUrl').value);
+  openOutside(ref?'https://supabase.com/dashboard/project/'+ref+'/sql/new':'https://supabase.com/dashboard/new');
+});
 $('syncOpenSql').addEventListener('click',function(){ openOutside(SETUP_SQL_URL); });
+// the whole setup.sql on the clipboard, so nobody has to find the copy button on GitHub
+$('syncCopySql').addEventListener('click',async function(){
+  const b=this; b.disabled=true;
+  try{
+    const r=await fetch(SETUP_SQL_RAW,{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    await navigator.clipboard.writeText(await r.text());
+    setSyncStatus('setup.sql copied: paste it in the project’s SQL Editor and press Run');
+  }catch(e){
+    setSyncStatus('couldn’t copy it here, so it opens instead: use the copy button at the top right of the file',true);
+    openOutside(SETUP_SQL_URL);
+  }finally{ b.disabled=false; }
+});
 function syncShowFirstSteps(){
   const first=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   $('syncFirstSteps').hidden=!first;
@@ -463,11 +482,43 @@ $('syncSaveBtn').addEventListener('click',function(){
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
   for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
-  syncState.cfg=normalizeSyncCfg(raw);
-  syncCfgPersist(syncState.cfg); // config.json on the desktop, localStorage on the phone (sync.js)
-  $('syncOffBtn').hidden=false;
-  render(); // workspace chips may appear/disappear
-  startSyncLoop();
+  const hosted=typeof hostedIs==='function';
+  const prev=syncState.cfg&&syncState.cfg.personal;
+  // leaving the Romulus server for a project of one's own, same sync key: the other devices are told to follow
+  const leaving=hosted&&validProfile(prev)&&hostedIs(prev.url)&&!hostedIs(url)&&prev.syncKey===sk?Object.assign({},prev):null;
+  const btn=$('syncSaveBtn'); btn.disabled=true;
+  (async function(){
+    if(!(hosted&&hostedIs(url))){
+      setSyncStatus('checking the project…');
+      const bad=await syncCheckProject({url:url,key:key,syncKey:sk});
+      if(bad){ setSyncStatus(bad,true); return; }
+    }
+    clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
+    for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); }); // let a sync already running finish
+    syncState.cfg=normalizeSyncCfg(raw);
+    syncState.docs={};
+    syncCfgPersist(syncState.cfg); // config.json on the desktop, localStorage on the phone (sync.js)
+    if(hosted&&!hostedIs(url))hostedSetOptOut(true); // a project of one's own: never start on the Romulus server by itself again
+    if(typeof hostedDraw==='function')setTimeout(hostedDraw,0);
+    $('syncOffBtn').hidden=false;
+    render(); // workspace chips may appear/disappear
+    let said=null;
+    if(leaving){
+      // this device's lists go up to the new project first; only once that worked are the others sent after them
+      const t0=Date.now();
+      await syncNow();
+      if(syncState.errStreak===0&&(syncState.lastAt||0)>=t0){
+        try{ await syncLeaveMovedNote(leaving,syncState.cfg.personal); said=['moved: your other devices follow on their next sync (one on an older version of the app needs pairing again)',false]; }
+        catch(e){ said=['moved this device, but couldn’t tell the others: pair them again with Add a device',true]; }
+      }
+    }
+    startSyncLoop();
+    if(said){ // after the sync the loop just started, so "synced" doesn't cover it up
+      await new Promise(function(r){ setTimeout(r,50); });
+      for(let i=0;i<120&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
+      setSyncStatus(said[0],said[1]);
+    }
+  })().finally(function(){ btn.disabled=false; });
 });
 $('syncOffBtn').addEventListener('click',function(){
   syncState.cfg=null; syncCfgPersist(null);

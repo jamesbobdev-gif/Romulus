@@ -98,16 +98,19 @@ jobs:
         if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
         shell: bash
         run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
-      # where pairing codes meet (renderer/js/pair-server.js): the repository variables PAIR_URL and PAIR_KEY
-      # (a publishable key). Without them the build pairs through each device's own sync project.
+      # where pairing codes meet and new installs sync (renderer/js/pair-server.js, hosted-sync.js): the repository
+      # variables PAIR_URL and PAIR_KEY, and PAY_URL and PAY_YEAR_URL (the Stripe Payment Links for $5 a month and $50 a year; optional).
+      # PAIR_KEY is a publishable key. Without them the build pairs through each device's own sync project.
       - name: Pairing server
         if: ${{ vars.PAIR_URL != '' && vars.PAIR_KEY != '' }}
         env:
           PAIR_URL: ${{ vars.PAIR_URL }}
           PAIR_KEY: ${{ vars.PAIR_KEY }}
+          PAY_URL: ${{ vars.PAY_URL }}
+          PAY_YEAR_URL: ${{ vars.PAY_YEAR_URL }}
         shell: bash
         run: |
-          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }) + ';\n')"
+          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify(Object.assign({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }, process.env.PAY_URL ? { pay: process.env.PAY_URL } : {}, process.env.PAY_YEAR_URL ? { payYear: process.env.PAY_YEAR_URL } : {})) + ';\n')"
       # Signing, each part only once its secrets exist; until then that installer is built unsigned as before.
       # Mac (Apple Developer Program): MAC_CSC_LINK (the Developer ID Application certificate as a base64
       # .p12), MAC_CSC_KEY_PASSWORD, and for notarization APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
@@ -226,9 +229,11 @@ jobs:
         env:
           PAIR_URL: ${{ vars.PAIR_URL }}
           PAIR_KEY: ${{ vars.PAIR_KEY }}
+          PAY_URL: ${{ vars.PAY_URL }}
+          PAY_YEAR_URL: ${{ vars.PAY_YEAR_URL }}
         shell: bash
         run: |
-          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }) + ';\n')"
+          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify(Object.assign({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }, process.env.PAY_URL ? { pay: process.env.PAY_URL } : {}, process.env.PAY_YEAR_URL ? { payYear: process.env.PAY_YEAR_URL } : {})) + ';\n')"
       - name: Build the APK
         if: steps.keystore.outputs.present == 'true'
         env:

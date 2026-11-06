@@ -136,6 +136,8 @@ contextBridge.exposeInMainWorld('desktop', {
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updateGetMode: () => ipcRenderer.invoke('update:get-mode'),
   updateSetMode: (m) => ipcRenderer.invoke('update:set-mode', m),
+  updateGetEarly: () => ipcRenderer.invoke('update:get-early'),
+  updateSetEarly: (on) => ipcRenderer.invoke('update:set-early', !!on),
   onUpdateState: (cb) => ipcRenderer.on('update:state', (_event, s) => cb(s)),
   // Speak on desktop: Windows dictation; partials stream in while listening
   voiceListen: () => ipcRenderer.invoke('voice:listen'),
