@@ -14,6 +14,7 @@ function syncFillForm(){
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
+  if(typeof devicesDraw==='function')devicesDraw();
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
 const SETTINGS_OPEN_KEY='tasks.settingsOpen';
@@ -451,11 +452,13 @@ async function syncCopyRows(moves){ // each row copied to its new key and read b
     if(stableJson(back)!==stableJson(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
   }
 }
-async function syncRotateKey(){
+// opts.remove: a device id from Settings → Devices (devices.js) that doesn't get the new key; opts.confirmed: asked already
+async function syncRotateKey(opts){
+  opts=opts&&opts.confirmed?opts:{}; // the button's click hands in an event
   const c=syncState.cfg, p=c&&c.personal;
   if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
   const moving=['Personal (with Ideas and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
-  if(!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked, so a device still on the old key sees empty lists.\n\nEvery other device (phone, mini PC, widgets) stops syncing until you pair it again: press Copy sync code here afterwards and paste it there. Lists with a key of their own are left alone.'))return;
+  if(!opts.confirmed&&!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked.\n\nThe devices listed under Devices move to the new key by themselves the next time they sync. A device not listed there (an older version) stops syncing until you pair it again. Lists with a key of their own are left alone.'))return;
   const newKey=newSyncKey();
   const rotateBtn=$('syncRotateBtn'); if(rotateBtn)rotateBtn.disabled=true;
   // nothing may upload to the old keys while the rows move
@@ -472,13 +475,35 @@ async function syncRotateKey(){
     const raw={personal:{url:p.url,key:p.key,syncKey:newKey}};
     if(p.v2)raw.personal.v2=true;
     ['work','agent','school'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
+    // the device list, read before switching: the kept devices get the new settings sealed to their own keys (devices.js)
+    const oldDevices=devicesProfileOf(p), newDevices=devicesProfileOf(raw.personal);
+    let devDoc=null; try{ devDoc=await syncPull(oldDevices); }catch(e){}
     syncState.cfg=normalizeSyncCfg(raw);
     await syncCfgPersist(syncState.cfg);
+    // 2b. the hand-off under the old key, and the device list without the removed one under the new key
+    // no device list (a database without the ':devices' row yet): nobody can be handed the new key
+    let pairAgain=devDoc&&devDoc.devices?[]:['your other devices'], removedName=null;
+    if(devDoc&&devDoc.devices&&!devDoc.rotated){
+      const me=deviceId(), meNow=await deviceMe();
+      const keep=Object.keys(devDoc.devices).filter(function(id){ return id!==me&&id!==opts.remove; });
+      try{
+        const h=await devicesHandoff(devDoc,keep,JSON.stringify(raw));
+        pairAgain=h.left;
+        await syncPushDoc(oldDevices,{v:1,devices:devDoc.devices,rotated:{at:Date.now(),by:{id:me,name:meNow.name},removed:opts.remove||null,handoff:h.handoff}});
+        const kept={}; Object.keys(devDoc.devices).forEach(function(id){ if(id!==opts.remove)kept[id]=devDoc.devices[id]; });
+        const next=devicesWithMe({v:1,devices:kept},me,meNow,Date.now());
+        await syncPushDoc(newDevices,next);
+        devState.doc=next;
+        if(opts.remove&&devDoc.devices[opts.remove])removedName=devDoc.devices[opts.remove].name||'That device';
+      }catch(e){ pairAgain=['every other device (the hand-off wasn’t saved: '+e.message+')']; }
+    }
     // 3. the old rows are blanked (an old device then shows an empty list, never live data)
     let left=0;
     for(const m of moves){ try{ await syncPushDoc(m.from,m.sfx?Object.assign({text:''},SYNC_TOMBSTONE):SYNC_TOMBSTONE); }catch(e){ left++; } }
+    const said=(removedName?removedName+' is off sync. ':'')+'New sync key saved'+(pairAgain.length?'; pair these again with Add a device: '+pairAgain.join(', '):': your other devices follow by themselves')+(left?' ('+left+' old rows could not be blanked; try again later)':'')+'.';
+    devState.notice={text:said,until:Date.now()+3*60000};
     syncFillForm();
-    setSyncStatus('new sync key saved: pair your other devices again with Copy sync code'+(left?' ('+left+' old rows could not be blanked; try again later)':''));
+    setSyncStatus(said);
   }catch(e){
     setSyncStatus('rotation stopped before switching keys: '+e.message+' (this device is unchanged)',true);
   }
@@ -584,7 +609,7 @@ async function syncMoveToV2(){
 })();
 (function(){ // the button sits with the other sync buttons and shows only while sync is on
   const b=document.createElement('button'); b.id='syncRotateBtn'; b.className='ghost mono'; b.textContent='Rotate sync key';
-  b.title='Make a new sync key and move every list over to it; other devices must be paired again';
+  b.title='Make a new sync key and move every list over to it; the devices listed under Devices follow by themselves';
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',syncRotateKey);
 })();

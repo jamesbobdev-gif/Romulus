@@ -230,6 +230,12 @@
         <p id="pairInfo" class="settings-hint" style="margin:4px 0 0"></p>
       </div>
       <span id="syncStatus" class="mono" style="display:block;font-size:11px;color:var(--muted)"></span>
+      <!-- every device on these lists, and taking one off (devices.js) -->
+      <div id="devicesBox" hidden style="margin-top:14px">
+        <div class="settings-label" style="margin-bottom:4px">Devices</div>
+        <div id="devicesList"></div>
+        <p id="devicesNote" class="settings-hint" style="margin:8px 0 0"></p>
+      </div>
       <!-- the form a pairing code carries and fills in: needed by hand only on the first device, or with your own Supabase project -->
       <details class="settings-sub" id="syncManual" style="margin-top:14px">
       <summary class="settings-label">Set up by hand</summary>
@@ -492,6 +498,7 @@
 <script src="js/settings.js"></script>
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
+<script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
 <script src="js/agent-results.js"></script>
