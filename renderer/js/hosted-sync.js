@@ -72,11 +72,11 @@ function hostedPlanPitch(h){
   const pitch='The family plan: share Romulus with up to 4 more people, with a family list you all keep together (groceries, chores, a trip) and private lists of your own, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
   return days?{
     button:'Try the family plan free for '+days+' days',
-    year:'or $50 a year',
+    year:'Pay yearly: 2 months free',
     pitch:pitch+' Free for '+days+' days, then $5 a month. Cancel before the trial ends and you pay nothing.'
   }:{
     button:'Family plan: $5 a month for up to 5 people',
-    year:'or $50 a year',
+    year:'Pay yearly: 2 months free',
     pitch:pitch
   };
 }
