@@ -75,7 +75,7 @@ function hostedMb(b){ b=Number(b)||0; return b>=1024*1024*1024?(b/1024/1024/1024
    says the Stripe links start with that many free days; only then does it say so. */
 function hostedPlanPitch(h){
   const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0));
-  const pitch='The family plan: share Romulus with up to 4 more people, with a family list you all keep together (groceries, chores, a trip) and private lists of your own, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
+  const pitch='The family plan: share Romulus with up to 4 more people, with a family list you all keep together (groceries, chores, a trip) and private lists of your own, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB for photos and files instead of 50 MB.';
   return days?{
     button:'Try the family plan free for '+days+' days',
     year:'Pay yearly: 2 months free',

@@ -338,6 +338,11 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .att-thumb{position:relative;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid var(--hairline);background:#fff}
 .att-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 .att-thumb button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:0;background:rgba(20,20,20,.65);color:#fff;font-size:10px;line-height:18px;padding:0;cursor:pointer}
+/* a file on a task that isn't a photo (task-files.js): its name and size, open on click */
+.att-file{display:flex;align-items:center;gap:6px;height:52px;max-width:240px;padding:0 6px 0 10px;border-radius:8px;border:1px solid var(--hairline);background:var(--chip);font-family:var(--mono);font-size:11px;color:var(--ink)}
+.att-file-name{background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-file > button:last-child{flex:none;width:18px;height:18px;border-radius:50%;border:0;background:rgba(20,20,20,.65);color:#fff;font-size:10px;line-height:18px;padding:0;cursor:pointer}
+.task-files-add{margin-top:6px;font-size:11px}
 .att-status{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 .att-status.err{color:var(--late)}
 .conv-imgs{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}

@@ -52,15 +52,17 @@ function setLegion(on){
 async function addTask(){
   if(addingTask)return;
   const titleEl=$('newTitle'); let title=titleEl.value.trim();
-  const withPhotos=composerAtts.length>0&&!!attachProfile();
-  if(!title&&withPhotos)title=state.activeTab==='agent'?(composerAtts.length===1?'Look at this photo':'Look at these photos'):'Screenshot';
+  // photos for the Agent go to its own photo folder; on any other list they're encrypted task files (task-files.js)
+  const forAgent=state.activeTab==='agent';
+  const withPhotos=composerAtts.length>0&&(forAgent?!!attachProfile():taskFilesOn());
+  if(!title&&withPhotos)title=forAgent?(composerAtts.length===1?'Look at this photo':'Look at these photos'):(composerAtts.length===1?'Photo':'Photos');
   if(!title){ titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
   if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')); return; } }
-  let photoUrls=[];
+  let photoUrls=[], photoFiles=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
-    try{ for(const a of composerAtts)photoUrls.push(await uploadAttachment(a.blob)); }
+    try{ for(const a of composerAtts){ if(forAgent)photoUrls.push(await uploadAttachment(a.blob)); else photoFiles.push(await taskFileUpload(new File([a.blob],'photo.jpg',{type:'image/jpeg'}))); } }
     catch(err){ addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add'; alert('Couldn\u2019t upload the photos: '+err.message); return; }
     composerAtts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); composerAtts.length=0; drawComposerAtts();
     addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add';
@@ -84,7 +86,7 @@ async function addTask(){
   if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
-  if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;
+  if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);
   titleEl.value=''; buzz('add'); touch(); titleEl.focus();
