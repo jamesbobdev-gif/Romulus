@@ -415,7 +415,7 @@ function finMailWord(m){
   if(!m)return '';
   if(m.phone)return 'purchase emails show on the computer';
   if(m.busy)return 'reading purchase emails…';
-  if(m.off)return 'connect Gmail in Settings → Calendars to match emails';
+  if(m.off)return 'connect Gmail in Settings → Calendars & email to match emails';
   if(m.error)return 'emails: '+m.error;
   return m.last?'emails '+finAgo(m.last).replace('updated ','checked '):'emails not read yet';
 }

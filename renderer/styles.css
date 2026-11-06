@@ -1083,3 +1083,29 @@ body.review-open .top-right{display:none!important}
 .yr-end{text-align:center;padding:22px 0 40px}
 .yr-end b{font-family:var(--display);font-size:20px}
 @media(max-width:520px){.yr-big{font-size:32px}.yr-hero .yr-big{font-size:48px}}
+
+/* Settings → Calendars & email: the picker and its steps (connect-accounts.js) */
+.connect-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:10px 0 4px}
+.connect-pick button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:11px 12px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit}
+.connect-pick button:hover{border-color:var(--accent)}
+.connect-pick button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.connect-pick b{font-family:var(--display);font-size:13.5px;font-weight:600}
+.connect-pick span{font-size:11.5px;color:var(--muted);line-height:1.35}
+.connect-step{margin:10px 0 4px;padding:14px;border:1px solid var(--hairline);border-radius:10px}
+.connect-step[hidden],.connect-done[hidden]{display:none}
+.connect-step-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.connect-step-head b{font-family:var(--display);font-size:14.5px}
+.connect-steps{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.55}
+.connect-steps li{margin-bottom:4px}
+.connect-step a{color:var(--accent);cursor:pointer}
+.connect-chk{display:flex;align-items:flex-start;gap:7px;font-size:13px;margin:6px 0;line-height:1.4}
+.connect-chk input{margin-top:2px}
+.connect-paste{display:flex;gap:6px;align-items:center}
+.connect-paste .settings-inp{flex:1;margin:0;font-family:var(--mono);font-size:12.5px}
+.connect-seen{font-size:12px;color:var(--muted);margin:5px 0 4px;min-height:1em}
+.connect-seen.bad{color:var(--late)}
+.connect-step .btn-accent.connect-go{margin-left:0;margin-top:6px}
+.connect-err{color:var(--late);font-size:12px;margin:6px 0 0}
+.connect-err:empty{display:none}
+.connect-wait{margin-top:8px}
+.connect-done{margin:10px 0 0;padding:10px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--accent);font-size:13px}

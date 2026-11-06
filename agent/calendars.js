@@ -266,6 +266,13 @@ function idTokenEmail(idToken) {
   try { const p = JSON.parse(Buffer.from(String(idToken).split('.')[1], 'base64').toString('utf8')); return p.email || p.preferred_username || null; } catch (e) { return null; }
 }
 
+// noMail (he unticked email when connecting): calendars only, so the sign-in screen doesn't ask about his mailbox;
+// connecting the same account again without it adds the mail permissions
+const MAIL_SCOPES = /^(https:\/\/www\.googleapis\.com\/auth\/gmail\.\w+|Mail\.Send)$/;
+function scopeFor(p, opts) {
+  return opts.noMail ? p.scope.split(' ').filter((s) => !MAIL_SCOPES.test(s)).join(' ') : p.scope;
+}
+
 function connect(provider, opts = {}) {
   const p = PROVIDERS[provider];
   if (!p || provider === 'ics') return Promise.resolve({ ok: false, error: 'Unknown provider' });
@@ -315,7 +322,7 @@ function connect(provider, opts = {}) {
     server.listen(0, '127.0.0.1', () => {
       port = server.address().port;
       const url = p.authUrl + '?' + new URLSearchParams(Object.assign({ client_id: c.clientId, redirect_uri: `http://${host}:${port}/oauth2callback`,
-        response_type: 'code', scope: p.scope, state, code_challenge: challenge, code_challenge_method: 'S256' }, p.authExtra,
+        response_type: 'code', scope: scopeFor(p, opts), state, code_challenge: challenge, code_challenge_method: 'S256' }, p.authExtra,
         // renewing an account: the sign-in page opens on that address instead of asking which one
         opts.loginHint ? { login_hint: String(opts.loginHint) } : {}));
       io.openExternal(url).catch((e) => finish({ ok: false, error: 'Could not open the browser: ' + e.message }));
@@ -494,4 +501,4 @@ function sendAccounts() {
   return { accounts: all.filter(mailSend.canSend), needReconnect: all.filter((a) => !mailSend.canSend(a)) };
 }
 
-module.exports = { init, connect, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, msRefreshScope };
+module.exports = { init, connect, scopeFor, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, msRefreshScope };

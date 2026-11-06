@@ -82,7 +82,7 @@ if(calApi){
       box.appendChild(el);
     });
     $('calSyncRow').hidden=!calData.accounts.length;
-    if(calData.phone)$('gcalSection').querySelector('.settings-hint').textContent='Sign in to connect your calendars, then choose which calendars’ events show up as to-dos. Nothing comes off a calendar until you switch it on. Putting your tasks on a calendar is set up in the desktop app.';
+    if(calData.phone)$('gcalSection').querySelector('.settings-hint').textContent='Where does your calendar live? Pick one and follow the steps. Email and putting your tasks on a calendar are set up in the desktop app.';
     $('mailEventsBox').hidden=!calData.accounts.some(function(a){ return a.provider==='google'; });
     if(window.mailRefresh)window.mailRefresh();
   };
@@ -115,31 +115,6 @@ if(calApi){
     $('calStatus').textContent=r.errors.length?r.errors[0]:(added?added+' event'+(added>1?'s':'')+' added to your to-dos':'')+'';
   };
 
-  $('calGoogleBtn').addEventListener('click',async function(){
-    calErr('');
-    if(calData&&!calData.builtIn.google&&calData.phone){ calErr('Google sign-in isn’t set up in this copy of the app yet (oauth-clients.json).'); return; }
-    if(calData&&!calData.builtIn.google){ $('gcalSetup').hidden=false; const c=await window.desktop.gcalGetCfg(); if(c.clientId)$('gcalClientId').value=c.clientId; if(c.clientSecret)$('gcalClientSecret').value=c.clientSecret; return; }
-    const b=this; b.textContent='Opening browser…'; b.disabled=true;
-    const r=await calApi.calConnect('google');
-    b.textContent='+ Google'; b.disabled=false;
-    if(!r.ok)calErr(r.error||'Sign-in failed.'); gcalRefreshFn(true);
-  });
-  $('calMsBtn').addEventListener('click',async function(){
-    calErr('');
-    const b=this; b.textContent='Opening browser…'; b.disabled=true;
-    const r=await calApi.calConnect('microsoft');
-    b.textContent='+ Microsoft'; b.disabled=false;
-    if(!r.ok)calErr(r.needsClient?'Microsoft sign-in isn’t set up in this copy of the app yet (oauth-clients.json).':(r.error||'Sign-in failed.')); gcalRefreshFn(true);
-  });
-  $('calLinkBtn').addEventListener('click',function(){ $('calLinkBox').hidden=!$('calLinkBox').hidden; if(!$('calLinkBox').hidden)$('calLinkUrl').focus(); });
-  $('calLinkAdd').addEventListener('click',async function(){
-    calErr('');
-    const b=this; b.textContent='Checking…'; b.disabled=true;
-    const r=await calApi.calAddLink($('calLinkUrl').value,$('calLinkName').value);
-    b.textContent='Add'; b.disabled=false;
-    if(!r.ok){ calErr(r.error); return; }
-    $('calLinkUrl').value=''; $('calLinkName').value=''; $('calLinkBox').hidden=true; gcalRefreshFn(true);
-  });
   $('gcalConsoleLink').addEventListener('click',function(e){
     e.preventDefault();
     window.desktop.gcalOpenUrl('https://console.cloud.google.com/apis/credentials');
@@ -160,6 +135,7 @@ if(calApi){
     if(window.desktop&&window.desktop.gcalSyncNow)await window.desktop.gcalSyncNow(); await calTick();
     $('gcalSyncBtn').textContent='Sync now'; $('gcalSyncBtn').disabled=false;
   });
+  window.calPullNow=calTick; // connect-accounts.js: a calendar just connected brings its events in now
   gcalRefreshFn();
   if(calApi.onConnected)calApi.onConnected(function(){ gcalRefreshFn(true); }); // phone: a sign-in that finished after Android closed the app
   // shortly after start (sync has loaded the lists by then), then every 15 minutes
@@ -211,7 +187,7 @@ if(calApi){
       if(!tick)return;
       const open=state.tasks.filter(function(t){ return !t.done&&taskWs(t)==='personal'&&t.title.startsWith(MAIL_RENEW); });
       if(st.connected&&st.expired&&!open.length){
-        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendars';
+        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendars & email';
         state.tasks.push({id:uid(),title:title,done:false,due:null,dueTime:null,tag:null,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
         voiceToast(title,true); touch();
       } else if(!st.expired&&open.length){ open.forEach(function(t){ t.done=true; }); touch(); }

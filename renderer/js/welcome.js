@@ -38,6 +38,9 @@ function markWelcomed(){
   // connected, the example tasks); the full list of AIs is a link away from there
   $('welcomeAiBtn').addEventListener('click',function(){ done(); switchTab('agent'); window.scrollTo(0,0); });
   $('welcomeSyncBtn').addEventListener('click',function(){ done(); openSettingsAt(null,'syncSection'); });
+  // the Calendars & email picker (connect-accounts.js); a plain browser has no calendar accounts
+  if(!(window.desktop&&window.desktop.calOverview)&&!window.phoneCal)$('welcomeCalBtn').hidden=true;
+  $('welcomeCalBtn').addEventListener('click',function(){ done(); if(window.openConnect)window.openConnect(); else openSettingsAt('calGroup','gcalSection'); });
 })();
 
 /* ── no sync yet: recommend it ──

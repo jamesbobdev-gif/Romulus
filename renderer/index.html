@@ -174,22 +174,21 @@
       </div>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="calGroup">
-      <summary class="settings-label">Calendars</summary>
+      <summary class="settings-label">Calendars &amp; email</summary>
       <div class="settings-sub" id="gcalSection">
-        <h3 class="settings-subhead">Calendars</h3>
-        <p class="settings-hint">Connect a calendar, then choose what each one does.</p>
-        <div class="settings-row">
-          <button id="calGoogleBtn" class="ghost mono">+ Google</button>
-          <button id="calMsBtn" class="ghost mono">+ Microsoft</button>
-          <button id="calLinkBtn" class="ghost mono">+ Calendar link</button>
+        <h3 class="settings-subhead">Connect your calendar and email</h3>
+        <p class="settings-hint">Where do they live? Pick one and follow the steps. Add as many as you like.</p>
+        <!-- connect-accounts.js: each choice opens its steps in #connectStep -->
+        <div id="connectPick" class="connect-pick">
+          <button data-pick="google"><b>Google</b><span>Gmail and Google Calendar</span></button>
+          <button data-pick="microsoft"><b>Outlook</b><span>Outlook.com, Microsoft 365, work</span></button>
+          <button data-pick="icloud"><b>iPhone or iCloud</b><span>Apple Calendar</span></button>
+          <button data-pick="school"><b>School</b><span>Canvas, Blackboard, D2L</span></button>
+          <button data-pick="link"><b>Other calendar</b><span>Any calendar link</span></button>
         </div>
+        <div id="connectStep" class="connect-step" hidden></div>
+        <p id="connectDone" class="connect-done" hidden></p>
         <span id="calErr" class="mono" style="display:block;color:var(--late);font-size:11px;margin-top:6px"></span>
-        <div id="calLinkBox" hidden style="margin-top:10px">
-          <p class="settings-hint">Paste a subscribe link (.ics or webcal://). Read-only.</p>
-          <input id="calLinkUrl" class="settings-inp" placeholder="https://… or webcal://…" autocomplete="off" spellcheck="false">
-          <input id="calLinkName" class="settings-inp" placeholder="Name (optional)" autocomplete="off">
-          <div class="settings-row"><button id="calLinkAdd" class="btn-accent">Add</button></div>
-        </div>
         <!-- this build has no Google sign-in client of its own: use your own credential -->
         <div id="gcalSetup" hidden style="margin-top:10px">
           <p class="settings-hint">This copy of the app doesn't have Google sign-in built in. Make a free <a id="gcalConsoleLink">Google Cloud credential</a> (application type <b>Desktop app</b>, about 5 minutes) and paste it here.</p>
@@ -376,6 +375,7 @@
         <button id="welcomeTasksBtn" class="btn-accent">Just tasks</button>
         <button id="welcomeAiBtn" class="ghost">Add an AI assistant</button>
         <button id="welcomeSyncBtn" class="ghost">Sync with my phone</button>
+        <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
       </div>
       <ul class="welcome-tips">
         <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
@@ -504,6 +504,7 @@
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
+<script src="js/connect-accounts.js"></script>
 <script src="js/look-ahead.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>

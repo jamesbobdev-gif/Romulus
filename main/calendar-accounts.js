@@ -12,7 +12,7 @@ const handle = (ch, fn) => { handlers[ch] = fn; };
 handle('cal:overview', (_e, fresh) => calendars.overview(!!fresh));
 handle('cal:connect', async (_e, provider, own) => {
   const r = await calendars.connect(String(provider), Object.assign(own && own.clientId ? { clientId: String(own.clientId), clientSecret: String(own.clientSecret || '') } : {},
-    own && own.loginHint ? { loginHint: String(own.loginHint) } : {}));
+    own && own.loginHint ? { loginHint: String(own.loginHint) } : {}, own && own.noMail ? { noMail: true } : {}));
   if (r.ok) performSync().catch((e) => console.error('calendar sync failed:', e.message));
   return r;
 });
