@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How Romulus works</title>
+<meta name="description" content="How Romulus fits together: your phone, your computers and an optional model box each reach out to your own Supabase project, and the cloud AIs you connect are tried in your order.">
+<link rel="icon" href="img/icon.png">
+<link rel="apple-touch-icon" href="img/icon.png">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* Same tokens as index.html (the app's own light theme, dark from the README), plus one hue per kind of
+   machine in the diagram: phone violet, Supabase green, computers blue, model box amber, outside grey. */
+:root{
+  --bg:#FBFBFA;--surface:#FFFFFF;--ink:#161616;--muted:#71716C;--faint:#9A9A94;
+  --hairline:#E9E9E5;--chip:#F1F1EE;--accent:#2742C8;--arrow:#3F3F3B;
+  --phone:#7148C4;--phone-t:#F3EFFB;--cloud:#1F7A3E;--cloud-t:#EAF5EE;--pc:#2742C8;--pc-t:#EEF1FC;
+  --mini:#A8670B;--mini-t:#FBF2E3;--ext:#71716C;--ext-t:#F1F1EE;
+  --display:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Spline Sans Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
+    --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--arrow:#B4B4C0;
+    --phone:#B39AF2;--phone-t:#262036;--cloud:#7CD69A;--cloud-t:#1D2E24;--pc:#8FA3FF;--pc-t:#232842;
+    --mini:#E8AE55;--mini-t:#33281A;--ext:#9C9CA8;--ext-t:#2A2A35;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
+  --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--arrow:#B4B4C0;
+  --phone:#B39AF2;--phone-t:#262036;--cloud:#7CD69A;--cloud-t:#1D2E24;--pc:#8FA3FF;--pc-t:#232842;
+  --mini:#E8AE55;--mini-t:#33281A;--ext:#9C9CA8;--ext-t:#2A2A35;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--display);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.1;font-weight:700;letter-spacing:-.02em}
+p{margin:0}
+code{font-family:var(--mono);font-size:.86em;background:var(--chip);border:1px solid var(--hairline);border-radius:4px;padding:1px 5px}
+.wrap{max-width:72ch;margin:0 auto}
+.wide{max-width:1240px;margin:0 auto}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;max-width:1040px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:700;font-size:17px;letter-spacing:-.01em}
+.brand img{width:28px;height:28px;border-radius:7px}
+.brand:hover{text-decoration:none}
+.nav{display:flex;gap:4px 22px;flex-wrap:wrap;justify-content:flex-end}
+.nav a{color:var(--muted);font-size:14px;font-weight:500}
+.nav a:hover{color:var(--ink);text-decoration:none}
+.mono{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.hero{padding-block:32px 28px}
+.hero h1{font-size:clamp(34px,5vw,52px);font-weight:800;letter-spacing:-.03em;margin-top:12px}
+.lede{font-size:18px;color:var(--muted);margin-top:16px;max-width:62ch}
+figure{margin:8px 0 0;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:14px}
+.scroll{overflow-x:auto}
+.scroll-hint{display:none;font-size:13px;color:var(--faint);margin:0 0 8px}
+@media (max-width:1060px){.scroll-hint{display:block}}
+svg{display:block;width:100%;height:auto;font-family:var(--display)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;border:1.5px solid}
+.sw.phone{border-color:var(--phone);background:var(--phone-t)} .sw.cloud{border-color:var(--cloud);background:var(--cloud-t)}
+.sw.pc{border-color:var(--pc);background:var(--pc-t)} .sw.mini{border-color:var(--mini);background:var(--mini-t)} .sw.ext{border-color:var(--ext);background:var(--ext-t)}
+/* diagram parts */
+.z{stroke-width:1.2;stroke-dasharray:5 4}
+.z.phone{fill:var(--phone-t);stroke:var(--phone)} .z.cloud{fill:var(--cloud-t);stroke:var(--cloud)} .z.pc{fill:var(--pc-t);stroke:var(--pc)} .z.mini{fill:var(--mini-t);stroke:var(--mini)} .z.ext{fill:var(--ext-t);stroke:var(--ext)}
+.zt{font-size:15px;font-weight:700} .zt.phone{fill:var(--phone)} .zt.cloud{fill:var(--cloud)} .zt.pc{fill:var(--pc)} .zt.mini{fill:var(--mini)} .zt.ext{fill:var(--ext)}
+.n{fill:var(--surface);stroke-width:1.4}
+.n.phone{stroke:var(--phone)} .n.cloud{stroke:var(--cloud)} .n.pc{stroke:var(--pc)} .n.mini{stroke:var(--mini)} .n.ext{stroke:var(--ext)}
+.row{fill:var(--cloud-t);stroke:none}
+.t{font-size:12.5px;font-weight:600;fill:var(--ink)}
+.s{font-size:11px;fill:var(--muted)}
+.m{font-family:var(--mono);font-size:10px}
+.a{fill:none;stroke:var(--arrow);stroke-width:1.4}
+.lbl{font-size:11px;font-weight:500;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:3.5px;stroke-linejoin:round}
+#defs{color:var(--arrow)}
+section{padding-block:40px}
+section+section{border-top:1px solid var(--hairline)}
+h2{font-size:26px;margin-bottom:10px}
+.sub{color:var(--muted);max-width:66ch;margin-bottom:18px}
+.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:8px}
+@media (max-width:760px){.points{grid-template-columns:1fr}}
+.points h3{font-size:16px;margin-bottom:6px}
+.points p{color:var(--muted);font-size:15px}
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--hairline);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--hairline);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500;background:var(--chip)}
+tr:last-child td{border-bottom:0}
+.note{font-size:14px;color:var(--muted);margin-top:12px}
+footer{max-width:1040px;margin:0 auto;padding-block:28px 40px;border-top:1px solid var(--hairline);display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<svg id="defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+<marker id="ahs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+</defs></svg>
+
+<header class="bar">
+  <a class="brand" href="./"><img src="img/icon.png" alt="" width="28" height="28">Romulus</a>
+  <nav class="nav">
+    <a href="./#download">Download</a>
+    <a href="./#inside">What's inside</a>
+    <a href="./#privacy">Privacy</a>
+    <a href="https://github.com/jamesbobdev-gif/Romulus">GitHub</a>
+  </nav>
+</header>
+
+<main>
+<div class="wrap hero">
+  <p class="mono">How it works</p>
+  <h1>Every device reaches out. Nothing reaches in.</h1>
+  <p class="lede">Your phone, your computers and an optional model box never connect to each other. Each one talks to a single place, a Supabase project <b>you</b> make, where your lists meet. The cloud AIs you connect only get the questions sent out to them.</p>
+</div>
+
+<div class="wide">
+  <figure>
+    <p class="scroll-hint">The diagram is wide: scroll sideways to see all of it.</p>
+    <div class="scroll"><svg viewBox="0 0 1400 890" role="img" aria-label="How Romulus fits together: the phone, your computers and an optional model box each reach out to your own Supabase project, and nothing connects to them; cloud AIs on the right" style="min-width:1040px"><rect class="n ext" x="680" y="8" width="105" height="44" rx="6"/>
+<text class="t" x="732.5" y="27.5" text-anchor="middle">Google · MS</text>
+<text class="s" x="732.5" y="42.5" text-anchor="middle">calendars, Gmail</text><rect class="n ext" x="795" y="8" width="100" height="44" rx="6"/>
+<text class="t" x="845.0" y="27.5" text-anchor="middle">SimpleFIN</text>
+<text class="s" x="845.0" y="42.5" text-anchor="middle">+ stock prices</text><rect class="n ext" x="905" y="8" width="105" height="44" rx="6"/>
+<text class="t" x="957.5" y="27.5" text-anchor="middle">Web, stores</text>
+<text class="s" x="957.5" y="42.5" text-anchor="middle">sites you ask about</text><rect class="z phone" x="20" y="60" width="220" height="500" rx="10"/><text class="zt phone" x="34" y="82">Phone</text><text class="s" x="34" y="97">Android · reaches out to Supabase only</text><rect class="n phone" x="35" y="100" width="190" height="62" rx="6"/>
+<text class="t" x="130.0" y="121.5" text-anchor="middle">Romulus app</text>
+<text class="s" x="130.0" y="136.5" text-anchor="middle">same screens as the desktop</text>
+<text class="s" x="130.0" y="150.5" text-anchor="middle">live socket for nudges</text><rect class="n phone" x="35" y="172" width="190" height="48" rx="6"/>
+<text class="t" x="130.0" y="193.5" text-anchor="middle">&quot;Hey Romulus&quot; · Speak</text>
+<text class="s" x="130.0" y="208.5" text-anchor="middle">wake word heard on the phone</text><rect class="n phone" x="35" y="230" width="190" height="54" rx="6"/>
+<text class="t" x="130.0" y="247.5" text-anchor="middle">Finance copy</text>
+<text class="s" x="130.0" y="262.5" text-anchor="middle">paired by QR code, opens</text>
+<text class="s" x="130.0" y="276.5" text-anchor="middle">only with your fingerprint</text><rect class="n phone" x="35" y="294" width="190" height="62" rx="6"/>
+<text class="t" x="130.0" y="315.5" text-anchor="middle">Widgets</text>
+<text class="s" x="130.0" y="330.5" text-anchor="middle">Today · Agent status · School</text>
+<text class="s" x="130.0" y="344.5" text-anchor="middle">Needs you · List · Quick add</text><rect class="n phone" x="35" y="366" width="190" height="54" rx="6"/>
+<text class="t" x="130.0" y="390.5" text-anchor="middle">Updates</text>
+<text class="s" x="130.0" y="405.5" text-anchor="middle">one answer for every device</text><rect class="n phone" x="35" y="430" width="190" height="54" rx="6"/>
+<text class="t" x="130.0" y="454.5" text-anchor="middle">Calendars</text>
+<text class="s" x="130.0" y="469.5" text-anchor="middle">Google · Microsoft · .ics</text><rect class="n phone" x="35" y="494" width="190" height="52" rx="6"/>
+<text class="t" x="130.0" y="510.5" text-anchor="middle">Pairing</text>
+<text class="s" x="130.0" y="525.5" text-anchor="middle">type the 12-character code</text>
+<text class="s" x="130.0" y="539.5" text-anchor="middle">from &quot;Add a device&quot;</text><rect class="z ext" x="20" y="580" width="220" height="300" rx="10"/><text class="zt ext" x="34" y="602">Other services</text><text class="s" x="34" y="617">all optional</text><rect class="n ext" x="35" y="620" width="190" height="50" rx="6"/>
+<text class="t" x="130.0" y="642.5" text-anchor="middle">Claude chat</text>
+<text class="s" x="130.0" y="657.5" text-anchor="middle">&quot;Tasks&quot; connector</text><rect class="n ext" x="35" y="680" width="190" height="50" rx="6"/>
+<text class="t" x="130.0" y="702.5" text-anchor="middle">Resend</text>
+<text class="s" x="130.0" y="717.5" text-anchor="middle">a link you chose → your inbox</text><rect class="n ext" x="35" y="740" width="190" height="62" rx="6"/>
+<text class="t" x="130.0" y="761.5" text-anchor="middle">GitHub</text>
+<text class="s" x="130.0" y="776.5" text-anchor="middle">releases for every device</text>
+<text class="s" x="130.0" y="790.5" text-anchor="middle">+ this website</text><rect class="n ext" x="35" y="812" width="190" height="56" rx="6"/>
+<text class="t" x="130.0" y="830.5" text-anchor="middle">Pairing relay</text>
+<text class="s" x="130.0" y="845.5" text-anchor="middle">official builds swap a sealed</text>
+<text class="s" x="130.0" y="859.5" text-anchor="middle">code here, for 10 minutes</text><rect class="z cloud" x="270" y="60" width="380" height="820" rx="10"/><text class="zt cloud" x="284" y="82">Your Supabase project</text><text class="s" x="284" y="97">the only thing every device talks to</text><rect class="n cloud" x="285" y="100" width="350" height="232" rx="6"/><text class="t" x="297" y="118" text-anchor="start">tasks_sync: one row per list, side rows next to it</text><rect class="row" x="293" y="128" width="164" height="18" rx="3"/><text class="s m" x="298" y="141" text-anchor="start">tk_&lt;id&gt;</text><text class="s" x="452" y="141" text-anchor="end">personal</text><rect class="row" x="293" y="150" width="164" height="18" rx="3"/><text class="s m" x="298" y="163" text-anchor="start">  :ideas</text><text class="s" x="452" y="163" text-anchor="end">Ideas</text><rect class="row" x="293" y="172" width="164" height="18" rx="3"/><text class="s m" x="298" y="185" text-anchor="start">  :hours</text><text class="s" x="452" y="185" text-anchor="end">Hours</text><rect class="row" x="293" y="194" width="164" height="18" rx="3"/><text class="s m" x="298" y="207" text-anchor="start">  :finance</text><text class="s" x="452" y="207" text-anchor="end">sealed bank link</text><rect class="row" x="293" y="216" width="164" height="18" rx="3"/><text class="s m" x="298" y="229" text-anchor="start">  :updates</text><text class="s" x="452" y="229" text-anchor="end">Update yes / no</text><rect class="row" x="293" y="238" width="164" height="18" rx="3"/><text class="s m" x="298" y="251" text-anchor="start">tk_work_&lt;id&gt;</text><text class="s" x="452" y="251" text-anchor="end">work</text><rect class="row" x="293" y="260" width="164" height="18" rx="3"/><text class="s m" x="298" y="273" text-anchor="start">tk_school_&lt;id&gt;</text><text class="s" x="452" y="273" text-anchor="end">school</text><rect class="row" x="463" y="128" width="164" height="18" rx="3"/><text class="s m" x="468" y="141" text-anchor="start">tk_agent_&lt;id&gt;</text><text class="s" x="622" y="141" text-anchor="end">Agent</text><rect class="row" x="463" y="150" width="164" height="18" rx="3"/><text class="s m" x="468" y="163" text-anchor="start">  :prefs</text><text class="s" x="622" y="163" text-anchor="end">memory</text><rect class="row" x="463" y="172" width="164" height="18" rx="3"/><text class="s m" x="468" y="185" text-anchor="start">  :locked</text><text class="s" x="622" y="185" text-anchor="end">encrypted</text><rect class="row" x="463" y="194" width="164" height="18" rx="3"/><text class="s m" x="468" y="207" text-anchor="start">  :routing</text><text class="s" x="622" y="207" text-anchor="end">rules</text><rect class="row" x="463" y="216" width="164" height="18" rx="3"/><text class="s m" x="468" y="229" text-anchor="start">  :standing</text><text class="s" x="622" y="229" text-anchor="end">allowed</text><rect class="row" x="463" y="238" width="164" height="18" rx="3"/><text class="s m" x="468" y="251" text-anchor="start">  :worker</text><text class="s" x="622" y="251" text-anchor="end">heartbeat</text><rect class="row" x="463" y="260" width="164" height="18" rx="3"/><text class="s m" x="468" y="273" text-anchor="start">  :files</text><text class="s" x="622" y="273" text-anchor="end">downloads</text><rect class="row" x="463" y="282" width="164" height="18" rx="3"/><text class="s m" x="468" y="295" text-anchor="start">  :files-gone</text><text class="s" x="622" y="295" text-anchor="end">removed</text><text class="s" x="297" y="322" text-anchor="start">optional: whole rows sealed (AES-GCM), ids hashed</text><rect class="n cloud" x="285" y="342" width="350" height="76" rx="6"/>
+<text class="t" x="460.0" y="356.5" text-anchor="middle">Database functions</text>
+<text class="s m" x="460.0" y="371.5" text-anchor="middle">sync_get · sync_put (CAS) · sync_set · sync_usage</text>
+<text class="s" x="460.0" y="385.5" text-anchor="middle">each needs the list&#x27;s key · per-account quota,</text>
+<text class="s" x="460.0" y="399.5" text-anchor="middle">writes a minute, new accounts per network</text>
+<text class="s m" x="460.0" y="413.5" text-anchor="middle">agent_claim_task · widget_complete_task</text><rect class="n cloud" x="285" y="426" width="350" height="40" rx="6"/>
+<text class="t" x="460.0" y="443.5" text-anchor="middle">Pairing codes</text>
+<text class="s" x="460.0" y="458.5" text-anchor="middle">sealed, 10 minutes, one use</text><rect class="n cloud" x="285" y="474" width="350" height="60" rx="6"/>
+<text class="t" x="460.0" y="494.5" text-anchor="middle">Storage</text>
+<text class="s" x="460.0" y="509.5" text-anchor="middle">agent-attachments: photos, stuck screenshots</text>
+<text class="s" x="460.0" y="523.5" text-anchor="middle">(deleted after 30 days) · agent-files: worker downloads</text><rect class="n cloud" x="285" y="690" width="350" height="62" rx="6"/>
+<text class="t" x="460.0" y="711.5" text-anchor="middle">Realtime broadcast</text>
+<text class="s" x="460.0" y="726.5" text-anchor="middle">&quot;changed&quot; nudges on a hashed channel</text>
+<text class="s" x="460.0" y="740.5" text-anchor="middle">the worker&#x27;s live browser, every message sealed</text><rect class="n cloud" x="285" y="770" width="350" height="90" rx="6"/>
+<text class="t" x="460.0" y="798.5" text-anchor="middle">Edge functions (optional)</text>
+<text class="s" x="460.0" y="813.5" text-anchor="middle">tasks-mcp: the Claude connector</text>
+<text class="s" x="460.0" y="827.5" text-anchor="middle">buy-email: one link, only to your address</text>
+<text class="s" x="460.0" y="841.5" text-anchor="middle">attachments-cleanup: once a day</text><rect class="z pc" x="680" y="120" width="330" height="396" rx="10"/><text class="zt pc" x="694" y="142">Your computer(s)</text><text class="s" x="694" y="157">Romulus desktop · Windows / Mac / Linux</text><rect class="n pc" x="695" y="160" width="150" height="72" rx="6"/>
+<text class="t" x="770.0" y="179.5" text-anchor="middle">Renderer</text>
+<text class="s" x="770.0" y="194.5" text-anchor="middle">every tab + Settings</text>
+<text class="s" x="770.0" y="208.5" text-anchor="middle">fonts bundled, nothing</text>
+<text class="s" x="770.0" y="222.5" text-anchor="middle">fetched to show it</text><rect class="n pc" x="855" y="160" width="145" height="72" rx="6"/>
+<text class="t" x="927.5" y="179.5" text-anchor="middle">User data</text>
+<text class="s m" x="927.5" y="194.5" text-anchor="middle">tasks.json</text>
+<text class="s m" x="927.5" y="208.5" text-anchor="middle">config.json (sealed)</text>
+<text class="s m" x="927.5" y="222.5" text-anchor="middle">finance.vault</text><rect class="n pc" x="695" y="244" width="305" height="206" rx="6"/><text class="t" x="707" y="262" text-anchor="start">Main process</text><rect class="n pc" x="705" y="272" width="140" height="38" rx="6"/>
+<text class="t" x="775.0" y="288.5" text-anchor="middle">Router + d1</text>
+<text class="s" x="775.0" y="303.5" text-anchor="middle">private · auto · rules</text><rect class="n pc" x="853" y="272" width="140" height="38" rx="6"/>
+<text class="t" x="923.0" y="288.5" text-anchor="middle">Cloud runner</text>
+<text class="s" x="923.0" y="303.5" text-anchor="middle">AIs in your order</text><rect class="n pc" x="705" y="316" width="140" height="38" rx="6"/>
+<text class="t" x="775.0" y="332.5" text-anchor="middle">Local lane</text>
+<text class="s" x="775.0" y="347.5" text-anchor="middle">only when no worker</text><rect class="n pc" x="853" y="316" width="140" height="38" rx="6"/>
+<text class="t" x="923.0" y="332.5" text-anchor="middle">Calendars · Gmail</text>
+<text class="s" x="923.0" y="347.5" text-anchor="middle">dates · send on Send</text><rect class="n pc" x="705" y="360" width="140" height="38" rx="6"/>
+<text class="t" x="775.0" y="376.5" text-anchor="middle">Finance vault</text>
+<text class="s" x="775.0" y="391.5" text-anchor="middle">money stays here</text><rect class="n pc" x="853" y="360" width="140" height="38" rx="6"/>
+<text class="t" x="923.0" y="376.5" text-anchor="middle">Triggers · goals</text>
+<text class="s" x="923.0" y="391.5" text-anchor="middle">look-ahead · coach</text><rect class="n pc" x="705" y="404" width="140" height="38" rx="6"/>
+<text class="t" x="775.0" y="420.5" text-anchor="middle">Screen helper</text>
+<text class="s" x="775.0" y="435.5" text-anchor="middle">Ctrl+Shift+Space</text><rect class="n pc" x="853" y="404" width="140" height="38" rx="6"/>
+<text class="t" x="923.0" y="420.5" text-anchor="middle">Updater</text>
+<text class="s" x="923.0" y="435.5" text-anchor="middle">asks first, every 4 h</text><rect class="n pc" x="695" y="462" width="305" height="42" rx="6"/>
+<text class="t" x="847.5" y="480.5" text-anchor="middle">Agent browser + Watch</text>
+<text class="s" x="847.5" y="495.5" text-anchor="middle">its own Chrome here · the worker&#x27;s, watched live</text><rect class="z mini" x="680" y="540" width="330" height="340" rx="10"/><text class="zt mini" x="694" y="562">Model box (optional)</text><text class="s" x="694" y="577">a spare Linux machine running Romulus as the worker</text><rect class="n mini" x="695" y="580" width="305" height="56" rx="6"/>
+<text class="t" x="847.5" y="598.5" text-anchor="middle">Romulus worker</text>
+<text class="s" x="847.5" y="613.5" text-anchor="middle">takes local tasks for every device</text>
+<text class="s" x="847.5" y="627.5" text-anchor="middle">heartbeat every 2 minutes</text><rect class="n mini" x="695" y="644" width="305" height="70" rx="6"/>
+<text class="t" x="847.5" y="662.5" text-anchor="middle">Ollama on localhost</text>
+<text class="s" x="847.5" y="677.5" text-anchor="middle">nothing outside this box can reach it</text>
+<text class="s" x="847.5" y="691.5" text-anchor="middle">your model, e.g. qwen3:30b-a3b</text>
+<text class="s" x="847.5" y="705.5" text-anchor="middle">d1-3B: quick routing decisions</text><rect class="n mini" x="695" y="722" width="305" height="44" rx="6"/>
+<text class="t" x="847.5" y="741.5" text-anchor="middle">Locked browser (this box only)</text>
+<text class="s" x="847.5" y="756.5" text-anchor="middle">sites you sign in to for it</text><rect class="n mini" x="695" y="774" width="148" height="40" rx="6"/>
+<text class="t" x="769.0" y="791.5" text-anchor="middle">SearXNG</text>
+<text class="s" x="769.0" y="806.5" text-anchor="middle">private search</text><rect class="n mini" x="852" y="774" width="148" height="40" rx="6"/>
+<text class="t" x="926.0" y="791.5" text-anchor="middle">Firewall</text>
+<text class="s" x="926.0" y="806.5" text-anchor="middle">no port open to you</text><rect class="n mini" x="695" y="822" width="305" height="44" rx="6"/>
+<text class="t" x="847.5" y="841.5" text-anchor="middle">Downloads</text>
+<text class="s" x="847.5" y="856.5" text-anchor="middle">files it saves → agent-files</text><rect class="z ext" x="1040" y="60" width="340" height="820" rx="10"/><text class="zt ext" x="1054" y="82">Cloud AIs</text><text class="s" x="1054" y="97">tried in your order · blank model = Auto</text><rect class="n ext" x="1055" y="104" width="310" height="71" rx="6"/>
+<text class="t" x="1067" y="123.0" text-anchor="start">Claude</text>
+<text class="s" x="1067" y="138.0" text-anchor="start">Claude Code on your plan, or an API key</text>
+<text class="s" x="1067" y="152.0" text-anchor="start">opus · sonnet · haiku</text>
+<text class="s" x="1067" y="166.0" text-anchor="start">the only one that reads Gmail</text><rect class="n ext" x="1055" y="183" width="310" height="56" rx="6"/>
+<text class="t" x="1067" y="201.5" text-anchor="start">ChatGPT</text>
+<text class="s" x="1067" y="216.5" text-anchor="start">Codex sign-in, or an OpenAI key</text>
+<text class="s" x="1067" y="230.5" text-anchor="start">Auto: gpt-N › gpt-N-mini › gpt-N-nano</text><rect class="n ext" x="1055" y="247" width="310" height="56" rx="6"/>
+<text class="t" x="1067" y="265.5" text-anchor="start">Gemini</text>
+<text class="s" x="1067" y="280.5" text-anchor="start">API key (Gemini CLI adds the browser)</text>
+<text class="s" x="1067" y="294.5" text-anchor="start">Auto: pro › flash › flash-lite</text><rect class="n ext" x="1055" y="311" width="310" height="56" rx="6"/>
+<text class="t" x="1067" y="329.5" text-anchor="start">OpenRouter</text>
+<text class="s" x="1067" y="344.5" text-anchor="start">one-click sign-in makes a key</text>
+<text class="s" x="1067" y="358.5" text-anchor="start">openrouter/auto, free models first</text><rect class="n ext" x="1055" y="375" width="310" height="41" rx="6"/>
+<text class="t" x="1067" y="393.0" text-anchor="start">Grok (xAI)</text>
+<text class="s" x="1067" y="408.0" text-anchor="start">free tier · grok-4-fast-reasoning</text><rect class="n ext" x="1055" y="424" width="310" height="41" rx="6"/>
+<text class="t" x="1067" y="442.0" text-anchor="start">Groq</text>
+<text class="s" x="1067" y="457.0" text-anchor="start">free tier · gpt-oss-120b › kimi-k2, llama-4</text><rect class="n ext" x="1055" y="473" width="310" height="41" rx="6"/>
+<text class="t" x="1067" y="491.0" text-anchor="start">Cloudflare Workers AI</text>
+<text class="s" x="1067" y="506.0" text-anchor="start">free tier · gpt-oss-120b › llama-4-scout</text><rect class="n ext" x="1055" y="522" width="310" height="41" rx="6"/>
+<text class="t" x="1067" y="540.0" text-anchor="start">NVIDIA</text>
+<text class="s" x="1067" y="555.0" text-anchor="start">free key · glm-5 › deepseek-v4, nemotron-3</text><rect class="n ext" x="1055" y="575" width="310" height="64" rx="6"/>
+<text class="t" x="1067" y="597.5" text-anchor="start">Short one-off calls</text>
+<text class="s" x="1067" y="612.5" text-anchor="start">Claude, low effort, no tools: mail dates,</text>
+<text class="s" x="1067" y="626.5" text-anchor="start">triggers, receipts, look-ahead, memory tidy</text><path class="a " d="M225 130 H285" marker-end="url(#ah)" marker-start="url(#ahs)"/><text class="lbl" x="255" y="124" text-anchor="middle">sync</text><path class="a " d="M225 325 H260 V400 H285" marker-end="url(#ah)"/><text class="lbl" x="265" y="320" text-anchor="start">tick</text><path class="a " d="M225 520 H262 V446 H285" marker-end="url(#ah)"/><text class="lbl" x="266" y="515" text-anchor="start">code</text><path class="a " d="M225 645 H252 V790 H285" marker-end="url(#ah)"/><text class="lbl" x="256" y="640" text-anchor="start">MCP</text><path class="a " d="M285 805 H262 V705 H225" marker-end="url(#ah)"/><text class="lbl" x="266" y="760" text-anchor="start">send</text><path class="a " d="M695 196 H635" marker-end="url(#ah)" marker-start="url(#ahs)"/><text class="lbl" x="665" y="190" text-anchor="middle">sync</text><path class="a " d="M695 380 H635" marker-end="url(#ah)"/><text class="lbl" x="665" y="374" text-anchor="middle">claim</text><path class="a " d="M695 482 H672 V708 H635" marker-end="url(#ah)"/><text class="lbl" x="668" y="528" text-anchor="end">watch</text><path class="a " d="M695 600 H662 V408 H635" marker-end="url(#ah)"/><text class="lbl" x="656" y="560" text-anchor="end">tasks, heartbeat</text><path class="a " d="M695 744 H635" marker-end="url(#ah)"/><text class="lbl" x="665" y="738" text-anchor="middle">live</text><path class="a " d="M695 844 H650 V504 H635" marker-end="url(#ah)"/><text class="lbl" x="644" y="840" text-anchor="end">files</text><path class="a " d="M1000 280 H1030 V30 H1010" marker-end="url(#ah)"/><path class="a " d="M1000 295 H1026 V62 H845 V52" marker-end="url(#ah)"/><text class="lbl" x="880" y="58" text-anchor="middle">bank</text><path class="a " d="M1000 310 H1022 V72 H732 V52" marker-end="url(#ah)"/><text class="lbl" x="740" y="68" text-anchor="start">calendar · mail</text><path class="a " d="M1000 340 H1055" marker-end="url(#ah)"/><text class="lbl" x="1028" y="334" text-anchor="middle">tasks</text><path class="a " d="M1000 680 H1055" marker-end="url(#ah)"/><text class="lbl" x="1028" y="674" text-anchor="middle">questions</text></svg></div>
+    <div class="legend"><span><i class="sw phone"></i>Phone</span><span><i class="sw cloud"></i>Your Supabase project</span><span><i class="sw pc"></i>Your computers</span><span><i class="sw mini"></i>Model box (optional)</span><span><i class="sw ext"></i>Outside services</span><span>Two-headed arrow: both ways · every arrow starts at your device</span></div>
+  </figure>
+</div>
+
+<section class="wrap">
+  <h2>What the diagram says</h2>
+  <div class="points">
+    <div><h3>One meeting place</h3><p>Each list is one row in your own Supabase project, reached only through functions that need that list's key. A change sends a "changed" nudge, so your other devices pull it within a second.</p></div>
+    <div><h3>A model box, if you want one</h3><p>Any spare Linux machine can run Romulus as the worker for your local model. It takes the private and local tasks for all your devices, and its browser is watched live through sync, sealed. There's no VPN, no open port and no address to type.</p></div>
+    <div><h3>AIs in your order</h3><p>Connect the AIs you already pay for or get free. The app tries them in your order and moves on when one is out of usage. Tasks with private words only ever go to your own model.</p></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>The models</h2>
+  <p class="sub">Leave a model blank and the app picks the best one that AI offers right now ("›" means it tries the next one when a model is busy, over quota or gone).</p>
+  <div class="tbl"><table>
+    <tr><th>AI</th><th>How it connects</th><th>Models</th></tr>
+    <tr><td><b>Claude</b></td><td>Claude Code on your plan, or an API key</td><td><code>opus</code> · <code>sonnet</code> · <code>haiku</code>; the only one that reads Gmail, read-only</td></tr>
+    <tr><td><b>ChatGPT</b></td><td>Codex sign-in, or an OpenAI key</td><td><code>gpt-N</code> › <code>gpt-N-mini</code> › <code>gpt-N-nano</code></td></tr>
+    <tr><td><b>Gemini</b></td><td>API key</td><td>pro › flash › flash-lite</td></tr>
+    <tr><td><b>OpenRouter</b></td><td>one-click sign-in</td><td><code>openrouter/auto</code>, free models first, zero-retention providers only</td></tr>
+    <tr><td><b>Grok, Groq, Cloudflare, NVIDIA</b></td><td>free-tier keys</td><td><code>grok-4-fast-reasoning</code> · <code>gpt-oss-120b</code> · <code>glm-5</code> and others</td></tr>
+    <tr><td><b>Your own model</b></td><td>Ollama on this computer or a model box</td><td>e.g. <code>qwen3:30b-a3b</code> on 32 GB, <code>qwen3:8b</code> on 16 GB</td></tr>
+    <tr><td><b>d1-3B</b></td><td>Ollama, next to your model</td><td>answers three quick routing questions: private? a real request? needs the web?</td></tr>
+  </table></div>
+  <p class="note">There is no telemetry. Official builds pass a pairing code through the release's own project, sealed and gone within 10 minutes; nothing else reaches the people who make Romulus. Your keys stay on the computer where you entered them, and Finance never goes to a cloud AI.</p>
+</section>
+</main>
+
+<footer>
+  <span>Romulus · MIT · <a href="https://github.com/jamesbobdev-gif/Romulus">Source</a> · <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases">All releases</a></span>
+  <span><a href="./">Back to the download page</a></span>
+</footer>
+</body>
+</html>
