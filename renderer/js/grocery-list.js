@@ -224,7 +224,7 @@ function cartStrip(t){
       const sel=el('select','cart-opt'); sel.title='Other sizes and brands the Agent found';
       sel.setAttribute('aria-label','Options for '+it.name);
       [it].concat(it.options).forEach(function(op,i){
-        const o=el('option',null,(i?'':'★ ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
+        const o=el('option',null,(i?'':'• ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
         o.value=i?op.name:''; sel.appendChild(o);
       });
       sel.value=s.picked?s.name:'';
