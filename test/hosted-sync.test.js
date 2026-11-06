@@ -122,3 +122,18 @@ test('the plan is offered as a family plan, with a free trial only when the link
   assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).button, plain.button);
   assert.strictEqual(h.hostedPlanPitch(null).year, 'Pay yearly: 2 months free');
 });
+
+test('moving to your own project leaves the encrypted-list marker under every plain key there, and stops if a list key is refused', async () => {
+  const sent = [];
+  global.syncRpc = async (p, fn, body) => { sent.push([p.url, fn, body.p_sync_key, JSON.stringify(body.p_doc)]); return true; };
+  await h.hostedSealMarkers({ url: 'https://own.supabase.co', key: 'k' }, 'tk_abc');
+  assert.deepStrictEqual(sent.map((s) => s[2]), h.hostedMarkerKeys('tk_abc'));
+  assert.ok(sent.every((s) => s[0] === 'https://own.supabase.co' && s[1] === 'sync_set' && s[3] === '{"moved":"v2"}'));
+  // a side row an older setup.sql doesn't know may be refused; a list's own key may not
+  global.syncRpc = async (p, fn, body) => body.p_sync_key.indexOf(':') !== -1 ? false : true;
+  await h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc');
+  global.syncRpc = async (p, fn, body) => body.p_sync_key === 'tk_work_abc' ? false : true;
+  global.syncRefusal = async () => 'the project is full';
+  await assert.rejects(h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc'), /the project is full/);
+  delete global.syncRpc; delete global.syncRefusal;
+});

@@ -448,6 +448,13 @@ $('syncSaveBtn').addEventListener('click',function(){
       const bad=await syncCheckProject({url:url,key:key,syncKey:sk});
       if(bad){ setSyncStatus(bad,true); return; }
     }
+    // leaving the Romulus server, where the lists are end-to-end encrypted: they stay encrypted in the new project
+    // too. The markers go first, so a device paired there later finds the encrypted lists, never plain ones.
+    if(leaving&&leaving.v2&&typeof hostedSealMarkers==='function'&&syncCryptoOk()){
+      try{ await hostedSealMarkers({url:url,key:key},sk); }
+      catch(e){ setSyncStatus('couldn’t set up encryption in that project: '+e.message,true); return; }
+      raw.personal.v2=true;
+    }
     clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
     for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); }); // let a sync already running finish
     syncState.cfg=normalizeSyncCfg(raw);
