@@ -72,6 +72,13 @@ contextBridge.exposeInMainWorld('desktop', {
   formFiles: () => ipcRenderer.invoke('forms:files'),
   formFileAdd: () => ipcRenderer.invoke('forms:add'),
   formFileRemove: (name) => ipcRenderer.invoke('forms:remove', name),
+  // Pay with Link (agent/link-wallet.js): Settings → Agent features
+  linkStatus: () => ipcRenderer.invoke('link:status'),
+  linkConnect: () => ipcRenderer.invoke('link:connect'),
+  linkOpen: () => ipcRenderer.invoke('link:open'),
+  linkDisconnect: () => ipcRenderer.invoke('link:disconnect'),
+  linkSave: (change) => ipcRenderer.invoke('link:save', change),
+  onLinkChanged: (cb) => ipcRenderer.on('link:changed', (_event, st) => cb(st)),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it

@@ -105,6 +105,18 @@ async function prepareAgentBrowser() {
    Gemini's runs: mail is off limits (its own web tools can't be stopped mid-run). */
 const mailSeenFile = () => path.join(agentBrowserDir(), 'mail-seen.json');
 const mailSeen = () => fs.existsSync(mailSeenFile());
+// written by the wallet (agent/link-pay.js) just before it types a Link card; the launcher reads it (browser-proxy.js cardShown)
+const cardFlagFile = () => path.join(agentBrowserDir(), 'card-filled.json');
+// after a run: the run's config held a Link access token for the wallet; it isn't left on disk
+function scrubWalletToken() {
+  for (const mode of ['taint', 'block']) {
+    const f = path.join(agentBrowserDir(), 'mcp-' + mode + '.json');
+    try {
+      const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (j.mcpServers && j.mcpServers.wallet) { delete j.mcpServers.wallet; fs.writeFileSync(f, JSON.stringify(j)); }
+    } catch (e) {}
+  }
+}
 /* What the agent did that matters (an order placed, an application sent, mail opened, a file uploaded):
    one JSON line each in <userData>/agent-actions.log, written by the browser launcher as it lets the
    action through, and shown in Settings → What the Agent did. */
@@ -119,7 +131,8 @@ handle('agent:actions', () => readActions());
    approvedHosts: his yes was to an order or application on these sites, so the order button is unlocked
      there only (another site's "Place order" in the same run still waits)
    hosts: a shopping run is kept to these sites (and links shown on their pages): the stores and the task's own links
-   task: the task's title, for the actions log */
+   task: the task's title, for the actions log
+   linkToken: a Link access token (agent/link-wallet.js tokenForRun): Claude's run gets the "wallet" tool */
 function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → this run's MCP config (startTab: see agent/task-tabs.js)
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
@@ -128,6 +141,10 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
   if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
+  j.mcpServers.browser.env.TASKS_CARD_FLAG = cardFlagFile(); // a Link card is in a form: card numbers masked, no screenshots
+  // Claude's runs, with Link connected: the "wallet" tool, which pays with a one-time Link card after his yes (agent/link-pay.js)
+  if (mode === 'taint' && opts.linkToken) j.mcpServers.wallet = require('./link-wallet').serverFor({ node: j.mcpServers.browser.command, dir: agentBrowserDir(),
+    token: opts.linkToken, approved, approvedHosts: opts.approvedHosts, cdpPort: AGENT_BROWSER_PORT, cardFlag: cardFlagFile(), mailSeenFile: mailSeenFile(), actionsFile: actionsLogFile(), task: opts.task });
   // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
   // never a yes (they only look) and never a file
   if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1', TASKS_BROWSER_FILES: '[]' }) });
@@ -208,4 +225,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, cardFlagFile, scrubWalletToken, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

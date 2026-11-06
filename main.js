@@ -26,6 +26,7 @@ const routingMod = require('./agent/routing');
 const ai = require('./agent/ai-connections');
 const usageMeter = require('./agent/usage-meter');
 const agentBrowser = require('./agent/agent-browser');
+const linkWallet = require('./agent/link-wallet'); // Pay with Link
 const taskContext = require('./agent/task-context');
 const qwenBrowser = require('./agent/qwen-browser');
 const previews = require('./agent/previews');
@@ -79,7 +80,7 @@ const ctx = {
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
+  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);
