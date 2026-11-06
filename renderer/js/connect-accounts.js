@@ -2,11 +2,13 @@
    email live. Each choice is one short step:
      Google            one sign-in for Google Calendar and (if left ticked) Gmail
      Outlook / 365     Microsoft sign-in when this build has it; otherwise the steps to publish an Outlook calendar link
-     iPhone / iCloud   the steps to share an iCloud calendar, then paste its link
+     iPhone / iCloud   on the computer: Apple ID + app-specific password (CalDAV), so tasks can go on it;
+                       or the steps to share an iCloud calendar as a link (read only; the phone always does this)
      School            Canvas / Blackboard / D2L calendar link; its events are due dates (wiring.js feeds on the computer)
-     Other             any calendar link
+     Other             on the computer: any CalDAV server (Fastmail, Nextcloud, Yahoo…), or any calendar link
    What it should do is asked before signing in (ticked by default), so nothing extra has to be found afterwards:
-   the new account's main calendar is switched on for to-dos, and Gmail's dates check is turned on.
+   the new account's main calendar is switched on for to-dos, Gmail's dates check is turned on, and (on the
+   computer, when no calendar takes tasks yet) the tasks go onto its main calendar. A calendar link can't take them.
    A phone sign-in can finish after Android closed the app, so the choices wait in localStorage (PENDING_KEY)
    and are applied to whichever account shows up new.
    linkKind() is plain and loads in node for the tests (test/connect-accounts.test.js).
@@ -52,6 +54,8 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
   const desk=!!(window.desktop&&window.desktop.calOverview);
   const canMail=!!(desk&&window.desktop.mailSetEnabled);
   const canFeeds=!!(desk&&window.desktop.feedsSave&&typeof importCourseFeeds==='function');
+  const canDav=!!(desk&&window.desktop.calAddCaldav);
+  let hasPush=false; // some calendar already takes the tasks: then a new one doesn't, unless he ticks it
   const step=$('connectStep'), pick=$('connectPick');
   const esc=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
 
@@ -65,12 +69,13 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
     const fresh=o.accounts.filter(function(a){ return p.before.indexOf(a.id)<0&&(!p.provider||a.provider===p.provider); });
     if(!fresh.length)return 0;
     savePending(null);
-    const ch={};
-    if(p.pull)fresh.forEach(function(a){
+    const ch={}; let push=null;
+    fresh.forEach(function(a){
       const main=a.calendars.find(function(c){ return c.primary; })||a.calendars[0];
-      if(main&&!main.pull)ch[main.ref]={skipRepeating:true,skipWords:''};
+      if(p.pull&&main&&!main.pull)ch[main.ref]={skipRepeating:true,skipWords:''};
+      if(p.push&&!push){ const w=main&&main.canWrite?main:a.calendars.find(function(c){ return c.canWrite; }); if(w)push=w.ref; }
     });
-    if(Object.keys(ch).length)await calApi.calSetPrefs({pull:ch});
+    if(Object.keys(ch).length||push)await calApi.calSetPrefs(Object.assign(Object.keys(ch).length?{pull:ch}:{},push?{push:push}:{}));
     if(p.mail&&canMail&&fresh.some(function(a){ return a.provider==='google'&&a.gmail; }))await window.desktop.mailSetEnabled(true);
     return fresh.length;
   };
@@ -100,6 +105,8 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
   const err=function(m){ const e=step.querySelector('[data-err]'); if(e)e.textContent=m||''; };
   const tick=function(key,label,on){ return '<label class="chk connect-chk"><input type="checkbox" data-opt="'+key+'"'+(on?' checked':'')+'> '+label+'</label>'; };
   const opt=function(key){ const i=step.querySelector('[data-opt="'+key+'"]'); return !!(i&&i.checked); };
+  // the computer puts tasks on one calendar (main/gcal-sync.js); a new account takes them if none does yet
+  const pushTick=function(){ return desk?tick('push','Put my tasks on its calendar, so I can see and change them there',!hasPush):''; };
   const before=async function(){ try{ return (await calApi.calOverview(false)).accounts.map(function(a){ return a.id; }); }catch(e){ return []; } };
 
   /* sign in with Google or Microsoft */
@@ -109,6 +116,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
       '<p class="settings-hint">'+(g?'One sign-in connects your Google Calendar'+(canMail?' and Gmail':'')+'. Sign in with the account you use, then come back here.'
         :'One sign-in connects your Outlook, Microsoft 365, work or school calendar.')+'</p>'+
       tick('pull','Put my upcoming events on my to-do list',true)+
+      pushTick()+
       (g&&canMail?tick('mail','Use my Gmail too: find dates in new email, and send emails I approve',true):'')+
       (!g&&desk?tick('mail','Let the Agent send emails I approve from Outlook',true):'')+
       '<div class="settings-row"><button class="btn-accent connect-go" data-go>Sign in with '+name+'</button></div>'+
@@ -117,7 +125,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
     go.addEventListener('click',async function(){
       err(''); go.disabled=true; go.textContent='Opening browser…';
       const mail=opt('mail');
-      savePending({at:Date.now(),provider:provider,before:await before(),pull:opt('pull'),mail:g&&mail});
+      savePending({at:Date.now(),provider:provider,before:await before(),pull:opt('pull'),push:opt('push'),mail:g&&mail});
       step.querySelector('[data-wait]').hidden=false;
       let r; try{ r=await calApi.calConnect(provider,desk&&!mail?{noMail:true}:undefined); }catch(e){ r={ok:false,error:e.message}; }
       go.disabled=false; go.textContent='Sign in with '+name;
@@ -140,7 +148,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
       steps:['Open your Outlook calendar settings: <a href="#" data-open="https://outlook.live.com/calendar/0/options/calendar/SharedCalendars">Outlook.com</a> or <a href="#" data-open="https://outlook.office.com/calendar/options/calendar/SharedCalendars">work or school</a>.',
         'Under <b>Publish a calendar</b>, pick your calendar and <b>Can view all details</b>, then press <b>Publish</b>.',
         'Copy the <b>ICS</b> link and paste it below.'],
-      foot:'Some workplaces and schools turn publishing off. If you don’t see it, ask whoever runs your account, or use <b>Other calendar</b> with a link they give you.'},
+      foot:'A published link only shows your Outlook events here; your tasks can’t go onto it. Some workplaces and schools turn publishing off. If you don’t see it, ask whoever runs your account, or use <b>Other calendar</b> with a link they give you.'},
     icloud:{title:'iPhone or iCloud',lead:'Share your iCloud calendar as a link:',
       steps:['On your iPhone, open <b>Calendar</b> and tap <b>Calendars</b> at the bottom.',
         'Tap the <b>i</b> next to the calendar you want.',
@@ -164,7 +172,8 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
       '<p class="connect-seen" data-seen></p>'+
       (kind==='school'&&canFeeds?'':tick('pull','Put its upcoming events on my to-do list',true))+
       '<div class="settings-row"><button class="btn-accent connect-go" data-add disabled>Add calendar</button></div>'+
-      (g.foot?'<p class="settings-hint">'+g.foot+'</p>':''));
+      (g.foot?'<p class="settings-hint">'+g.foot+'</p>':'')+
+      (canDav&&(kind==='icloud'||kind==='link')?'<p class="settings-hint">A link only shows your events here. To put your tasks on it too, <a href="#" data-dav>sign in instead</a>.</p>':''));
     step.querySelectorAll('[data-open]').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); openExternal(a.dataset.open); }); });
     const inp=step.querySelector('[data-url]'), add=step.querySelector('[data-add]'), seen=step.querySelector('[data-seen]');
     let got=null;
@@ -204,7 +213,55 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
       }catch(e){ err('Couldn’t add it: '+e.message); }
       finally{ add.disabled=!got||!!got.warn; add.textContent='Add calendar'; }
     });
+    // on the computer: back to signing in, which lets tasks go on the calendar too
+    const back=step.querySelector('[data-dav]');
+    if(back)back.addEventListener('click',function(e){ e.preventDefault(); davStep(kind==='icloud'?'icloud':'other'); });
     setTimeout(function(){ inp.focus(); },50);
+  };
+
+  /* sign in with an address and app password (CalDAV: iCloud, Fastmail, Nextcloud, Yahoo…), so the
+     calendar can be read AND written. A link only reads; the link steps are one click away. */
+  const davStep=function(kind){
+    const ic=kind==='icloud';
+    box(ic?'iPhone or iCloud':'Other calendar',
+      (ic?'<p class="settings-hint">Sign in with your Apple ID so your tasks can go on your iPhone calendar too. Apple wants an app-specific password for this, not your normal one. It takes about a minute:</p>'+
+        '<ol class="connect-steps"><li>Open <a href="#" data-open="https://account.apple.com/account/manage">your Apple Account</a> and sign in.</li>'+
+        '<li>Under <b>Sign-In and Security</b>, choose <b>App-Specific Passwords</b>, then the <b>+</b> button. Name it Tasks.</li>'+
+        '<li>Copy the password it shows (four groups of letters) and paste it below with your Apple ID.</li></ol>'
+      :'<p class="settings-hint">Fastmail, Nextcloud, Yahoo, mailbox.org and most other calendars connect with your address and an app password (make one in that service’s security settings). Your tasks can go on it too.</p>')+
+      '<input class="settings-inp" data-user placeholder="'+(ic?'Apple ID (email)':'Email or user name')+'" autocomplete="off" spellcheck="false">'+
+      '<input class="settings-inp" data-pass type="password" placeholder="'+(ic?'App-specific password':'App password')+'" autocomplete="off">'+
+      (ic?'':'<input class="settings-inp" data-server placeholder="Server address, e.g. cloud.example.org/remote.php/dav" autocomplete="off" spellcheck="false" hidden>')+
+      tick('pull','Put my upcoming events on my to-do list',true)+
+      pushTick()+
+      '<div class="settings-row"><button class="btn-accent connect-go" data-go>Connect</button></div>'+
+      '<p class="settings-hint">Only want to see it here, not change it? <a href="#" data-link>'+(ic?'Share it as a link instead':'Paste a calendar link instead')+'</a>.</p>');
+    step.querySelectorAll('[data-open]').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); openExternal(a.dataset.open); }); });
+    step.querySelector('[data-link]').addEventListener('click',function(e){ e.preventDefault(); linkStep(ic?'icloud':'link'); });
+    const user=step.querySelector('[data-user]'), pass=step.querySelector('[data-pass]'), server=step.querySelector('[data-server]'), go=step.querySelector('[data-go]');
+    const submit=async function(){
+      err('');
+      if(!user.value.trim()||!pass.value.trim()){ err('Enter both.'); return; }
+      go.disabled=true; go.textContent='Checking…';
+      try{
+        savePending({at:Date.now(),provider:'caldav',before:await before(),pull:opt('pull'),push:opt('push'),mail:false});
+        const r=await window.desktop.calAddCaldav({username:user.value.trim(),password:pass.value,server:ic?'https://caldav.icloud.com/':(server&&server.value.trim())||''});
+        if(!r||!r.ok){
+          savePending(null);
+          // not a service it knows: ask where its calendar server is
+          if(r&&r.needsServer&&server){ server.hidden=false; server.focus(); err('What’s your calendar server’s address? It’s in that service’s help pages, often under CalDAV.'); return; }
+          err((r&&r.error)||'Not connected.');
+          return;
+        }
+        pass.value='';
+        await afterConnect();
+        done('Connected '+r.email+'.');
+      }catch(e){ savePending(null); err('Couldn’t connect: '+e.message); }
+      finally{ go.disabled=false; go.textContent='Connect'; }
+    };
+    go.addEventListener('click',submit);
+    [user,pass,server].forEach(function(i){ if(i)i.addEventListener('keydown',function(e){ if(e.key==='Enter')submit(); }); });
+    setTimeout(function(){ user.focus(); },50);
   };
 
   pick.addEventListener('click',async function(e){
@@ -213,6 +270,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
     pick.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on',x===b); });
     let o=null; try{ o=await calApi.calOverview(false); }catch(err2){}
     const built=(o&&o.builtIn)||{};
+    hasPush=!!(o&&o.accounts.some(function(a){ return a.calendars.some(function(c){ return c.push; }); }));
     if(k==='google'){
       // a copy built without its own Google sign-in (a fork): the paste-your-own-credential form
       if(!built.google&&desk){ close(); $('gcalSetup').hidden=false; window.desktop.gcalGetCfg().then(function(c){ if(c.clientId)$('gcalClientId').value=c.clientId; if(c.clientSecret)$('gcalClientSecret').value=c.clientSecret; }); return; }
@@ -220,6 +278,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
       signIn('google');
     }
     else if(k==='microsoft'){ if(built.microsoft)signIn('microsoft'); else linkStep('microsoft'); }
+    else if(canDav&&(k==='icloud'||k==='link'))davStep(k==='icloud'?'icloud':'other');
     else linkStep(k);
   });
 

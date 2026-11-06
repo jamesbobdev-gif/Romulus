@@ -38,8 +38,11 @@ if(calApi){
     calData.accounts.forEach(function(a){
       const el=document.createElement('div'); el.className='cal-acct';
       if(a.broken)el.dataset.disconnected=a.label+': signed out';
+      // a CalDAV account whose app password was revoked: the fix is adding it again with a new one
+      if(a.provider==='caldav'&&a.error&&/didn.t take/.test(a.error))a.error+='. Make a new app-specific password and connect it again from the picker above.';
       // "Google account" already says Google: only tag the provider when the name doesn't
-      const tag=String(a.label||'').toLowerCase().indexOf(PROV[a.provider].toLowerCase())<0?'<span class="mono">'+PROV[a.provider]+'</span>':'<span></span>';
+      const pn=a.providerName||PROV[a.provider]||'Calendar';
+      const tag=String(a.label||'').toLowerCase().indexOf(pn.toLowerCase())<0?'<span class="mono">'+escH(pn)+'</span>':'<span></span>';
       let h='<div class="cal-acct-head"><b>'+escH(a.label)+'</b>'+tag+'<button class="ghost mono danger" data-remove>Remove</button></div>';
       // Google stopped taking its sign-in (it expires now and then): one click renews it, on the same address
       if(a.broken)h+='<div class="cal-acct-err">Its sign-in ran out. <button class="mono" data-renew>Renew sign-in</button></div>';

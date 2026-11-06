@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('desktop', {
   calOverview: (fresh) => ipcRenderer.invoke('cal:overview', fresh),
   calConnect: (provider, own) => ipcRenderer.invoke('cal:connect', provider, own),
   calAddLink: (url, name) => ipcRenderer.invoke('cal:add-link', url, name),
+  calAddCaldav: (opts) => ipcRenderer.invoke('cal:add-caldav', opts),
   calRemove: (id) => ipcRenderer.invoke('cal:remove', id),
   calSetPrefs: (change) => ipcRenderer.invoke('cal:set-prefs', change),
   calSetReceipts: (id, on) => ipcRenderer.invoke('cal:set-receipts', id, on),
