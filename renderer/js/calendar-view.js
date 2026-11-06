@@ -57,7 +57,7 @@ function switchTab(tab){
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
   if(tab!=='finance')financeLeave();
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabFinance','finance']].forEach(function(p){
+  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabFamily','family'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabFinance','finance']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });

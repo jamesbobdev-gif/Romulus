@@ -67,7 +67,7 @@ async function addTask(){
   }
   let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; let tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
-  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='family'?'family':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
   // typed "#home" and "every sunday" (quick-add.js): the tag and the repeat come out of the title.
   // Not for the Agent: its #legion is a tag of its own, and its repeats are t.repeat (agent-chat.js)
   let recur=null;
@@ -149,9 +149,9 @@ function parseSpokenTask(text,now){
      "add finish the report to work"                    → {kind:'task', tab:'work'}
      "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
-const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
-const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Notes'};
-function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
+const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',family:'family',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
+const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',family:'Family',calendar:'Calendar',ideas:'Notes'};
+function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():tab==='family'?familyConfigured():true; }
 // "app" / "app notes" / "the app notes group" → that note group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
   const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?|notes?)\b/g,' ').replace(/\s+/g,' ').trim(); };
@@ -240,7 +240,7 @@ function voiceWords(text){
   return String(text||'').toLowerCase().replace(/['’]s\b/g,'').split(/[^a-z0-9]+/).filter(function(w){ return w.length>2&&!VOICE_STOP.has(w); })
     .map(function(w){ return w.length>5?w.replace(/(?:ing|ed|es)$/,''):w.length>3?w.replace(/s$/,''):w; });
 }
-const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent'};
+const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent',family:'family'};
 function voiceGuessTab(text){
   const words=Array.from(new Set(voiceWords(text))); if(!words.length)return null;
   const size={}, seen={}; let all=0;

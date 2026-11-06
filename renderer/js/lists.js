@@ -736,19 +736,22 @@ function render(){
   // a pulsing dot on the Agent tab while any task is running, so you see it from other tabs
   const anyWorking=state.tasks.some(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='working'; });
   const ta=$('tabAgent'); if(ta){ ta.classList.toggle('busy',anyWorking); ta.title=anyWorking?'The Agent is working on a task':''; }
-  const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work';
-  const tab=onAgent?'agent':onSchool?'school':onWork?'work':'list';
+  const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work', onFamily=state.activeTab==='family';
+  const tab=onAgent?'agent':onSchool?'school':onWork?'work':onFamily?'family':'list';
+  // the Family tab shows for people on a family plan, and wherever the family list is on (family-list.js)
+  const tf=$('tabFamily'); if(tf)tf.hidden=!(familyConfigured()||(typeof familyRole==='function'&&!!familyRole())||onFamily);
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
-  const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():false;
+  const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():onFamily?!familyConfigured():false;
   document.querySelector('.composer').hidden=unconnected;
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
     const what=onAgent?['Agent','agent','Hand tasks to the Agent — on this computer or the local model: they work on them and come back when they need you.']
       :onSchool?['School','school','Your assignments, with due dates pulled in from your course calendars.']
+      :onFamily?['Family','family','One list everyone on your family plan keeps together: groceries, chores, a trip. Changes show up on everyone’s devices as they happen, end-to-end encrypted.']
       :['Work','work','A second list that syncs with your work project.'];
-    $('connectTitle').textContent='Connect your '+what[0]+' list';
-    $('connectText').textContent=what[2]+' It’s shared online between your computer'+(onAgent?', phone and mini PC':' and phone')+', so it needs connecting once.';
+    $('connectTitle').textContent=onFamily?'Share a list with your family':'Connect your '+what[0]+' list';
+    $('connectText').textContent=what[2]+(onFamily?' Start it, or join with the code someone on your plan gave you, in Settings.':' It’s shared online between your computer'+(onAgent?', phone and mini PC':' and phone')+', so it needs connecting once.');
     $('connectBtn').setAttribute('data-ws',what[1]);
   }
   const tasks=state.tasks.filter(function(t){ return inTab(t,tab); });
@@ -784,7 +787,7 @@ function render(){
   fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
   $('legionBtn').hidden=!onAgent; if(!onAgent)setLegion(false);
-  $('newTitle').placeholder=onAgent&&legionOn?'What should the legion research?':onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
+  $('newTitle').placeholder=onAgent&&legionOn?'What should the legion research?':onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':onFamily?'Add something for the family…':'Add a task…';
 
   // workspace filter chips (only when a work list is connected; not on the Agent tab)
   const wsf=$('wsFilters'); wsf.innerHTML='';

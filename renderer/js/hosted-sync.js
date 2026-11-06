@@ -69,7 +69,7 @@ function hostedMb(b){ b=Number(b)||0; return b>=1024*1024*1024?(b/1024/1024/1024
    says the Stripe links start with that many free days; only then does it say so. */
 function hostedPlanPitch(h){
   const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0));
-  const pitch='The family plan: share Romulus with up to 4 more people, each with their own private lists, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
+  const pitch='The family plan: share Romulus with up to 4 more people, with a family list you all keep together (groceries, chores, a trip) and private lists of your own, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
   return days?{
     button:'Try the family plan free for '+days+' days',
     year:'or $50 a year',
@@ -146,6 +146,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     ownBtn.hidden=!on; backBtn.hidden=on; delBtn.hidden=!on;
     if(!on){
       planBox.hidden=famBox.hidden=histBox.hidden=earlyRow.hidden=supporters.hidden=true;
+      if(typeof familyDraw==='function')familyDraw('');
       info.textContent=validProfile(p)?'Your lists sync through your own Supabase project.':'Sync is off on this device.';
       return;
     }
@@ -179,6 +180,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const role=rows[0]&&rows[0].role;
     famBox.hidden=!role; inviteBtn.hidden=role!=='payer'; leaveBtn.hidden=role!=='member';
     famList.textContent='';
+    if(typeof familyDraw==='function')familyDraw(role||''); // the family list (family-list.js)
     if(role==='member'){ famInfo.textContent='Your $5 plan comes from someone’s family plan.'; return; }
     if(role!=='payer')return;
     const members=rows.filter(function(r){ return r.member; });
@@ -189,9 +191,11 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
       s.textContent='Person '+(i+1)+(m.since?', joined '+new Date(m.since).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'');
       const b=document.createElement('button'); b.className='ghost mono'; b.textContent='Take off';
       b.addEventListener('click',async function(){
-        if(!confirm('Take this person off your plan? They go back to the free space; nothing of theirs is deleted.'))return;
+        const shared=typeof familyConfigured==='function'&&familyConfigured();
+        if(!confirm('Take this person off your plan? They go back to the free space; nothing of theirs is deleted.'+(shared?'\n\nThe family list moves to a new key their devices don’t get, so nothing new reaches them. What they already synced stays on their devices: that can’t be taken back.':'')))return;
         const k=await rowKey(); if(!k)return;
-        try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:m.member}); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
+        try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:m.member}); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); draw(); return; }
+        if(shared){ familyState.lastRotate=0; await familyCheckStale(); }
         draw();
       });
       row.appendChild(s); row.appendChild(b); famList.appendChild(row);
@@ -248,9 +252,14 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     }catch(e){ setSyncStatus('couldn’t make a code: '+e.message,true); }
   });
   leaveBtn.addEventListener('click',async function(){
-    if(!confirm('Leave the family plan? You go back to the free space; nothing is deleted.'))return;
+    const shared=typeof familyConfigured==='function'&&familyConfigured();
+    if(!confirm('Leave the family plan? You go back to the free space; nothing of yours is deleted.'+(shared?'\n\nThe family list leaves this device too; everyone else keeps it.':'')))return;
     const k=await rowKey(); if(!k)return;
-    try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:null}); setSyncStatus('you left the family plan'); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
+    try{
+      await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:null});
+      if(shared)await familyDropHere();
+      setSyncStatus('you left the family plan');
+    }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
     draw();
   });
   restoreBtn.addEventListener('click',async function(){

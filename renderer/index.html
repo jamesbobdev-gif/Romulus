@@ -250,6 +250,18 @@
             <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
             <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family plan</button>
           </div>
+          <!-- one list everyone on the plan shares, end-to-end encrypted, handed over by a code (family-list.js) -->
+          <div id="familyListBox" hidden style="margin:10px 0 0">
+            <div class="settings-label" style="margin-bottom:4px">Family list</div>
+            <p id="familyListInfo" class="settings-hint" style="margin:0 0 6px"></p>
+            <div id="familyListCode" class="mono" hidden style="font-size:24px;letter-spacing:3px;user-select:all;margin:0 0 6px"></div>
+            <div class="settings-row">
+              <button id="familyStartBtn" class="btn-accent" hidden>Share a list with my family</button>
+              <button id="familyCodeBtn" class="ghost mono" hidden>Make a code for my family</button>
+              <button id="familyJoinBtn" class="ghost mono">I have a family list code</button>
+              <button id="familyLeaveBtn" class="ghost mono" hidden>Leave the family list</button>
+            </div>
+          </div>
         </div>
         <div id="hostedHistory" hidden style="margin:0 0 10px">
           <div class="settings-label" style="margin-bottom:4px">History</div>
@@ -306,6 +318,7 @@
         <input id="syncKeyW" class="settings-inp" placeholder="Work sync key (automatic)" autocomplete="off" spellcheck="false">
         <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key (automatic)" autocomplete="off" spellcheck="false">
         <input id="syncKeyS" class="settings-inp" placeholder="School sync key (automatic)" autocomplete="off" spellcheck="false">
+        <input id="syncKeyF" class="settings-inp" placeholder="Family list key (set by Family list below)" autocomplete="off" spellcheck="false">
       </details>
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
@@ -382,6 +395,8 @@
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
+    <!-- shown for people on a family plan, and wherever the family list is on (family-list.js) -->
+    <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Family</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
@@ -566,6 +581,7 @@
 <script src="js/pair.js"></script>
 <script src="js/hosted-sync.js"></script>
 <script src="js/devices.js"></script>
+<script src="js/family-list.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
 <script src="js/task-import.js"></script>
