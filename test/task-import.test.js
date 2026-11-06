@@ -196,3 +196,31 @@ test('a Google Takeout .zip: the tasks file inside is read, other files skipped'
   assert.deepStrictEqual(r.items.map((i) => [i.title, i.tag, i.done, i.subs.length]), [['Renew license', 'Errands', false, 1], ['Return books', 'Errands', true, 0]]);
   await assert.rejects(impUnzip(new ArrayBuffer(40)));
 });
+
+// the add box's date reader (task-actions.js is a page script, so the one function is lifted out of it)
+function withDateReader(fn) {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../renderer/js/task-actions.js'), 'utf8');
+  const body = src.slice(src.indexOf('function parseSpokenTask'), src.indexOf('/* Spoken commands'));
+  const formatDate = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  globalThis.parseSpokenTask = new Function('formatDate', body + '\nreturn parseSpokenTask;')(formatDate);
+  try { fn(); } finally { delete globalThis.parseSpokenTask; }
+}
+
+test('a pasted list reads typed days the way the add box does', () => withDateReader(() => {
+  const r = parseImport([
+    'Call dentist tomorrow',
+    'Send report friday at 3pm',
+    'Pay rent every month on the 1st',
+    'Water plants every sunday',
+    'Pick up dry cleaning'
+  ].join('\n'), { now: NOW });
+  assert.deepStrictEqual(r.items.map((i) => [i.title, i.due, i.dueTime, i.recur]), [
+    ['Call dentist', '2026-11-07', null, null],
+    ['Send report', '2026-11-13', '15:00', null], // "friday" on a Friday is next week's, as in the add box
+    ['Pay rent', '2026-12-01', null, 'month'], // the 1st has passed this month: the next one
+    ['Water plants', '2026-11-08', null, 'week'],
+    ['Pick up dry cleaning', null, null, null]
+  ]);
+  const t = importToTasks(r.items, { existing: [], now: 1000 }).tasks.find((x) => x.title === 'Pay rent');
+  assert.strictEqual(t.recur.dom, 1); // repeats on the 1st, not on the day it was imported
+}));

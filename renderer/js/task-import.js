@@ -267,6 +267,13 @@ function impGoogle(j){
 }
 
 /* ── a pasted (or .txt / .md) list ── */
+// the add box's date reader, parseSpokenTask (task-actions.js, another page script); looked up when a list is
+// read, so the tests can put it on the global object
+function impWhen(s,now){
+  const read=typeof parseSpokenTask==='function'?parseSpokenTask:(typeof globalThis!=='undefined'&&globalThis.parseSpokenTask);
+  if(typeof read!=='function')return null;
+  try{ return read(s,now?new Date(now):new Date()); }catch(e){ return null; }
+}
 function impText(text,opts){
   const out=[]; let heading=null, last=null;
   String(text||'').replace(/^﻿/,'').split(/\r?\n/).forEach(function(raw,n){
@@ -284,7 +291,13 @@ function impText(text,opts){
     let tag=heading, rec=null;
     if(impTag){ const g=impTag(s); if(g.tag){ s=g.title; tag=g.tag; } }
     if(impRecur){ const r=impRecur(s,opts.now); if(r){ s=r.title; rec=r; } }
-    last={title:s,done:done,tag:tag,due:rec?rec.due:null,recur:rec?rec.every:null,subs:[],key:'text:'+s.toLowerCase()+'|'+n};
+    const key='text:'+s.toLowerCase()+'|'+n;
+    // "Call dentist tomorrow", "Pay rent every month on the 1st": the day comes out of the title as it does in the
+    // add box (task-actions.js); "every sunday" keeps its own day over one that's also typed
+    let due=rec?rec.due:null, dueTime=null;
+    const p=impWhen(s,opts.now);
+    if(p&&p.due&&p.title){ s=p.title; if(!(rec&&rec.onDay)){ due=p.due; dueTime=p.dueTime; } }
+    last={title:s,done:done,tag:tag,due:due,dueTime:dueTime,recur:rec?rec.every:null,subs:[],key:key};
     out.push(last);
   });
   return out;
