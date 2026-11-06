@@ -53,9 +53,7 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .connect-card.welcome>b{font-size:17px}
 .welcome-choices{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;margin:0 0 16px}
 .welcome-choices button{margin:0}
-.welcome-tips{margin:0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.55}
-.welcome-tips li{margin:4px 0}
-.welcome-tips b{display:inline;font-size:inherit;margin:0;color:var(--ink)}
+.connect-card.welcome>.welcome-choices:last-child{margin-bottom:0}
 .welcome-foot{font-size:12px;margin:12px 0 0 !important;color:var(--faint)}
 /* bringing tasks over (task-import.js) */
 .import-card.drop{border-color:var(--accent);border-style:solid}

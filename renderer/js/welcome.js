@@ -1,5 +1,5 @@
 /* First launch, and the Agent tab before anything is connected.
-   - The welcome card (once, ever): three things to set up and four things worth knowing.
+   - The welcome card (once, ever): what to set up.
    - The Agent tab on this computer works without device sync (the agent runs here); what it does need
      is an AI. With none connected its empty state becomes "Pick an AI", and once tasks are waiting a
      nudge says they can't run yet. Sync is offered as "also on your phone".
@@ -27,9 +27,8 @@ function markWelcomed(){
   let seen=true; try{ seen=!!localStorage.getItem(WELCOME_KEY); }catch(e){}
   const card=$('welcomeCard'); if(!card)return;
   if(seen)return;
-  if(!isDesktopApp){ // phone: the AI lives on the computer; the tray tip doesn't apply
+  if(!isDesktopApp){ // phone: the AI lives on the computer
     $('welcomeAiBtn').hidden=true; $('welcomeSyncBtn').textContent='Sync with my computer';
-    $('welcomeTrayTip').textContent='Home-screen widgets show your list and let you add to it; the Agent runs on your computer and syncs here.';
   }
   card.hidden=false;
   const done=function(){ try{ localStorage.setItem(WELCOME_KEY,String(Date.now())); }catch(e){} card.hidden=true; };
