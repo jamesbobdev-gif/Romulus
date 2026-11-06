@@ -111,7 +111,14 @@ test('the routing and the lane keep a coach task on the local model, hand-off or
 test('the migration in last position carries every side row, the moved check and the guard', () => {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261103_review_final.sql'), 'utf8');
   const last = fs.readdirSync(path.join(__dirname, '..', 'supabase', 'migrations')).sort().pop();
-  assert.strictEqual(last, '20261103_review_final.sql');
+  assert.ok(last >= '20261103_review_final.sql', 'the review migration runs last, or a later one builds on it');
+  if (last !== '20261103_review_final.sql') { // a later migration redefines some of these: each keeps the side-row list and the moved check
+    const later = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', last), 'utf8');
+    const redefined = (later.match(/create or replace function public\.sync_(?:get|put|set|usage)\(/g) || []).length;
+    assert.ok(redefined > 0, last + ' touches the sync functions');
+    assert.strictEqual((later.match(/prefs\|locked\|routing\|standing\|ideas\|hours\|worker\|updates\|finance\|files\|files-gone/g) || []).length, redefined, last + ' keeps the side rows');
+    assert.ok(later.includes('sync_is_moved(p_sync_key)'), last + ' keeps the moved check');
+  }
   for (const fn of ['sync_get', 'sync_put', 'sync_set', 'sync_usage', 'agent_folder_proved', 'agent_file_upload_allowed', 'sync_pair_put', 'sync_pair_take'])
     assert.ok(sql.includes('create or replace function public.' + fn + '('), fn);
   assert.strictEqual((sql.match(/prefs\|locked\|routing\|standing\|ideas\|hours\|worker\|updates\|finance\|files\|files-gone/g) || []).length, 3);

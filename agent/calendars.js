@@ -10,6 +10,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const mailSend = require('./mail-send');
+const caldav = require('./caldav');
 
 let io = null; // { readConfig, writeConfig, openExternal, clients }
 function init(opts) { io = opts; migrate(); }
@@ -187,6 +188,24 @@ const ics = {
     });
   }
 };
+/* CalDAV (iCloud, Fastmail, Nextcloud, Yahoo…): read and write with an address and app password (agent/caldav.js).
+   A calendar's id is its URL on the server. The calendar home found on first look is kept on the account. */
+const caldavProvider = {
+  name: 'Calendar',
+  async calendars(_token, acct) {
+    const r = await caldav.calendars(acct);
+    if (r.home !== acct.home) {
+      const cfg = io.readConfig();
+      const a = accounts(cfg).find((x) => x.id === acct.id);
+      if (a) { a.home = r.home; io.writeConfig(cfg); }
+    }
+    return r.list;
+  },
+  events(_token, cal, from, to, acct) { return caldav.events(acct, cal, from, to, parseIcs); },
+  put(_token, cal, id, ev, acct) { return caldav.put(acct, cal, id, ev); },
+  remove(_token, cal, id, acct) { return caldav.remove(acct, cal, id); }
+};
+
 function parseIcs(text) {
   const lines = String(text).replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/);
   const un = (s) => String(s || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1').trim();
@@ -198,7 +217,7 @@ function parseIcs(text) {
       const st = ev && when(ev.DTSTART);
       if (ev && ev.UID && st && !(ev.STATUS && /CANCELLED/i.test(ev.STATUS.value))) {
         out.push({ id: un(ev.UID.value) + (ev['RECURRENCE-ID'] ? '@' + ev['RECURRENCE-ID'].value : ''), title: un(ev.SUMMARY && ev.SUMMARY.value),
-          recurring: !!(ev.RRULE || ev['RECURRENCE-ID']), ours: false, allDay: typeof st === 'string', start: st, end: when(ev.DTEND),
+          recurring: !!(ev.RRULE || ev['RECURRENCE-ID']), ours: !!ev['X-TASKS-APP'], allDay: typeof st === 'string', start: st, end: when(ev.DTEND),
           where: un(ev.LOCATION && ev.LOCATION.value), notes: un(ev.DESCRIPTION && ev.DESCRIPTION.value).slice(0, 1000) });
       }
       ev = null; continue;
@@ -220,7 +239,7 @@ function when(p) {
   return m[7] ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6])) : new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
 }
 
-const PROVIDERS = { google, microsoft, ics };
+const PROVIDERS = { google, microsoft, ics, caldav: caldavProvider };
 
 /* ---------- tokens ---------- */
 // Microsoft refreshes only to scopes the account agreed to: one connected before Mail.Send was asked for
@@ -233,7 +252,7 @@ async function tokenFor(acctId) {
   const cfg = io.readConfig();
   const a = accounts(cfg).find((x) => x.id === acctId);
   if (!a) throw new Error('That account is no longer connected');
-  if (a.provider === 'ics') return null;
+  if (a.provider === 'ics' || a.provider === 'caldav') return null;
   const t = a.tokens || {};
   if (t.access_token && t.expiry_date > Date.now() + 60000) return t.access_token;
   if (!t.refresh_token) throw new Error('Sign in again');
@@ -265,6 +284,13 @@ async function tokenFor(acctId) {
 /* ---------- sign-in ---------- */
 function idTokenEmail(idToken) {
   try { const p = JSON.parse(Buffer.from(String(idToken).split('.')[1], 'base64').toString('utf8')); return p.email || p.preferred_username || null; } catch (e) { return null; }
+}
+
+// noMail (he unticked email when connecting): calendars only, so the sign-in screen doesn't ask about his mailbox;
+// connecting the same account again without it adds the mail permissions
+const MAIL_SCOPES = /^(https:\/\/www\.googleapis\.com\/auth\/gmail\.\w+|Mail\.Send)$/;
+function scopeFor(p, opts) {
+  return opts.noMail ? p.scope.split(' ').filter((s) => !MAIL_SCOPES.test(s)).join(' ') : p.scope;
 }
 
 function connect(provider, opts = {}) {
@@ -316,7 +342,7 @@ function connect(provider, opts = {}) {
     server.listen(0, '127.0.0.1', () => {
       port = server.address().port;
       const url = p.authUrl + '?' + new URLSearchParams(Object.assign({ client_id: c.clientId, redirect_uri: `http://${host}:${port}/oauth2callback`,
-        response_type: 'code', scope: p.scope, state, code_challenge: challenge, code_challenge_method: 'S256' }, p.authExtra,
+        response_type: 'code', scope: scopeFor(p, opts), state, code_challenge: challenge, code_challenge_method: 'S256' }, p.authExtra,
         // renewing an account: the sign-in page opens on that address instead of asking which one
         opts.loginHint ? { login_hint: String(opts.loginHint) } : {}));
       io.openExternal(url).catch((e) => finish({ ok: false, error: 'Could not open the browser: ' + e.message }));
@@ -338,6 +364,32 @@ async function addLink(url, name) {
   cfg.calAccounts = accounts(cfg).concat([{ id, provider: 'ics', url: x.href, name: String(name || '').trim().slice(0, 40) || x.hostname }]);
   io.writeConfig(cfg);
   return { ok: true, id };
+}
+
+/* a CalDAV account: checked by listing its calendars before it's kept. Signing in again with the same
+   address on the same server swaps in the new password instead of adding a copy. */
+const CALDAV_NAMES = [[/icloud\.com$/, 'iCloud'], [/fastmail\.com$/, 'Fastmail'], [/yahoo\.com$/, 'Yahoo'], [/gmx\.net$/, 'GMX'], [/mailbox\.org$/, 'mailbox.org']];
+async function addCaldav(opts) {
+  const o = opts || {};
+  const username = String(o.username || '').trim(), appPassword = String(o.password || '').replace(/\s+/g, '');
+  if (!username || !appPassword) return { ok: false, error: 'Enter the address and the password.' };
+  const server = caldav.normServer(o.server) || caldav.guessServer(username);
+  if (!server) return { ok: false, needsServer: true, error: 'Enter your calendar server’s address.' };
+  const host = new URL(server).hostname;
+  const name = String(o.name || '').trim().slice(0, 40) || (CALDAV_NAMES.find(([re]) => re.test(host)) || [, host.replace(/^(www|caldav|dav|cal|calendar)\./, '')])[1];
+  const acct = { id: 'd-' + crypto.randomBytes(4).toString('hex'), provider: 'caldav', server, username, appPassword, email: username, name };
+  let found;
+  try { found = await caldav.calendars(acct); } catch (e) { return { ok: false, error: e.message }; }
+  acct.home = found.home;
+  const cfg = io.readConfig();
+  const list = accounts(cfg);
+  const same = list.find((a) => a.provider === 'caldav' && a.server === server && String(a.username).toLowerCase() === username.toLowerCase());
+  if (same) { Object.assign(same, { appPassword, home: found.home, name }); delete same.broken; }
+  else list.push(acct);
+  cfg.calAccounts = list;
+  io.writeConfig(cfg);
+  calCache.delete(same ? same.id : acct.id);
+  return { ok: true, id: same ? same.id : acct.id, email: username };
 }
 
 function removeAccount(id) {
@@ -365,7 +417,8 @@ async function overview(fresh) {
   const p = prefs(cfg);
   const out = [];
   for (const a of accounts(cfg)) {
-    const row = { id: a.id, provider: a.provider, label: a.email || a.name || (a.provider === 'google' ? 'Google account' : a.provider), broken: !!a.broken, calendars: [], error: null,
+    const row = { id: a.id, provider: a.provider, providerName: a.provider === 'caldav' ? a.name : undefined,
+      label: a.email || a.name || (a.provider === 'google' ? 'Google account' : a.provider), broken: !!a.broken, calendars: [], error: null,
       gmail: a.provider === 'google' && /gmail\.readonly/.test(a.scope || ''), receipts: a.receipts !== false };
     try {
       const cals = await calendarsOf(a, fresh);
@@ -396,14 +449,14 @@ async function putEvent(ref, eventId, ev) {
   const { acct, cal } = splitRef(ref);
   const a = accounts(io.readConfig()).find((x) => x.id === acct);
   if (!a || a.provider === 'ics') throw new Error('Calendar not connected');
-  return PROVIDERS[a.provider].put(await tokenFor(acct), cal, eventId, ev);
+  return PROVIDERS[a.provider].put(await tokenFor(acct), cal, eventId, ev, a);
 }
 async function deleteEvent(ref, eventId) {
   const r = splitRef(ref);
   if (!r || !eventId) return;
   const a = accounts(io.readConfig()).find((x) => x.id === r.acct);
   if (!a || a.provider === 'ics') return; // the account is gone: nothing we can reach
-  await PROVIDERS[a.provider].remove(await tokenFor(r.acct), r.cal, eventId);
+  await PROVIDERS[a.provider].remove(await tokenFor(r.acct), r.cal, eventId, a);
 }
 
 /* ---------- calendars → to-dos ----------
@@ -413,7 +466,7 @@ async function deleteEvent(ref, eventId) {
 const PULL_DAYS = 14;
 // to-do ids hash the account's address (or the link), not its id here, so the phone (mobile/cal-phone.js)
 // gives the same event the same id and the two never add it twice
-const pullKey = (a) => (a.provider === 'ics' ? 'ics:' + a.url : a.email ? a.provider + ':' + String(a.email).toLowerCase() : a.id);
+const pullKey = (a) => (a.provider === 'ics' ? 'ics:' + a.url : a.provider === 'caldav' ? 'caldav:' + String(a.username).toLowerCase() + '@' + a.server : a.email ? a.provider + ':' + String(a.email).toLowerCase() : a.id);
 async function pull(ownEventIds) {
   const cfg = io.readConfig();
   const p = prefs(cfg);
@@ -495,4 +548,4 @@ function sendAccounts() {
   return { accounts: all.filter(mailSend.canSend), needReconnect: all.filter((a) => !mailSend.canSend(a)) };
 }
 
-module.exports = { init, connect, addLink, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, msRefreshScope };
+module.exports = { init, connect, scopeFor, addLink, addCaldav, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, msRefreshScope };

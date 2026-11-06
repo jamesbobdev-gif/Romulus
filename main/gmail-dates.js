@@ -96,7 +96,7 @@ handle('mail:send', async (_e, req) => {
   const r = req || {};
   const list = calendars.sendAccounts().accounts;
   const acct = list.find((a) => a.id === r.from) || list[0];
-  if (!acct) return { error: 'No account can send email yet: connect Gmail or Outlook again in Settings → Calendars and allow sending.' };
+  if (!acct) return { error: 'No account can send email yet: connect Gmail or Outlook again in Settings → Calendars & email and allow sending.' };
   const email = mailSend.cleanEmail(r.email);
   if (!email) return { error: 'The email needs a message and one to ten good addresses.' };
   try {

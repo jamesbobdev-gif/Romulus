@@ -20,6 +20,13 @@ handle('sync:save-cfg', async (_e, sync) => {
   return true;
 });
 
+// what Settings → Devices calls this computer before he renames it (renderer/js/devices.js)
+handle('sync:device-info', async () => ({
+  name: require('os').hostname(),
+  os: process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Mac' : 'Linux',
+  version: require('../package.json').version
+}));
+
 /* the sync code as a QR code, for the phone to scan (Settings → Device sync). It holds the sync key, so
    it's drawn here and shown only on this screen, never sent anywhere */
 handle('sync:qr', async (_e, text) => {

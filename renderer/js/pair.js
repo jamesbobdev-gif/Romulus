@@ -82,7 +82,7 @@ if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
   };
   addBtn.addEventListener('click',async function(){
     if(live){ stop(true); return; }
-    const sc=syncCodeNow(); if(!sc){ setSyncStatus('set up sync on this device first',true); return; }
+    const sc=syncCodeNow(); if(!sc){ if(typeof syncShowFirstSteps==='function')syncShowFirstSteps(); setSyncStatus('nothing syncs here yet: set this device up first with the steps below',true); return; }
     const srv=server(); if(!srv){ setSyncStatus('fill in the project URL and key first',true); return; }
     addBtn.disabled=true; setSyncStatus('making a code…');
     try{

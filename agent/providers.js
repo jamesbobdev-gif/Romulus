@@ -426,6 +426,27 @@ const codexHome = () => process.env.CODEX_HOME || path.join(os.homedir(), '.code
 function codexSignedIn() {
   try { return JSON.parse(fs.readFileSync(path.join(codexHome(), 'auth.json'), 'utf8')).auth_mode === 'chatgpt'; } catch (e) { return false; }
 }
+/* How to start Codex. On Windows its npm wrapper (codex.js) starts codex.exe without hiding it, and with no console
+   to share (Romulus is a window app) Windows opens a new terminal for it. So codex.exe is started here, hidden,
+   with what the wrapper would have added to its environment. Elsewhere, or if the binary isn't found: the wrapper.
+   → {cmd, args (after the script), env} */
+const CODEX_TRIPLE = { x64: 'x86_64-pc-windows-msvc', arm64: 'aarch64-pc-windows-msvc' };
+function codexNativeExe(script) {
+  const triple = CODEX_TRIPLE[process.arch];
+  if (process.platform !== 'win32' || !script || !triple) return null;
+  const pkgRoot = path.dirname(path.dirname(script)), plat = '@openai/codex-win32-' + process.arch;
+  const tail = ['vendor', triple, 'bin', 'codex.exe'];
+  for (const dir of [path.join(pkgRoot, 'node_modules', ...plat.split('/')), path.join(pkgRoot, '..', '..', ...plat.split('/')), pkgRoot]) {
+    const exe = path.join(dir, ...tail);
+    if (fs.existsSync(exe)) return { exe, pkgRoot };
+  }
+  return null;
+}
+function codexLaunch(script, args, node) {
+  const nat = codexNativeExe(script);
+  if (nat) return { cmd: nat.exe, args, env: Object.assign({}, process.env, { CODEX_MANAGED_PACKAGE_ROOT: nat.pkgRoot, CODEX_MANAGED_BY_NPM: '1' }) };
+  return { cmd: node || process.execPath, args: [script].concat(args), env: Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' }) };
+}
 function codexStatus() {
   const cli = codexCli();
   return { installed: !!cli, version: cli && cli.version, signedIn: !!cli && codexSignedIn() };
@@ -472,9 +493,9 @@ function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile
   return new Promise((resolve) => {
     let err = '', done = false, p;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (e) {} resolve(r); } };
-    const env = Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' });
     const browser = codexBrowser(browserMcpFile, browserDenied);
-    try { p = spawn(node || process.execPath, codexArgs(cli.script, outFile, chosen, browser), { cwd: workDir, env, windowsHide: true }); }
+    const run = codexLaunch(cli.script, codexArgs(cli.script, outFile, chosen, browser).slice(1), node);
+    try { p = spawn(run.cmd, run.args, { cwd: workDir, env: run.env, windowsHide: true }); }
     catch (e) { return resolve({ why: 'could not start Codex' }); }
     if (onProc) onProc(p);
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} }, Math.min(timeoutMs || 600000, 15 * 60 * 1000));
@@ -505,8 +526,8 @@ function codexAsk(method, params, { node } = {}) {
   return new Promise((resolve) => {
     let out = '', done = false, p;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); try { p.kill(); } catch (e) {} resolve(r); } };
-    const env = Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' });
-    try { p = spawn(node || process.execPath, [cli.script, 'app-server'], { cwd: os.tmpdir(), env, windowsHide: true }); }
+    const run = codexLaunch(cli.script, ['app-server'], node);
+    try { p = spawn(run.cmd, run.args, { cwd: os.tmpdir(), env: run.env, windowsHide: true }); }
     catch (e) { return resolve(null); }
     const killer = setTimeout(() => finish(null), 20000);
     p.on('error', () => finish(null));
@@ -720,4 +741,4 @@ async function compatRun(id, s, { prompt, timeoutMs, note, onProc }, browser) {
   return r2;
 }
 
-module.exports = { rankModels, autoModels, modelChoices, usedModels, clearModelCache, CLAUDE_MODELS, PROVIDERS, NAMES, COMPAT, COMPAT_IDS, runCompat, compatModels, pickModel, OPENROUTER_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL, runOpenAI, settings, geminiCli, codexCli, codexStatus, codexArgs, codexLimits, geminiStatus, runGemini, runGeminiApi, runOpenRouter, openRouterCheck, CODEX_BROWSER_NOTE };
+module.exports = { rankModels, autoModels, modelChoices, usedModels, clearModelCache, CLAUDE_MODELS, PROVIDERS, NAMES, COMPAT, COMPAT_IDS, runCompat, compatModels, pickModel, OPENROUTER_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL, runOpenAI, settings, geminiCli, codexCli, codexStatus, codexArgs, codexLaunch, codexLimits, geminiStatus, runGemini, runGeminiApi, runOpenRouter, openRouterCheck, CODEX_BROWSER_NOTE };

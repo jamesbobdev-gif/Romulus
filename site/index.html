@@ -12,9 +12,7 @@
 <meta property="og:url" content="https://jamesbobdev-gif.github.io/Romulus/">
 <link rel="icon" href="img/icon.png">
 <link rel="apple-touch-icon" href="img/icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Layout: one narrow column (72ch) like the app window itself, with a wider hero for the screenshots.
    The tokens are the app's own (renderer/styles.css light theme; the dark theme from the README). */
@@ -190,11 +188,11 @@ footer a{color:var(--muted);font-weight:500}
 <section class="hero wide">
   <div class="eyebrow">
     <span class="mono">Open source · MIT</span>
-    <span class="mono" id="ver">v1.0.27</span>
+    <span class="mono" id="ver">v1.1.1</span>
     <span class="mono">Windows · macOS · Linux · Android</span>
   </div>
   <h1>A to-do list with an agent in it.</h1>
-  <p class="lede">Write a task the way you'd tell a person. "Find the cheapest flight to Denver the weekend of the 14th." "Order the groceries." "Draft a reply to the landlord." Hand it to the Agent and it goes and does it: searches, reads, fills forms, compares prices, builds the cart. It comes back only when it needs a decision.</p>
+  <p class="lede">Write a task the way you'd tell a person and hand it to the Agent. It searches, fills forms, compares prices and builds the cart, and checks in only when it needs a decision.</p>
   <div class="cta">
     <a class="btn btn-primary" id="main-dl" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -219,16 +217,16 @@ footer a{color:var(--muted);font-weight:500}
   <div class="rule">
     <div>
       <h2>It asks before anything final.</h2>
-      <p class="sub" style="margin-bottom:0">The Agent never buys, sends, submits, books or deletes until you reply <b>yes</b> to the exact thing it described. That rule is enforced in code, and it is the one rule contributors can't change. A question is not a yes. "Ok, which one?" is not a yes; "ok, order it" is.</p>
+      <p class="sub" style="margin-bottom:0">The Agent never buys, sends, submits, books or deletes until you say <b>yes</b> to the exact thing it described. That rule is enforced in code.</p>
     </div>
     <div class="card" aria-label="An example Agent task waiting for a decision">
-      <div class="task"><span class="st">Needs you</span><span>Find the cheapest flight to Denver the weekend of the 14th</span></div>
+      <div class="task"><span class="st">Needs you</span><span>Order this week's groceries from Walmart</span></div>
       <div class="q">
         <div class="mono who">Agent</div>
-        Cheapest is <b>Frontier, Fri 14 Nov 6:05am → Sun 16 Nov 9:40pm, $118</b>, carry-on not included. United is $212 with a bag and a 10:30am departure. Book the Frontier one?
+        Cart is ready: <b>24 items, $87.40, delivered Saturday 9 to 11am</b>. Large eggs were out, so I picked the 18-count store brand. Place the order?
       </div>
-      <div class="reply"><span class="yes">Yes</span><span>United instead</span><span>Not now</span></div>
-      <div class="held"><i></i>Held at the payment page. Nothing is booked until you answer.</div>
+      <div class="reply"><span class="yes">Yes</span><span>Change something</span><span>Not now</span></div>
+      <div class="held"><i></i>Held at checkout. Nothing is ordered until you answer.</div>
     </div>
   </div>
 </section>
@@ -237,85 +235,85 @@ footer a{color:var(--muted);font-weight:500}
   <div class="pillars">
     <div class="pillar">
       <span class="mono k">Bring your own model</span>
-      <h3>Plug in what you already pay for, or run.</h3>
-      <p>A Claude or ChatGPT plan, an OpenRouter account, a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or your own model on your own hardware through Ollama. Connect several and the app tries them in your order.</p>
+      <h3>Use what you already pay for.</h3>
+      <p>Claude, ChatGPT, Gemini, OpenRouter, free tiers like Grok and Groq, or your own model through Ollama. Connect several and it tries them in your order.</p>
     </div>
     <div class="pillar">
       <span class="mono k">Private things stay local</span>
       <h3>Some tasks never leave your machine.</h3>
-      <p>Anything that touches the bank, medical records or passwords goes only to your local model. The Locked profile that fills forms and job applications is readable by that model alone. Run that model on a second computer, a mini PC say, and it takes the local tasks for every device.</p>
+      <p>Banking, medical records and passwords go only to your local model, and so does the Locked profile that fills in forms. Run it on a second computer and it serves every device.</p>
     </div>
     <div class="pillar">
       <span class="mono k">Your money, without the subscription</span>
       <h3>A Finance tab instead of Rocket Money.</h3>
-      <p>Every account in one place, recurring bills and subscriptions found on their own (with a Cancel button that hands one to the Agent), net worth over time, an income statement and balance sheet, receipts from your inbox, live stock prices. Read-only bank access for about $15 a year. Encrypted on your computer, never on a server.</p>
+      <p>Every account in one place, bills and subscriptions found for you (Cancel hands one to the Agent), net worth over time and live stock prices. Bank access for about $15 a year, encrypted on your computer.</p>
     </div>
   </div>
 </section>
 
 <section class="wrap" id="inside">
   <h2>What's inside</h2>
-  <p class="sub">The same tabs on the desktop and on the phone, kept in sync through a Supabase project you own, encrypted end to end at the press of one button.</p>
+  <p class="sub">The same tabs on your computer and your phone, kept in sync.</p>
   <div class="tabs" aria-hidden="true"><span class="on">Human</span><span>Agent</span><span>School</span><span>Work</span><span>Calendar</span><span>Notes</span><span>Hours</span><span>Finance</span></div>
   <div class="box">
-    <div><b>Human</b><p>Your own to-dos: due dates, times, tags (type <code>#school</code> and it becomes one), subtasks, repeats, drag to reorder, search.</p></div>
-    <div><b>Agent</b><p>Tasks the AI does. A live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI.</p></div>
-    <div><b>School</b><p>Assignments, with due dates pulled from Blackboard or D2L calendar links. The class is the tag. One still open two days after its deadline comes off the list.</p></div>
+    <div><b>Human</b><p>Your own to-dos: due dates, tags, subtasks, repeats, search.</p></div>
+    <div><b>Agent</b><p>Tasks the AI does, with a live view of its work and its questions.</p></div>
+    <div><b>School</b><p>Assignments with due dates from Blackboard or D2L.</p></div>
     <div><b>Work</b><p>A second list, synced with the rest.</p></div>
-    <div><b>Calendar · Notes · Hours</b><p>Extra views: the month, a board of note cards, a week of hours with a bar per day. Google and Microsoft calendars included.</p></div>
-    <div><b>Finance</b><p>Accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Cancel on a subscription or a monthly bill hands it to the Agent, which gets to the last click and waits for your yes. Bank read-only through SimpleFIN. Encrypted twice, locks itself, and the phone can get its own copy from a QR code.</p></div>
+    <div><b>Calendar · Notes · Hours</b><p>The month, a board of notes, hours per day. Google and Microsoft calendars.</p></div>
+    <div><b>Finance</b><p>Accounts, bills, net worth and stock prices, encrypted and locked.</p></div>
   </div>
-  <p class="can"><b>What the Agent can do today:</b> research and writing; shopping on Amazon, Walmart, Target, Best Buy and Shopify stores, groceries included, with the cart built and held for your yes; any other store through a Link wallet, which hands the Agent's browser a one-time card for the amount you approve in the Link app, so the AI never sees the number; flights, tickets and bookings with a seat map you can override; forms and job applications filled from the Locked profile; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (<code>#legion</code>) that your local model splits into pieces so no single cloud AI sees the whole question; a Coach me brief for the things only you can do (a presentation, an interview, a video for class): what they want, what to have ready and the script word for word, written by your local model from the course page; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.</p>
+  <p class="can"><b>What the Agent can do:</b> research and writing; shopping and groceries on Amazon, Walmart, Target, Best Buy and Shopify stores; any other store through a one-time Link card; flights and bookings; forms and job applications; email; a morning look-ahead; tasks that start when an email arrives or a page changes; deep research (<code>#legion</code>) split so no single cloud AI sees the whole question; a Coach me brief for things only you can do, like a class video or an interview; a browser you can watch and take over.</p>
 </section>
 
 <section class="wrap" id="download">
   <h2>Download</h2>
-  <p class="sub">Free, and the installed copy updates itself. Every file below is built on GitHub's runners from the public source, with a SHA-256 checksum next to it on the <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">release page</a>.</p>
+  <p class="sub">Free, and it updates itself. Every file is built from the public source, with checksums on the <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">release page</a>.</p>
   <div class="dl" id="dl">
     <a data-os="windows" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 11 4.4v7.1H3zm0 13 8 1.1V12.5H3zM12 4.2 21 3v8.5h-9zm0 8.3h9V21l-9-1.2z"/></svg>Windows<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-Setup-1.0.27.exe</b> <span data-size></span></span>
+      <span class="file"><b data-file>Romulus-Setup-1.1.1.exe</b> <span data-size></span></span>
       <span class="note">Windows 10 or 11. Not code-signed yet, so SmartScreen warns: <b>More info → Run anyway</b>.</span>
     </a>
     <a data-os="mac" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.5-.2-2.8.8-3.6.8-.7 0-1.9-.8-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.5.8 1.2 1.8 2.4 3 2.4 1.2-.1 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.6-3.9zM14.1 5.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>macOS<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-1.0.27-arm64.dmg</b> <span data-size></span></span>
-      <span class="note">Apple silicon; an Intel Mac takes <b data-intel>Romulus-1.0.27.dmg</b> from the release page. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
+      <span class="file"><b data-file>Romulus-1.1.1-arm64.dmg</b> <span data-size></span></span>
+      <span class="note">Apple silicon; an Intel Mac takes <b data-intel>Romulus-1.1.1.dmg</b> from the release page. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
     </a>
     <a data-os="linux" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Linux<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-1.0.27.AppImage</b> <span data-size></span></span>
+      <span class="file"><b data-file>Romulus-1.1.1.AppImage</b> <span data-size></span></span>
       <span class="note">Any distribution. Make it executable (<code>chmod +x</code>) and run it.</span>
     </a>
     <a data-os="android" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>Android<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-1.0.27.apk</b> <span data-size></span></span>
-      <span class="note">Open the APK on your phone; Android asks once to <b>allow installs from this source</b>. Then scan the sync code from the desktop app in <b>Settings → Device sync</b>. It tells you when a new version is out.</span>
+      <span class="file"><b data-file>Romulus-1.1.1.apk</b> <span data-size></span></span>
+      <span class="note">Open the APK and <b>allow installs from this source</b>. Then pair it from the desktop app in <b>Settings → Device sync</b>.</span>
     </a>
   </div>
   <div class="fine">
     <p><b>From source:</b> Node 22 or newer, then <code>npm install</code> and <code>npm start</code>.</p>
-    <p><b>Then:</b> the <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/docs/SETUP.md">setup guide</a> walks through connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.</p>
-    <p><b>iPhone:</b> the app is in the repository and runs from Xcode; it isn't on the App Store yet.</p>
+    <p><b>Then:</b> the <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/docs/SETUP.md">setup guide</a> covers connecting an AI, your phone, calendars and Finance.</p>
+    <p><b>iPhone:</b> runs from Xcode; not on the App Store yet.</p>
   </div>
 </section>
 
 <section class="wrap" id="privacy">
   <h2>Privacy, in short</h2>
-  <p class="sub">Everything you connect stays on the computer where you connected it. There is no telemetry.</p>
+  <p class="sub">What you connect stays on the computer you connected it on. No telemetry.</p>
   <div class="priv">
-    <div><b>Keys never sync.</b>Tokens and sync keys are encrypted with the operating system's own encryption and stay on that machine. The sync key is the password to your lists; rotate it from Settings.</div>
-    <div><b>You own the sync.</b>Lists sync through a Supabase project you set up yourself, and the sync table is closed to anyone without the list's key. One button encrypts every list end to end, so the project, its backups and its logs hold only ciphertext.</div>
-    <div><b>Locked means locked.</b>The Locked profile is encrypted on your device before upload, and neither it nor Finance is ever given to a cloud AI.</div>
-    <div><b>Checkable builds.</b>Every release is built on GitHub's runners from the public source and ships with SHA-256 checksums; every workflow action is pinned to a commit, and tests and lint run on every push. Details in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</div>
-    <div><b>The AI never sees a card number.</b>Store orders pay with what the store already has on file. Anywhere else, a Link wallet gives the Agent's browser a one-time card for the amount you approved, and the number is blanked out of every page the AI reads.</div>
-    <div><b>Nothing final without you.</b>Buying, paying, sending, submitting and booking always wait for your yes, and can't be put on the list of steps it stops asking about.</div>
+    <div><b>Keys never sync.</b>Tokens and sync keys are encrypted by your operating system and stay on that machine.</div>
+    <div><b>Encrypted sync.</b>One button encrypts every list end to end, so the server holds only ciphertext.</div>
+    <div><b>Locked means locked.</b>The Locked profile and Finance are never given to a cloud AI.</div>
+    <div><b>Checkable builds.</b>Every release has checksums. Details in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</div>
+    <div><b>The AI never sees a card number.</b>Stores use the card they have on file; anywhere else, a one-time Link card for the amount you approved.</div>
+    <div><b>Nothing final without you.</b>Buying, paying, sending and booking always wait for your yes.</div>
   </div>
 </section>
 
 <section class="wrap" id="source">
   <h2>Open source</h2>
-  <p class="sub">The whole app is on GitHub under the MIT license: the Electron desktop app, the Agent, the Android and iPhone wrappers and the sync project's SQL. Installers live in a releases repository of their own.</p>
+  <p class="sub">The whole app is on GitHub under the MIT license.</p>
   <a class="repo" href="https://github.com/jamesbobdev-gif/Romulus">
     <div>
       <div class="name"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.17c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>jamesbobdev-gif / Romulus</div>
@@ -328,7 +326,7 @@ git clone https://github.com/jamesbobdev-gif/Romulus.git
 cd Romulus
 npm install
 npm start</pre>
-  <p class="contrib"><b>Contributing:</b> small, focused changes land fastest. Skills and site notes for the Agent are short markdown files and new ones are welcome. The ground rules are in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>; the one that matters most is that "ask before anything final" stays enforced in code. Found a security problem? <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a> says how to report it.</p>
+  <p class="contrib"><b>Contributing:</b> small, focused changes land fastest. See <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>, and report security problems through <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</p>
 </section>
 </main>
 

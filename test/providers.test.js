@@ -124,6 +124,13 @@ test('ChatGPT: the plan (Codex) unless he saved a key; his choice wins either wa
   assert.strictEqual(providers.settings({ ai: { openaiVia: 'bogus' } }).openaiVia, 'chatgpt');
 });
 
+test('Codex launch: without its native binary, the npm wrapper runs under node', () => {
+  const r = providers.codexLaunch('/nowhere/@openai/codex/bin/codex.js', ['app-server'], '/usr/bin/node');
+  assert.strictEqual(r.cmd, '/usr/bin/node');
+  assert.deepStrictEqual(r.args, ['/nowhere/@openai/codex/bin/codex.js', 'app-server']);
+  assert.strictEqual(providers.codexLaunch('/nowhere/codex.js', [], null).env.ELECTRON_RUN_AS_NODE, '1');
+});
+
 test('Codex runs: shell, apps, its own browser and config off, read-only', () => {
   const a = providers.codexArgs('codex.js', 'out.txt');
   for (const f of ['shell_tool', 'unified_exec', 'apps', 'plugins', 'browser_use', 'computer_use', 'multi_agent'])
