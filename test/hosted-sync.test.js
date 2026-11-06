@@ -109,3 +109,16 @@ test('a paid plan says how much its history uses', () => {
   assert.match(t.line, /History uses 9 MB more\./);
   assert.doesNotMatch(h.hostedPlanText({ used_bytes: 1, quota_bytes: 5 * MB, history_bytes: 9 * MB }, true).line, /History/);
 });
+
+test('the plan is offered as a family plan, with a free trial only when the links have one', () => {
+  const plain = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x' });
+  assert.strictEqual(plain.button, 'Family plan: $5 a month for up to 5 people');
+  assert.match(plain.pitch, /^The family plan: share Romulus with up to 4 more people/);
+  assert.ok(plain.pitch.indexOf('30 days of history') < plain.pitch.indexOf('600 MB')); // storage comes last
+  assert.doesNotMatch(plain.pitch, /free for|trial/i);
+  const trial = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x', trialDays: 14 });
+  assert.strictEqual(trial.button, 'Try the family plan free for 14 days');
+  assert.match(trial.pitch, /Free for 14 days, then \$5 a month\. Cancel before the trial ends and you pay nothing\.$/);
+  assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).button, plain.button);
+  assert.strictEqual(h.hostedPlanPitch(null).year, 'or $50 a year');
+});

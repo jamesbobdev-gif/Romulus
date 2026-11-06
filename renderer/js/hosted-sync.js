@@ -64,6 +64,22 @@ async function hostedAutoStart(){
 
 function hostedMb(b){ b=Number(b)||0; return b>=1024*1024*1024?(b/1024/1024/1024).toFixed(b%(1024*1024*1024)?1:0)+' GB':b>=1024*1024?(b/1024/1024).toFixed(1).replace(/\.0$/,'')+' MB':Math.max(1,Math.round(b/1024))+' KB'; }
 // what the box says (pure, for tests): u = sync_usage's row
+/* How the plan is offered (pure, for tests): family and history first, storage last, since people can picture
+   sharing lists with a partner or undoing a bad day, not 600 MB. h.trialDays (repository variable PAY_TRIAL_DAYS)
+   says the Stripe links start with that many free days; only then does it say so. */
+function hostedPlanPitch(h){
+  const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0));
+  const pitch='The family plan: share Romulus with up to 4 more people, each with their own private lists, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
+  return days?{
+    button:'Try the family plan free for '+days+' days',
+    year:'or $50 a year',
+    pitch:pitch+' Free for '+days+' days, then $5 a month. Cancel before the trial ends and you pay nothing.'
+  }:{
+    button:'Family plan: $5 a month for up to 5 people',
+    year:'or $50 a year',
+    pitch:pitch
+  };
+}
 function hostedPlanText(u,hasPay){
   if(!u)return {line:'',full:false};
   const used=Number(u.used_bytes)||0, quota=Number(u.quota_bytes)||0;
@@ -142,6 +158,8 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     // the plan is on offer the whole time someone is on the free space, not only once it's nearly full
     planBox.hidden=!u||paid;
     payBtn.hidden=!hostedCanPay(h);
+    const words=hostedPlanPitch(h);
+    $('hostedPitch').textContent=words.pitch; payBtn.textContent=words.button; payYearBtn.textContent=words.year;
     payYearBtn.hidden=!(hostedCanPay(h)&&h.payYear);
     // at 90% of the free space the two ways on sit side by side: pay for more, or move to a project of one's own
     planOwnBtn.hidden=!t.full;
@@ -295,4 +313,4 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   if(hostedServer())SYNC_REFUSED.full='sync paused: your free online space is full. Your lists are safe on this device. Settings → Device sync has the options.';
 }
 
-if(typeof module!=='undefined')module.exports={hostedMarkerKeys,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
+if(typeof module!=='undefined')module.exports={hostedMarkerKeys,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};

@@ -233,9 +233,10 @@
         <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
         <!-- the $5 plan, offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
         <div id="hostedPlan" hidden style="margin:0 0 10px">
-          <p class="settings-hint" style="margin:0 0 6px">Get more with the $5 plan: 600 MB of storage instead of 5 MB, 30 days of history to undo a bad day, your plan shared with up to 4 more people, and early access to new versions.</p>
+          <!-- the words come from hostedPlanPitch (hosted-sync.js), which knows whether the links start with a free trial -->
+          <p id="hostedPitch" class="settings-hint" style="margin:0 0 6px"></p>
           <div class="settings-row">
-            <button id="hostedPayBtn" class="btn-accent" hidden>Get 600 MB and more: $5 a month</button>
+            <button id="hostedPayBtn" class="btn-accent" hidden></button>
             <button id="hostedPayYearBtn" class="ghost mono" hidden>$50 a year</button>
             <button id="hostedPlanOwnBtn" class="ghost mono" hidden>Or use my own Supabase</button>
             <button id="hostedJoinBtn" class="ghost mono">I have a family code</button>

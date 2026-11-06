@@ -84,17 +84,21 @@ Deno.serve(async (req) => {
       // the first payment: the account comes from the link the app opened
       const account = /^[0-9a-f]{64}$/.test(String(o.client_reference_id || "")) ? o.client_reference_id : null;
       if (!account) return answer(ev, 200, "no account on this checkout: paid from the bare link, not the app's button");
-      const ok = await markPaid(account, o.subscription || null, o.customer || null, now + 31 * 24 * 60 * 60 + GRACE_S);
+      // a free trial charges nothing now (payment_status no_payment_required): a day for the moment, then the trial's
+      // own end comes with its invoice below, so cancelling during the trial ends the plan with it
+      const trial = o.payment_status === "no_payment_required";
+      const ok = await markPaid(account, o.subscription || null, o.customer || null, now + (trial ? 1 : 31) * 24 * 60 * 60 + GRACE_S);
       // the optional "name for the supporters list" field on the payment link (key: supportername)
       const name = (o.custom_fields || []).find((f: any) => f?.key === "supportername")?.text?.value;
       if (ok && name) await rpc("sync_mark_supporter", { p_account: account, p_name: String(name) }).catch(() => {});
-      return answer(ev, 200, ok ? "paid: plan on" + (name ? ", supporter name saved" : "") : "no such account: that app hasn't synced yet");
+      return answer(ev, 200, ok ? (trial ? "trial started: plan on" : "paid: plan on") + (name ? ", supporter name saved" : "") : "no such account: that app hasn't synced yet");
     }
     // newer Stripe API versions put the subscription under parent.subscription_details
     const sub = o.subscription || o.parent?.subscription_details?.subscription || null;
     if (ev.type === "invoice.paid" && sub) {
-      // every renewal: paid until the end of the period just billed (a month, or a year on the yearly link)
-      const end = Math.max(...(o.lines?.data || []).map((l: any) => Number(l?.period?.end) || 0), now + 31 * 24 * 60 * 60);
+      // every invoice: paid until the end of the period it covers (a free trial's days, a month, or a year)
+      const ends = (o.lines?.data || []).map((l: any) => Number(l?.period?.end) || 0).filter((x: number) => x > now);
+      const end = ends.length ? Math.max(...ends) : now + 31 * 24 * 60 * 60;
       const ok = await markPaid(null, sub, o.customer || null, end + GRACE_S);
       // the first invoice can arrive before checkout.session.completed has said whose subscription it is:
       // answer 500 so Stripe sends it again in a few minutes, by when it's known (a yearly plan needs its year)
