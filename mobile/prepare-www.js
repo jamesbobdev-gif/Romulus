@@ -39,6 +39,8 @@ const updatePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'update-
 // store.js says which Android build this is (GitHub APK or Google Play); each build flavor brings its own
 // copy from android/app/src/<flavor>/assets/public, so it isn't in www/
 const store = '<script src="store.js"></script>';
+// the desktop page's Content-Security-Policy bans inline scripts, and the phone page is built from them, so it stays desktop-only
+html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\r?\n?/, '');
 html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
 
 fs.mkdirSync(outDir, { recursive: true });
