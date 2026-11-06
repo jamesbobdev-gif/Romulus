@@ -722,6 +722,7 @@ function buildPanel(t){
 /* ── render ── */
 function render(){
   updatePlanBtn();
+  if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
   const ae=document.activeElement;

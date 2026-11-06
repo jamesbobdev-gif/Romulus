@@ -40,6 +40,32 @@ function markWelcomed(){
   $('welcomeSyncBtn').addEventListener('click',function(){ done(); openSettingsAt(null,'syncSection'); });
 })();
 
+/* ── no sync yet: recommend it ──
+   A new user's tasks live only on this device. Until device sync is on, a bar under the add box (on every
+   tab, Calendar included) says so and opens the sync steps. "Not now" puts it off for a week. It waits while
+   the welcome card is up (that card has its own sync button) and until the saved sync config has loaded. */
+const SYNC_NUDGE_KEY='tasks.syncNudge.later';
+const SYNC_NUDGE_SNOOZE=7*86400000;
+let syncNudgeLoaded=!(syncState&&syncState.ready); // desktop: config.json is read async
+if(!syncNudgeLoaded)syncState.ready.then(function(){ syncNudgeLoaded=true; drawSyncNudge(); },function(){ syncNudgeLoaded=true; drawSyncNudge(); });
+function drawSyncNudge(){
+  const bar=$('syncNudge'); if(!bar)return;
+  let later=0; try{ later=+localStorage.getItem(SYNC_NUDGE_KEY)||0; }catch(e){}
+  const welcoming=$('welcomeCard')&&!$('welcomeCard').hidden;
+  const show=syncNudgeLoaded&&!syncEnabled()&&!welcoming&&Date.now()-later>SYNC_NUDGE_SNOOZE;
+  if(show&&!bar.dataset.drawn){
+    bar.dataset.drawn='1';
+    $('syncNudgeText').textContent=isDesktopApp
+      ?'Your tasks are only on this computer. Turn on sync to keep a backup and see them on your phone.'
+      :'Your tasks are only on this phone. Turn on sync to keep a backup and see them on your computer.';
+  }
+  bar.hidden=!show;
+}
+$('syncNudgeBtn').addEventListener('click',function(){ openSettingsAt(null,'syncSection'); });
+$('syncNudgeLater').addEventListener('click',function(){ try{ localStorage.setItem(SYNC_NUDGE_KEY,String(Date.now())); }catch(e){} drawSyncNudge(); });
+// the welcome card's choices close it: the bar can show from then on
+['welcomeTasksBtn','welcomeAiBtn'].forEach(function(id){ const b=$(id); if(b)b.addEventListener('click',drawSyncNudge); });
+
 /* ── Agent tab: an AI, or not yet ── */
 // wiring.js keeps window.agentAiReady current (any cloud AI switched on and able to run); the local model counts too
 function anyAiReady(){
