@@ -275,6 +275,11 @@
       <div id="syncQrBox" class="fin-qr" hidden></div>
       </details>
     </details>
+    <details class="settings-panel settings-collapse" id="importSection">
+      <summary class="settings-label">Import tasks</summary>
+      <p class="settings-hint">Bring tasks over from Todoist, TickTick, Google Tasks, Trello, Asana, Notion, a spreadsheet (CSV) or a pasted list.</p>
+      <div class="settings-row"><button id="importOpenBtn" class="ghost mono">Import from another app</button></div>
+    </details>
     <details class="settings-panel settings-collapse" id="reviewSection">
       <summary class="settings-label">Year in review</summary>
       <p class="settings-hint">A look back at the year: what you got done and when, what the Agent did, your hours and, with Finance unlocked, your money. It opens with a card on January 1 and stays here through February.</p>
@@ -375,6 +380,7 @@
         <button id="welcomeTasksBtn" class="btn-accent">Just tasks</button>
         <button id="welcomeAiBtn" class="ghost">Add an AI assistant</button>
         <button id="welcomeSyncBtn" class="ghost">Sync with my phone</button>
+        <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
         <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
       </div>
       <ul class="welcome-tips">
@@ -384,6 +390,27 @@
         <li id="welcomeTrayTip">Closing the window hides Romulus in the tray by the clock; right-click the tray icon to quit.</li>
       </ul>
       <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
+    </div>
+    <!-- bringing tasks over from Todoist, TickTick, Google Tasks, a spreadsheet… (task-import.js) -->
+    <div id="importCard" class="connect-card welcome import-card" hidden>
+      <b>Bring your tasks over</b>
+      <p>Pick the app you're coming from to see how to get your tasks out of it. Then choose the file it gave you, or paste a list.</p>
+      <div id="importSources" class="import-sources"></div>
+      <p id="importHow" class="import-how" hidden></p>
+      <div class="welcome-choices">
+        <button id="importFileBtn" class="btn-accent">Choose a file</button>
+        <input id="importFile" type="file" accept=".csv,.tsv,.json,.txt,.md,.zip,text/csv,text/plain,application/json,application/zip" multiple hidden>
+      </div>
+      <textarea id="importPaste" class="settings-inp import-paste" rows="4" placeholder="Or paste tasks here, one per line"></textarea>
+      <div id="importPreview" class="import-preview" hidden>
+        <p id="importSummary"></p>
+        <ul id="importSample" class="import-sample"></ul>
+        <label id="importDoneRow" class="import-row"><input id="importDone" type="checkbox"> <span id="importDoneText"></span></label>
+        <label class="import-row">Put them on <select id="importWs" class="settings-inp"></select></label>
+        <div class="welcome-choices"><button id="importGo" class="btn-accent">Import</button></div>
+      </div>
+      <p id="importStatus" class="settings-hint" style="margin:8px 0 0"></p>
+      <p class="welcome-foot"><a href="#" id="importClose">Close</a> · The file is read on this device; nothing is sent anywhere. Importing the same file again won't add copies.</p>
     </div>
     <!-- January and February: last year's look back (year-review-view.js) -->
     <div id="reviewBanner" class="connect-card welcome yr-banner" hidden>
@@ -501,6 +528,7 @@
 <script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
+<script src="js/task-import.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>

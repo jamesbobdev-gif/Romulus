@@ -57,6 +57,20 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .welcome-tips li{margin:4px 0}
 .welcome-tips b{display:inline;font-size:inherit;margin:0;color:var(--ink)}
 .welcome-foot{font-size:12px;margin:12px 0 0 !important;color:var(--faint)}
+/* bringing tasks over (task-import.js) */
+.import-card.drop{border-color:var(--accent);border-style:solid}
+.import-sources{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.import-sources .import-src{margin:0;padding:5px 10px;font-size:12px}
+.import-sources .import-src.active{border-color:var(--accent);color:var(--accent)}
+.connect-card p.import-how{color:var(--ink);background:var(--chip);border-radius:8px;padding:10px 12px;margin:0 0 12px}
+.import-paste{width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:13px;min-height:72px}
+.import-preview{margin-top:12px}
+.connect-card .import-preview p{color:var(--ink);margin:0 0 6px}
+.import-sample{margin:0 0 10px;padding-left:18px;font-size:13px;line-height:1.55}
+.import-meta{color:var(--muted);font-size:12px}
+.import-row{display:flex;align-items:center;gap:8px;font-size:13px;margin:0 0 10px}
+.import-row[hidden]{display:none}
+.import-row select{width:auto;margin:0}
 /* Agent tasks waiting with no AI to run them */
 .nudge{display:flex;align-items:center;gap:10px;margin:10px 0 4px;padding:10px 12px;border:1px solid var(--late);border-radius:10px;font-size:13px;color:var(--ink);background:var(--surface)}
 .nudge[hidden]{display:none}
