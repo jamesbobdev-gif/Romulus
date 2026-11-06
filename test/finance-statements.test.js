@@ -75,3 +75,15 @@ test('contribution margin: income minus variable costs, and its share of income'
   assert.ok(Math.abs(s.contributionRatio[sep] - (3001.5 - 15) / 3001.5) < 1e-9);
   assert.strictEqual(s.contributionRatio[0], null, 'no income in July');
 });
+
+test('Public is an investment account, and money sent to it is not spending', () => {
+  const { stmtIsInvest } = require('../renderer/js/finance-statements');
+  const { notSpending } = require('../renderer/js/finance-costs');
+  assert.ok(stmtIsInvest({ name: 'Individual', org: 'Public' }));
+  assert.ok(stmtIsInvest({ name: 'Cash', org: 'Public.com' }));
+  assert.ok(stmtIsInvest({ name: 'Public Investing', org: '' }));
+  assert.ok(!stmtIsInvest({ name: 'Checking', org: 'Public Service Credit Union' }));
+  assert.ok(notSpending.test('PUBLIC INVESTING DES:ACH ID:123'));
+  assert.ok(notSpending.test('Public.com deposit'));
+  assert.ok(!notSpending.test('PUBLIC STORAGE 1234'));
+});
