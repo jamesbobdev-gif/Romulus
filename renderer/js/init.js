@@ -73,7 +73,7 @@ store.load().then(async function(data){
   state.hours=normHours(data&&data.hours);
   rebuildSnap();
   if(spawnMissedRecurs())persist();
-  render(); // list is the default active tab
+  if(state.activeTab==='list')render(); else switchTab(state.activeTab); // To do, unless it's switched off in Settings > Tabs (tab-picker.js)
   reviewBannerCheck(); // January and February: last year's review (year-review-view.js)
   holoBackToSchool(); // undo the School → Holo auto-move
   startSyncLoop();

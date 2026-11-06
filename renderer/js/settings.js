@@ -15,6 +15,7 @@ function syncFillForm(){
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
   if(typeof devicesDraw==='function')devicesDraw();
+  syncShowFirstSteps();
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
 const SETTINGS_OPEN_KEY='tasks.settingsOpen';
@@ -70,6 +71,8 @@ function setSettingsOpen(open){
   if(open){
     syncFillForm();
     try{ $('themeCss').value=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+    $('themeName').value=themeSavedNameOf($('themeCss').value);
+    drawThemeColors(); drawThemeSaved();
     if(gcalRefreshFn)gcalRefreshFn();
     prefsLoad();
   }
@@ -288,9 +291,12 @@ function setThemeMode(mode){
   try{ localStorage.setItem(THEME_MODE_KEY,mode); }catch(e){}
   applyThemeMode(mode); drawThemeModes();
 }
+// the saved theme in use lights up instead of Custom
 function drawThemeModes(){
-  let mode='system'; try{ mode=themeModeSaved(); }catch(e){}
-  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
+  let mode='system', css=''; try{ mode=themeModeSaved(); css=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+  const named=mode==='custom'?themeSavedNameOf(css):'';
+  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode&&!named; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
+  document.querySelectorAll('.theme-modes [data-saved]').forEach(function(b){ const on=!!named&&b.dataset.saved===named; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
 }
 document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
   b.addEventListener('click',function(){
@@ -304,15 +310,56 @@ document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
   });
 });
 drawThemeModes();
+// every unique colour in the box, named (theme-colors.js); redrawn as you type
+function drawThemeColors(){
+  const box=$('themeColors'); box.textContent='';
+  const colors=themeCssColors($('themeCss').value);
+  box.hidden=!colors.length;
+  colors.forEach(function(c){
+    const row=el('span','tc'); row.title=c.used.join(', ');
+    const sw=el('span','theme-swatch'); sw.style.background=c.hex;
+    row.append(sw,el('b',null,c.name),el('span',null,c.hex));
+    box.appendChild(row);
+  });
+}
+// each distinct CSS you've applied, under the name you gave it (else its main colour), in the row beside Light and Dark; click one to switch to it
+function themeSavedNameOf(css){
+  const key=String(css||'').replace(/\s+/g,''); if(!key)return '';
+  const t=themeSavedLoad().find(function(t){ return String(t.css).replace(/\s+/g,'')===key; });
+  return t?t.name:'';
+}
+function themeSavedLoad(){ try{ const l=JSON.parse(localStorage.getItem(THEME_SAVED_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
+function themeSavedStore(list){ try{ localStorage.setItem(THEME_SAVED_KEY,JSON.stringify(list)); }catch(e){} }
+function drawThemeSaved(){
+  const box=$('themeSaved'); box.textContent='';
+  const list=themeSavedLoad();
+  list.forEach(function(t,i){
+    const b=el('button','chip st tap'); b.dataset.saved=t.name; b.setAttribute('role','radio'); b.title=t.colors.length+' colours: '+t.colors.map(function(c){ return c.name; }).join(', ');
+    const sw=el('span','theme-swatch'); if(t.hex)sw.style.background=t.hex;
+    const x=el('span','x','x'); x.setAttribute('role','button'); x.setAttribute('aria-label','Remove '+t.name);
+    b.append(sw,el('span',null,t.name),x);
+    b.addEventListener('click',function(e){
+      if(e.target===x){ const l=themeSavedLoad(); l.splice(i,1); themeSavedStore(l); drawThemeSaved(); return; }
+      $('themeCss').value=t.css; $('themeName').value=t.name; $('themeApplyBtn').click();
+    });
+    box.appendChild(b);
+  });
+  drawThemeModes();
+}
+$('themeCss').addEventListener('input',drawThemeColors);
+drawThemeSaved();
 $('themeApplyBtn').addEventListener('click',function(){
   const css=$('themeCss').value;
   try{ if(css.trim())localStorage.setItem(THEME_KEY,css); else localStorage.removeItem(THEME_KEY); }catch(e){}
+  let name='';
+  if(css.trim()){ const l=themeSaveCss(themeSavedLoad(),css,Date.now(),$('themeName').value); themeSavedStore(l); name=l[0].name; $('themeName').value=name; }
   setThemeMode(css.trim()?'custom':'system');
-  $('themeStatus').textContent=css.trim()?'saved as Custom':'cleared';
+  drawThemeColors(); drawThemeSaved();
+  $('themeStatus').textContent=css.trim()?'saved as '+name:'cleared';
   setTimeout(function(){ $('themeStatus').textContent=''; },2000);
 });
 $('themeResetBtn').addEventListener('click',function(){
-  $('themeCss').value='';
+  $('themeCss').value=''; $('themeName').value=''; drawThemeColors();
   try{ localStorage.removeItem(THEME_KEY); }catch(e){}
   setThemeMode('system');
   $('themeStatus').textContent='reset to default';
@@ -346,10 +393,28 @@ $('syncCopySql').addEventListener('click',async function(){
     openOutside(SETUP_SQL_URL);
   }finally{ b.disabled=false; }
 });
+/* Device sync with nothing set up yet shows only what can be used then. Without a pairing server (a build of
+   your own: ROMULUS_PAIR null) and no project, Pair and Add a device have nowhere to meet, so that row goes.
+   The sync key is made by Save & sync, so its box, Generate key, Copy sync code and the per-list keys wait
+   until there is one. A sync code pasted into any box still fills them all in (the paste handler below). */
 function syncShowFirstSteps(){
   const first=!(syncState.cfg&&validProfile(syncState.cfg.personal));
+  const rp=typeof window!=='undefined'&&window.ROMULUS_PAIR, noServer=first&&!(rp&&rp.url&&rp.key);
   $('syncFirstSteps').hidden=!first;
   if(first)$('syncManual').open=true;
+  const pairRow=$('pairCodeIn').closest('.settings-row');
+  pairRow.hidden=noServer;
+  if(pairRow.previousElementSibling)pairRow.previousElementSibling.hidden=noServer; // "Adding a device? …"
+  ['syncKey','syncGenBtn','syncCopyBtn'].forEach(function(id){ $(id).hidden=first; });
+  $('syncKeyW').closest('details').hidden=first;
+  if(window.desktop&&window.desktop.syncQr)$('syncQrBtn').hidden=first;
+  let note=$('syncNoServerNote');
+  if(!note){
+    note=el('p','settings-hint','This build has no Romulus server, so your first device needs a Supabase project of its own. Already syncing on another device? Press Copy sync code there and paste it into the first box below.');
+    note.id='syncNoServerNote'; note.style.margin='0 0 8px';
+    $('syncFirstSteps').prepend(note);
+  }
+  note.hidden=!noServer;
   return first;
 }
 $('syncSection').addEventListener('toggle',function(){ if(this.open)syncShowFirstSteps(); });
@@ -449,6 +514,7 @@ $('syncSaveBtn').addEventListener('click',function(){
     if(hosted&&!hostedIs(url))hostedSetOptOut(true); // a project of one's own: never start on the Romulus server by itself again
     if(typeof hostedDraw==='function')setTimeout(hostedDraw,0);
     $('syncOffBtn').hidden=false;
+    syncShowFirstSteps(); // the key box and its buttons come back now there is a key
     render(); // workspace chips may appear/disappear
     let said=null;
     if(leaving){
