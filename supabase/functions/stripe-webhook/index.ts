@@ -60,26 +60,35 @@ async function markPaid(account: string | null, subscription: string | null, cus
   return await r.json();
 }
 
+// One line per call in the function's logs (Supabase → Edge Functions → stripe-webhook → Logs): which Stripe
+// event, live or test, and what came of it. Only Stripe's own ids, no names, amounts or account ids, so a
+// payment can be matched to Stripe's event deliveries without the logs holding anything personal.
+function answer(ev: any, status: number, outcome: string): Response {
+  console.log(JSON.stringify({ event: ev?.type || null, id: ev?.id || null, live: ev?.livemode ?? null, status, outcome }));
+  return new Response(outcome, { status });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
   const body = await req.text();
   if (!(await signedByStripe(req.headers.get("stripe-signature") || "", body, await secret()))) {
-    return new Response("bad signature", { status: 400 });
+    // a real Stripe delivery here means stripe_webhook_secret isn't this endpoint's signing secret
+    return answer(null, 400, req.headers.get("stripe-signature") ? "bad signature (signed, but not with the saved secret)" : "bad signature (unsigned)");
   }
   let ev: any;
-  try { ev = JSON.parse(body); } catch { return new Response("bad body", { status: 400 }); }
+  try { ev = JSON.parse(body); } catch { return answer(null, 400, "bad body"); }
   const o = ev?.data?.object || {};
   const now = Math.floor(Date.now() / 1000);
   try {
     if (ev.type === "checkout.session.completed" && o.mode === "subscription") {
       // the first payment: the account comes from the link the app opened
       const account = /^[0-9a-f]{64}$/.test(String(o.client_reference_id || "")) ? o.client_reference_id : null;
-      if (!account) return new Response("no account on this checkout", { status: 200 });
+      if (!account) return answer(ev, 200, "no account on this checkout: paid from the bare link, not the app's button");
       const ok = await markPaid(account, o.subscription || null, o.customer || null, now + 31 * 24 * 60 * 60 + GRACE_S);
       // the optional "name for the supporters list" field on the payment link (key: supportername)
       const name = (o.custom_fields || []).find((f: any) => f?.key === "supportername")?.text?.value;
       if (ok && name) await rpc("sync_mark_supporter", { p_account: account, p_name: String(name) }).catch(() => {});
-      return new Response(ok ? "ok" : "no such account", { status: 200 });
+      return answer(ev, 200, ok ? "paid: plan on" + (name ? ", supporter name saved" : "") : "no such account: that app hasn't synced yet");
     }
     // newer Stripe API versions put the subscription under parent.subscription_details
     const sub = o.subscription || o.parent?.subscription_details?.subscription || null;
@@ -89,11 +98,11 @@ Deno.serve(async (req) => {
       const ok = await markPaid(null, sub, o.customer || null, end + GRACE_S);
       // the first invoice can arrive before checkout.session.completed has said whose subscription it is:
       // answer 500 so Stripe sends it again in a few minutes, by when it's known (a yearly plan needs its year)
-      if (!ok && o.billing_reason === "subscription_create") return new Response("not linked yet", { status: 500 });
-      return new Response("ok", { status: 200 });
+      if (!ok && o.billing_reason === "subscription_create") return answer(ev, 500, "not linked yet: Stripe sends it again");
+      return answer(ev, 200, ok ? "renewed: paid until " + new Date((end + GRACE_S) * 1000).toISOString().slice(0, 10) : "renewal for a subscription no account has");
     }
   } catch (e) {
-    return new Response(String((e as Error).message), { status: 500 }); // Stripe retries
+    return answer(ev, 500, "error: " + String((e as Error).message)); // Stripe retries
   }
-  return new Response("ignored", { status: 200 });
+  return answer(ev, 200, "ignored");
 });
