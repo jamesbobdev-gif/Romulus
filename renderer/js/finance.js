@@ -418,7 +418,7 @@ function finMailLine(m){
   else if(m.busy)p.textContent='Reading purchase emails…';
   else if(m.off){
     const a=el('a',null,'Connect Gmail'); a.href='#'; a.addEventListener('click',function(e){ e.preventDefault(); openSettingsAt('calGroup','gcalSection'); });
-    p.appendChild(a); p.appendChild(document.createTextNode(' in Settings → Calendars to match receipts to these.'));
+    p.appendChild(a); p.appendChild(document.createTextNode(' in Settings → Calendars & email to match receipts to these.'));
   }
   else if(m.error)p.textContent='Purchase emails: '+m.error;
   else p.textContent=m.last?'Receipts from Gmail, '+finAgo(m.last).replace('updated ','checked ')+'.':'Receipts from Gmail: not read yet.';

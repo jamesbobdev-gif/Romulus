@@ -232,7 +232,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -252,7 +252,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -269,7 +269,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then

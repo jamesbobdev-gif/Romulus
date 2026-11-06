@@ -68,12 +68,20 @@ async function addTask(){
   let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; let tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
   const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  // typed "#home" and "every sunday" (quick-add.js): the tag and the repeat come out of the title.
+  // Not for the Agent: its #legion is a tag of its own, and its repeats are t.repeat (agent-chat.js)
+  let recur=null;
+  if(ws!=='agent'){
+    if(!tag){ const g=tagFromWords(title); if(g.tag){ title=g.title; tag=g.tag; } }
+    recur=recurFromWords(title); if(recur)title=recur.title;
+  }
   // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
   // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
   if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
-  // typed "call the dentist #health": the hashtag is the tag, as the date came out of the words (never for the Agent: #legion is its own)
-  if(!tag&&ws!=='agent'){ const h=hashTag(title); if(h){ title=h.title; tag=h.tag; } }
+  // "every sunday at 5": the weekday wins over the today-or-tomorrow a lone time would give; a repeat needs a date
+  if(recur&&!$('newDue').value&&(recur.onDay||!due))due=recur.due;
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+  if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
   if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;
@@ -145,16 +153,16 @@ function parseSpokenTask(text,now){
 }
 /* Spoken commands ("Hey Romulus …"): where the words go, before parseSpokenTask reads dates out of them.
      "go to notes" / "open the work tab"                → {kind:'tab'}
-     "add monkey tinder to app ideas" / "new note …"    → {kind:'idea', group}
+     "add monkey tinder to app notes" / "new note …"    → {kind:'idea', group}
      "add finish the report to work"                    → {kind:'task', tab:'work'}
      "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
-const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',notes:'ideas',note:'ideas',ideas:'ideas',idea:'ideas'};
+const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
 const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Notes'};
 function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
-// "app" / "app ideas" / "the app ideas group" → that idea group's id ('' = Unsorted); undefined = no such group
+// "app" / "app notes" / "the app notes group" → that note group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
-  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|notes?|ideas?)\b/g,' ').replace(/\s+/g,' ').trim(); };
+  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?|notes?)\b/g,' ').replace(/\s+/g,' ').trim(); };
   const d=bare(dest); if(!d)return undefined;
   const all=[{id:'',name:state.ideas.inbox.name||'Unsorted'}].concat(state.ideas.groups);
   const hit=all.find(function(g){ return bare(g.name)===d; });
@@ -176,7 +184,7 @@ function parseVoiceCommand(said,curTab,smart){
   // "we're out of eggs" / "add eggs to groceries": onto his grocery list for the next order (grocery-list.js)
   if(outOfNames(s)&&groceryTask())return {kind:'grocery',text:s};
   // "go to the notes tab (and …)" — the tab first, then whatever follows
-  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|notes?|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
+  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|ideas?|notes?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
   if(m){ tab=VOICE_TABS[m[1].toLowerCase()]; s=m[2].trim(); if(!s)return {kind:'tab',tab:tab}; }
   // Claude / the agent
   m=/^(?:send|give|hand|pass)\s+(?:this\s+|it\s+)?(?:over\s+)?(?:to\s+)?(?:the\s+)?(?:agent|claude)\s*[,:]?\s*(?:to\s+)?(.+)$/i.exec(s)
@@ -184,10 +192,10 @@ function parseVoiceCommand(said,curTab,smart){
   if(m)return {kind:'task',tab:'agent',text:m[1]};
   m=/^(?:send|give|hand|pass)\s+(.+?)\s+(?:over\s+)?to\s+(?:the\s+)?(?:agent|claude)$/i.exec(s);
   if(m)return {kind:'task',tab:'agent',text:m[1]};
-  // "new note …" / "add an idea …" / "… as a note"
-  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?(?:note|idea)|idea)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
+  // "new idea …" / "add an idea …" / "… as an idea"; also "new note …" / "… as a note" (a bare "note X" stays a task, see VERB below)
+  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?idea|idea|new\s+note)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
-  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?(?:note|idea)$/i.exec(s);
+  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?(?:idea|note)$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
   // "add X to Y": try the last "to/in/on/under" first, so "add go to the store to work" files "go to the store" under work
   // ("right"/"rite": how the recognizer often hears "write")

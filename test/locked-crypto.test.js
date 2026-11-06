@@ -84,7 +84,7 @@ test('the sync key shape the database checks matches every key the app makes', (
   const m = sql.match(/p_sync_key !~ '([^']+)'/);
   assert.ok(m, 'setup.sql checks the key shape');
   const re = new RegExp(m[1]);
-  const mig = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261103_review_final.sql'), 'utf8');
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261106_sync_devices_key.sql'), 'utf8');
   assert.ok(mig.includes(m[1]), 'the latest migration carries the same regex');
   assert.ok(re.test('tk_' + '6f1d2c3b-4a5e-4f60-9b7c-8d9e0f1a2b3c' + ':updates'), 'the shared update answer row (renderer/js/update-sync.js)');
   const uuid = '6f1d2c3b-4a5e-4f60-9b7c-8d9e0f1a2b3c', short = 'm2k9x1a7' + 'q8w3e5r1'; // Generate key, and its fallback without randomUUID
@@ -92,7 +92,7 @@ test('the sync key shape the database checks matches every key the app makes', (
   for (const p of personal) {
     assert.ok(re.test(p), p);
     for (const ws of ['work', 'agent', 'school']) assert.ok(re.test(supabase.deriveSyncKey(p, ws)), ws);
-    for (const sfx of [':ideas', ':hours', ':updates', ':finance']) assert.ok(re.test(p + sfx), sfx);
+    for (const sfx of [':ideas', ':hours', ':updates', ':finance', ':devices']) assert.ok(re.test(p + sfx), sfx);
     for (const sfx of [':prefs', ':locked', ':routing', ':standing', require('../agent/worker').SUFFIX, require('../agent/worker-files').FILES, require('../agent/worker-files').GONE]) assert.ok(re.test(supabase.deriveSyncKey(p, 'agent') + sfx), sfx);
   }
   // what it refuses: no tk_, too short, other suffixes, spaces, the storage folder name alone is fine but not a row key with slashes

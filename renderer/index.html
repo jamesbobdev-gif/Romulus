@@ -10,8 +10,7 @@
      line for the phone build (Capacitor's bridge is an inline script). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https: wss: ws://127.0.0.1:* http://127.0.0.1:* ws://localhost:* http://localhost:*; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Romulus</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -190,22 +189,21 @@
       </div>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="calGroup">
-      <summary class="settings-label">Calendars</summary>
+      <summary class="settings-label">Calendars &amp; email</summary>
       <div class="settings-sub" id="gcalSection">
-        <h3 class="settings-subhead">Calendars</h3>
-        <p class="settings-hint">Connect a calendar, then choose what each one does.</p>
-        <div class="settings-row">
-          <button id="calGoogleBtn" class="ghost mono">+ Google</button>
-          <button id="calMsBtn" class="ghost mono">+ Microsoft</button>
-          <button id="calLinkBtn" class="ghost mono">+ Calendar link</button>
+        <h3 class="settings-subhead">Connect your calendar and email</h3>
+        <p class="settings-hint">Where do they live? Pick one and follow the steps. Add as many as you like.</p>
+        <!-- connect-accounts.js: each choice opens its steps in #connectStep -->
+        <div id="connectPick" class="connect-pick">
+          <button data-pick="google"><b>Google</b><span>Gmail and Google Calendar</span></button>
+          <button data-pick="microsoft"><b>Outlook</b><span>Outlook.com, Microsoft 365, work</span></button>
+          <button data-pick="icloud"><b>iPhone or iCloud</b><span>Apple Calendar</span></button>
+          <button data-pick="school"><b>School</b><span>Canvas, Blackboard, D2L</span></button>
+          <button data-pick="link"><b>Other calendar</b><span>Fastmail, Nextcloud, Yahoo, any link</span></button>
         </div>
+        <div id="connectStep" class="connect-step" hidden></div>
+        <p id="connectDone" class="connect-done" hidden></p>
         <span id="calErr" class="mono" style="display:block;color:var(--late);font-size:11px;margin-top:6px"></span>
-        <div id="calLinkBox" hidden style="margin-top:10px">
-          <p class="settings-hint">Paste a subscribe link (.ics or webcal://). Read-only.</p>
-          <input id="calLinkUrl" class="settings-inp" placeholder="https://… or webcal://…" autocomplete="off" spellcheck="false">
-          <input id="calLinkName" class="settings-inp" placeholder="Name (optional)" autocomplete="off">
-          <div class="settings-row"><button id="calLinkAdd" class="btn-accent">Add</button></div>
-        </div>
         <!-- this build has no Google sign-in client of its own: use your own credential -->
         <div id="gcalSetup" hidden style="margin-top:10px">
           <p class="settings-hint">This copy of the app doesn't have Google sign-in built in. Make a free <a id="gcalConsoleLink">Google Cloud credential</a> (application type <b>Desktop app</b>, about 5 minutes) and paste it here.</p>
@@ -246,12 +244,31 @@
         <p id="pairInfo" class="settings-hint" style="margin:4px 0 0"></p>
       </div>
       <span id="syncStatus" class="mono" style="display:block;font-size:11px;color:var(--muted)"></span>
+      <!-- every device on these lists, and taking one off (devices.js) -->
+      <div id="devicesBox" hidden style="margin-top:14px">
+        <div class="settings-label" style="margin-bottom:4px">Devices</div>
+        <div id="devicesList"></div>
+        <p id="devicesNote" class="settings-hint" style="margin:8px 0 0"></p>
+      </div>
       <!-- the form a pairing code carries and fills in: needed by hand only on the first device, or with your own Supabase project -->
       <details class="settings-sub" id="syncManual" style="margin-top:14px">
       <summary class="settings-label">Set up by hand</summary>
       <p class="settings-hint">
         For your first device, or your own <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
+      <div id="syncFirstSteps" class="settings-hint" hidden>
+        <p style="margin:0 0 6px"><b>Nothing syncs yet, so this is your first device.</b> Your lists sync through a free Supabase project of your own. It takes about ten minutes, once:</p>
+        <ol style="margin:0 0 8px;padding-left:20px">
+          <li>Make a free account and a <b>New project</b> at Supabase. Any name and region will do.</li>
+          <li>In the project, open <b>SQL Editor</b>, paste all of <b>setup.sql</b> and press <b>Run</b>.</li>
+          <li>In <b>Project Settings → API</b>, copy the <b>Project URL</b> and the <b>publishable</b> key into the first two boxes below. Never use the secret key.</li>
+          <li>Press <b>Save &amp; sync</b>. A sync key is made for you. Then press <b>Add a device</b> above for your phone.</li>
+        </ol>
+        <div class="settings-row">
+          <button id="syncOpenSupabase" class="ghost mono">Open Supabase ↗</button>
+          <button id="syncOpenSql" class="ghost mono">Open setup.sql ↗</button>
+        </div>
+      </div>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKey" class="settings-inp" placeholder="Anon / publishable key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
@@ -272,6 +289,11 @@
       </div>
       <div id="syncQrBox" class="fin-qr" hidden></div>
       </details>
+    </details>
+    <details class="settings-panel settings-collapse" id="importSection">
+      <summary class="settings-label">Import tasks</summary>
+      <p class="settings-hint">Bring tasks over from Todoist, TickTick, Google Tasks, Trello, Asana, Notion, a spreadsheet (CSV) or a pasted list.</p>
+      <div class="settings-row"><button id="importOpenBtn" class="ghost mono">Import from another app</button></div>
     </details>
     <details class="settings-panel settings-collapse" id="reviewSection">
       <summary class="settings-label">Year in review</summary>
@@ -356,6 +378,8 @@
     </div>
     <div id="newAtts" class="att-thumbs" style="padding:2px 8px 6px" hidden></div>
   </section>
+  <!-- nothing syncing yet: recommend it, on every tab, until it is set up or put off (welcome.js drawSyncNudge) -->
+  <div id="syncNudge" class="nudge sync-nudge" hidden><span id="syncNudgeText"></span> <button id="syncNudgeBtn" class="btn-accent">Set up sync</button><button id="syncNudgeLater" class="ghost mono">Not now</button></div>
   <!-- outside the add box, so a spoken command's result shows on Notes (no add box there) too -->
   <div id="voiceToast" class="voice-toast" hidden></div>
   <!-- "Hey Romulus": a speech bubble at the bottom, so you can see it heard you (task-actions.js wakeBubble) -->
@@ -366,7 +390,7 @@
 
   <!-- List view -->
   <div id="listView">
-    <!-- first launch only (welcome.js): what to set up, and four things worth knowing -->
+    <!-- first launch only (welcome.js): what to set up -->
     <div id="welcomeCard" class="connect-card welcome" hidden>
       <b>Welcome to Romulus</b>
       <p>A to-do list that works on its own. Everything else is optional. What would you like?</p>
@@ -374,14 +398,30 @@
         <button id="welcomeTasksBtn" class="btn-accent">Just tasks</button>
         <button id="welcomeAiBtn" class="ghost">Add an AI assistant</button>
         <button id="welcomeSyncBtn" class="ghost">Sync with my phone</button>
+        <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
+        <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
       </div>
-      <ul class="welcome-tips">
-        <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
-        <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
-        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Notes</b> and <b>Hours</b> are extra views of the same tasks.</li>
-        <li id="welcomeTrayTip">Closing the window hides Romulus in the tray. On Windows it sits under the ^ by the clock until you drag it onto the taskbar; right-click the icon to quit.</li>
-      </ul>
-      <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
+    </div>
+    <!-- bringing tasks over from Todoist, TickTick, Google Tasks, a spreadsheet… (task-import.js) -->
+    <div id="importCard" class="connect-card welcome import-card" hidden>
+      <b>Bring your tasks over</b>
+      <p>Pick the app you're coming from to see how to get your tasks out of it. Then choose the file it gave you, or paste a list.</p>
+      <div id="importSources" class="import-sources"></div>
+      <p id="importHow" class="import-how" hidden></p>
+      <div class="welcome-choices">
+        <button id="importFileBtn" class="btn-accent">Choose a file</button>
+        <input id="importFile" type="file" accept=".csv,.tsv,.json,.txt,.md,.zip,text/csv,text/plain,application/json,application/zip" multiple hidden>
+      </div>
+      <textarea id="importPaste" class="settings-inp import-paste" rows="4" placeholder="Or paste tasks here, one per line"></textarea>
+      <div id="importPreview" class="import-preview" hidden>
+        <p id="importSummary"></p>
+        <ul id="importSample" class="import-sample"></ul>
+        <label id="importDoneRow" class="import-row"><input id="importDone" type="checkbox"> <span id="importDoneText"></span></label>
+        <label class="import-row">Put them on <select id="importWs" class="settings-inp"></select></label>
+        <div class="welcome-choices"><button id="importGo" class="btn-accent">Import</button></div>
+      </div>
+      <p id="importStatus" class="settings-hint" style="margin:8px 0 0"></p>
+      <p class="welcome-foot"><a href="#" id="importClose">Close</a> · The file is read on this device; nothing is sent anywhere. Importing the same file again won't add copies.</p>
     </div>
     <!-- January and February: last year's look back (year-review-view.js) -->
     <div id="reviewBanner" class="connect-card welcome yr-banner" hidden>
@@ -445,7 +485,7 @@
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
   </div>
 
-  <!-- Notes (hidden by default; the "ideas" ids stay so synced data keeps its key) -->
+  <!-- Notes (hidden by default; internal name "ideas") -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
@@ -466,6 +506,7 @@
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
 <script src="js/school-overdue.js"></script>
+<script src="js/quick-add.js"></script>
 <script src="js/order-match.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
@@ -496,11 +537,14 @@
 <script src="js/settings.js"></script>
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
+<script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
+<script src="js/task-import.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
+<script src="js/connect-accounts.js"></script>
 <script src="js/look-ahead.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>

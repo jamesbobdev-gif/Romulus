@@ -1,5 +1,5 @@
 /* First launch, and the Agent tab before anything is connected.
-   - The welcome card (once, ever): three things to set up and four things worth knowing.
+   - The welcome card (once, ever): what to set up.
    - The Agent tab on this computer works without device sync (the agent runs here); what it does need
      is an AI. With none connected its empty state becomes "Pick an AI", and once tasks are waiting a
      nudge says they can't run yet. Sync is offered as "also on your phone".
@@ -27,16 +27,46 @@ function markWelcomed(){
   let seen=true; try{ seen=!!localStorage.getItem(WELCOME_KEY); }catch(e){}
   const card=$('welcomeCard'); if(!card)return;
   if(seen)return;
-  if(!isDesktopApp){ // phone: the AI lives on the computer; the tray tip doesn't apply
+  if(!isDesktopApp){ // phone: the AI lives on the computer
     $('welcomeAiBtn').hidden=true; $('welcomeSyncBtn').textContent='Sync with my computer';
-    $('welcomeTrayTip').textContent='Home-screen widgets show your list and let you add to it; the Agent runs on your computer and syncs here.';
   }
   card.hidden=false;
   const done=function(){ try{ localStorage.setItem(WELCOME_KEY,String(Date.now())); }catch(e){} card.hidden=true; };
   $('welcomeTasksBtn').addEventListener('click',done);
-  $('welcomeAiBtn').addEventListener('click',function(){ done(); switchTab('agent'); openSettingsAt('agentGroup','aiSection'); });
+  // the Agent tab, where "Pick an AI" leads with the free OpenRouter start (or, with an AI already
+  // connected, the example tasks); the full list of AIs is a link away from there
+  $('welcomeAiBtn').addEventListener('click',function(){ done(); switchTab('agent'); window.scrollTo(0,0); });
   $('welcomeSyncBtn').addEventListener('click',function(){ done(); openSettingsAt(null,'syncSection'); });
+  // the Calendars & email picker (connect-accounts.js); a plain browser has no calendar accounts
+  if(!(window.desktop&&window.desktop.calOverview)&&!window.phoneCal)$('welcomeCalBtn').hidden=true;
+  $('welcomeCalBtn').addEventListener('click',function(){ done(); if(window.openConnect)window.openConnect(); else openSettingsAt('calGroup','gcalSection'); });
 })();
+
+/* ── no sync yet: recommend it ──
+   A new user's tasks live only on this device. Until device sync is on, a bar under the add box (on every
+   tab, Calendar included) says so and opens the sync steps. "Not now" puts it off for a week. It waits while
+   the welcome card is up (that card has its own sync button) and until the saved sync config has loaded. */
+const SYNC_NUDGE_KEY='tasks.syncNudge.later';
+const SYNC_NUDGE_SNOOZE=7*86400000;
+let syncNudgeLoaded=!(syncState&&syncState.ready); // desktop: config.json is read async
+if(!syncNudgeLoaded)syncState.ready.then(function(){ syncNudgeLoaded=true; drawSyncNudge(); },function(){ syncNudgeLoaded=true; drawSyncNudge(); });
+function drawSyncNudge(){
+  const bar=$('syncNudge'); if(!bar)return;
+  let later=0; try{ later=+localStorage.getItem(SYNC_NUDGE_KEY)||0; }catch(e){}
+  const welcoming=$('welcomeCard')&&!$('welcomeCard').hidden;
+  const show=syncNudgeLoaded&&!syncEnabled()&&!welcoming&&Date.now()-later>SYNC_NUDGE_SNOOZE;
+  if(show&&!bar.dataset.drawn){
+    bar.dataset.drawn='1';
+    $('syncNudgeText').textContent=isDesktopApp
+      ?'Your tasks are only on this computer. Turn on sync to keep a backup and see them on your phone.'
+      :'Your tasks are only on this phone. Turn on sync to keep a backup and see them on your computer.';
+  }
+  bar.hidden=!show;
+}
+$('syncNudgeBtn').addEventListener('click',function(){ openSettingsAt(null,'syncSection'); });
+$('syncNudgeLater').addEventListener('click',function(){ try{ localStorage.setItem(SYNC_NUDGE_KEY,String(Date.now())); }catch(e){} drawSyncNudge(); });
+// the welcome card's choices close it: the bar can show from then on
+['welcomeTasksBtn','welcomeAiBtn'].forEach(function(id){ const b=$(id); if(b)b.addEventListener('click',drawSyncNudge); });
 
 /* ── Agent tab: an AI, or not yet ── */
 // wiring.js keeps window.agentAiReady current (any cloud AI switched on and able to run); the local model counts too

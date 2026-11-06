@@ -1,4 +1,4 @@
-/* The Notes tab (ids and sync key still say "ideas", its old name): note cards sorted into groups.
+/* The Notes tab (internal name "ideas"): note cards sorted into groups.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
@@ -195,7 +195,7 @@ function drawIdeas(){
           ta.addEventListener('keydown',function(e){ if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); commit(); } });
           ta.addEventListener('blur',commit);
           b.appendChild(ta); focusEl=ta;
-          if(ideaUI.caret==='notes'&&!c.sections){ ta.value+='\n'; } // "+ Add notes": start on the line under the title
+          if(ideaUI.caret==='notes'&&!c.sections){ ta.value+='\n'; } // "+ Add details": start on the line under the title
           ideaUI.caret=null;
         } else {
           const tt=el('div','idea-title',c.text); tt.title='Click to edit';
@@ -212,7 +212,7 @@ function drawIdeas(){
             secs.appendChild(blk);
           });
           if(!c.sections){
-            const add=el('button','idea-secadd','+ Add notes');
+            const add=el('button','idea-secadd','+ Add details');
             add.addEventListener('click',function(){ ideaUI.editing=c.id; ideaUI.caret='notes'; drawIdeas(); });
             secs.appendChild(add);
           }

@@ -9,7 +9,7 @@
 'use strict';
 
 const COST_FIXED_WORDS=/\b(rent|mortgage|hoa|insurance|geico|progressive|state ?farm|allstate|netflix|spotify|hulu|disney|hbo|max\.com|youtube ?premium|paramount|peacock|apple\.com\/bill|google \*?(storage|one)|icloud|prime video|amazon prime|verizon|t-?mobile|at ?& ?t|sprint|mint mobile|cricket|comcast|xfinity|spectrum|cox comm|internet|electric|energy|power co|water|sewer|utilit|gas co|planet fitness|gym|fitness|loan|navient|nelnet|mohela|sallie mae|car payment|auto pay(ment)?|lease|simplefin|patreon|adobe|microsoft|openai|anthropic|claude\.ai)\b/i;
-const COST_NOT_SPENDING=/\b(transfer|xfer|payment.{0,12}thank|thank you.{0,12}payment|credit card (payment|pmt)|card ?services|cardmember|crd ?pmt|epay|autopay.{0,12}(card|visa|mastercard|discover|amex)|(to|from) (savings|checking)|zelle from|venmo cashout|paypal transfer)\b/i;
+const COST_NOT_SPENDING=/\b(transfer|xfer|payment.{0,12}thank|thank you.{0,12}payment|credit card (payment|pmt)|card ?services|cardmember|crd ?pmt|epay|autopay.{0,12}(card|visa|mastercard|discover|amex)|(to|from) (savings|checking)|zelle from|venmo cashout|paypal transfer|public\.com|public investing|public holdings)\b/i;
 const COST_DAY=86400000;
 
 // one name per payee: "NETFLIX.COM 866-579 CA" and "NETFLIX.COM 123" are the same one (the name is what

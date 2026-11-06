@@ -415,6 +415,12 @@ async function syncNow(){
 }
 async function syncOnce(){
   setSyncStatus('syncing…');
+  // this device's place in Settings → Devices, and whether the sync key moved on without it (devices.js)
+  if(typeof devicesTick==='function'){
+    const d=await devicesTick();
+    if(d==='moved'){ setTimeout(startSyncLoop,0); return; }
+    if(d==='off')return;
+  }
   let firstErr=null, anyLocal=false;
   const list=profileList();
   for(let i=0;i<list.length;i++){
@@ -424,6 +430,8 @@ async function syncOnce(){
       // or by Claude), the upload is refused, so download again and merge that in too, never overwrite it
       for(let attempt=0;attempt<4;attempt++){
         const row=await syncPullRow(p);
+        // the list moved to a new sync key this device wasn't given: uploading here would only fill the blanked row again
+        if(row.doc&&row.doc.rotated)throw new Error('the sync key was changed on another device: pair this one again with Add a device');
         if(row.doc&&typeof markWelcomed==='function')markWelcomed(); // the account already has lists, so it was welcomed on another device
         const r=mergeRemoteWs(row.doc,ws);
         if(r.changedLocal)anyLocal=true;
@@ -444,7 +452,7 @@ async function syncOnce(){
         if(r.changedLocal)anyLocal=true;
         if(!(r.changedRemote||(!row.doc&&(state.ideas.cards.length||state.ideas.groups.length))))break;
         if(await syncPushCas(ip,ideasDoc(),row.updatedAt))break;
-        if(attempt===3)throw new Error('the ideas board kept changing; will retry');
+        if(attempt===3)throw new Error('the notes board kept changing; will retry');
       }
     }catch(e){
       if(!firstErr)firstErr=e;
