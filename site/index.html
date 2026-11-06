@@ -12,9 +12,7 @@
 <meta property="og:url" content="https://jamesbobdev-gif.github.io/Romulus/">
 <link rel="icon" href="img/icon.png">
 <link rel="apple-touch-icon" href="img/icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Layout: one narrow column (72ch) like the app window itself, with a wider hero for the screenshots.
    The tokens are the app's own (renderer/styles.css light theme; the dark theme from the README). */
@@ -94,7 +92,8 @@ h3{font-size:17px;letter-spacing:-.01em}
 .others a{font-weight:500}
 .others .sep{color:var(--faint)}
 
-.shots{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:56px;align-items:start}
+.shot.demo{max-width:680px;margin:56px auto 0}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;align-items:start}
 .shot{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
 .shot figcaption{padding:10px 14px;border-top:1px solid var(--hairline);display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:13px;color:var(--muted)}
 .shot figcaption b{color:var(--ink);font-weight:600}
@@ -206,6 +205,7 @@ footer a{color:var(--muted);font-weight:500}
   </div>
   <p class="others" id="others">Also for <a href="#download">every other platform</a>, or <a href="https://github.com/jamesbobdev-gif/Romulus#install">run it from source</a>.</p>
 
+  <figure class="shot demo"><img src="img/demo.gif" width="680" height="940" alt="A 40-second walkthrough: a grocery order typed on the Agent tab, the Agent building the cart and waiting for a yes, the order placed, then the Finance tab with accounts, net worth, subscriptions and stocks"><figcaption><b>40 seconds</b><span>a task handed to the Agent, its yes, and the Finance tab</span></figcaption></figure>
   <div class="shots">
     <figure class="shot" style="margin:0"><img src="img/human.png" width="660" height="1165" alt="The Human tab: a list of to-dos with due dates, times, tags and a weekly repeat"><figcaption><b>Human</b><span>your own to-dos</span></figcaption></figure>
     <figure class="shot" style="margin:0"><img src="img/agent.png" width="660" height="1340" alt="The Agent tab: tasks waiting, working and needing an answer, one opened to the Agent's question about which Denver flight to book"><figcaption><b>Agent</b><span>what the AI is doing, and its questions</span></figcaption></figure>
@@ -241,12 +241,12 @@ footer a{color:var(--muted);font-weight:500}
     <div class="pillar">
       <span class="mono k">Private things stay local</span>
       <h3>Some tasks never leave your machine.</h3>
-      <p>Banking, medical records and passwords go only to your local model, and so does the Locked profile that fills in forms.</p>
+      <p>Banking, medical records and passwords go only to your local model, and so does the Locked profile that fills in forms. Run it on a second computer and it serves every device.</p>
     </div>
     <div class="pillar">
       <span class="mono k">Your money, without the subscription</span>
       <h3>A Finance tab instead of Rocket Money.</h3>
-      <p>Every account in one place, bills and subscriptions found for you, net worth over time and live stock prices. Bank access for about $15 a year, encrypted on your computer.</p>
+      <p>Every account in one place, bills and subscriptions found for you (Cancel hands one to the Agent), net worth over time and live stock prices. Bank access for about $15 a year, encrypted on your computer.</p>
     </div>
   </div>
 </section>
@@ -254,16 +254,16 @@ footer a{color:var(--muted);font-weight:500}
 <section class="wrap" id="inside">
   <h2>What's inside</h2>
   <p class="sub">The same tabs on your computer and your phone, kept in sync.</p>
-  <div class="tabs" aria-hidden="true"><span class="on">Human</span><span>Agent</span><span>School</span><span>Work</span><span>Calendar</span><span>Ideas</span><span>Hours</span><span>Finance</span></div>
+  <div class="tabs" aria-hidden="true"><span class="on">Human</span><span>Agent</span><span>School</span><span>Work</span><span>Calendar</span><span>Notes</span><span>Hours</span><span>Finance</span></div>
   <div class="box">
     <div><b>Human</b><p>Your own to-dos: due dates, tags, subtasks, repeats, search.</p></div>
     <div><b>Agent</b><p>Tasks the AI does, with a live view of its work and its questions.</p></div>
     <div><b>School</b><p>Assignments with due dates from Blackboard or D2L.</p></div>
     <div><b>Work</b><p>A second list, synced with the rest.</p></div>
-    <div><b>Calendar · Ideas · Hours</b><p>The month, a board of notes, hours per day. Google, Microsoft and iCloud calendars.</p></div>
+    <div><b>Calendar · Notes · Hours</b><p>The month, a board of notes, hours per day. Google and Microsoft calendars.</p></div>
     <div><b>Finance</b><p>Accounts, bills, net worth and stock prices, encrypted and locked.</p></div>
   </div>
-  <p class="can"><b>What the Agent can do:</b> research and writing; shopping and groceries on Amazon, Walmart, Target and Best Buy; flights and bookings; forms and job applications; email; a morning look-ahead; tasks that start when an email arrives or a page changes; deep research (<code>#legion</code>) split so no single cloud AI sees the whole question; a browser you can watch and take over.</p>
+  <p class="can"><b>What the Agent can do:</b> research and writing; shopping and groceries on Amazon, Walmart, Target, Best Buy and Shopify stores; any other store through a one-time Link card; flights and bookings; forms and job applications; email; a morning look-ahead; tasks that start when an email arrives or a page changes; deep research (<code>#legion</code>) split so no single cloud AI sees the whole question; a Coach me brief for things only you can do, like a class video or an interview; a browser you can watch and take over.</p>
 </section>
 
 <section class="wrap" id="download">
@@ -278,7 +278,7 @@ footer a{color:var(--muted);font-weight:500}
     <a data-os="mac" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.5-.2-2.8.8-3.6.8-.7 0-1.9-.8-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.5.8 1.2 1.8 2.4 3 2.4 1.2-.1 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.6-3.9zM14.1 5.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>macOS<span class="you" hidden>Your device</span></span>
       <span class="file"><b data-file>Romulus-1.1.1-arm64.dmg</b> <span data-size></span></span>
-      <span class="note">Apple silicon. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
+      <span class="note">Apple silicon; an Intel Mac takes <b data-intel>Romulus-1.1.1.dmg</b> from the release page. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
     </a>
     <a data-os="linux" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Linux<span class="you" hidden>Your device</span></span>
@@ -294,7 +294,7 @@ footer a{color:var(--muted);font-weight:500}
   <div class="fine">
     <p><b>From source:</b> Node 22 or newer, then <code>npm install</code> and <code>npm start</code>.</p>
     <p><b>Then:</b> the <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/docs/SETUP.md">setup guide</a> covers connecting an AI, your phone, calendars and Finance.</p>
-    <p><b>iPhone:</b> not yet.</p>
+    <p><b>iPhone:</b> runs from Xcode; not on the App Store yet.</p>
   </div>
 </section>
 
@@ -303,9 +303,11 @@ footer a{color:var(--muted);font-weight:500}
   <p class="sub">What you connect stays on the computer you connected it on. No telemetry.</p>
   <div class="priv">
     <div><b>Keys never sync.</b>Tokens and sync keys are encrypted by your operating system and stay on that machine.</div>
-    <div><b>Private sync.</b>No one without your list's key can read your lists.</div>
+    <div><b>Encrypted sync.</b>One button encrypts every list end to end, so the server holds only ciphertext.</div>
     <div><b>Locked means locked.</b>The Locked profile and Finance are never given to a cloud AI.</div>
     <div><b>Checkable builds.</b>Every release has checksums. Details in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</div>
+    <div><b>The AI never sees a card number.</b>Stores use the card they have on file; anywhere else, a one-time Link card for the amount you approved.</div>
+    <div><b>Nothing final without you.</b>Buying, paying, sending and booking always wait for your yes.</div>
   </div>
 </section>
 
@@ -388,7 +390,11 @@ npm start</pre>
     Object.keys(match).forEach(function (k) {
       var card = cards[k], asset = null, at = -1;
       for (var i = 0; i < releases.length && !asset; i++) {
-        asset = releases[i].assets.filter(function (a) { return match[k](a.name); })[0] || null;
+        var found = releases[i].assets.filter(function (a) { return match[k](a.name); });
+        // two Mac builds: the card takes Apple silicon, the note names the Intel file
+        asset = (k === 'mac' && found.filter(function (a) { return /arm64/i.test(a.name); })[0]) || found[0] || null;
+        var intel = k === 'mac' ? found.filter(function (a) { return !/arm64/i.test(a.name); })[0] : null;
+        if (intel && card.querySelector('[data-intel]')) card.querySelector('[data-intel]').textContent = intel.name;
         at = i;
       }
       if (!asset) { card.href = RELEASES; return; }
