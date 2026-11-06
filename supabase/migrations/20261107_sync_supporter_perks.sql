@@ -67,7 +67,7 @@ begin
     case when pg_database_size(current_database()) > public.sync_server_cap(s) then 'server_full'
          when coalesce(cnt, 0) >= s.new_accounts_per_ip_hour then 'new_accounts' end,
     null::timestamptz, s.paid_quota_bytes, 0::bigint;
-end $;
+end $$;
 
 -- ── family ──
 create table if not exists public.sync_family_invites (

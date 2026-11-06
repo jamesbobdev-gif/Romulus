@@ -433,6 +433,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
   .cal-grid .cal-chip.accent{background:var(--accent)}
   .cal-grid .cal-chip.late{background:var(--late)}
   .cal-grid .cal-chip.done{background:var(--hairline)}
+  .cal-grid .cal-chip .cal-chip-time{display:none} /* the time keeps its 10px font otherwise and a sliver of it shows under the bar */
   .cal-grid .cal-more{font-size:8.5px;padding:0 1px;white-space:nowrap}
   .day-pop .day-pop-row{padding:11px 0} /* bigger touch targets in the day list */
 }
@@ -983,16 +984,18 @@ textarea.ask-other{min-height:70px}
 .fin-views .on{color:var(--ink);background:var(--chip)}
 .fin-views{align-items:baseline;flex-wrap:wrap}
 .fin-range{font-size:12px;margin-left:auto}
-.fin-holdings{margin:6px 0 10px}
+.fin-holdings{margin:6px 0 10px;display:grid;column-gap:6px;grid-template-columns:minmax(0,1fr) minmax(52px,max-content) minmax(73px,max-content) minmax(57px,max-content) minmax(57px,max-content) minmax(83px,max-content) minmax(83px,max-content)} /* one grid for every holding (each row is a subgrid of it), so the columns line up down the list; the minimums are in px because the rows' 13px font isn't this box's */
+.fin-holdings>.fin-note{grid-column:1/-1}
 .fin-holdings-fold>.fin-row{margin-top:6px}
 /* each number column is as wide as a usual figure and grows for a wider one, so Value and Gain never run together; the name takes what is left */
-.fin-hold{display:grid;grid-template-columns:minmax(0,1fr) minmax(4em,max-content) minmax(5.6em,max-content) minmax(4.4em,max-content) minmax(4.4em,max-content) minmax(6.4em,max-content) minmax(6.4em,max-content);gap:6px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13px}
+.fin-hold{display:grid;grid-column:1/-1;grid-template-columns:subgrid;gap:6px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13px}
 .fin-hold:last-child{border-bottom:0}
 .fin-hold>.fin-amt,.fin-hold.head>span:not(:first-child){text-align:right}
 .fin-hold.head{padding-top:0}
 .fin-sort{justify-self:end;border:0;background:none;padding:0;font-family:var(--mono);cursor:pointer;white-space:nowrap}
 .fin-sort:hover,.fin-sort.on{color:var(--ink)}
-@media(max-width:520px){.fin-tiles,.fin-charts,.fin-worth-cols{grid-template-columns:1fr}.fin-hold{grid-template-columns:repeat(5,auto);gap:4px 8px;font-size:12px}.fin-hold.head{display:flex;gap:6px;padding-bottom:8px}.fin-hold.head>span{display:none}.fin-hold.head>.fin-sort{padding:5px 10px;border-radius:999px;background:var(--chip)}.fin-hold.head>.fin-sort.on{background:var(--ink);color:var(--surface)}.fin-hold>.fin-desc{grid-column:1/4;font-size:13px}.fin-hold>.fin-hold-value{order:-1;grid-column:4/-1;grid-row:1;font-size:14px;font-weight:600}.fin-hold>.fin-amt:not(.fin-hold-value){text-align:left}.fin-hold>.fin-amt:not(.fin-hold-value)::before{content:attr(data-label);display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fin-row{flex-wrap:wrap}.fin-select{flex:1 1 100%!important}}
+@media(max-width:520px){.fin-tiles,.fin-charts,.fin-worth-cols{grid-template-columns:1fr}.fin-holdings{grid-template-columns:repeat(5,auto)}.fin-hold{gap:4px 8px;font-size:12px}.fin-hold.head{display:flex;gap:6px;padding-bottom:8px}.fin-hold.head>span{display:none}.fin-hold.head>.fin-sort{padding:5px 10px;border-radius:999px;background:var(--chip)}.fin-hold.head>.fin-sort.on{background:var(--ink);color:var(--surface)}.fin-hold>.fin-desc{grid-column:1/4;font-size:13px}.fin-hold>.fin-hold-value{order:-1;grid-column:4/-1;grid-row:1;font-size:14px;font-weight:600}.fin-hold>.fin-amt:not(.fin-hold-value){text-align:left}.fin-hold>.fin-amt:not(.fin-hold-value)::before{content:attr(data-label);display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fin-row{flex-wrap:wrap}.fin-select{flex:1 1 100%!important}}
+@media(max-width:360px){.fin-hold{font-size:10.5px;column-gap:4px}.fin-hold>.fin-amt:not(.fin-hold-value)::before{font-size:9px}} /* the narrowest phones: five figures in a row fit the card */
 .th-days{font-size:12px;color:var(--muted);margin-bottom:8px}
 .th-map-wrap{border-radius:8px;overflow:hidden;border:1px solid var(--hairline);margin-bottom:8px;background:var(--bg)}
 .th-map{display:block;width:100%;height:auto}

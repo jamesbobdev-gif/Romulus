@@ -125,8 +125,8 @@
     return { c, d: pc ? c - pc : 0, dp: pc ? (c - pc) / pc * 100 : 0, pc, t: num(x.meta.regularMarketTime), series };
   }
   /* symbols → {quotes: {SYM: chart}, warning}. range '1d' (every 5 min, the price now) or '1y' / '6mo' (a close a day).
-     Unknown symbols are left out; if none came, it throws. Yahoo writes class shares with a dash: BRK.B → BRK-B */
-  async function fetchQuotes(symbols, doFetch, range) {
+     Unknown symbols are left out; if none came (not even from `prev`, the last round's quotes), it throws. Yahoo writes class shares with a dash: BRK.B → BRK-B */
+  async function fetchQuotes(symbols, doFetch, range, prev) {
     const out = {};
     const query = range === '1y' ? '?range=1y&interval=1d' : range === '6mo' ? '?range=6mo&interval=1d' : '?range=1d&interval=5m';
     const list = Array.from(new Set(symbols.filter((s) => SYMBOL.test(s)))).slice(0, MAX_SYMBOLS);
@@ -145,6 +145,8 @@
         if (q) out[s] = q;
       }));
     }
+    // a symbol that failed this round (rate-limited, slow) keeps its last price rather than falling back to the brokerage's older one
+    if (prev) for (const s of list) if (!(s in out) && prev[s]) out[s] = prev[s];
     if (failed && !Object.keys(out).length) throw new Error(failed);
     return { quotes: out, warning: failed };
   }

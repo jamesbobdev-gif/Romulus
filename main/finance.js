@@ -239,14 +239,14 @@ async function stocksNow(force) {
   let error = null;
   if (force || !lastQuotes || Date.now() - lastQuotes.at >= QUOTE_MS) {
     try {
-      const got = await stocks.fetchQuotes(symbols, doFetch, '1d');
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1d', lastQuotes && lastQuotes.quotes);
       if (key !== k) return { locked: true };
       lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning };
     } catch (e) { if (key !== k) return { locked: true }; error = e.message; }
   }
   if (!lastDaily || Date.now() - lastDaily.at >= DAILY_MS) {
     try {
-      const got = await stocks.fetchQuotes(symbols, doFetch, '1y');
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1y', lastDaily && lastDaily.quotes);
       if (key !== k) return { locked: true };
       lastDaily = { at: Date.now(), quotes: got.quotes };
     } catch (e) { if (key !== k) return { locked: true }; }
