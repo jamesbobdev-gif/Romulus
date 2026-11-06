@@ -376,7 +376,7 @@ async function addCaldav(opts) {
   const server = caldav.normServer(o.server) || caldav.guessServer(username);
   if (!server) return { ok: false, needsServer: true, error: 'Enter your calendar server’s address.' };
   const host = new URL(server).hostname;
-  const name = String(o.name || '').trim().slice(0, 40) || (CALDAV_NAMES.find(([re]) => re.test(host)) || [, host.replace(/^(www|caldav|dav|cal|calendar)\./, '')])[1];
+  const name = String(o.name || '').trim().slice(0, 40) || (CALDAV_NAMES.find(([re]) => re.test(host)) || [null, host.replace(/^(www|caldav|dav|cal|calendar)\./, '')])[1];
   const acct = { id: 'd-' + crypto.randomBytes(4).toString('hex'), provider: 'caldav', server, username, appPassword, email: username, name };
   let found;
   try { found = await caldav.calendars(acct); } catch (e) { return { ok: false, error: e.message }; }

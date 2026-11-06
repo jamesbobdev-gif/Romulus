@@ -138,17 +138,17 @@
     </details>
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
       <summary class="settings-label">About you</summary>
-      <div class="settings-sub" id="prefsSection" hidden>
-        <h3 class="settings-subhead">What the Agent knows about you</h3>
+      <details class="settings-sub settings-collapse" id="prefsSection" hidden>
+        <summary class="settings-subhead">What the Agent knows about you</summary>
         <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
         <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “Alex”&#10;- Morning appointments work best"></textarea>
         <div class="settings-row">
           <button id="prefsSaveBtn" class="btn-accent">Save</button>
           <span id="prefsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-      <div class="settings-sub" id="lockedSection" hidden>
-        <h3 class="settings-subhead">Locked — only the local model sees this</h3>
+      </details>
+      <details class="settings-sub settings-collapse" id="lockedSection" hidden>
+        <summary class="settings-subhead">Locked — only the local model sees this</summary>
         <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. The Agent’s cloud AIs never read it. No passwords, card numbers or SSN.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
@@ -156,7 +156,7 @@
           <button id="lockedFormBtn" class="ghost mono" title="Adds the questions forms keep asking, for you to answer once">+ Form answers</button>
           <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
+      </details>
       <div class="settings-sub" id="formFilesSection" hidden>
         <h3 class="settings-subhead">Files for forms</h3>
         <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, the Agent or the local model attaches it; nothing else on this computer can be uploaded.</p>
@@ -316,7 +316,7 @@
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
       <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
-        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS">Custom</button>
+        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS" hidden>Custom</button>
       </div>
       <details class="settings-sub">
       <summary class="settings-label">Custom CSS (advanced)</summary>
@@ -495,6 +495,7 @@
   <!-- Notes (hidden by default; the "ideas" ids stay so synced data keeps its key) -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
+      <input id="ideaSearch" class="search idea-search" type="search" placeholder="Search notes…" aria-label="Search notes" autocomplete="off">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>

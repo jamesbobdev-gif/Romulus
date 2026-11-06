@@ -340,19 +340,14 @@ function setThemeMode(mode){
   applyThemeMode(mode); drawThemeModes();
 }
 function drawThemeModes(){
-  let mode='system'; try{ mode=themeModeSaved(); }catch(e){}
-  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
+  let mode='system', saved=''; try{ mode=themeModeSaved(); saved=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
+    if(b.dataset.mode==='custom')b.hidden=!saved.trim(); // the Custom chip joins the row once CSS is saved
+    const on=b.dataset.mode===mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on));
+  });
 }
 document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
-  b.addEventListener('click',function(){
-    let saved=''; try{ saved=localStorage.getItem(THEME_KEY)||''; }catch(e){}
-    if(b.dataset.mode==='custom'&&!saved.trim()){ // nothing saved yet: open the box to paste into
-      $('themeCss').closest('details').open=true; $('themeCss').focus();
-      $('themeStatus').textContent='paste CSS, then Apply';
-      return;
-    }
-    setThemeMode(b.dataset.mode);
-  });
+  b.addEventListener('click',function(){ setThemeMode(b.dataset.mode); });
 });
 drawThemeModes();
 $('themeApplyBtn').addEventListener('click',function(){

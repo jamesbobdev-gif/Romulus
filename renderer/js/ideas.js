@@ -8,7 +8,7 @@
    (syncKey+':ideas'), so the task lists, Claude's tools and older builds never see them.
    Per card/group id the newer updatedAt wins; a tombstone beats older copies. */
 const IDEA_COLORS=['yellow','green','blue','pink','purple','plain'];
-const ideaUI={drag:null,gdrag:null,editing:null,adding:null,open:null,descing:null,confirmDel:null,pending:false};
+const ideaUI={drag:null,gdrag:null,editing:null,adding:null,open:null,descing:null,confirmDel:null,pending:false,q:''};
 function normIdeas(raw){
   const r=raw||{}; const num=function(v,d){ return isFinite(v)&&v!==null&&v!==''?+v:d; };
   const groups=(Array.isArray(r.groups)?r.groups:[]).filter(function(g){ return g&&g.id; }).map(function(g,i){
@@ -21,6 +21,7 @@ function normIdeas(raw){
       .map(function(x){ return {id:String(x.id),title:String(x.title||''),body:String(x.body||'')}; });
     if(!secs.length&&c.desc)secs.push({id:'d'+o.id,title:'',body:String(c.desc)}); // the first version had one plain description
     if(secs.length)o.sections=secs;
+    if(c.pinned)o.pinned=num(c.pinned,1); // when it was pinned; only set on pinned cards, so the others stay byte-identical
     return o;
   });
   const tombs=(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; });
@@ -63,9 +64,20 @@ function ideaCard(id){ return state.ideas.cards.find(function(c){ return c.id===
 function ideaGroup(id){ if(id==='')return state.ideas.inbox; return state.ideas.groups.find(function(g){ return g.id===id; }); }
 // a card whose group was deleted on another device falls back to Unsorted
 function ideaGroupOf(c){ return c.group&&ideaGroup(c.group)?c.group:''; }
+// a group's cards: the pinned ones first, then everything in its drag order
 function ideaCardsIn(gid){
   return state.ideas.cards.filter(function(c){ return ideaGroupOf(c)===gid; })
-    .sort(function(a,b){ return a.order-b.order||(a.id<b.id?-1:1); });
+    .sort(function(a,b){ return (b.pinned?1:0)-(a.pinned?1:0)||a.order-b.order||(a.id<b.id?-1:1); });
+}
+function ideaSetPinned(c,on){
+  if(!!c.pinned===!!on)return;
+  if(on)c.pinned=Date.now(); else delete c.pinned;
+  c.updatedAt=Date.now(); persist();
+}
+// the search box above the groups: a card shows when its text has the words, a group when its name does
+function ideaMatches(c,g){
+  const q=ideaUI.q; if(!q)return true;
+  return (g.name||(g.id?'':'Unsorted')).toLowerCase().indexOf(q)>=0||ideaFullText(c).toLowerCase().indexOf(q)>=0;
 }
 function ideaTomb(id){ state.ideas.tombstones.push({id:id,deletedAt:Date.now()}); }
 function ideaRemoveCard(id){
@@ -130,9 +142,12 @@ function drawIdeas(){
   ideaUI.pending=false;
   const wrap=$('ideaGroups'); wrap.textContent='';
   const ib=state.ideas.inbox;
-  const groups=ideaGroupsSorted();
-  let focusEl=null;
+  const groups=ideaGroupsSorted(), q=ideaUI.q;
+  let focusEl=null, shown=0;
   groups.forEach(function(g){
+    const cards=ideaCardsIn(g.id).filter(function(c){ return ideaMatches(c,g); });
+    if(q&&!cards.length)return; // searching: groups with nothing that matches stay out of the way
+    shown++;
     const sec=el('section','idea-group'); sec.dataset.group=g.id; sec.dataset.color=g.color;
     if(g.color!=='plain')sec.style.setProperty('--g','var(--idea-'+g.color+')');
     const head=el('div','idea-ghead');
@@ -147,7 +162,6 @@ function drawIdeas(){
     });
     head.appendChild(grip);
     const name=el('input','idea-gname'); name.value=g.name; name.placeholder='Name this group'; name.setAttribute('aria-label','Group name');
-    const cards=ideaCardsIn(g.id);
     if(!g.id)name.placeholder='Unsorted';
     {
       name.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key==='Escape')name.blur(); });
@@ -198,6 +212,7 @@ function drawIdeas(){
           if(ideaUI.caret==='notes'&&!c.sections){ ta.value+='\n'; } // "+ Add details": start on the line under the title
           ideaUI.caret=null;
         } else {
+          if(c.pinned)b.appendChild(el('div','idea-pinned mono','Pinned'));
           const tt=el('div','idea-title',c.text); tt.title='Click to edit';
           b.appendChild(tt);
           const secs=el('div','idea-secs');
@@ -221,6 +236,14 @@ function drawIdeas(){
         const foot=el('div','idea-edit-foot idea-ofoot');
         foot.appendChild(el('span','mono',ideaUI.editing===c.id?'esc to save':''));
         const btns=el('span');
+        const pin=el('button','x',c.pinned?'Unpin':'Pin'); pin.title=c.pinned?'Let it sit with the others again':'Keep it at the top of its group'; pin.setAttribute('aria-label',c.pinned?'Unpin note':'Pin note');
+        pin.addEventListener('mousedown',function(e){ e.preventDefault(); });
+        pin.addEventListener('click',function(){
+          const a=document.activeElement; if(a&&b.contains(a))a.blur(); // saves what's being typed first
+          const cc=ideaCard(c.id); if(cc)ideaSetPinned(cc,!cc.pinned);
+          drawIdeas();
+        });
+        btns.appendChild(pin);
         const sure=ideaUI.confirmDel===c.id;
         const del=el('button','x'+(sure?' sure':''),sure?'Tap again to delete':'Delete'); del.setAttribute('aria-label','Delete note');
         del.addEventListener('mousedown',function(e){ e.preventDefault(); });
@@ -231,6 +254,7 @@ function drawIdeas(){
         btns.appendChild(del); foot.appendChild(btns);
         b.appendChild(foot);
       } else {
+        if(c.pinned)b.appendChild(el('div','idea-pinned mono','Pinned'));
         b.appendChild(el('div','clip',c.text));
         b.title=c.sections?'Click to open its notes · double-click to edit':'Click to open · double-click to edit';
         if(c.sections)b.classList.add('hasdesc');
@@ -248,7 +272,7 @@ function drawIdeas(){
       ta.addEventListener('blur',function(){ if(done)return; done=true; ideaUI.adding=null; save(); drawIdeas(); });
       const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','esc to save'));
       b.appendChild(ta); b.appendChild(foot); flow.appendChild(b); focusEl=ta;
-    } else {
+    } else if(!q){ // while searching the board is read-only: a new note would vanish into the filter
       const add=el('button','idea-addb','+ Add a note'); add.setAttribute('aria-label','Add a note to this group');
       add.addEventListener('click',function(){ ideaUI.editing=null; ideaUI.adding=g.id; drawIdeas(); });
       flow.appendChild(add);
@@ -259,6 +283,7 @@ function drawIdeas(){
     const sz=el('div','idea-gsize'); sz.title='Drag to make the boxes wider or narrower'; sec.appendChild(sz);
     wrap.appendChild(sec);
   });
+  if(q&&!shown)wrap.appendChild(el('div','idea-empty','No notes with "'+$('ideaSearch').value.trim()+'".'));
   if(focusEl&&!$('ideasView').hidden){ focusEl.focus(); focusEl.setSelectionRange(focusEl.value.length,focusEl.value.length); focusEl.fit(); }
 }
 // a text box that grows with what you type
@@ -405,10 +430,23 @@ function ideaNote(text){
     const c=ideaCard(d.id);
     if(drop&&c&&d.ph&&d.ph.parentNode){
       const flow=d.ph.parentNode, gid=flow.dataset.group;
-      const prev=d.ph.previousElementSibling, next=d.ph.nextElementSibling;
-      const po=prev&&prev.dataset.id&&ideaCard(prev.dataset.id), no=next&&next.dataset.id&&ideaCard(next.dataset.id);
-      const order=po&&no?(po.order+no.order)/2:po?po.order+1:no?no.order-1:0;
-      if(gid!==ideaGroupOf(c)||order!==c.order){ c.group=gid; c.order=order; c.updatedAt=Date.now(); persist(); }
+      // the other cards of that group, split at the gap: the ones above it and the ones below
+      const toCard=function(n){ return ideaCard(n.dataset.id); };
+      const nodes=cardsIn(flow).filter(function(n){ return n.dataset.id!==c.id&&toCard(n); });
+      const above=nodes.filter(function(n){ return n.compareDocumentPosition(d.ph)&Node.DOCUMENT_POSITION_FOLLOWING; }).map(toCard);
+      const below=nodes.slice(above.length).map(toCard);
+      // the pinned cards sit at the top of the group: dropped under an unpinned one it comes off the top, dropped above a pinned one it joins them
+      const po=above[above.length-1], no=below[0];
+      let pinned=!!c.pinned;
+      if(pinned&&po&&!po.pinned)pinned=false; else if(!pinned&&no&&no.pinned)pinned=true;
+      // its place among the cards that share its pinned state (the sort keeps the two runs apart)
+      const same=function(x){ return !!x.pinned===pinned; };
+      const p2=above.filter(same).pop(), n2=below.filter(same)[0];
+      const order=p2&&n2?(p2.order+n2.order)/2:p2?p2.order+1:n2?n2.order-1:0;
+      if(gid!==ideaGroupOf(c)||order!==c.order||pinned!==!!c.pinned){
+        c.group=gid; c.order=order; if(pinned&&!c.pinned)c.pinned=Date.now(); else if(!pinned)delete c.pinned;
+        c.updatedAt=Date.now(); persist();
+      }
     }
     ideaUI.drag=null;
     drawIdeas();
@@ -465,6 +503,14 @@ function ideaNote(text){
   });
   wrap.addEventListener('contextmenu',function(e){ if(e.target.closest('.idea-card')&&!e.target.closest('.idea-secs'))e.preventDefault(); }); // long-press menu on phones (but sections can still be highlighted)
   $('ideaAddGroup').addEventListener('click',ideaAddGroup);
+  // the search box: typing narrows the board as you go; esc clears it
+  const sb=$('ideaSearch');
+  sb.addEventListener('input',function(){ ideaUI.q=sb.value.trim().toLowerCase(); drawIdeas(); });
+  sb.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){ e.preventDefault(); sb.value=''; ideaUI.q=''; drawIdeas(); sb.blur(); }
+    if(e.key==='Enter')sb.blur();
+  });
+  sb.addEventListener('blur',function(){ if(ideaUI.pending)drawIdeas(); });
 })();
 
 /* box size (desktop): drag the right edge of any group to make every box wider or narrower; the grid

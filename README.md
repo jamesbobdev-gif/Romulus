@@ -136,7 +136,7 @@ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin 
 - ↑/↓ select · Space completes · Enter expands · Delete removes · Esc deselects
 - Drag the dots on a row's left edge to reorder; click a tag chip to filter
 - Hover a row for edit / expand / delete; overdue and due-today rows get a snooze button
-- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
+- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**; search box above the groups (Ctrl+F); **Pin** on an open note keeps it at the top of its group (drag it above the pinned ones or below them to pin or unpin)
 
 ## License
 
