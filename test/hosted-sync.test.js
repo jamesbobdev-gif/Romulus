@@ -120,5 +120,5 @@ test('the plan is offered as a family plan, with a free trial only when the link
   assert.strictEqual(trial.button, 'Try the family plan free for 14 days');
   assert.match(trial.pitch, /Free for 14 days, then \$5 a month\. Cancel before the trial ends and you pay nothing\.$/);
   assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).button, plain.button);
-  assert.strictEqual(h.hostedPlanPitch(null).year, 'or $50 a year');
+  assert.strictEqual(h.hostedPlanPitch(null).year, 'Pay yearly: 2 months free');
 });
