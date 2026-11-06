@@ -452,7 +452,7 @@ async function syncOnce(){
         if(r.changedLocal)anyLocal=true;
         if(!(r.changedRemote||(!row.doc&&(state.ideas.cards.length||state.ideas.groups.length))))break;
         if(await syncPushCas(ip,ideasDoc(),row.updatedAt))break;
-        if(attempt===3)throw new Error('the ideas board kept changing; will retry');
+        if(attempt===3)throw new Error('the notes board kept changing; will retry');
       }
     }catch(e){
       if(!firstErr)firstErr=e;

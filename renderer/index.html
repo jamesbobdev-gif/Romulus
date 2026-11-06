@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Romulus</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -340,13 +339,17 @@
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
-    <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Ideas</button>
+    <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
     <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
   </div>
 
   <section class="composer" aria-label="Add a task">
-    <input id="newTitle" placeholder="Add a task…" autocomplete="off">
+    <!-- one line until it's in use; the mic stays on it, the date, time and tag row shows once you're in the box (styles.css .composer-meta) -->
+    <div class="composer-line">
+      <input id="newTitle" placeholder="Add a task…" autocomplete="off">
+      <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
+    </div>
     <div class="composer-meta">
       <input type="date" id="newDue" class="sm" aria-label="Due date">
       <input type="time" id="newTime" class="sm" aria-label="Due time">
@@ -355,14 +358,13 @@
       <button id="legionBtn" class="att-btn legion-btn" type="button" aria-pressed="false" title="Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report (#legion)" hidden>Legion</button>
       <button id="newAttBtn" class="att-btn" type="button" title="Add photos — or just paste a screenshot" hidden>+ Photo</button>
       <input id="newAttFile" type="file" accept="image/*" multiple hidden>
-      <button id="micBtn" class="att-btn mic-btn" type="button" title="Say a task. Mention a day and it gets that date." hidden></button>
       <button id="addBtn" class="btn-accent">Add</button>
     </div>
     <div id="newAtts" class="att-thumbs" style="padding:2px 8px 6px" hidden></div>
   </section>
   <!-- nothing syncing yet: recommend it, on every tab, until it is set up or put off (welcome.js drawSyncNudge) -->
   <div id="syncNudge" class="nudge sync-nudge" hidden><span id="syncNudgeText"></span> <button id="syncNudgeBtn" class="btn-accent">Set up sync</button><button id="syncNudgeLater" class="ghost mono">Not now</button></div>
-  <!-- outside the add box, so a spoken command's result shows on Ideas (no add box there) too -->
+  <!-- outside the add box, so a spoken command's result shows on Notes (no add box there) too -->
   <div id="voiceToast" class="voice-toast" hidden></div>
   <!-- "Hey Romulus": a speech bubble at the bottom, so you can see it heard you (task-actions.js wakeBubble) -->
   <div id="wakeBubble" class="wake-bubble" role="status" aria-live="polite" hidden>
@@ -467,7 +469,7 @@
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
   </div>
 
-  <!-- Ideas (hidden by default) -->
+  <!-- Notes (hidden by default; internal name "ideas") -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>

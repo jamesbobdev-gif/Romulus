@@ -144,17 +144,17 @@ function parseSpokenTask(text,now){
   return {title:title, due:due?formatDate(due):null, dueTime:due&&time?time:null};
 }
 /* Spoken commands ("Hey Romulus …"): where the words go, before parseSpokenTask reads dates out of them.
-     "go to ideas" / "open the work tab"                → {kind:'tab'}
-     "add monkey tinder to app ideas" / "new idea …"    → {kind:'idea', group}
+     "go to notes" / "open the work tab"                → {kind:'tab'}
+     "add monkey tinder to app notes" / "new note …"    → {kind:'idea', group}
      "add finish the report to work"                    → {kind:'task', tab:'work'}
      "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
-const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas'};
-const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Ideas'};
+const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
+const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Notes'};
 function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
-// "app" / "app ideas" / "the app ideas group" → that idea group's id ('' = Unsorted); undefined = no such group
+// "app" / "app notes" / "the app notes group" → that note group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
-  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?)\b/g,' ').replace(/\s+/g,' ').trim(); };
+  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?|notes?)\b/g,' ').replace(/\s+/g,' ').trim(); };
   const d=bare(dest); if(!d)return undefined;
   const all=[{id:'',name:state.ideas.inbox.name||'Unsorted'}].concat(state.ideas.groups);
   const hit=all.find(function(g){ return bare(g.name)===d; });
@@ -175,8 +175,8 @@ function parseVoiceCommand(said,curTab,smart){
   let tab=null, m;
   // "we're out of eggs" / "add eggs to groceries": onto his grocery list for the next order (grocery-list.js)
   if(outOfNames(s)&&groceryTask())return {kind:'grocery',text:s};
-  // "go to the ideas tab (and …)" — the tab first, then whatever follows
-  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
+  // "go to the notes tab (and …)" — the tab first, then whatever follows
+  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|ideas?|notes?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
   if(m){ tab=VOICE_TABS[m[1].toLowerCase()]; s=m[2].trim(); if(!s)return {kind:'tab',tab:tab}; }
   // Claude / the agent
   m=/^(?:send|give|hand|pass)\s+(?:this\s+|it\s+)?(?:over\s+)?(?:to\s+)?(?:the\s+)?(?:agent|claude)\s*[,:]?\s*(?:to\s+)?(.+)$/i.exec(s)
@@ -184,10 +184,10 @@ function parseVoiceCommand(said,curTab,smart){
   if(m)return {kind:'task',tab:'agent',text:m[1]};
   m=/^(?:send|give|hand|pass)\s+(.+?)\s+(?:over\s+)?to\s+(?:the\s+)?(?:agent|claude)$/i.exec(s);
   if(m)return {kind:'task',tab:'agent',text:m[1]};
-  // "new idea …" / "add an idea …" / "… as an idea"
-  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?idea|idea)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
+  // "new idea …" / "add an idea …" / "… as an idea"; also "new note …" / "… as a note" (a bare "note X" stays a task, see VERB below)
+  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?idea|idea|new\s+note)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
-  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?idea$/i.exec(s);
+  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?(?:idea|note)$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
   // "add X to Y": try the last "to/in/on/under" first, so "add go to the store to work" files "go to the store" under work
   // ("right"/"rite": how the recognizer often hears "write")
@@ -330,7 +330,7 @@ async function voiceAdd(smart){
       ti.value=before;
       const text=cmd.text.trim().replace(/^./,function(c){ return c.toUpperCase(); });
       ideaAddCard(cmd.group,text); switchTab('ideas');
-      voiceToast('Added \u201C'+text+'\u201D to Ideas \u2192 '+(ideaGroup(cmd.group).name||'Unsorted'));
+      voiceToast('Added \u201C'+text+'\u201D to Notes \u2192 '+(ideaGroup(cmd.group).name||'Unsorted'));
       return;
     }
     // a task: go to its tab so addTask files it there (and you can see it land)

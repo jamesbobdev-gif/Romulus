@@ -457,7 +457,7 @@ async function syncRotateKey(opts){
   opts=opts&&opts.confirmed?opts:{}; // the button's click hands in an event
   const c=syncState.cfg, p=c&&c.personal;
   if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
-  const moving=['Personal (with Ideas and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
+  const moving=['Personal (with Notes and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
   if(!opts.confirmed&&!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked.\n\nThe devices listed under Devices move to the new key by themselves the next time they sync. A device not listed there (an older version) stops syncing until you pair it again. Lists with a key of their own are left alone.'))return;
   const newKey=newSyncKey();
   const rotateBtn=$('syncRotateBtn'); if(rotateBtn)rotateBtn.disabled=true;

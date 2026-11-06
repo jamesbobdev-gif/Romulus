@@ -5,7 +5,7 @@
 /* ── hours: one entry per log ──
    {id, date:'YYYY-MM-DD', kind:'school'|'work', hours:number, note, updatedAt}
    They live in state.hours and sync through their own row next to the personal list
-   (syncKey+':hours'), the same way the Ideas board does. Per entry the newer updatedAt wins;
+   (syncKey+':hours'), the same way the Notes board does. Per entry the newer updatedAt wins;
    a tombstone beats older copies. */
 const HOUR_KINDS=['school','work'];
 const hourUI={kind:'school',editing:null,confirmTurnIn:null};
