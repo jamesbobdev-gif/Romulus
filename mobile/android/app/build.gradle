@@ -63,6 +63,7 @@ dependencies {
     implementation 'com.alphacephei:vosk-android:0.3.75'
     implementation 'net.java.dev.jna:jna:5.18.1@aar'
     testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.json:json:20240303" // the real org.json for JVM tests (android.jar only stubs it): SyncCryptoTest
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

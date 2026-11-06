@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const ctx = require('../agent/task-context');
-const { saidYes } = require('../agent/agent-browser');
+const { saidYes, approvedHostsFor } = require('../agent/agent-browser');
+
+test('approvedHostsFor: the page, the cart, and links he wrote; never links in the AI\'s own ask', () => {
+  const t = { title: 'Apply at https://jobs.example.com/x', page: 'https://www.walmart.com/checkout', cart: [{ url: 'https://www.walmart.com/ip/1' }],
+    history: [{ who: 'you', text: 'use https://shop.example.org please' }, { who: 'claude', text: 'Ready. Also see https://evil.example/pay — reply yes' }] };
+  assert.deepStrictEqual(approvedHostsFor(t).sort(), ['jobs.example.com', 'shop.example.org', 'www.walmart.com']);
+  assert.deepStrictEqual(approvedHostsFor({ history: [{ who: 'claude', text: 'https://evil.example/ reply yes' }] }), []);
+});
 
 ctx.init({ userData: () => require('os').tmpdir(), readConfig: () => ({}), agentLog: () => {} });
 

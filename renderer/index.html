@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<!-- Only the app's own scripts run here, and the page talks only to https sites (the sync project, pictures), the
+     agent browser's localhost socket (Watch) and the fonts. Text from the AI and from web pages is shown on this page,
+     so an injected <script> or a javascript: link must have nothing to run with. mobile/prepare-www.js drops this
+     line for the phone build (Capacitor's bridge is an inline script). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https: wss: ws://127.0.0.1:* http://127.0.0.1:* ws://localhost:* http://localhost:*; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Romulus</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
@@ -91,6 +96,17 @@
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
+      <div class="settings-sub" id="linkSection" hidden>
+        <h3 class="settings-subhead">Link wallet</h3>
+        <p class="settings-hint">For stores where you have no card saved. The Agent asks Link (Stripe’s wallet) for a one-time card for that checkout, you approve the store and the exact amount in the Link app, and the Agent’s browser types the card in. The AI never sees the number, and the card is dead after that one purchase. Link pays for US and Canadian accounts.</p>
+        <div class="settings-row">
+          <button id="linkConnectBtn" class="ghost mono">Connect Link</button>
+          <button id="linkDisconnectBtn" class="ghost mono danger" hidden>Disconnect</button>
+          <span id="linkStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+        <p id="linkCode" class="settings-hint" style="margin-top:8px" hidden></p>
+        <label class="settings-row adv" style="gap:6px;cursor:pointer"><input type="checkbox" id="linkTest"> <span class="settings-hint" style="margin:0">Test mode: fake cards, nothing is charged (for trying it out)</span></label>
+      </div>
       <div class="settings-sub adv" id="standingSection" hidden>
         <h3 class="settings-subhead">Doesn’t ask again</h3>
         <p class="settings-hint">Steps you’ve said yes to once and for all, so the Agent stops asking on every task: logging in to a site, building a cart, opening a seat map. Buying, paying, sending, submitting and booking are never on this list: those always wait for your yes.</p>
@@ -122,17 +138,17 @@
     </details>
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
       <summary class="settings-label">About you</summary>
-      <div class="settings-sub" id="prefsSection" hidden>
-        <h3 class="settings-subhead">What the Agent knows about you</h3>
+      <details class="settings-sub settings-collapse" id="prefsSection" hidden>
+        <summary class="settings-subhead">What the Agent knows about you</summary>
         <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
         <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “Alex”&#10;- Morning appointments work best"></textarea>
         <div class="settings-row">
           <button id="prefsSaveBtn" class="btn-accent">Save</button>
           <span id="prefsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-      <div class="settings-sub" id="lockedSection" hidden>
-        <h3 class="settings-subhead">Locked — only the local model sees this</h3>
+      </details>
+      <details class="settings-sub settings-collapse" id="lockedSection" hidden>
+        <summary class="settings-subhead">Locked — only the local model sees this</summary>
         <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. The Agent’s cloud AIs never read it. No passwords, card numbers or SSN.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
@@ -140,7 +156,7 @@
           <button id="lockedFormBtn" class="ghost mono" title="Adds the questions forms keep asking, for you to answer once">+ Form answers</button>
           <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
+      </details>
       <div class="settings-sub" id="formFilesSection" hidden>
         <h3 class="settings-subhead">Files for forms</h3>
         <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, the Agent or the local model attaches it; nothing else on this computer can be uploaded.</p>
@@ -344,7 +360,7 @@
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
       <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
-        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS">Custom</button>
+        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS" hidden>Custom</button>
       </div>
       <details class="settings-sub">
       <summary class="settings-label">Custom CSS (advanced)</summary>
@@ -429,6 +445,13 @@
         <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
         <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
       </div>
+      <ul class="welcome-tips">
+        <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
+        <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
+        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Notes</b> and <b>Hours</b> are extra views of the same tasks.</li>
+        <li id="welcomeTrayTip">Closing the window hides Romulus in the tray. On Windows it sits under the ^ by the clock until you drag it onto the taskbar; right-click the icon to quit.</li>
+      </ul>
+      <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
     </div>
     <!-- bringing tasks over from Todoist, TickTick, Google Tasks, a spreadsheet… (task-import.js) -->
     <div id="importCard" class="connect-card welcome import-card" hidden>
@@ -513,9 +536,10 @@
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
   </div>
 
-  <!-- Notes (hidden by default; internal name "ideas") -->
+  <!-- Notes (hidden by default; the "ideas" ids stay so synced data keeps its key) -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
+      <input id="ideaSearch" class="search idea-search" type="search" placeholder="Search notes…" aria-label="Search notes" autocomplete="off">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
@@ -533,6 +557,7 @@
 <script src="js/no-emoji.js"></script>
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
+<script src="js/school-overdue.js"></script>
 <script src="js/quick-add.js"></script>
 <script src="js/order-match.js"></script>
 <script src="js/task-actions.js"></script>

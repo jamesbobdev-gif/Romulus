@@ -191,7 +191,7 @@ function localApproved(t) {
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude' && h.lane === 'local').slice(-1)[0] || {}).text || '';
   // Holo4 writes the ask its own ways: Reply **yes**, Reply "yes", **Reply “yes” to submit it.**
-  return helpers.isYes(lastYou) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
+  return helpers.isYesTo(lastYou, asked) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
 }
 const LOCAL_BROWSER_RULES = `
 
@@ -425,7 +425,7 @@ async function localFailed(c, t, msg) {
     : /timed? ?out/i.test(msg)
     ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
     : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
-  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) { // a legion never goes to the cloud whole
+  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t) && !coach.isCoach(t)) { // a legion or a coach task never goes to the cloud whole
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
     return;
   }
@@ -568,10 +568,16 @@ async function runLocalTask(c, t) {
   const dossier = {};
   if (!money && await ensureQwenBrowser()) {
     sites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
-    const links = (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
+    // the sites the run may open: links he wrote (title, notes, replies) and the options he can pick from, not links an
+    // AI's earlier note mentioned, which a page could have put there to send the local model (and the Locked profile) its way
+    const links = (JSON.stringify([t.title, t.notes, t.reply, (Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'you'), t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
-    fs.writeFileSync(lockFile, JSON.stringify({ allow, approved: localApproved(t) }));
+    // a legion's report is compiled from what other AIs found on the web: its "reply yes" counts only once its own browser
+    // has filled a page and left him the words to read (t.draft), never on the strength of the report alone
+    const approved = localApproved(t) && (!legion.isLegion(t) || !!(t.draft && t.draft.text));
+    lockAllow = allow;
+    fs.writeFileSync(lockFile, JSON.stringify({ allow, approved }));
     browser = await startBrowserTools(lockFile, t.title, await startTab(t.id)).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
@@ -594,6 +600,7 @@ async function runLocalTask(c, t) {
   const schools = courseSites.schoolHosts(classes, prefs); // his real Blackboard / D2L, for when it strays onto the companies' sites
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
+  let lockAllow = []; // what the browser lock let this run open
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
@@ -603,7 +610,7 @@ async function runLocalTask(c, t) {
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
     '\n\n## His preferences\n' + (prefs.trim() || '(none yet)') + require('./standing').show(standingText) +
-    '\n\n## Locked profile (private: use for his tasks, never quote in the note)\n' + (locked.trim() || '(empty)') +
+    '\n\n## Locked profile (private: use for his tasks, never quote in the note)\n' + (coaching ? '(withheld: a coach run only reads)' : (locked.trim() || '(empty)')) +
     '\n\nToday is ' + new Date().toDateString() + '.';
   // its class, and where that class is, said outright: with no course in the task, it once took the app's
   // "From School → Holo4-35B-A3B" line for one and searched D2L for a course called Holo4
@@ -641,11 +648,11 @@ async function runLocalTask(c, t) {
   let lookedFirst = false; // sent once to the class site before asking him for what's there (agent/course-sites.js lookFirst)
   let askedMissing = false; // a coach task sent back once to look for the instructions, rubric, format or due date it hasn't noted
   let textCalls = 0; // tool calls it wrote as text (the run log counts them)
+  let stepsUsed = 0; // steps the loop ran (the run log records it after the try below, so it is declared out here)
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
   show('Reading the task…\n', true);
   try {
-  let stepsUsed = 0;
   for (let step = 0; step < maxSteps && !final; step++) {
     stepsUsed = step + 1;
     if (activity && activity.id === t.id) Object.assign(activity, { step: stepsUsed, of: maxSteps, stepAt: Date.now(), on: 'thinking' });
@@ -733,6 +740,14 @@ async function runLocalTask(c, t) {
         continue;
       }
       if (key) madeCalls.add(key);
+      // the Locked profile and his private words stay here: not in a search, not in an address the page asked it to open
+      const outbound = name === 'web_search' ? args.query : name === 'read_page' ? args.url : name === 'browser_navigate' ? args.url : null;
+      const leak = outbound ? helpers.leaksPrivate(String(outbound), { privateWords: routing.getRouting().private, locked }) : null;
+      if (leak) {
+        messages.push({ role: 'tool', tool_name: name, content: 'Not sent: ' + leak + '. Leave his private details out of searches and addresses.' });
+        show('\nKept private: ' + name + '\n', true);
+        continue;
+      }
       try {
         if (name === 'web_search') {
           show('\nSearching: ' + args.query + '\n', true); result = await localWebSearch(args.query);
@@ -749,7 +764,7 @@ async function runLocalTask(c, t) {
         else if (name === 'search_my_data') {
           show('\nSearching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
-          result = searchMyData(args.query, { prefs, locked, cal: myCal || cal });
+          result = searchMyData(args.query, { prefs, locked: coaching ? '' : locked, cal: myCal || cal });
         } else if (canAsk && name === 'ask_helpers') {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
           const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) ||
@@ -912,7 +927,9 @@ async function runLocalTask(c, t) {
   // how it went, for the run log on the worker (agent/run-log.js)
   if (worker.isWorker(readConfig())) runLog.record(runLogFile(), runLog.entry({ t, final, stuck, steps: stepsUsed, ms: Date.now() - started, textCalls, lookedFirst, pastDue: !!late }));
   // the sites it reached are remembered as allowed; the ones it was refused become a to-do on his Human list (agent/local-sites.js)
-  const reached = money ? [] : localSites.newHosts([...visited], sites);
+  // only hosts the lock listed (his links, his sites): a page's one-hop links were opened for this task, not adopted
+  const lockHosts = lockAllow.map(localSites.cleanSite).filter(Boolean);
+  const reached = money ? [] : localSites.newHosts([...visited].filter((h) => localSites.covered(localSites.cleanSite(h), lockHosts)), sites);
   if (reached.length) { sendToRenderer('local:sites-seen', { hosts: reached }); agentLog('local: remembering ' + reached.join(', ') + ' as allowed'); }
   const want = money ? [] : [...wanted].filter((h) => !localSites.covered(h, sites.map(localSites.cleanSite))).slice(0, 3);
   if (want.length) { sendToRenderer('local:site-ask', { hosts: want, task: t.id, title: t.title }); agentLog('local: wanted ' + want.join(', ') + ': asking on his Human list'); }

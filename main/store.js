@@ -19,7 +19,21 @@ function configFile() {
 const SECRET_KEYS = new Set(['access_token', 'refresh_token', 'id_token', 'clientSecret', 'appPassword', 'key', 'syncKey',
   'geminiKey', 'openaiKey', 'anthropicKey', 'openrouterKey', 'xaiKey', 'groqKey', 'cloudflareKey', 'nvidiaKey', 'buyEmailUrl', 'calendarFeeds']);
 const ENC = 'enc:v1:';
-function canEncrypt() { try { return io.safeStorage.isEncryptionAvailable(); } catch (e) { return false; } }
+/* Linux with no keyring: Chromium falls back to its "basic_text" backend, which says encryption is available but uses a
+   fixed key, so a sealed value would only look sealed. Treat that as no encryption (the file stays plain, as SECURITY.md
+   says for a headless hub) and say so once in the log. */
+let saidPlain = false;
+function canEncrypt() {
+  try {
+    if (!io.safeStorage.isEncryptionAvailable()) return false;
+    const backend = typeof io.safeStorage.getSelectedStorageBackend === 'function' ? io.safeStorage.getSelectedStorageBackend() : '';
+    if (backend === 'basic_text') {
+      if (!saidPlain) { saidPlain = true; agentLog('config: no OS keyring on this computer, so keys and tokens in config.json are kept as plain text (readable by this user only)'); }
+      return false;
+    }
+    return true;
+  } catch (e) { return false; }
+}
 function sealValue(v) {
   if (Array.isArray(v)) return v.map(sealValue);
   if (typeof v !== 'string' || !v || v.startsWith(ENC) || !canEncrypt()) return v;

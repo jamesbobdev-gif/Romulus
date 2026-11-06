@@ -21,7 +21,9 @@ match: \b(buy|order|purchase|shop|shopping|amazon|cheap(est)?|deal|price|gift|re
 - **Stores you order from yourself, after his yes:** Amazon, Walmart, Target, Best Buy, and Shopify
   stores that take Shop Pay (the app marks those cards "Buy this"). He pays with what's saved in his
   account there; you never enter payment details.
-- **The buy step, every other store:** you never buy. When only checkout is left, use `needs-you`, say
+- **The buy step, every other store, with his Link wallet** (the run says "His Link wallet" when it's
+  connected): you order there too, paying with a one-time card from Link. "Paying with Link" below says how.
+- **The buy step, every other store, no Link wallet:** you never buy. When only checkout is left, use `needs-you`, say
   "Ready to buy: tap <Store> ↗ and check out", and leave just the chosen item as the option. When he
   presses "Choose this" on a card, the app emails him the link.
 - **The buy step at a store you order from:** when he picks an item ("Buy this" on a card, or "buy
@@ -54,3 +56,29 @@ match: \b(buy|order|purchase|shop|shopping|amazon|cheap(est)?|deal|price|gift|re
   - Amazon Fresh and Whole Foods groceries follow the groceries skill instead.
 - **Already have it?** If his photos or conversation show what he owns, match it (compatible size,
   same brand of refills and so on).
+
+## Paying with Link (a store where he has no saved card)
+
+The same steps as a store you order from, with these differences:
+1. Check out as a guest (or with his account there, if he has one). Shipping: his Link shipping address
+   from the run's "His Link wallet" line, unless his preferences give another; email and phone from his
+   preferences. Decline making an account, newsletters and add-ons; never tick "save this card".
+2. Go as far as the payment step and read the total with tax and shipping. Most stores show it before the
+   card goes in; if a store wants the card first, use the total shown so far and say so in the note.
+3. Stop: `needs-you`, with `cart` as usual, and the note: the store, arrival, the total, "Paid with a one-time
+   card from your Link wallet (you approve the amount in the Link app)", the address, then "Reply **yes** to
+   place this order."
+4. After his yes: back on the checkout tab, check the total is still what he saw, then call `link_pay_request`
+   (merchant_name, merchant_url = the checkout page, total exactly as shown, the items, subtotal, shipping
+   and tax when shown, one line of `why`). It answers **approved**, or **waiting** for his approval in Link.
+   Waiting: write one line for him ("Approve $X for <Store> in the Link app, or open <link>"), then call
+   `link_wait`, up to three times. Still waiting after that: `needs-you`, "Approve $X for <Store> in the Link
+   app (or open <link>), then reply **yes** to place the order." (the request keeps; the next run picks it up).
+5. Approved: take a snapshot of the payment form, then `link_enter_card` with the refs of the card number,
+   expiry (a text field; dropdowns you pick yourself from the expiry it told you) and CVC fields. The name on
+   the card and the billing address (it told you both) you fill yourself. Never type the number or CVC
+   yourself: the browser does, and you never see them.
+6. Check the page, then tap the order button (his yes unlocked it). Order number and arrival in the note,
+   `done`. Declined because the total grew (tax showed up after the card went in)? Call `link_pay_request`
+   again with the new total: he approves the new amount in Link, and the card already entered covers it.
+- Test mode (the run says so): the cards are fakes and nothing is charged. Say so in the note.

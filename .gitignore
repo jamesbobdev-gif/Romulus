@@ -45,3 +45,10 @@ oauth-clients.json
 *.keystore
 *.jks
 signing/
+
+# the Supabase CLI's link to the project (project ref, pooler address)
+supabase/.temp/
+
+# the demo recording (scripts/demo): the built page and its frames
+scripts/demo/build/
+scripts/demo/frames/

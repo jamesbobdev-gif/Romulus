@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const platform = require('./platform');
 const { findChrome, findNode } = platform;
-const { isYes } = require('./helpers');
+const { isYes, isYesTo } = require('./helpers');
 
 let ctx = null; // { userData, readConfig, agentLog }
 function init(c) { ctx = c; }
@@ -94,6 +94,9 @@ async function prepareAgentBrowser() {
   const guard = path.join(dir, 'web-guard.js');
   const guardSrc = fs.readFileSync(path.join(__dirname, 'web-guard.js'), 'utf8');
   try { if (fs.readFileSync(guard, 'utf8') !== guardSrc) fs.writeFileSync(guard, guardSrc); } catch (e) { fs.writeFileSync(guard, guardSrc); }
+  const link = path.join(dir, 'link-wallet.js'); // his Link wallet's side for the launcher (agent/link-wallet.js)
+  const linkSrc = fs.readFileSync(path.join(__dirname, 'link-wallet.js'), 'utf8');
+  try { if (fs.readFileSync(link, 'utf8') !== linkSrc) fs.writeFileSync(link, linkSrc); } catch (e) { fs.writeFileSync(link, linkSrc); }
   const cfgFile = path.join(dir, 'mcp.json');
   fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { browser: { command: node,
     args: [proxy, cli, chrome, path.join(dir, 'profile'), String(AGENT_BROWSER_PORT), JSON.stringify(chromeArgs(chrome))] } } }));
@@ -119,7 +122,8 @@ handle('agent:actions', () => readActions());
    approvedHosts: his yes was to an order or application on these sites, so the order button is unlocked
      there only (another site's "Place order" in the same run still waits)
    hosts: a shopping run is kept to these sites (and links shown on their pages): the stores and the task's own links
-   task: the task's title, for the actions log */
+   task: the task's title, for the actions log
+   link: his Link wallet for this run ({cli, auth, pending, test}, agent/link-wallet.js forRun): the launcher's Link tools */
 function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → this run's MCP config (startTab: see agent/task-tabs.js)
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
@@ -128,9 +132,11 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
   if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
+  if (opts.link && opts.link.cli) Object.assign(j.mcpServers.browser.env, { TASKS_LINK_CLI: opts.link.cli, TASKS_LINK_AUTH: opts.link.auth || '',
+    TASKS_LINK_TEST: opts.link.test ? '1' : '0', TASKS_LINK_PENDING: opts.link.pending || '' });
   // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
-  // never a yes (they only look) and never a file
-  if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1', TASKS_BROWSER_FILES: '[]' }) });
+  // never a yes (they only look), never a file, and no wallet
+  if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1', TASKS_BROWSER_FILES: '[]', TASKS_LINK_CLI: '' }) });
   const f = path.join(agentBrowserDir(), 'mcp-' + mode + '.json');
   fs.writeFileSync(f, JSON.stringify(j));
   return f;
@@ -139,23 +145,26 @@ const hookArg = (x) => '"' + String(x).replace(/\\/g, '/') + '"'; // forward sla
 function webGuardHooks() { // → the hook, for a run's --settings (agent/runner.js), or null
   const node = findNode();
   if (!node) return null;
-  return { PreToolUse: [{ matcher: 'WebFetch|WebSearch',
+  // Agent too: a helper run has its own tools, and the store checkers' browser connections, to carry mail off with
+  return { PreToolUse: [{ matcher: 'WebFetch|WebSearch|Agent',
     hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()), timeout: 15 }] }] };
 }
-// his latest reply is a yes to something Claude asked him to say yes to
+// his latest reply is a yes to something Claude asked him to say yes to (to a cancel ask, "yes, cancel it" too: helpers.isYesTo)
 function saidYes(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  return isYes(lastYou) && /reply\s*\**\s*yes/i.test(asked);
+  return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
 }
 const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
-// the sites his yes was about: where the run stopped to ask, the links in the ask, and the cart's or options' links.
-// Empty when none is known (then the yes unlocks the order button anywhere, as before).
+/* The sites his yes was about: where the run stopped to ask (t.page), the cart's or options' links, and links he
+   wrote himself (title, notes, replies). Not the links in the AI's ask: a page can put its own address into
+   that note, and his yes would then unlock the final step there too. Empty when none is known, and then the yes
+   unlocks nothing (browser-proxy.js buyRefusal): the run must stop on the page and ask again. */
 function approvedHostsFor(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
-  const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  const urls = [t.page].concat(asked.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
+  const his = [t.title, t.notes, t.reply].concat(hist.filter((h) => h && h.who === 'you').map((h) => h.text)).join('\n');
+  const urls = [t.page].concat(his.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
     (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url), (Array.isArray(t.options) ? t.options : []).map((o) => o && o.url));
   return [...new Set(urls.map(hostOf).filter(Boolean))];
 }
