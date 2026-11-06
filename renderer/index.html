@@ -244,6 +244,47 @@
         <p id="pairInfo" class="settings-hint" style="margin:4px 0 0"></p>
       </div>
       <span id="syncStatus" class="mono" style="display:block;font-size:11px;color:var(--muted)"></span>
+      <!-- the Romulus server new installs sync through, its space, and moving off it (hosted-sync.js) -->
+      <div id="hostedBox" hidden style="margin-top:14px">
+        <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
+        <!-- the $5 plan, offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
+        <div id="hostedPlan" hidden style="margin:0 0 10px">
+          <p class="settings-hint" style="margin:0 0 6px">The $5 plan keeps Romulus running and gives you 600 MB, 30 days of history to undo a bad day, your plan shared with up to 4 more people, and early access to new versions.</p>
+          <div class="settings-row">
+            <button id="hostedPayBtn" class="btn-accent" hidden>Support Romulus: $5 a month</button>
+            <button id="hostedPayYearBtn" class="ghost mono" hidden>$50 a year</button>
+            <button id="hostedJoinBtn" class="ghost mono">I have a family code</button>
+          </div>
+        </div>
+        <div id="hostedFamily" hidden style="margin:0 0 10px">
+          <div class="settings-label" style="margin-bottom:4px">Family</div>
+          <p id="hostedFamilyInfo" class="settings-hint" style="margin:0 0 6px"></p>
+          <div id="hostedFamilyList"></div>
+          <div class="settings-row">
+            <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
+            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family plan</button>
+          </div>
+        </div>
+        <div id="hostedHistory" hidden style="margin:0 0 10px">
+          <div class="settings-label" style="margin-bottom:4px">History</div>
+          <p class="settings-hint" style="margin:0 0 6px">Your lists as they were at the end of a day, for the last 30 days. Restoring brings back what was on them that day on every device; anything added since is removed.</p>
+          <div class="settings-row" style="align-items:center">
+            <select id="hostedHistoryDay" class="settings-inp" style="width:auto;margin:0"></select>
+            <button id="hostedRestoreBtn" class="ghost mono">Restore</button>
+          </div>
+        </div>
+        <div id="hostedEarlyRow" hidden style="margin:0 0 10px">
+          <label class="settings-hint" style="display:flex;gap:8px;align-items:center;margin:0">
+            <input type="checkbox" id="hostedEarly"> Early access: get new versions of the app before everyone else (they may have rough edges)
+          </label>
+        </div>
+        <p id="hostedSupporters" class="settings-hint" hidden style="margin:0 0 10px"></p>
+        <div class="settings-row">
+          <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
+          <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
+          <button id="hostedDeleteBtn" class="ghost mono" hidden>Delete my synced data</button>
+        </div>
+      </div>
       <!-- every device on these lists, and taking one off (devices.js) -->
       <div id="devicesBox" hidden style="margin-top:14px">
         <div class="settings-label" style="margin-bottom:4px">Devices</div>
@@ -257,15 +298,16 @@
         For your first device, or your own <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
       <div id="syncFirstSteps" class="settings-hint" hidden>
-        <p style="margin:0 0 6px"><b>Nothing syncs yet, so this is your first device.</b> Your lists sync through a free Supabase project of your own. It takes about ten minutes, once:</p>
+        <p style="margin:0 0 6px"><b>A Supabase project of your own.</b> Its free plan holds 500 MB; Pro is $25 a month. It takes about ten minutes, once:</p>
         <ol style="margin:0 0 8px;padding-left:20px">
           <li>Make a free account and a <b>New project</b> at Supabase. Any name and region will do.</li>
-          <li>In the project, open <b>SQL Editor</b>, paste all of <b>setup.sql</b> and press <b>Run</b>.</li>
+          <li>Press <b>Copy setup.sql</b> below. In the project, open <b>SQL Editor</b>, paste it and press <b>Run</b>.</li>
           <li>In <b>Project Settings → API</b>, copy the <b>Project URL</b> and the <b>publishable</b> key into the first two boxes below. Never use the secret key.</li>
           <li>Press <b>Save &amp; sync</b>. A sync key is made for you. Then press <b>Add a device</b> above for your phone.</li>
         </ol>
         <div class="settings-row">
           <button id="syncOpenSupabase" class="ghost mono">Open Supabase ↗</button>
+          <button id="syncCopySql" class="btn-accent">Copy setup.sql</button>
           <button id="syncOpenSql" class="ghost mono">Open setup.sql ↗</button>
         </div>
       </div>
@@ -545,6 +587,7 @@
 <script src="js/settings.js"></script>
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
+<script src="js/hosted-sync.js"></script>
 <script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
