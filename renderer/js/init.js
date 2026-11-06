@@ -73,6 +73,7 @@ store.load().then(async function(data){
   state.hours=normHours(data&&data.hours);
   rebuildSnap();
   if(spawnMissedRecurs())persist();
+  if(sweepSchool())persist(); // assignments two days past their deadline come off (school-overdue.js)
   render(); // list is the default active tab
   reviewBannerCheck(); // January and February: last year's review (year-review-view.js)
   holoBackToSchool(); // undo the School → Holo auto-move

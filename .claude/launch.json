@@ -59,6 +59,29 @@
       ],
       "port": 8771,
       "autoPort": false
+    },
+    {
+      "name": "ballot-match",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/chopin/code/ballot-match/server.js"
+      ],
+      "port": 8781
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8791",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "scripts/demo/build"
+      ],
+      "port": 8791,
+      "autoPort": false
     }
   ]
 }

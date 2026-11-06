@@ -14,6 +14,7 @@ function syncFillForm(){
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
+  const eb=$('syncV2Btn'); if(eb)eb.hidden=!(validProfile(p)&&!p.v2); // gone once the lists are encrypted
   if(typeof devicesDraw==='function')devicesDraw();
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
@@ -253,11 +254,61 @@ $('formFileAddBtn').addEventListener('click',async function(){
   setTimeout(function(){ $('formFilesStatus').textContent=''; },3000);
   formFilesLoad();
 });
+/* His Link wallet (Stripe's Link, desktop only: agent/link-wallet.js): connect by a device code he approves in the
+   Link app, watch that sign-in finish, disconnect, and test mode */
+if(window.desktop&&window.desktop.linkStatus){
+  $('linkSection').hidden=false;
+  let linkPoll=null, linkPolls=0;
+  const money=function(c){ return '$'+(Number(c)/100).toFixed(Number(c)%100?2:0); };
+  const stopPoll=function(){ if(linkPoll){ clearInterval(linkPoll); linkPoll=null; } };
+  const showCode=function(p){ // where he signs in, and the phrase the Link app asks for
+    const box=$('linkCode'); box.hidden=false; box.innerHTML='';
+    box.appendChild(document.createTextNode('Open '));
+    const a=el('a','',p.url.replace(/^https?:\/\//,'').split('?')[0]); a.href='#';
+    a.addEventListener('click',function(ev){ ev.preventDefault(); window.desktop.linkOpen(p.url); });
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(', sign in to Link and, when it asks, enter the phrase '));
+    box.appendChild(el('b','mono',p.phrase||''));
+    box.appendChild(document.createTextNode('. This updates by itself once it goes through.'));
+  };
+  const linkDraw=function(s){
+    $('linkConnectBtn').hidden=!!s.connected; $('linkDisconnectBtn').hidden=!s.connected;
+    $('linkConnectBtn').textContent=s.installed?'Connect Link':'Install and connect Link';
+    $('linkTest').checked=!!s.test;
+    const lim=s.limits&&s.limits.per_transaction&&s.limits.per_transaction.limit!=null?' · up to '+money(s.limits.per_transaction.limit)+' a purchase':'';
+    $('linkStatus').textContent=!s.node?'needs Node.js (see Setup)':s.connected?'connected'+(s.email?' as '+s.email:'')+lim+(s.test?' · test mode':''):s.pending?'waiting for your approval in Link…':'not connected';
+    if(s.connected){ $('linkCode').hidden=true; stopPoll(); }
+    else if(s.pending&&s.pending.url){ showCode(s.pending); startPoll(); }
+    else $('linkCode').hidden=true;
+  };
+  const startPoll=function(){ // a sign-in waits: ask every few seconds whether he has approved it
+    if(linkPoll)return; linkPolls=0;
+    linkPoll=setInterval(async function(){
+      if(++linkPolls>75){ stopPoll(); $('linkStatus').textContent='the sign-in timed out: press Connect again'; $('linkCode').hidden=true; return; }
+      try{ linkDraw(await window.desktop.linkStatus({poll:true})); }catch(e){}
+    },4000);
+  };
+  window.linkLoad=async function(){ try{ linkDraw(await window.desktop.linkStatus()); }catch(e){} };
+  $('linkConnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='getting Link ready…'; $('linkConnectBtn').disabled=true;
+    let r=null; try{ r=await window.desktop.linkConnect(); }catch(e){ r={ok:false,error:e.message}; }
+    $('linkConnectBtn').disabled=false;
+    if(!r||!r.ok){ $('linkStatus').textContent=(r&&r.error)||'could not start the sign-in'; return; }
+    $('linkStatus').textContent='waiting for your approval in Link…';
+    showCode(r); window.desktop.linkOpen(r.url); startPoll();
+  });
+  $('linkDisconnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='disconnecting…'; stopPoll();
+    try{ linkDraw(await window.desktop.linkDisconnect()); }catch(e){ $('linkStatus').textContent='could not disconnect'; }
+  });
+  $('linkTest').addEventListener('change',async function(){ try{ linkDraw(await window.desktop.linkSave({test:this.checked})); }catch(e){} });
+}
 let prefsLoadedAt; // updated_at of the version in the box: Save only replaces that version (undefined = never loaded)
 async function prefsLoad(){
   lockedLoad();
   routingLoad();
   formFilesLoad();
+  if(typeof linkLoad==='function')linkLoad();
   if(typeof standingLoad==='function')standingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
@@ -427,6 +478,7 @@ $('syncSaveBtn').addEventListener('click',function(){
   if(!SYNC_KEY_SHAPE.test(sk)){ setSyncStatus('a sync key starts with tk_ and has only letters, digits, - and _ (press Generate key)',true); return; }
   // the lists share the project; a key typed for one is its own, blank = made from the sync key
   const raw={personal:{url:url,key:key,syncKey:sk}};
+  const cur=syncState.cfg&&syncState.cfg.personal; if(cur&&cur.v2&&cur.syncKey===sk)raw.personal.v2=true; // the same key stays end-to-end encrypted
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
   for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
@@ -478,7 +530,7 @@ $('syncOffBtn').addEventListener('click',function(){
    sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
    back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
    Lists with a key of their own (not made from the sync key) are not touched. */
-const SYNC_SIDE_ROWS={personal:[':ideas',':hours'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone'],work:[],school:[]};
 const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
 function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
   const out=[];
@@ -606,20 +658,30 @@ async function syncUseOneKey(){
   if(btn)btn.disabled=false;
   startSyncLoop();
 }
-/* End-to-end encryption on (sync-crypto.js): every list and its side rows copied, sealed, under their lookup
-   ids, each read back; then this device switches; then the old rows get {moved:'v2'}, which tells a newer
-   device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
-   (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
+/* End-to-end encryption on (sync-crypto.js): every list and its side rows copied, sealed, under NEW keys'
+   lookup ids, each read back; then this device switches; then the old rows get {moved:'v2'}. The database
+   refuses plain writes onto a moved row (supabase/migrations/20261031_sync_moved_v2.sql), so an older build
+   can't put the lists back in the clear.
+   Why new keys: before this, the plain rows sat in the database under the sync key itself (the row id IS the
+   key), so the project, its logs and its backups already hold that key. The lookup id and the cipher key are
+   both made from the sync key alone, so sealing under the same key would keep nothing from whoever had that
+   access. The switch therefore rotates: a fresh sync key (and a fresh key for any list with one of its own),
+   never seen by the server, and the other devices are paired again with the new sync code. A device still on
+   the old key finds the marker, follows it under the old key's (now empty) sealed rows, and keeps its local copy
+   until it is paired again; it can't write a plain list back.
    Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
    (buy emails, school feeds, the work calendar) can't read sealed rows yet (docs/phone-only-plan.md). */
-const SYNC_MOVED={moved:'v2'};
-function syncV2Moves(c){
+const SYNC_MOVED={moved:'v2',rotated:true};
+/* The rows to copy: c the config as it is, newKey the new personal key, ownKeys {ws: newKey} for the lists
+   with a key of their own (made by the caller, so this can be tested). Derived lists follow the new personal key. */
+function syncV2Moves(c,newKey,ownKeys){
   const out=[];
   ['personal','work','agent','school'].forEach(function(ws){
     const prof=c[ws]; if(!validProfile(prof)||prof.v2)return;
+    const nk=ws==='personal'?newKey:(prof.derived?deriveSyncKey(newKey,ws):(ownKeys||{})[ws]);
+    if(!nk||nk===prof.syncKey)throw new Error('no new key for the '+ws+' list');
     [''].concat(SYNC_SIDE_ROWS[ws]).forEach(function(sfx){
-      const k={url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx};
-      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:prof.syncKey,from:Object.assign({v2:false},k),to:Object.assign({v2:true},k)});
+      out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx,v2:false},to:{url:prof.url,key:prof.key,syncKey:nk+sfx,v2:true}});
     });
   });
   return out;
@@ -629,22 +691,25 @@ async function syncMoveToV2(){
   if(!c||!validProfile(c.personal)){ setSyncStatus('save the sync settings first',true); return false; }
   if(!syncCryptoOk()){ setSyncStatus('this device can’t encrypt (no WebCrypto)',true); return false; }
   clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
-  setSyncStatus('encrypting your lists…');
+  setSyncStatus('encrypting your lists under new keys…');
   let ok=false;
   try{
     for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
     await syncNow(); // this device's latest edits reach the old rows first
     clearTimeout(syncState.pushTimer); liveStop();
-    const moves=syncV2Moves(c);
+    const newKey=newSyncKey(), ownKeys={};
+    syncOwnKeyLists(c).forEach(function(ws){ ownKeys[ws]=deriveSyncKey(newSyncKey(),ws); }); // its own fresh key, in the shape the list needs (tk_agent_…)
+    const moves=syncV2Moves(c,newKey,ownKeys);
     await syncCopyRows(moves);
-    const raw=Object.assign({},c,{personal:Object.assign({},c.personal,{v2:true})});
-    syncOwnKeyLists(c).forEach(function(ws){ raw[ws]=Object.assign({},c[ws],{v2:true}); });
+    const raw={personal:Object.assign({},c.personal,{syncKey:newKey,v2:true})};
+    syncOwnKeyLists(c).forEach(function(ws){ raw[ws]=Object.assign({},c[ws],{syncKey:ownKeys[ws],v2:true}); });
     syncState.cfg=normalizeSyncCfg(raw);
     await syncCfgPersist(syncState.cfg);
     syncState.docs={};
     let left=0;
     for(const m of moves){ try{ await syncPushDoc(m.from,SYNC_MOVED); }catch(e){ left++; } }
-    setSyncStatus('your lists are end-to-end encrypted'+(left?' ('+left+' old rows could not be cleared; try again later)':''));
+    syncFillForm();
+    setSyncStatus('your lists are end-to-end encrypted under a new sync key: pair your other devices again with Copy sync code'+(left?' ('+left+' old rows could not be cleared; try again later)':''));
     ok=true;
   }catch(e){
     setSyncStatus('stopped before switching: '+e.message+' (this device is unchanged)',true);
@@ -663,4 +728,14 @@ async function syncMoveToV2(){
   b.title='Make a new sync key and move every list over to it; the devices listed under Devices follow by themselves';
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',syncRotateKey);
+})();
+(function(){ // end-to-end encryption (syncMoveToV2): shows while the lists are still plain in the project
+  const b=document.createElement('button'); b.id='syncV2Btn'; b.className='ghost mono'; b.textContent='Encrypt my lists end to end'; b.hidden=true;
+  b.title='Re-upload every list encrypted on this device, so the sync project holds only ciphertext';
+  $('syncGenBtn').insertAdjacentElement('afterend',b);
+  b.addEventListener('click',async function(){
+    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under a NEW sync key and ids that give nothing away, and the old rows are replaced by a marker. The project already holds your current key (the plain rows were filed under it), so a new one is made that it has never seen. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nEvery other device (phone, mini PC, widgets) stops syncing until you pair it again: press Copy sync code here afterwards and paste it there. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
+    b.disabled=true;
+    try{ await syncMoveToV2(); }finally{ b.disabled=false; syncFillForm(); }
+  });
 })();

@@ -443,7 +443,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
-@media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}}
+@media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}
+  /* the scrollbar is hidden, so the bar fades at the right edge until it's scrolled to the end (wiring.js tabsEdge) */
+  .tabs.more-right{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}}
 @media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* a seventh tab (Finance) on a phone: the bar scrolls sideways instead of widening the page */
 
 /* ── ideas: note cards you sort into groups ── */
@@ -541,6 +543,7 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .cal-cell.today{border-color:#B9C2F2;box-shadow:0 0 0 1px #B9C2F2}
 .cal-num{font-family:var(--mono);font-size:10.5px;margin-bottom:4px;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%}
 .cal-cell.today .cal-num{background:var(--ink);color:var(--surface);font-weight:600;padding:0 3px}
+.cal-chip .cal-chip-time{color:var(--muted);font-family:var(--mono);font-size:10px}
 .cal-chip{font-size:11px;padding:2px 5px;border-radius:4px;margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;background:var(--chip);color:var(--ink);display:block;transition:opacity .12s}
 .cal-chip:hover{opacity:.75}
 .cal-chip.done{color:var(--muted);text-decoration:line-through}
@@ -889,6 +892,7 @@ textarea.ask-other{min-height:70px}
 .fin-hbar-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fin-hbar-track{height:12px}
 .fin-hbar-fill{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0}
+.fin-hbar.has-cancel{grid-template-columns:minmax(0,9em) 1fr auto auto} /* a cancel button after the amount */
 .fin-cols{display:flex;align-items:stretch;gap:6px;height:150px;border-bottom:1px solid var(--hairline);margin-bottom:20px}
 .fin-col{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;position:relative}
 .fin-col-plot{flex:1;width:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px}
@@ -1020,43 +1024,72 @@ textarea.ask-other{min-height:70px}
 @keyframes settingsFlash{0%,40%{box-shadow:0 0 0 3px var(--late)}100%{box-shadow:0 0 0 3px transparent}}
 .settings-flash{animation:settingsFlash 1.8s ease-out;border-radius:10px}
 
-/* ── Hours tab ── */
-.hours-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px}
-.hours-form .btn-accent{margin-left:auto}
+/* ── Hours tab: one card for the week (its total, a bar per day, the add line), then the week's entries ── */
+.hours-week{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px 10px}
+.hours-week-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.hours-week-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.hours-week-v{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:2px 0 3px}
+.hours-week-split{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.hours-legend{display:inline-flex;align-items:center;gap:5px}
+.hours-dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.hours-dot.work{background:var(--accent)}
+.hours-week-nav{display:flex;align-items:center;gap:2px;flex:none}
+/* a bar per day, Monday to Sunday; the pressed one is the day the add line logs to */
+.hours-bars{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:12px}
+.hours-day-btn{display:flex;flex-direction:column;align-items:center;gap:6px;border:0;background:none;padding:4px 2px;border-radius:8px;cursor:pointer;color:var(--muted);transition:background .12s}
+.hours-day-btn:hover{background:var(--chip)}
+.hours-day-btn.on{background:var(--chip);color:var(--ink)}
+.hours-day-btn.today .hours-day-k{color:var(--accent);font-weight:500}
+.hours-bar{width:100%;max-width:32px;height:44px;display:flex;flex-direction:column;justify-content:flex-end;border-bottom:1px solid var(--hairline)}
+.hours-stack{display:flex;flex-direction:column;min-height:3px;border-radius:3px 3px 0 0;overflow:hidden}
+.hours-seg{display:block;background:var(--faint)}
+.hours-seg.work{background:var(--accent)}
+.hours-day-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+/* the add line: school or work, how long, a note */
+.hours-add{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--hairline)}
+.hours-add .btn-accent{margin-left:auto}
 .hours-kinds{display:inline-flex;background:var(--chip);border-radius:999px;padding:3px}
 .hours-kind-btn{border:0;background:none;padding:5px 12px;border-radius:999px;font-family:var(--display);font-weight:500;font-size:12.5px;color:var(--muted);cursor:pointer}
 .hours-kind-btn.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.hours-amt-inp{width:150px}
+.hours-amt-inp{width:110px}
 .hours-note-inp{flex:1;min-width:120px}
-.hours-form .bad,.hours-row .bad{outline:2px solid var(--late);outline-offset:1px}
-.hours-totals{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
-.hours-total{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px}
-.hours-total-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.hours-total-v{font-size:22px;font-weight:600;margin:4px 0 2px}
-.hours-total-split{font-size:11.5px;color:var(--muted)}
-/* the next time sheet (renderer/js/hours.js hoursSheetDraw) */
-.hours-sheet{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:12px;padding:10px 12px;margin:14px 0 0}
-.hours-sheet[hidden]{display:none}
-.hours-sheet-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.hours-sheet-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.hours-sheet-v{font-size:17px;font-weight:600}
-.hours-sheet-sub{font-size:13px;margin-top:3px}
-.hours-sheet-rest{font-size:11.5px;color:var(--muted);margin-top:3px}
-.hours-day{margin-bottom:12px}
-.hours-day-head{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px;border-bottom:1px solid var(--hairline);margin-bottom:4px}
+.hours-add .bad,.hours-edit .bad{outline:2px solid var(--late);outline-offset:1px}
+/* quiet lines under the card: hours not turned in yet (hoursDueDraw), the next time sheet (hoursSheetDraw) */
+.hours-due{margin-top:10px}
+.hours-due[hidden],.hours-sheet[hidden]{display:none}
+.hours-due-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 4px;font-size:13px}
+.hours-due-row+.hours-due-row,.hours-due:not([hidden])+.hours-sheet{border-top:1px solid var(--hairline)}
+.hours-due-t{flex:1;min-width:120px;color:var(--muted)}
+.hours-due-t.hours-due-thru{flex:none;min-width:0}
+.hours-due-t b{color:var(--ink);font-weight:600}
+.hours-due-row .btn-accent{margin-left:0}
+.hours-due-row .btn-accent:disabled{opacity:.4;cursor:default}
+.hours-act{color:var(--accent);font-family:var(--display);font-weight:600;font-size:12.5px;padding:5px 8px}
+.hours-act:hover{color:var(--accent-dim);background:var(--chip)}
+.hours-sheet{margin-top:10px;padding:7px 4px;font-size:13px;color:var(--muted)}
+.hours-sheet b{color:var(--ink);font-weight:600}
+.hours-due:not([hidden])+.hours-sheet{margin-top:0}
+/* the week's entries by day; a row is a button: tap it to change or delete the entry */
+.hours-list{margin-top:16px}
+.hours-day{margin-bottom:10px}
+.hours-day-head{display:flex;justify-content:space-between;align-items:baseline;padding:4px 6px;border-bottom:1px solid var(--hairline);margin-bottom:2px}
 .hours-day-name{font-weight:600;font-size:13px}
 .hours-day-sum{font-size:12px;color:var(--muted)}
-.hours-row{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13.5px}
-.hours-row.editing{flex-wrap:wrap;gap:6px}
-.hours-row.editing .btn-accent{margin-left:0}
+.hours-row{display:flex;align-items:center;gap:10px;width:100%;padding:6px;border:0;background:none;border-radius:8px;text-align:left;font-family:var(--display);font-size:13.5px;color:var(--ink);cursor:pointer;transition:background .12s}
+.hours-row:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
 .hours-kind{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--muted);flex:none}
-.hours-kind.work{background:#E8ECFB;color:var(--accent)}
+.hours-kind.work{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
 .hours-amt{min-width:58px;flex:none}
-.hours-note{flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hours-row .icon{opacity:.55}
-.hours-row:hover .icon{opacity:1}
+.hours-note{flex:1;min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hours-row.turned-in .hours-amt,.hours-row.turned-in .hours-note{opacity:.55}
+.hours-done{color:var(--accent);display:inline-flex;flex:none}
+.hours-edit{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px}
+.hours-edit .btn-accent{margin-left:0}
+.hours-edit .hours-amt-inp{width:70px}
+.hours-edit .hours-note-inp{min-width:90px}
+.hours-edit .danger{margin-left:auto} /* Delete sits apart from Save */
 .hours-empty{color:var(--muted);font-size:13px;text-align:center;padding:24px 0}
-@media(max-width:520px){.hours-totals{gap:6px}.hours-total-v{font-size:18px}.hours-amt-inp{width:100%}.hours-form .btn-accent{margin-left:0;width:100%}}
+@media(max-width:520px){.hours-week{padding:12px 12px 10px}.hours-week-v{font-size:22px}.hours-amt-inp{flex:1;width:auto}.hours-note-inp{flex:1 1 100%}.hours-add .btn-accent{margin-left:0;width:100%}}
 /* documents from the Agent tab: an answer as a Word file, files on the mini PC (agent-chat.js) */
 .doc-dl{display:inline-block;margin-top:8px;background:none;border:1px solid var(--hairline);border-radius:8px;padding:5px 12px;font-family:var(--display);font-weight:600;font-size:12px;color:var(--ink);cursor:pointer;white-space:nowrap}
 .doc-dl:hover{border-color:var(--ink)}
@@ -1068,21 +1101,9 @@ textarea.ask-other{min-height:70px}
 .lupa-file-name{flex:1 1 180px;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
 .lupa-file-meta{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .lupa-file .doc-dl{margin-top:0}
-
-/* Hours: since you last turned in */
-.hours-due{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px;margin:14px 0 0}
-.hours-due-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0 2px}
-.hours-due-row+.hours-due-row{border-top:1px solid var(--hairline);margin-top:5px}
-.hours-due-v{font-size:20px;font-weight:600;min-width:72px}
-.hours-due-sub{flex:1;min-width:140px;font-size:12px;color:var(--muted)}
-.hours-due-row .btn-accent{margin-left:0}
-.hours-due-row .btn-accent:disabled{opacity:.4;cursor:default}
-.hours-row.turned-in .hours-amt,.hours-row.turned-in .hours-note{opacity:.55}
-.hours-done{color:var(--accent);display:inline-flex;flex:none}
 .lupa-file-x{background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer;padding:4px 6px;border-radius:6px}
 .lupa-file-x:hover{color:var(--ink);background:var(--hairline)}
 .lupa-file-x:disabled{opacity:.4;cursor:default}
-.hours-due-sub.hours-thru-k{flex:none;min-width:0}
 
 /* Year in review (year-review-view.js): its own page like Settings; each card leads with one big number */
 body.review-open main>*:not(.top):not(#reviewPanel){display:none!important}

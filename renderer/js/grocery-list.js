@@ -163,11 +163,12 @@ function listCardsChanged(cards,ch){
 function cardsStrip(t){
   const box=el('div','mini-cards');
   t.cards.slice(0,40).forEach(function(it){
-    const c=el(it.url?'a':'div','mini-card');
-    if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
+    const link=/^https?:\/\//i.test(String(it.url||'')); // a synced card's link: web pages only
+    const c=el(link?'a':'div','mini-card');
+    if(link){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
     const ph=el('div','mini-pic');
-    if(it.image){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+    if(it.image&&/^https:\/\//i.test(String(it.image))){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
       im.onerror=function(){ ph.textContent=it.name.charAt(0); im.remove(); }; ph.appendChild(im); }
     else ph.textContent=it.name.charAt(0);
     c.appendChild(ph);
@@ -224,7 +225,7 @@ function cartStrip(t){
       const sel=el('select','cart-opt'); sel.title='Other sizes and brands the Agent found';
       sel.setAttribute('aria-label','Options for '+it.name);
       [it].concat(it.options).forEach(function(op,i){
-        const o=el('option',null,(i?'':'★ ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
+        const o=el('option',null,(i?'':'• ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
         o.value=i?op.name:''; sel.appendChild(o);
       });
       sel.value=s.picked?s.name:'';

@@ -397,16 +397,17 @@ if(window.desktop&&window.desktop.aiStatus){
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
    config). Each item keeps its id (from the feed's own UID), so a re-import never adds copies. What the
    feed last said per item is remembered here, so: a deadline the teacher moves is followed unless he set
-   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off. */
-const FEED_SEEN_KEY='tasks.feedSeen';
+   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off;
+   one gone two days past its deadline (school-overdue.js) comes back if the school puts it on a day to come. */
 async function importCourseFeeds(){
   if(!window.desktop||!window.desktop.feedsFetch)return null;
   const r=await window.desktop.feedsFetch();
-  let seen={}; try{ seen=JSON.parse(localStorage.getItem(FEED_SEEN_KEY)||'{}')||{}; }catch(e){}
+  const seen=feedSeenRead(); // what the feed last said per item (school-overdue.js, which reads it too)
   const ws=schoolConfigured()?'school':'personal';
   const byId={}; state.tasks.forEach(function(t){ byId[t.id]=t; });
   const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
   const norm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
+  const today=formatDate(new Date());
   let added=0, moved=0, sited=0;
   r.items.forEach(function(e){
     const was=seen[e.id], now=e.due+' '+(e.dueTime||'');
@@ -417,7 +418,10 @@ async function importCourseFeeds(){
       if(was&&was!==now&&!t.done&&(t.due+' '+(t.dueTime||''))===was){ t.due=e.due; t.dueTime=e.dueTime; moved++; }
       return;
     }
-    if(was||tombed[e.id])return;
+    // taken off once its deadline was two days gone (the sweep in school-overdue.js, or by hand), and the school has
+    // since put it on a day to come (a quiz reopened): it's back on
+    if(tombed[e.id]&&was&&was!==now&&e.due>=today&&pastSaving(schoolDeadline(null,was),new Date()))state.tombstones=state.tombstones.filter(function(x){ return x.id!==e.id; });
+    else if(was||tombed[e.id])return;
     // he already put it on a list himself: same day, same name
     if(state.tasks.some(function(x){ return x.due===e.due&&norm(x.title)===norm(e.title); }))return;
     const n={id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime,tag:e.course||null,ws:ws,subs:[],googleEventId:null,created:Date.now()};
@@ -429,7 +433,6 @@ async function importCourseFeeds(){
      he hasn't touched (no date of his own, no steps, no plan) comes off. Only when every link answered in full,
      so a feed that hiccups never empties the list */
   const live={}; r.items.forEach(function(e){ live[e.id]=1; });
-  const today=formatDate(new Date());
   const vanished=r.complete?state.tasks.filter(function(t){
     return /^ics-/.test(t.id)&&!live[t.id]&&seen[t.id]&&!t.done&&t.due&&t.due>=today&&
       (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
@@ -742,6 +745,13 @@ $('searchBox').addEventListener('keydown',function(e){
   if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); }
   if(e.key==='Enter')this.blur();
 });
+/* phones: the tab bar scrolls sideways with its scrollbar hidden; a fade on the right edge says there's more
+   (styles.css .tabs.more-right) until it's scrolled to the end */
+(function(){
+  const bar=document.querySelector('.tabs'); if(!bar)return;
+  function edge(){ bar.classList.toggle('more-right',bar.scrollWidth-bar.clientWidth-bar.scrollLeft>4); }
+  bar.addEventListener('scroll',edge,{passive:true}); window.addEventListener('resize',edge); edge();
+})();
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
@@ -757,7 +767,9 @@ function selectNeighbor(){
 }
 document.addEventListener('keydown',function(e){
   if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
-  const a=document.activeElement;
+  // the key's own target, not what has focus now: a field's handler (Enter adds a subtask and re-renders, or blurs)
+  // runs first, so by the time this fires the focus is on the body and Enter would collapse the open task
+  const a=e.target&&e.target.tagName?e.target:document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     e.preventDefault();

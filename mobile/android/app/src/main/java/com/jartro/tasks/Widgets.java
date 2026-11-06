@@ -26,11 +26,21 @@ final class Widgets {
         if (ids.length > 0) mgr.notifyAppWidgetViewDataChanged(ids, listId);
     }
 
+    /** A secret only this install knows, carried by every widget intent: the launcher activity is exported (it is the
+     *  app's icon), so without it any app on the phone could send hookKind=voice and start the microphone. */
+    static String hookNonce(Context ctx) {
+        android.content.SharedPreferences p = ctx.getSharedPreferences("widgets", Context.MODE_PRIVATE);
+        String n = p.getString("hookNonce", null);
+        if (n == null) { n = java.util.UUID.randomUUID().toString(); p.edit().putString("hookNonce", n).apply(); }
+        return n;
+    }
+
     /** Opens the app; extras tell the page what to show (see window.__tasksHook in the app). */
     static PendingIntent openApp(Context ctx, int requestCode, String kind, String arg) {
         Intent i = new Intent(ctx, MainActivity.class);
         i.setAction("com.jartro.tasks.OPEN_" + kind + "_" + requestCode); // distinct per button
         i.putExtra("hookKind", kind);
+        i.putExtra("hookNonce", hookNonce(ctx));
         if (arg != null) i.putExtra("hookArg", arg);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         return PendingIntent.getActivity(ctx, requestCode, i,

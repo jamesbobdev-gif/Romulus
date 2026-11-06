@@ -3,8 +3,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Emails James the link to something he chose in the Tasks app: a product to buy ("Choose this"), a
 // 3D model to print ("Print this"), or anything else, like a job posting or booking page ("Send me
 // link"). Sends via Resend from a neutral address TO his own inbox, so his personal email grants nothing.
-// Never places an order or starts a print. Auth = the ?token in the URL
-// (the app holds it in its local config). The token and the Resend API key live in the app_secrets
+// Never places an order or starts a print. Auth = the token (Authorization: Bearer, or ?token= in the URL
+// for older configs; the app holds it in its local config). The token and the Resend API key live in the app_secrets
 // table (row-level security, service role only), never in the app or this source.
 
 const FROM = "Tasks <onboarding@resend.dev>"; // Resend's shared sender; works for sending to your own account with no domain
@@ -25,9 +25,20 @@ async function secrets(): Promise<Record<string, string>> {
 }
 const SECRETS = await secrets();
 const FN_TOKEN = SECRETS.buy_email_token || "";
-// Optional: his own address (app_secrets row buy_email_to). When it's set, mail only ever goes there,
-// whatever the request says, so the token alone can't be used to email anyone else.
+// His own address (app_secrets row buy_email_to): mail only ever goes there, whatever the request says, so the
+// token alone can't be used to email anyone else. Required: without it this would be an open relay to whoever
+// holds the token.
 const ONLY_TO = (SECRETS.buy_email_to || "").trim().toLowerCase();
+
+// the token compared in constant time, through a hash so lengths don't tell either
+async function tokenOk(given: string | null): Promise<boolean> {
+  if (!given || !FN_TOKEN) return false;
+  const [a, b] = await Promise.all([given, FN_TOKEN].map((s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))));
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
 
 // deno-lint-ignore no-explicit-any
 function html(b: any): string {
@@ -51,8 +62,9 @@ function html(b: any): string {
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  if (!FN_TOKEN) return new Response("Not configured", { status: 503 });
-  if (url.searchParams.get("token") !== FN_TOKEN) return new Response("Not found", { status: 404 });
+  if (!FN_TOKEN || !ONLY_TO) return new Response("Not configured: app_secrets needs buy_email_token and buy_email_to", { status: 503 });
+  const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
+  if (!(await tokenOk(bearer || url.searchParams.get("token")))) return new Response("Not found", { status: 404 });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
   // deno-lint-ignore no-explicit-any

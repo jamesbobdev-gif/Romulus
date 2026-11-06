@@ -9,12 +9,6 @@ import android.widget.RemoteViewsService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -107,43 +101,10 @@ public class TasksWidgetService extends RemoteViewsService {
             AppWidgetManager.getInstance(ctx).partiallyUpdateAppWidget(widgetId, views);
         }
 
+        // the personal list through the shared store, which also opens it when it is end-to-end encrypted
         private JSONObject fetchDoc() throws Exception {
-            JSONObject cfg = readSyncConfig();
-            // through the database function that needs the key (the table itself is closed to the anon key)
-            String urlStr = cfg.getString("url").replaceAll("/+$", "") + "/rest/v1/rpc/sync_get";
-            HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
-            c.setRequestMethod("POST");
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(10000);
-            c.setRequestProperty("apikey", cfg.getString("key"));
-            c.setRequestProperty("Authorization", "Bearer " + cfg.getString("key"));
-            c.setRequestProperty("Content-Type", "application/json");
-            c.setDoOutput(true);
-            JSONObject body = new JSONObject();
-            body.put("p_sync_key", cfg.getString("syncKey"));
-            try (OutputStream os = c.getOutputStream()) { os.write(body.toString().getBytes("UTF-8")); }
-            try {
-                if (c.getResponseCode() != 200) return null;
-                JSONArray rows = new JSONArray(readAll(c.getInputStream()));
-                JSONObject doc = rows.length() > 0 ? rows.getJSONObject(0).optJSONObject("doc") : null;
-                return doc != null ? doc : new JSONObject();
-            } finally {
-                c.disconnect();
-            }
-        }
-
-        private JSONObject readSyncConfig() throws Exception {
-            InputStream in = ctx.getResources().openRawResource(R.raw.sync_config);
-            return new JSONObject(readAll(in));
-        }
-
-        private static String readAll(InputStream in) throws Exception {
-            BufferedReader r = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = r.readLine()) != null) sb.append(line);
-            r.close();
-            return sb.toString();
+            SyncStore.Row r = SyncStore.fetch(ctx, "personal");
+            return r == null ? null : r.doc;
         }
 
         /* mirrors getSortKey in the app: pin overrides, due(+time) epoch, undated right after today */

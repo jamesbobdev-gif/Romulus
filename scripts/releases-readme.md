@@ -64,7 +64,7 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 **Windows**
 1. Download `Romulus-Setup-<version>.exe` from the [latest release](../../releases/latest).
 2. Run it. Windows shows an "unrecognized app" warning because the installer isn't code-signed yet: click **More info → Run anyway**.
-3. Romulus opens. From then on it starts when you log in and lives in the tray by the clock. Closing the window hides it there; right-click the tray icon to quit.
+3. Romulus opens. From then on it starts when you log in and lives in the tray. Closing the window hides it there; on Windows look under the ^ by the clock and drag the coin onto the taskbar to keep it in sight. Right-click the icon to quit.
 4. Optional: Start menu → right-click **Romulus** → Pin to taskbar.
 
 **Mac**: download the `.dmg` and drag Romulus to Applications. The app isn't signed by Apple yet, so the first open is right-click → Open, then allow it in System Settings → Privacy & Security.

@@ -10,7 +10,8 @@
 # The Mac (Apple chip and Intel) and Windows installers are unsigned until their signing secrets are added
 # (see "Build and publish" below): until then macOS asks the person to allow Romulus in System Settings and
 # Windows shows a SmartScreen warning. Store builds (Google Play .aab, Microsoft Store .appx) are attached to
-# the run as artifacts, not published to the releases page.
+# the run as artifacts, not published to the releases page; the iPhone app goes straight to App Store Connect
+# (the ios job below) once its secrets are set.
 #
 # Supply chain: every action below is pinned to a commit SHA (the version is in the trailing comment;
 # Dependabot keeps them current), the workflow's own GITHUB_TOKEN can only read this repository, and each
@@ -21,6 +22,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      overwrite:
+        description: Replace the installers already on this version's release (a re-run otherwise refuses to)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -61,6 +67,21 @@ jobs:
           perms=$(gh api repos/jamesbobdev-gif/romulus-releases --jq '.permissions' 2>&1) || { echo "RELEASES_TOKEN can't read the releases repository: $perms"; exit 1; }
           echo "token permissions on romulus-releases: $perms"
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to romulus-releases"; exit 1; }
+      # A version that is already out stays as published: electron-builder would replace its installers (and the
+      # steps below their checksums) under the same tag, so a copy someone verified yesterday would no longer match.
+      # A re-run for an existing tag stops here unless started by hand with "overwrite" ticked.
+      - name: Refuse to overwrite a published release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.overwrite) }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('./package.json').version")"; fi
+          assets=$(gh release view --repo jamesbobdev-gif/romulus-releases "$TAG" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          if echo "$assets" | grep -Eq '\.(exe|AppImage|dmg|zip|apk)$'; then
+            echo "::error::$TAG is already published with installers ($(echo "$assets" | tr '\n' ' ')). Bump the version, or re-run by hand with overwrite ticked."
+            exit 1
+          fi
       - run: npm ci
       # Known vulnerabilities. Critical only for now: electron and electron-builder still carry known highs
       # until they're upgraded; raise this to --audit-level=high once Electron is current. What ships in the
@@ -178,7 +199,8 @@ jobs:
   android:
     runs-on: ubuntu-latest
     needs: build # the release exists once the desktop builds have published to it
-    if: ${{ always() && needs.build.result != 'cancelled' }}
+    # only after the desktop job passed: its tests and `npm audit` gate the whole release, the phone included
+    if: ${{ needs.build.result == 'success' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Signing key
@@ -263,3 +285,83 @@ jobs:
         with:
           name: google-play-aab
           path: ${{ env.AAB }}
+
+  # The iPhone app, uploaded to App Store Connect (it appears in TestFlight; the App Store release is then a
+  # button in App Store Connect). Needs an Apple Developer Program account and an App Store Connect API key
+  # with the Admin role, as four secrets: APPLE_API_KEY_P8 (the .p8 file, base64), APPLE_API_KEY_ID,
+  # APPLE_API_ISSUER_ID and APPLE_TEAM_ID. Xcode then signs with Apple's cloud-managed distribution
+  # certificate and makes the provisioning profile itself (-allowProvisioningUpdates), so no certificate
+  # file is kept here. Without the key secret this job says so and ends.
+  # The app is the same web UI as Android (mobile/prepare-www.js), with Capacitor's iOS project in
+  # mobile/ios; the Android-only parts (widgets, calendar sign-in, the Finance vault, wake word) are not on
+  # iPhone yet, and the web side already does without them when their plugin is absent (docs/store-release.md).
+  ios:
+    runs-on: macos-latest
+    needs: build
+    if: ${{ needs.build.result == 'success' }} # the same gate as the Android job
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: App Store Connect key
+        id: key
+        env:
+          KEY_BASE64: ${{ secrets.APPLE_API_KEY_P8 }}
+          KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        shell: bash
+        run: |
+          if [ -z "$KEY_BASE64" ] || [ -z "$KEY_ID" ]; then
+            echo "APPLE_API_KEY_P8 / APPLE_API_KEY_ID secrets are not set: no iPhone build for this release"
+            echo "present=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$KEY_BASE64" | base64 -d > "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8"
+          echo "path=$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" >> "$GITHUB_OUTPUT"
+          echo "present=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.key.outputs.present == 'true'
+        with:
+          node-version: 22
+      - name: Pairing server
+        if: ${{ steps.key.outputs.present == 'true' && vars.PAIR_URL != '' && vars.PAIR_KEY != '' }}
+        env:
+          PAIR_URL: ${{ vars.PAIR_URL }}
+          PAIR_KEY: ${{ vars.PAIR_KEY }}
+        shell: bash
+        run: |
+          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }) + ';\n')"
+      - name: Build and upload to App Store Connect
+        if: steps.key.outputs.present == 'true'
+        env:
+          KEY_PATH: ${{ steps.key.outputs.path }}
+          KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          cd mobile
+          npm ci
+          node prepare-www.js --store appstore   # no sync-config.json here: the public build bakes in no keys
+          npx cap sync ios
+          # the same version as every other build; the build number is Android's versionCode (1.0.4 -> 1000004)
+          version=$(node -p "require('../package.json').version")
+          build=$(node -p "require('../package.json').version.split('.').reduce((n, p) => n * 1000 + Number(p), 0)")
+          echo "Romulus $version, build $build"
+          cd ios/App
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$KEY_PATH" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID")
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Romulus.xcarchive" archive "${auth[@]}" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build"
+          # exports the .ipa and, with destination=upload above, sends it to App Store Connect in the same step
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Romulus.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/ipa" "${auth[@]}"
+          echo "uploaded Romulus $version ($build) to App Store Connect; it shows in TestFlight once Apple has processed it"

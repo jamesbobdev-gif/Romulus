@@ -57,6 +57,9 @@ async function load(list: string): Promise<Row> {
   if (!r.ok) throw new Error(`load ${list}: HTTP ${r.status}`);
   const rows = await r.json();
   const doc = rows.length ? rows[0].doc : null;
+  // the app moved this list to end-to-end encryption and left a marker under the old key: writing a plain list over
+  // it would destroy the marker and never reach the real (sealed) list
+  if (doc && doc.moved === "v2") throw new UserError(`The ${list} list is end-to-end encrypted on the devices; this server can't read or change it.`);
   return {
     doc: {
       v: 1,
@@ -102,6 +105,8 @@ async function loadPrefs(): Promise<{ text: string; updated_at: string | null }>
   const r = await fetch(`${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(PREFS_KEY)}&select=doc,updated_at`, { headers: H });
   if (!r.ok) throw new Error(`load preferences: HTTP ${r.status}`);
   const rows = await r.json();
+  // moved to end-to-end encryption with its list: a plain write here would destroy the marker and never reach the real row
+  if (rows.length && rows[0].doc && rows[0].doc.moved === "v2") throw new UserError("The preferences are end-to-end encrypted on the devices; this server can't read or change them.");
   return { text: rows.length && rows[0].doc && typeof rows[0].doc.text === "string" ? rows[0].doc.text : "", updated_at: rows.length ? rows[0].updated_at : null };
 }
 // same compare-and-swap as the lists, so a change made in the app at the same moment isn't lost
@@ -163,10 +168,11 @@ function checkTime(v: unknown): string | null {
   return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 function checkTitle(v: unknown): string {
-  const s = String(v ?? "").trim();
+  const s = String(v ?? "").trim().slice(0, 500); // bounded: a list past sync_put's 4 MB would refuse every save from the apps
   if (!s) throw new UserError("title is required");
   return s;
 }
+const MAX_SUBS = 50;
 
 // Accept a full id or a unique prefix (list output shows 8-char ids).
 function findIn(doc: Doc, id: string): Task[] {
@@ -380,7 +386,7 @@ async function callTool(name: string, a: any): Promise<string> {
       const which = a.list ? checkList(a.list, true) : "all";
       const lists = which === "all" ? LIST_NAMES : [which];
       const before = checkDate(a.due_on_or_before);
-      const q = a.search ? String(a.search).toLowerCase() : "";
+      const q = a.search ? String(a.search).toLowerCase().slice(0, 200) : "";
       const out: string[] = [];
       for (const l of lists) {
         let ts = (await load(l)).doc.tasks;
@@ -406,12 +412,12 @@ async function callTool(name: string, a: any): Promise<string> {
       if (dueTime && !due) throw new UserError("due_time needs a due date");
       const now = Date.now();
       const t: Task = {
-        id: uid(), title, done: false, due, dueTime, tag: a.tag ? String(a.tag).trim() : null,
-        subs: (Array.isArray(a.subtasks) ? a.subtasks : []).map((s: unknown) => String(s).trim()).filter(Boolean)
+        id: uid(), title, done: false, due, dueTime, tag: a.tag ? String(a.tag).trim().slice(0, 80) : null,
+        subs: (Array.isArray(a.subtasks) ? a.subtasks : []).slice(0, MAX_SUBS).map((s: unknown) => String(s).trim().slice(0, 500)).filter(Boolean)
           .map((s: string) => ({ id: uid(), title: s, done: false, due: null })),
         googleEventId: null, created: now, updatedAt: now,
       };
-      if (list === "agent") { t.status = "queued"; t.note = a.note ? String(a.note) : null; }
+      if (list === "agent") { t.status = "queued"; t.note = a.note ? String(a.note).slice(0, 4000) : null; }
       await mutate(list, (d) => { d.tasks.push(t); });
       return `Added:\n${fmt(t, list)}`;
     }
@@ -430,7 +436,7 @@ async function callTool(name: string, a: any): Promise<string> {
           t.dueTime = checkTime(a.due_time);
           if (t.dueTime && !t.due) throw new UserError("due_time needs a due date");
         }
-        if ("tag" in a) t.tag = a.tag ? String(a.tag).trim() : null;
+        if ("tag" in a) t.tag = a.tag ? String(a.tag).trim().slice(0, 80) : null;
         if (("status" in a || "note" in a) && list !== "agent") {
           throw new UserError("status and note only exist on the agent list");
         }
@@ -439,7 +445,7 @@ async function callTool(name: string, a: any): Promise<string> {
           t.status = a.status;
           t.done = a.status === "done";
         }
-        if ("note" in a) t.note = a.note ? String(a.note) : null;
+        if ("note" in a) t.note = a.note ? String(a.note).slice(0, 4000) : null; // bounded like add_task: past sync_put's 4 MB the apps could never save again
         if ("done" in a) {
           t.done = !!a.done;
           // mirrors the app: ticking an agent task closes it, reopening re-queues it
@@ -455,9 +461,9 @@ async function callTool(name: string, a: any): Promise<string> {
           if (m.length !== 1) throw new UserError(`subtask "${sid}" not found (or ambiguous) on this task`);
           m[0].done = true;
         }
-        for (const s of Array.isArray(a.add_subtasks) ? a.add_subtasks : []) {
-          const title = String(s).trim();
-          if (title) t.subs.push({ id: uid(), title, done: false, due: null });
+        for (const s of (Array.isArray(a.add_subtasks) ? a.add_subtasks : []).slice(0, MAX_SUBS)) {
+          const title = String(s).trim().slice(0, 500);
+          if (title && t.subs.length < MAX_SUBS * 2) t.subs.push({ id: uid(), title, done: false, due: null });
         }
         t.updatedAt = Date.now();
         return t;
@@ -631,11 +637,24 @@ async function handle(msg: any): Promise<unknown | null> {
   }
 }
 
+// the token compared in constant time, through a hash so lengths don't tell either (same for ?token= and the header)
+async function tokenOk(given: string | null): Promise<boolean> {
+  if (!given || !TOKEN) return false;
+  const [a, b] = await Promise.all([given, TOKEN].map((s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))));
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+const MAX_BATCH = 20;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   const url = new URL(req.url);
   if (!TOKEN || Object.values(LISTS).some((k) => !k)) return new Response("Not configured", { status: 503 });
-  if (url.searchParams.get("token") !== TOKEN) return new Response("Not found", { status: 404 });
+  // Authorization: Bearer <token> is preferred (a query string lands in request logs and proxies); ?token= still works
+  const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
+  if (!(await tokenOk(bearer || url.searchParams.get("token")))) return new Response("Not found", { status: 404 });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: CORS });
 
   let body: unknown;
@@ -643,6 +662,7 @@ Deno.serve(async (req: Request) => {
     return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
   }
   if (Array.isArray(body)) {
+    if (body.length > MAX_BATCH) return json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `At most ${MAX_BATCH} requests per batch` } }, 400);
     const out = (await Promise.all(body.map(handle))).filter((x) => x !== null);
     return out.length ? json(out) : new Response(null, { status: 202, headers: CORS });
   }

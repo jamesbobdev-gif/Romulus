@@ -54,7 +54,7 @@ async function addTask(){
   const titleEl=$('newTitle'); let title=titleEl.value.trim();
   const withPhotos=composerAtts.length>0&&!!attachProfile();
   if(!title&&withPhotos)title=state.activeTab==='agent'?(composerAtts.length===1?'Look at this photo':'Look at these photos'):'Screenshot';
-  if(!title){ titleEl.focus(); return; }
+  if(!title){ titleEl.value=''; titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
   if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')); return; } }
   let photoUrls=[];
@@ -88,6 +88,14 @@ async function addTask(){
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);
   titleEl.value=''; buzz('add'); touch(); titleEl.focus();
+  // first launch: the welcome card sits between the add box and the list, so the new row would land off the screen
+  requestAnimationFrame(function(){ const li=document.querySelector('li.task[data-id="'+t.id+'"]'); if(li&&li.getBoundingClientRect().bottom>window.innerHeight)li.scrollIntoView({block:'nearest',behavior:prefersReduced?'auto':'smooth'}); });
+}
+/* "Call the dentist #health" → {title:'Call the dentist', tag:'health'}; no hashtag, or nothing but the hashtag → null */
+function hashTag(text){
+  const m=/(^|\s)#([^\s#]+)/.exec(text||''); if(!m)return null;
+  const title=(text.slice(0,m.index)+' '+text.slice(m.index+m[0].length)).replace(/\s+/g,' ').trim();
+  return title?{title:title,tag:m[2]}:null;
 }
 /* "Call the dentist on Friday at 3pm" → {title:'Call the dentist', due:<Friday>, dueTime:'15:00'}.
    A day you mention becomes the due date (and is taken out of the title); no day → no date. */

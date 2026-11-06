@@ -11,6 +11,17 @@ test('isYes: a yes that stands, not one taken back', () => {
     'ok but what did you put for the salary question?', 'okay, show me the cart first', 'sure, which one do you recommend?', 'ok, Walmart', 'y tho?', 'yes?', 'sure thing, what was the total']) assert.ok(!helpers.isYes(t), String(t));
 });
 
+test('isYesTo: on a cancel ask, "yes, cancel it" is a yes; on any other ask those words still hold', () => {
+  const ask = 'Ready to cancel Netflix: the plan ends Nov 30, nothing is refunded. Reply **yes** to cancel.';
+  for (const t of ['yes', 'yes, cancel it', 'Yes, cancel the subscription', 'ok cancel', 'sure, go ahead and cancel it', 'yep, stop my plan', 'yes please cancel the netflix subscription', 'ok, end it.'])
+    assert.ok(helpers.isYesTo(t, ask), t);
+  for (const t of ['yes, but cancel that', 'Yes. Never mind, cancel it', 'cancel it', 'yes, cancel it and the other one', 'no, keep it', 'stop', 'yes, cancel it?', '', null])
+    assert.ok(!helpers.isYesTo(t, ask), String(t));
+  const order = 'The cart is ready: 12 items, $84.10, delivery 5–7pm. Reply **yes** to place the order.';
+  assert.ok(helpers.isYesTo('yes', order));
+  assert.ok(!helpers.isYesTo('yes, cancel it', order), 'on an order ask, cancel is a hold');
+});
+
 test('isPublicUrl: the web, not this computer or its network', () => {
   for (const u of ['https://www.walmart.com/checkout', 'http://example.org/', 'https://8.8.8.8/x', 'https://[2606:4700::1111]/'])
     assert.ok(helpers.isPublicUrl(u), u);
@@ -18,6 +29,28 @@ test('isPublicUrl: the web, not this computer or its network', () => {
     'http://169.254.169.254/latest/meta-data', 'http://100.64.0.1/', 'http://[::1]:8790/', 'http://[fd00::1]/', 'http://lupa/', 'http://hub.local/',
     'file:///C:/x', 'javascript:alert(1)', 'ftp://example.org/', 'not a url', ''])
     assert.ok(!helpers.isPublicUrl(u), u);
+});
+
+test('fetchPublic: a name that resolves to this computer or the LAN is refused before the fetch, each hop', async () => {
+  helpers._net.setLookup(async (h) => {
+    const m = /^(\d+)-(\d+)-(\d+)-(\d+)\.nip\.example$/.exec(h);
+    if (m) return [{ address: m.slice(1, 5).join('.'), family: 4 }];
+    if (h === 'gone.example') throw new Error('ENOTFOUND');
+    return [{ address: '93.184.216.34', family: 4 }];
+  });
+  assert.strictEqual(await helpers.resolvesPrivate('http://127-0-0-1.nip.example:9222/json'), true);
+  assert.strictEqual(await helpers.resolvesPrivate('https://example.com/'), false);
+  assert.strictEqual(await helpers.resolvesPrivate('https://gone.example/'), false);
+  assert.strictEqual(await helpers.resolvesPrivate('http://127.0.0.1/'), false); // an address: isPublicUrl's job
+  const realFetch = global.fetch;
+  const hits = [];
+  global.fetch = async (u) => { hits.push(u); return u.includes('redir') ? { status: 302, headers: { get: () => 'http://192-168-1-1.nip.example/admin' }, body: { cancel: async () => {} } } : { status: 200 }; };
+  try {
+    await assert.rejects(helpers.fetchPublic('http://10-0-0-5.nip.example/'), /not a public web address/);
+    await assert.rejects(helpers.fetchPublic('https://ok.example/redir'), /redirected somewhere private/);
+    assert.strictEqual((await helpers.fetchPublic('https://ok.example/page')).status, 200);
+    assert.deepStrictEqual(hits, ['https://ok.example/redir', 'https://ok.example/page']); // the private ones were never fetched
+  } finally { global.fetch = realFetch; }
 });
 
 test('trimRunLog: tool calls stay, long strings are cut, the tail is kept', () => {
@@ -78,6 +111,6 @@ test('private words, card/SSN numbers and locked-profile details never leave', (
 
 test('show() labels who answered and flags failures', () => {
   const out = helpers.show([{ question: 'a', via: 'gemini', answer: 'line1\nline2' }, { question: 'b', error: 'no helper answered' }], { gemini: 'Gemini' });
-  assert.match(out, /1\. a\n   Gemini says:\n   line1\n   line2/);
-  assert.match(out, /2\. b\n   \(no helper answered\)/);
+  assert.match(out, /1\. a\n {3}Gemini says:\n {3}line1\n {3}line2/);
+  assert.match(out, /2\. b\n {3}\(no helper answered\)/);
 });

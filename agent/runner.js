@@ -29,6 +29,7 @@ const siteNotes = require('./site-notes');
 const { enrichOption, pagePreviewImage } = require('./previews');
 const standing = require('./standing');
 const goals = require('./goals');
+const linkWallet = require('./link-wallet');
 
 // Claude comes after the AI being asked: what it can't do goes to Claude, rather than back to him as needs-you
 const CLAUDE_AFTER_NOTE = '\n\n## Handing over\nClaude (with a full browser, his inbox and his photos) comes after you in this run. If a ' +
@@ -212,7 +213,9 @@ async function startAgentRun() {
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
-    conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who, text: String(h.text || '').slice(0, 600),
+    // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
+    conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
+      text: h.lane === 'local' && h.who !== 'you' ? '(the local model worked on this step; its note stays on his computer)' : String(h.text || '').slice(0, 600),
       shown: Array.isArray(h.options) ? h.options : undefined,
       sentPhotos: Array.isArray(h.images) && h.images.length ? h.images.length : undefined })) : [],
     repeats: t.repeat ? { every: t.repeat.every, at: t.repeat.at } : null,
@@ -245,7 +248,7 @@ async function startAgentRun() {
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
   const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') +
-    (browses(id) ? filesPart : '') +
+    (browses(id) ? filesPart + (id === 'claude' && link ? link.part : '') : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
     'Today is ' + new Date().toDateString() + '.\n' + // for deadlines and a followUp's day
     (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
@@ -259,6 +262,9 @@ async function startAgentRun() {
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
+  // his Link wallet, for a store with no saved card (agent/link-wallet.js): where the launcher finds it, and what Claude is told
+  const link = browserCfg ? await linkWallet.forRun().catch((e) => { agentLog('link: ' + e.message); return null; }) : null;
+  if (link) agentLog('link wallet: on' + (link.test ? ' (test mode)' : ''));
   const grocer = loadSkills().find((s) => s.name === 'groceries');
   runTimeoutMs = grocer && grocer.match && tasks.some((t) => grocer.match.test(skillText(t))) ? GROCERY_TIMEOUT_MS : AGENT_TIMEOUT_MS;
   // A shopping run (groceries, or a task whose links are store pages) is kept to the stores and the task's own
@@ -270,7 +276,7 @@ async function startAgentRun() {
   if (shopping) agentLog('shopping run: the browser stays on ' + runHosts.length + ' site(s)');
   // his yes unlocks the order button only on the sites the ask was about
   const yesHosts = tasks.length === 1 && saidYes(tasks[0]) ? approvedHostsFor(tasks[0]) : [];
-  const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · ') };
+  const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · '), link };
   // the cloud AIs he connected, in his order (Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
@@ -420,8 +426,11 @@ async function startAgentRun() {
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
     // (and so does each other size/brand on its menu)
-    if (u.cart || u.cards) await Promise.all((u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
-      const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
+    // a few at a time: each may open a hidden window, and 80 at once is a lot for one computer (or many users of one hub)
+    if (u.cart || u.cards) {
+      const need = (u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80);
+      await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
+    }
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);
@@ -444,8 +453,12 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // takes the web tools out entirely, whatever his Claude settings allow.
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
-      // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway)
-      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)'];
+      // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway). The work folder
+      // also holds the local model's Research and Coach reports (agent/local-lane.js), written there so that no
+      // cloud AI sees them: Claude Code lets Read open anything under its working folder without asking, so the
+      // allow list above doesn't keep it out of them; only a deny does
+      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)',
+        'Read(./Research/**)', 'Read(./Coach/**)'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];

@@ -51,6 +51,15 @@ function isYes(text) {
   return (YES_WHOLE.test(t) || YES_START.test(t)) && !HOLD.test(t);
 }
 
+/* His yes to a particular ask (saidYes in agent-browser.js, localApproved in local-lane.js): everything isYes
+   takes and, when the ask was about cancelling (Finance's Cancel button: a subscription, membership, plan or
+   account), a yes whose only addition is the cancelling itself: "yes, cancel it", "ok cancel", "sure, go ahead
+   and end it". On their own those words are a hold ("yes, but cancel that"), which is right for every other ask. */
+const YES_CANCEL = /^\s*(yes|yep|yeah|yup|ok|okay|sure|alright|go ahead)[,!.]?\s*((go ahead|and|please|just),?\s+)*(cancel|end|stop|terminate|close)( it| this| that| the [a-z0-9 ]{0,30}?(subscription|membership|plan|account)| my [a-z0-9 ]{1,30})?[.!]*\s*$/i;
+function isYesTo(text, asked) {
+  return isYes(text) || (/\bcancel/i.test(String(asked || '')) && YES_CANCEL.test(String(text || '').slice(0, 240)));
+}
+
 /* A web address on the public internet: http(s), and not this computer, the LAN or a private range.
    Everything the agent fetches or opens on its own (previews, the mini PC's page reader, option links)
    goes through this, so a page can't point it at the mini PC, the browser's debugging port or a router. */
@@ -66,6 +75,19 @@ function isPublicUrl(url) {
   if (h.includes(':')) return !(h === '::1' || h === '::' || /^(fc|fd|fe[89ab])/i.test(h) || /^::ffff:/i.test(h));
   return h.includes('.'); // a bare name is a LAN machine
 }
+const privateAddress = (h) => !isPublicUrl('http://' + (h.includes(':') ? '[' + h + ']' : h) + '/');
+/* A public-looking name can still point here: 127.0.0.1.nip.io, or a name whose DNS record an attacker set to the
+   router's address. isPublicUrl can't see that, so before fetching, the name is looked up and refused when any of
+   its addresses is private (one lookup per name per run). A name that doesn't resolve is left to fetch to fail. */
+let lookup = (host) => require('dns').promises.lookup(host, { all: true, verbatim: true });
+const resolvedPrivate = new Map(); // host → Promise<boolean>
+function resolvesPrivate(url) {
+  let h; try { h = new URL(String(url)).hostname.toLowerCase(); } catch (e) { return Promise.resolve(false); }
+  if (!h || h.startsWith('[') || /^\d+(\.\d+){3}$/.test(h)) return Promise.resolve(false); // an address: isPublicUrl judged it
+  if (!resolvedPrivate.has(h)) resolvedPrivate.set(h, Promise.resolve().then(() => lookup(h)).then((rs) => (rs || []).some((r) => privateAddress(String(r.address).toLowerCase())), () => false));
+  return resolvedPrivate.get(h);
+}
+const setLookup = (f) => { lookup = f; resolvedPrivate.clear(); }; // tests
 
 /* A run's log, for "why didn't it answer?": the tool calls and the shape of what came back, with every long
    string cut short, so pages and emails the run read aren't kept whole on disk. */
@@ -118,4 +140,19 @@ function show(results, names = {}) {
 const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}\u{1F1E6}-\u{1F1FF}\u{2713}-\u{2717}]/gu;
 const noEmoji = (s) => String(s == null ? '' : s).replace(EMOJI, '').replace(/^ (?=\S)/gm, '').replace(/(\S)[ \t]{2,}/g, '$1 ');
 
-module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isPublicUrl, trimRunLog };
+/* fetch for an address that came from outside (a task, a calendar link, a page): the address itself must be public,
+   and so must every redirect it answers with, one hop at a time (a public name can answer 302 → this computer, the hub
+   or a router; fetch's own redirect:'follow' would go there). At most 5 hops. */
+async function fetchPublic(url, opts = {}) {
+  let at = String(url || '');
+  for (let hop = 0; ; hop++) {
+    if (!isPublicUrl(at) || await resolvesPrivate(at)) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
+    const res = await fetch(at, Object.assign({}, opts, { redirect: 'manual' }));
+    if (![301, 302, 303, 307, 308].includes(res.status)) return res;
+    try { await res.body?.cancel(); } catch (e) {}
+    if (hop >= 5) throw new Error('too many redirects');
+    try { at = new URL(res.headers.get('location') || '', at).href; } catch (e) { throw new Error('bad redirect'); }
+  }
+}
+
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, resolvesPrivate, fetchPublic, trimRunLog, _net: { setLookup } };

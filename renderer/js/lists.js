@@ -585,7 +585,7 @@ function buildPanel(t){
     function badge(th,text){ const b=el('div',null,text); b.style.cssText='position:absolute;left:0;right:0;bottom:0;font-family:var(--mono);font-size:8px;text-align:center;background:rgba(20,20,20,.62);color:#fff;padding:1px 0'; th.appendChild(b); }
     function drawPics(){
       strip.innerHTML=''; strip.hidden=!fileIn&&!(t.images||[]).length&&!uploading.length;
-      (t.images||[]).forEach(function(u,i){
+      (t.images||[]).filter(function(u){ return /^https:\/\//i.test(String(u)); }).forEach(function(u,i){ // synced from other devices: web pictures only
         const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=u; im.alt='Screenshot'; im.referrerPolicy='no-referrer';
         im.addEventListener('click',function(){ openLightbox((t.images||[]).map(function(x,j){ return {image:x,label:'Screenshot '+(j+1)}; }),i); });
         const x=el('button',null,'✕'); x.setAttribute('aria-label','Remove screenshot');
@@ -720,13 +720,22 @@ function buildPanel(t){
 }
 
 /* ── render ── */
+let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
   updatePlanBtn();
   if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
   const ae=document.activeElement;
-  if(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor)){
+  const typing=!!(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor));
+  // on a phone the rebuilt box can't take the keyboard back (only a tap opens it), so the redraw waits until you
+  // leave the box: a moment after, so a tap on Send or a chevron lands on the buttons it was aimed at
+  if(typing&&touchDevice()){
+    if(!renderWaiting){ renderWaiting=true; ae.addEventListener('blur',function(){ setTimeout(function(){ if(renderWaiting){ renderWaiting=false; render(); } },300); },{once:true}); }
+    return;
+  }
+  renderWaiting=false;
+  if(typing){
     const attr=ae.dataset.replyFor?'data-reply-for':'data-draft-for', id=ae.dataset.replyFor||ae.dataset.draftFor, s=ae.selectionStart, e=ae.selectionEnd;
     queueMicrotask(function(){
       const ta=document.querySelector('textarea['+attr+'="'+id+'"]');

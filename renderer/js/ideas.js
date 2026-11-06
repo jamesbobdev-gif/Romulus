@@ -254,7 +254,7 @@ function drawIdeas(){
       flow.appendChild(add);
     }
     if(!g.id&&!cards.length&&!state.ideas.groups.length&&ideaUI.adding!=='')
-      flow.insertBefore(el('div','idea-empty','Write ideas here, then make groups and drag them in.'),flow.firstChild);
+      flow.insertBefore(el('div','idea-empty','Write notes here, then make groups and drag them in.'),flow.firstChild);
     sec.appendChild(flow);
     const sz=el('div','idea-gsize'); sz.title='Drag to make the boxes wider or narrower'; sec.appendChild(sz);
     wrap.appendChild(sec);

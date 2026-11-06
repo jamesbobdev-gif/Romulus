@@ -916,6 +916,7 @@ function finFixedChart(c,cur){
     const track=el('span','fin-hbar-track'), b=el('span','fin-hbar-fill');
     b.style.width=Math.max(2,f.monthly/top*100)+'%'; track.appendChild(b); r.appendChild(track);
     r.appendChild(el('span','fin-amt',finMoney(f.monthly,cur)));
+    if(!f.many){ r.classList.add('has-cancel'); r.appendChild(finCancelButton(f.name)); } // the Agent cancels it (same button as Subscriptions)
     box.appendChild(r);
   });
   return finFoldable(box,'fixed','Fixed costs',c.fixed.length?finMoney(c.fixedTotal,cur)+'/mo':'');
@@ -1026,22 +1027,36 @@ function finSubsCard(s,cur){
     const who=el('span','fin-desc'); who.appendChild(el('span',null,x.name)); who.appendChild(el('span','fin-sub','since '+since(x.since)+(x.months>=12?' · over a year':'')));
     r.appendChild(who);
     r.appendChild(el('span','fin-amt',finMoney(x.monthly,cur)+'/mo'));
-    const open=finCancelTask(x.name);
-    const cb=el('button','ghost mono',open?'cancelling':'cancel');
-    cb.title=open?'On your Agent tab':'Have the Agent cancel '+x.name;
-    cb.addEventListener('click',function(){ if(finCancelSub(x.name)){ cb.textContent='cancelling'; cb.title='On your Agent tab'; } });
-    r.appendChild(cb);
+    r.appendChild(finCancelButton(x.name));
     box.appendChild(r);
   });
   const flags=s.raised.length+s.fresh.length;
   return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo');
 }
-/* cancel, on a subscription: an Agent task of its own (agent/skills/life-admin.md finds the cancel steps, fills
-   the form and stops before the last click). Only the company's name leaves Finance: no amounts, no accounts */
+/* cancel, on a subscription or a monthly bill: an Agent task of its own (agent/skills/life-admin.md finds the cancel
+   steps, fills the form and stops before the last click). Only the company's name leaves Finance: no amounts, no accounts */
 function finCancelTask(name){ return state.tasks.find(function(t){ return t.cancelFor===name&&!t.done; }); }
-function finCancelSub(name){
+// the last cancel task for it that finished: the Agent reported done, or he checked it off
+function finCancelledTask(name){
+  return state.tasks.filter(function(t){ return t.cancelFor===name&&(t.done||t.status==='done'); }).sort(function(a,b){ return (b.updatedAt||0)-(a.updatedAt||0); })[0];
+}
+/* the button on a row: cancel → cancelling (on the Agent tab) → cancelled, with the day and the Agent's last note on hover.
+   A cancelled one still charging can be handed over again; that asks first */
+function finCancelButton(name){
+  const open=finCancelTask(name), was=open?null:finCancelledTask(name);
+  const cb=el('button','ghost mono',open?'cancelling':was?'cancelled':'cancel');
+  const day=was?finDate((was.updatedAt||was.created)/1000):'';
+  const last=was?(was.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0]:null;
+  const note=was?String((last&&last.text)||was.note||'').replace(/\s+/g,' ').slice(0,200):'';
+  cb.title=open?'On your Agent tab':was?'Cancelled '+day+(note?': '+note:''):'Have the Agent cancel '+name;
+  cb.addEventListener('click',function(){
+    if(finCancelSub(name,was?'This was cancelled on '+day+'. If it is still charging, the Agent can try again.':null)){ cb.textContent='cancelling'; cb.title='On your Agent tab'; }
+  });
+  return cb;
+}
+function finCancelSub(name,lead){
   if(finCancelTask(name)){ voiceToast('Already on your Agent tab'); return false; }
-  if(!confirm('Cancel '+name+'?\n\nThe Agent gets only the name "'+name+'" (no amounts or accounts from Finance), finds how to cancel it and gets it ready.\n\nIt stops before the final cancel click, and never takes a retention offer for you.'))return false;
+  if(!confirm((lead?lead+'\n\n':'')+'Cancel '+name+'?\n\nThe Agent gets only the name "'+name+'" (no amounts or accounts from Finance), finds how to cancel it and gets it ready.\n\nIt stops before the final cancel click, and never takes a retention offer for you.'))return false;
   const nt={id:uid(),title:'Cancel my '+name+' subscription',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
     created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],cancelFor:name,
     notes:'He wants to stop paying for '+name+'. Find the company’s own cancel steps, get the cancellation ready and stop before the final confirm. If they offer a discount or pause to stay, list it as a choice.'};
