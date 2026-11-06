@@ -440,7 +440,7 @@ async function syncCopyRows(moves){ // each row copied to its new key and read b
 async function syncRotateKey(){
   const c=syncState.cfg, p=c&&c.personal;
   if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
-  const moving=['Personal (with Ideas and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
+  const moving=['Personal (with Notes and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
   if(!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked, so a device still on the old key sees empty lists.\n\nEvery other device (phone, mini PC, widgets) stops syncing until you pair it again: press Copy sync code here afterwards and paste it there. Lists with a key of their own are left alone.'))return;
   const newKey=newSyncKey();
   const rotateBtn=$('syncRotateBtn'); if(rotateBtn)rotateBtn.disabled=true;

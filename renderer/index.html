@@ -316,7 +316,7 @@
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
-    <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Ideas</button>
+    <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
     <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
   </div>
@@ -339,7 +339,7 @@
     </div>
     <div id="newAtts" class="att-thumbs" style="padding:2px 8px 6px" hidden></div>
   </section>
-  <!-- outside the add box, so a spoken command's result shows on Ideas (no add box there) too -->
+  <!-- outside the add box, so a spoken command's result shows on Notes (no add box there) too -->
   <div id="voiceToast" class="voice-toast" hidden></div>
   <!-- "Hey Romulus": a speech bubble at the bottom, so you can see it heard you (task-actions.js wakeBubble) -->
   <div id="wakeBubble" class="wake-bubble" role="status" aria-live="polite" hidden>
@@ -361,7 +361,7 @@
       <ul class="welcome-tips">
         <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
         <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
-        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Ideas</b> and <b>Hours</b> are extra views of the same tasks.</li>
+        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Notes</b> and <b>Hours</b> are extra views of the same tasks.</li>
         <li id="welcomeTrayTip">Closing the window hides Romulus in the tray by the clock; right-click the tray icon to quit.</li>
       </ul>
       <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
@@ -428,7 +428,7 @@
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
   </div>
 
-  <!-- Ideas (hidden by default) -->
+  <!-- Notes (hidden by default; internal name "ideas") -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>

@@ -8,7 +8,7 @@
 
 **Your money, without the subscription.** The Finance tab does what people pay Rocket Money, Monarch or Copilot for: every account in one place, recurring bills and subscriptions found automatically (and flagged when one stops), net worth over time, an income statement and balance sheet, receipts pulled from your inbox, live stock prices. The bank connection is read-only and costs about $15 a year; the data sits in an encrypted vault on your computer (and, if you scan a QR code, on your phone behind your fingerprint), not on anyone's server, and no cloud AI can read it.
 
-Plus a School list that pulls due dates from course calendars, an Ideas board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
+Plus a School list that pulls due dates from course calendars, a Notes board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
 
 <p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
 
@@ -35,7 +35,7 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 | **Agent** | Tasks the AI does. Live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI. |
 | **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. |
 | **Work** | A second list, synced with the rest. |
-| **Calendar · Ideas · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
+| **Calendar · Notes · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
 | **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
 
 What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
@@ -125,7 +125,7 @@ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin 
 - ↑/↓ select · Space completes · Enter expands · Delete removes · Esc deselects
 - Drag the dots on a row's left edge to reorder; click a tag chip to filter
 - Hover a row for edit / expand / delete; overdue and due-today rows get a snooze button
-- Ideas: + Add an idea in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
+- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
 
 ## License
 

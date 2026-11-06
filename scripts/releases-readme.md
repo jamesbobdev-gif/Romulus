@@ -21,7 +21,7 @@ This repository holds the **installers**. Download the latest from the [Releases
 - **Agent**: tasks the AI does for you. Each one shows what it's working on live, its questions, its results, and the conversation so far. Reply in the task to steer it.
 - **School**: assignments, with due dates pulled in automatically from Blackboard or D2L calendar links; the class is the tag.
 - **Work**: a second list that can sync with a separate project.
-- **Calendar**, **Ideas** (a board of sortable note cards), **Hours** (log time per day for school or work): extra views of the same data.
+- **Calendar**, **Notes** (a board of sortable note cards), **Hours** (log time per day for school or work): extra views of the same data.
 
 ### The Agent
 What it can do today, with the right AI connected:
