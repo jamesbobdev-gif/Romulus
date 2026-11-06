@@ -14,6 +14,8 @@ $('stamp').addEventListener('click',function(){ switchTab('calendar'); });
 store.load().then(async function(data){
   // desktop: the sync settings come from config.json (sync.js started reading them; nothing is kept in localStorage)
   if(syncState.ready){ try{ await syncState.ready; }catch(e){} }
+  // a new install syncs through the Romulus server from the start, encrypted (hosted-sync.js)
+  if(typeof hostedAutoStart==='function'){ try{ await hostedAutoStart(); }catch(e){} }
   // this computer's name: a run another computer claimed ('relay@lupa-…') isn't this one's to put back in the queue
   let host=null; if(window.desktop&&window.desktop.hostName){ try{ host=await window.desktop.hostName(); }catch(e){} }
   if(data&&Array.isArray(data.tasks)){

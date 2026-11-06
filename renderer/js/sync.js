@@ -266,6 +266,44 @@ function syncAdoptV2(p){
   syncState.docs={};
   return true;
 }
+/* Before switching to a Supabase project typed into Settings: is it reachable, is the key right, and was
+   setup.sql run in it? '' = fine (or something the normal sync will report better). */
+async function syncCheckProject(p){
+  let res;
+  try{ res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/sync_get',{method:'POST',headers:syncHeaders(p),body:JSON.stringify({p_sync_key:p.syncKey})}); }
+  catch(e){ return 'couldn’t reach that Project URL: check it, and that you’re online'; }
+  if(res.ok)return '';
+  if(res.status===401||res.status===403)return 'that key was refused: paste the publishable key from Project Settings → API';
+  if(res.status===404)return 'that project isn’t set up yet: press Copy setup.sql, paste it in the project’s SQL Editor and press Run, then Save & sync again';
+  return '';
+}
+/* Moving the lists to another project (Romulus server → your own): once this device's lists are up there, the
+   old personal row gets {movedTo:{url,key}} in place of the list, sealed like every row there, so only a
+   device with the sync key can read it. Every other device on these lists follows it on its next sync
+   (syncFollowMove), so nobody has to pair them again. An older build that doesn't know the note just keeps
+   syncing where it was. The note's list is empty with no tombstones, so merging it deletes nothing. */
+async function syncLeaveMovedNote(oldP,newP){
+  await syncPushDoc(oldP,{v:1,tasks:[],tombstones:[],movedTo:{url:newP.url,key:newP.key,v2:!!newP.v2}});
+}
+function syncFollowMove(from,m){
+  const c=syncState.cfg;
+  if(!c||!m||typeof m.url!=='string'||typeof m.key!=='string'||!/^https:\/\/[^\s/]+/.test(m.url)||m.key.length<10)return false;
+  if(m.url.replace(/\/+$/,'')===from.url.replace(/\/+$/,''))return false;
+  const raw={};
+  ['personal','work','agent','school'].forEach(function(ws){
+    const x=c[ws]; if(!x||(ws!=='personal'&&x.derived))return;
+    if(x.url!==from.url){ raw[ws]=x; return; }
+    const y=Object.assign({},x,{url:m.url,key:m.key});
+    if(m.v2)y.v2=true; else delete y.v2;
+    raw[ws]=y;
+  });
+  syncState.cfg=normalizeSyncCfg(raw);
+  syncCfgPersist(syncState.cfg);
+  syncState.docs={};
+  if(typeof hostedSetOptOut==='function')hostedSetOptOut(true); // don't start on the Romulus server by itself again
+  if(typeof syncFillForm==='function')syncFillForm();
+  return true;
+}
 function setSyncStatus(msg,isErr){
   const n=document.getElementById('syncStatus');
   if(n){ n.textContent=msg; n.style.color=isErr?'var(--late)':'var(--muted)'; }
@@ -432,6 +470,11 @@ async function syncOnce(){
         const row=await syncPullRow(p);
         // the list moved to a new sync key this device wasn't given: uploading here would only fill the blanked row again
         if(row.doc&&row.doc.rotated)throw new Error('the sync key was changed on another device: pair this one again with Add a device');
+        // another device moved these lists to a different Supabase project: follow it there (syncLeaveMovedNote)
+        if(ws==='personal'&&row.doc&&row.doc.movedTo&&syncFollowMove(p,row.doc.movedTo)){
+          setSyncStatus('your lists moved to another Supabase project; following them there');
+          setTimeout(startSyncLoop,0); return;
+        }
         if(row.doc&&typeof markWelcomed==='function')markWelcomed(); // the account already has lists, so it was welcomed on another device
         const r=mergeRemoteWs(row.doc,ws);
         if(r.changedLocal)anyLocal=true;

@@ -43,6 +43,16 @@ test('the answer from another device is remembered here', () => {
   assert.strictEqual(updater.shared(null).state, 'none');
 });
 
+test('early access is a setting of its own, off until turned on', () => {
+  let cfg = { updates: 'auto' };
+  updater.init({ readConfig: () => Object.assign({}, cfg), writeConfig: (c) => { cfg = c; }, version: '1.0.8', agentLog: () => {} });
+  assert.strictEqual(updater.handlers['update:get-early'](), false);
+  assert.strictEqual(updater.handlers['update:set-early'](null, true), true);
+  assert.deepStrictEqual(cfg, { updates: 'auto', earlyAccess: true });
+  assert.strictEqual(updater.handlers['update:set-early'](null, 0), false);
+  assert.strictEqual(updater.handlers['update:get-early'](), false);
+});
+
 // renderer/js/update-sync.js, with the sync functions it uses stood in for
 function loadShared(row) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'js', 'update-sync.js'), 'utf8');

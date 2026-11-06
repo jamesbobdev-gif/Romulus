@@ -170,6 +170,7 @@ pre .c{color:var(--faint)}
 
 footer{border-top:1px solid var(--hairline);padding-block:28px 40px;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 20px;max-width:1040px;margin:0 auto}
 footer a{color:var(--muted);font-weight:500}
+footer .supporters{flex-basis:100%;margin:6px 0 0;line-height:1.6}
 </style>
 </head>
 <body>
@@ -333,7 +334,28 @@ npm start</pre>
 <footer>
   <span>Romulus · MIT · <a href="https://github.com/jamesbobdev-gif/Romulus">Source</a> · <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases">All releases</a></span>
   <span>Romulus killed Remus. This should kill your need for Meta Muse.</span>
+  <p id="supporters" class="supporters" hidden></p>
 </footer>
+<script src="romulus-server.js"></script>
+<script>
+// Everyone on the $5 plan who typed a name at checkout, for as long as they pay (sync_supporters_list in
+// supabase/migrations/20261107_sync_supporter_perks.sql). Names go in as text, never as markup.
+(function () {
+  var s = window.ROMULUS_SERVER, el = document.getElementById('supporters');
+  if (!s || !s.url || !s.key || !el) return;
+  fetch(String(s.url).replace(/\/+$/, '') + '/rest/v1/rpc/sync_supporters_list', {
+    method: 'POST',
+    headers: { apikey: s.key, Authorization: 'Bearer ' + s.key, 'Content-Type': 'application/json' },
+    body: '{}'
+  }).then(function (r) { return r.ok ? r.json() : []; }).then(function (rows) {
+    var names = (rows || []).map(function (r) { return String(r.name || '').trim(); }).filter(Boolean);
+    if (!names.length) return;
+    var list = names.join(', ');
+    el.textContent = 'Thanks to the people keeping Romulus running: ' + list + (/[.!?]$/.test(list) ? '' : '.');
+    el.hidden = false;
+  }).catch(function () {});
+})();
+</script>
 
 <script>
 (function () {
