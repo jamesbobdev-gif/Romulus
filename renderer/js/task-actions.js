@@ -65,13 +65,23 @@ async function addTask(){
     composerAtts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); composerAtts.length=0; drawComposerAtts();
     addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add';
   }
-  let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; const tag=$('newTag').value.trim()||null;
+  let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; let tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
   const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  // typed "#home" and "every sunday" (quick-add.js): the tag and the repeat come out of the title.
+  // Not for the Agent: its #legion is a tag of its own, and its repeats are t.repeat (agent-chat.js)
+  let recur=null;
+  if(ws!=='agent'){
+    if(!tag){ const g=tagFromWords(title); if(g.tag){ title=g.title; tag=g.tag; } }
+    recur=recurFromWords(title); if(recur)title=recur.title;
+  }
   // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
   // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
   if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
+  // "every sunday at 5": the weekday wins over the today-or-tomorrow a lone time would give; a repeat needs a date
+  if(recur&&!$('newDue').value&&(recur.onDay||!due))due=recur.due;
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+  if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
   if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;

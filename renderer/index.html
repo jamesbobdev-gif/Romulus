@@ -236,6 +236,19 @@
       <p class="settings-hint">
         For your first device, or your own <a id="supabaseLink">Supabase</a> project. One project, one sync key: the same three values on every device sync every list. Keep the sync key private.
       </p>
+      <div id="syncFirstSteps" class="settings-hint" hidden>
+        <p style="margin:0 0 6px"><b>Nothing syncs yet, so this is your first device.</b> Your lists sync through a free Supabase project of your own. It takes about ten minutes, once:</p>
+        <ol style="margin:0 0 8px;padding-left:20px">
+          <li>Make a free account and a <b>New project</b> at Supabase. Any name and region will do.</li>
+          <li>In the project, open <b>SQL Editor</b>, paste all of <b>setup.sql</b> and press <b>Run</b>.</li>
+          <li>In <b>Project Settings → API</b>, copy the <b>Project URL</b> and the <b>publishable</b> key into the first two boxes below. Never use the secret key.</li>
+          <li>Press <b>Save &amp; sync</b>. A sync key is made for you. Then press <b>Add a device</b> above for your phone.</li>
+        </ol>
+        <div class="settings-row">
+          <button id="syncOpenSupabase" class="ghost mono">Open Supabase ↗</button>
+          <button id="syncOpenSql" class="ghost mono">Open setup.sql ↗</button>
+        </div>
+      </div>
       <input id="syncUrl" class="settings-inp" placeholder="Project URL (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
       <input id="syncAnonKey" class="settings-inp" placeholder="Anon / publishable key" type="password" autocomplete="off">
       <input id="syncKey" class="settings-inp" placeholder="Sync key" autocomplete="off" spellcheck="false">
@@ -446,6 +459,7 @@
 <script src="js/no-emoji.js"></script>
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
+<script src="js/quick-add.js"></script>
 <script src="js/order-match.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>

@@ -317,11 +317,22 @@ $('themeResetBtn').addEventListener('click',function(){
   $('themeStatus').textContent='reset to default';
   setTimeout(function(){ $('themeStatus').textContent=''; },2000);
 });
-$('supabaseLink').addEventListener('click',function(e){
-  e.preventDefault();
-  if(window.desktop&&window.desktop.gcalOpenUrl)window.desktop.gcalOpenUrl('https://supabase.com');
-  else window.open('https://supabase.com','_blank');
-});
+function openOutside(url){
+  if(window.desktop&&window.desktop.gcalOpenUrl)window.desktop.gcalOpenUrl(url);
+  else window.open(url,'_blank');
+}
+$('supabaseLink').addEventListener('click',function(e){ e.preventDefault(); openOutside('https://supabase.com'); });
+// the first device: nothing to pair with, so Device sync opens on the steps for making the project
+const SETUP_SQL_URL='https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/setup.sql';
+$('syncOpenSupabase').addEventListener('click',function(){ openOutside('https://supabase.com/dashboard/new'); });
+$('syncOpenSql').addEventListener('click',function(){ openOutside(SETUP_SQL_URL); });
+function syncShowFirstSteps(){
+  const first=!(syncState.cfg&&validProfile(syncState.cfg.personal));
+  $('syncFirstSteps').hidden=!first;
+  if(first)$('syncManual').open=true;
+  return first;
+}
+$('syncSection').addEventListener('toggle',function(){ if(this.open)syncShowFirstSteps(); });
 // one code carries the whole form to another device (the anon key box hides its text, so it can't be copied on its own)
 const SYNC_CODE_PREFIX='tasks-sync:';
 const SYNC_CODE_FIELDS=[['u','syncUrl'],['k','syncAnonKey'],['s','syncKey'],['w','syncKeyW'],['a','syncKeyA'],['c','syncKeyS']];
@@ -387,8 +398,11 @@ const SYNC_KEY_SHAPE=/^tk_[A-Za-z0-9_-]{13,}$/;
 function newSyncKey(){ return 'tk_'+(crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),function(b){ return b.toString(16).padStart(2,'0'); }).join('')); }
 $('syncGenBtn').addEventListener('click',function(){ $('syncKey').value=newSyncKey(); });
 $('syncSaveBtn').addEventListener('click',function(){
-  const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim(), sk=$('syncKey').value.trim();
-  if(!url||!key||!sk){ setSyncStatus('fill in the three fields',true); return; }
+  const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim();
+  if(!url||!key){ setSyncStatus('paste the Project URL and the publishable key first',true); return; }
+  // the first device makes the sync key; a second one gets it by pairing
+  if(!$('syncKey').value.trim())$('syncKey').value=newSyncKey();
+  const sk=$('syncKey').value.trim();
   if(sk.length<16){ setSyncStatus('the sync key must be at least 16 characters (press Generate key)',true); return; }
   if(!SYNC_KEY_SHAPE.test(sk)){ setSyncStatus('a sync key starts with tk_ and has only letters, digits, - and _ (press Generate key)',true); return; }
   // the lists share the project; a key typed for one is its own, blank = made from the sync key
