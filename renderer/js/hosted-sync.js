@@ -143,12 +143,14 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     planBox.hidden=!u||paid;
     payBtn.hidden=!hostedCanPay(h);
     payYearBtn.hidden=!(hostedCanPay(h)&&h.payYear);
+    // at 90% of the free space the two ways on sit side by side: pay for more, or move to a project of one's own
+    planOwnBtn.hidden=!t.full;
     drawFamily(p,c);
     drawHistory(p,c,paid);
     drawEarly(paid);
     drawSupporters(p,c);
   };
-  const planBox=$('hostedPlan'), payYearBtn=$('hostedPayYearBtn'), joinBtn=$('hostedJoinBtn');
+  const planBox=$('hostedPlan'), payYearBtn=$('hostedPayYearBtn'), joinBtn=$('hostedJoinBtn'), planOwnBtn=$('hostedPlanOwnBtn');
   const famBox=$('hostedFamily'), famInfo=$('hostedFamilyInfo'), famList=$('hostedFamilyList'), inviteBtn=$('hostedInviteBtn'), leaveBtn=$('hostedLeaveBtn');
   const histBox=$('hostedHistory'), histDay=$('hostedHistoryDay'), restoreBtn=$('hostedRestoreBtn');
   const earlyRow=$('hostedEarlyRow'), early=$('hostedEarly'), supporters=$('hostedSupporters');
@@ -207,6 +209,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   };
   payBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.pay); });
   payYearBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payYear); });
+  planOwnBtn.addEventListener('click',function(){ ownBtn.click(); });
   joinBtn.addEventListener('click',async function(){
     const code=prompt('The family code someone with the $5 plan gave you:');
     if(!code||!code.trim())return;
@@ -260,7 +263,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     $('syncManual').open=true; $('syncFirstSteps').hidden=false;
     $('syncUrl').value=''; $('syncAnonKey').value='';
     $('syncUrl').focus();
-    setSyncStatus('follow the steps below, then Save & sync. Pair your other devices again afterwards.');
+    setSyncStatus('follow the steps below, then Save & sync. Your other devices follow on their next sync.');
   });
   backBtn.addEventListener('click',async function(){
     if(!confirm('Sync through the Romulus server instead?\n\nThis device starts fresh there with a new sync key, encrypted, and uploads its lists. Your other devices keep using your own project until you pair them again.'))return;
