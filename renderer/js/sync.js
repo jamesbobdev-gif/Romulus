@@ -239,9 +239,15 @@ function syncHeaders(p){ return {'apikey':p.key,'Authorization':'Bearer '+p.key,
    the anon key, so the key in the app can't list or touch anything but what it knows the key of. */
 async function syncRpc(p,fn,body){
   const res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)});
-  if(!res.ok)throw new Error('HTTP '+res.status);
+  if(!res.ok){
+    // the Romulus server limits downloads (supabase/migrations/20261111_sync_read_limits.sql): say so, it clears by itself
+    let msg=''; try{ msg=String((await res.json()).message||''); }catch(e){}
+    if(msg==='read_limit')throw new Error(SYNC_READ_LIMIT);
+    throw new Error('HTTP '+res.status);
+  }
   return res.json();
 }
+const SYNC_READ_LIMIT='sync paused for a while: this account downloaded a lot in a short time. Your lists are safe on this device, and it picks up again on its own.';
 /* End-to-end encryption (sync-crypto.js). A profile with v2:true is found under its lookup id and its rows
    go up sealed; every list made from the personal key follows it (normalizeSyncCfg). A profile built for one
    row (ideasProfile, prefsProfile, …) has no flag of its own: it's whatever the list it belongs to is. */
