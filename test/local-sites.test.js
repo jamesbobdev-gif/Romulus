@@ -23,3 +23,14 @@ test('the Human to-do: title and the host back out of it', () => {
   assert.strictEqual(ls.askHost('Reconnect Gemini: …'), null);
   assert.strictEqual(ls.askHost(ls.askTitle('x.com')), 'x.com');
 });
+
+test('common sites: 100 of them, no repeats, no banks or payment sites, merged into his list', () => {
+  assert.strictEqual(ls.COMMON_SITES.length, 100);
+  assert.strictEqual(new Set(ls.COMMON_SITES).size, 100);
+  assert.ok(!ls.COMMON_SITES.some((s) => /paypal|venmo|chase|bankofamerica|wellsfargo|capitalone|cash\.app|zelle/.test(s)));
+  const all = ls.withCommon(['joinhandshake.com', 'https://www.walmart.com/']);
+  assert.deepStrictEqual(all.slice(0, 2), ['joinhandshake.com', 'walmart.com']);
+  assert.strictEqual(all.filter((s) => s === 'walmart.com').length, 1);
+  assert.ok(ls.covered('maps.google.com', all) && ls.covered('www.wikipedia.org', all));
+  assert.deepStrictEqual(ls.newHosts(['en.wikipedia.org', 'jobs.lever.co'], all), ['jobs.lever.co']);
+});
