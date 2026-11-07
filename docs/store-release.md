@@ -150,7 +150,7 @@ What the iPhone build has (Swift, in `mobile/ios/App`), each the counterpart of 
 | `FinanceVaultPlugin.swift` | `FinanceVaultPlugin.java` | key in the Keychain behind Face ID / Touch ID; adding a face or finger means pairing again. iOS can't block screenshots, so `secure` only hides Finance in the app switcher and while the screen is recorded |
 | `CalAccountsPlugin.swift` | `CalAccountsPlugin.java` | Apple's sign-in sheet; tokens in the Keychain |
 | `ShareLinkPlugin.swift` | `ShareLinkPlugin.java` | |
-| `RomulusWidgets/` + `WidgetDataPlugin.swift` | the `*WidgetProvider.java` files | Today, Tasks, School, Claude needs you, Agent status, Quick add. The page feeds them (`mobile/widgets-phone.js`), since only it can read the encrypted lists. Checking off on a widget needs iOS 17; the app itself runs on iOS 15 and up |
+| `RomulusWidgets/` + `WidgetDataPlugin.swift` | the `*WidgetProvider.java` files | the same five as Android: Today, List (Personal or Groceries, picked in the widget's settings), School, Agent (one board: needs you, working, queued, done, parked), Quick add. The page feeds them (`mobile/widgets-phone.js`), since only it can read the encrypted lists. Checking off on a widget needs iOS 17; the app itself runs on iOS 15 and up |
 | `MainViewController.swift` | `MainActivity.java` | sets `ROMULUS_STORE = 'appstore'` (no update banner, no Stripe buttons) and turns widget taps (`romulus://hook?...`) into `window.__tasksHook` |
 
 Not on the iPhone yet: sharing into Romulus from other apps (Android's Share menu target). That needs a Share

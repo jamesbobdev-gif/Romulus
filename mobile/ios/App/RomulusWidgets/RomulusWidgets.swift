@@ -2,17 +2,16 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 
-/// Romulus's home-screen widgets: the iPhone versions of the Android ones (TodayWidgetProvider and friends).
+/// Romulus's home-screen widgets: the iPhone versions of the five Android ones (TodayWidgetProvider and friends).
 /// They draw what the app last saved (WidgetShared); a row's circle checks it off on the spot, and the app
 /// saves it the next time it opens. Tapping a row opens it in the app.
 @main
 struct RomulusWidgets: WidgetBundle {
     var body: some Widget {
         TodayWidget()
-        TasksWidget()
+        ListWidget()
         SchoolWidget()
         AgentWidget()
-        StatusWidget()
         QuickAddWidget()
     }
 }
@@ -68,6 +67,7 @@ struct Row: Identifiable, Hashable {
     let label: String
     let tone: String
     let checkable: Bool
+    var openId: String? = nil // the task a tap opens, when it isn't id
 }
 
 enum Tone {
@@ -152,8 +152,12 @@ enum Lists {
         return (header, overdue > 0 ? "late" : "muted", rows)
     }
 
-    static func tasks(_ e: Entry) -> (String, String, [Row]) {
-        let items = open(e).filter { $0.ch != "school" }.sorted { Dates.sortKey($0) < Dates.sortKey($1) }
+    /// every open personal task: dated ones by when they're due, then the rest in list order
+    static func personal(_ e: Entry) -> (String, String, [Row]) {
+        let items = open(e).filter { $0.ch == "personal" }.sorted {
+            let a = Dates.sortKey($0), b = Dates.sortKey($1)
+            return a != b ? a < b : ($0.ord ?? 0) < ($1.ord ?? 0)
+        }
         var overdue = 0, today = 0
         for t in items { if let d = t.due.flatMap(Dates.diff) { if d < 0 { overdue += 1 } else if d == 0 { today += 1 } } }
         let header = overdue > 0 && today > 0 ? "\(overdue) overdue · \(today) today"
@@ -183,7 +187,7 @@ enum Lists {
     static func worded(_ list: WidgetList?, _ e: Entry) -> (String, String, [Row]) {
         guard let list else { return ("", "muted", []) }
         let rows = list.rows.filter { !e.pending.contains($0.id) }.map {
-            Row(id: $0.id, title: $0.title, sub: $0.sub ?? "", label: $0.label ?? "", tone: $0.tone ?? "muted", checkable: $0.checkable ?? false)
+            Row(id: $0.id, title: $0.title, sub: $0.sub ?? "", label: $0.label ?? "", tone: $0.tone ?? "muted", checkable: $0.checkable ?? false, openId: $0.openId)
         }
         return (list.header, list.tone ?? "muted", rows)
     }
@@ -255,7 +259,7 @@ struct RowView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Check off " + row.title)
             }
-            Link(destination: hookURL("open", row.id)) {
+            Link(destination: hookURL("open", row.openId ?? row.id)) {
                 HStack(spacing: 6) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(row.title).font(.subheadline).lineLimit(1)
@@ -289,14 +293,59 @@ struct TodayWidget: Widget {
     }
 }
 
-struct TasksWidget: Widget {
+/// The List widget picks what it shows, like Android's (WidgetListPickerActivity): Personal or Groceries.
+enum ListChoice: String, AppEnum {
+    case personal, groceries
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "List"
+    static var caseDisplayRepresentations: [ListChoice: DisplayRepresentation] = [
+        .personal: "Personal",
+        .groceries: "Groceries"
+    ]
+}
+
+struct ListPickIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "List"
+    static var description = IntentDescription("Personal: every open task. Groceries: what's on the next order.")
+    @Parameter(title: "List", default: .personal) var list: ListChoice
+    init() {}
+}
+
+struct ListEntry: TimelineEntry {
+    let date: Date
+    let base: Entry
+    let choice: ListChoice
+}
+
+struct ListProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> ListEntry {
+        ListEntry(date: Date(), base: Entry(date: Date(), snapshot: nil, pending: []), choice: .personal)
+    }
+    func snapshot(for configuration: ListPickIntent, in context: Context) async -> ListEntry { entry(configuration) }
+    func timeline(for configuration: ListPickIntent, in context: Context) async -> Timeline<ListEntry> {
+        let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(86400))
+        return Timeline(entries: [entry(configuration)], policy: .after(midnight))
+    }
+    private func entry(_ c: ListPickIntent) -> ListEntry {
+        let e = Entry(date: Date(), snapshot: WidgetShared.snapshot(), pending: Set(WidgetShared.pendingDone()))
+        return ListEntry(date: e.date, base: e, choice: c.list)
+    }
+}
+
+struct ListWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "tasks", provider: Provider()) { e in
-            let l = Lists.tasks(e)
-            ListView(title: "Tasks", header: l.0, headerTone: l.1, rows: l.2, empty: "No open tasks.", tab: "list", noData: e.snapshot == nil)
+        AppIntentConfiguration(kind: "list", intent: ListPickIntent.self, provider: ListProvider()) { le in
+            if le.choice == .groceries {
+                let l = Lists.worded(le.base.snapshot?.groceries, le.base)
+                ListView(title: "Groceries", header: l.0, headerTone: l.1, rows: l.2,
+                         empty: le.base.snapshot?.groceries == nil ? "Set up the Agent tab in Romulus first." : "Nothing due for the next order.",
+                         tab: "agent", noData: le.base.snapshot == nil)
+            } else {
+                let l = Lists.personal(le.base)
+                ListView(title: "Personal", header: l.0, headerTone: l.1, rows: l.2, empty: "No open tasks.", tab: "list", noData: le.base.snapshot == nil)
+            }
         }
-        .configurationDisplayName("Tasks")
-        .description("Your open tasks, soonest first.")
+        .configurationDisplayName("List")
+        .description("Pick Personal (every open task, tap the circle to check it off) or Groceries (what's on the next order).")
         .supportedFamilies(listFamilies)
     }
 }
@@ -319,26 +368,12 @@ struct AgentWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "agent", provider: Provider()) { e in
             let l = Lists.worded(e.snapshot?.agent, e)
-            ListView(title: "Claude needs you", header: l.0, headerTone: l.1, rows: l.2,
-                     empty: e.snapshot?.agent == nil ? "Set up the Agent tab in Romulus first." : "Nothing waiting on you.",
+            ListView(title: "Agent", header: l.0, headerTone: l.1, rows: l.2,
+                     empty: e.snapshot?.agent == nil ? "Set up the Agent tab in Romulus first." : "Nothing waiting or running.",
                      tab: "agent", noData: e.snapshot == nil)
         }
-        .configurationDisplayName("Claude needs you")
-        .description("Agent tasks waiting on your answer.")
-        .supportedFamilies(listFamilies)
-    }
-}
-
-struct StatusWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "status", provider: Provider()) { e in
-            let l = Lists.worded(e.snapshot?.status, e)
-            ListView(title: "Agent status", header: l.0, headerTone: l.1, rows: l.2,
-                     empty: e.snapshot?.status == nil ? "Set up the Agent tab in Romulus first." : "Nothing running.",
-                     tab: "agent", noData: e.snapshot == nil)
-        }
-        .configurationDisplayName("Agent status")
-        .description("What Claude and the local model are working on, what's queued, and what they just finished.")
+        .configurationDisplayName("Agent")
+        .description("What needs your answer, then what Claude and Lupa are working on, what's queued and what they just finished.")
         .supportedFamilies(listFamilies)
     }
 }

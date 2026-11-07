@@ -38,9 +38,9 @@ struct WidgetSnapshot: Codable {
     var at: Double?
     /// open to-dos in the personal, work and school lists
     var open: [WidgetTask]?
-    /// the Agent lists, already worded by the page (nil when the Agent tab isn't set up)
+    /// the Agent board and the next grocery order, already worded by the page (nil when the Agent tab isn't set up)
     var agent: WidgetList?
-    var status: WidgetList?
+    var groceries: WidgetList?
     var school: Bool?
 }
 
@@ -52,6 +52,7 @@ struct WidgetTask: Codable, Hashable {
     var time: String?  // HH:MM
     var tag: String?
     var kind: String?
+    var ord: Int?      // place in his list, for the undated ones
 }
 
 struct WidgetList: Codable {
@@ -67,4 +68,5 @@ struct WidgetRow: Codable, Hashable, Identifiable {
     var label: String?
     var tone: String?
     var checkable: Bool?
+    var openId: String? // the task a tap opens, when it isn't id (a grocery item opens its grocery task)
 }
