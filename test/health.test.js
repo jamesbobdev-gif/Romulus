@@ -99,3 +99,28 @@ test('phone bridge: absent without the plugin', () => {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'health-phone.js'), 'utf8'), { window });
   assert.strictEqual(window.phoneHealth, undefined);
 });
+
+/* the Food plan (renderer/js/health.js): his per-day macros, which grocery runs are built to */
+test('a food plan keeps its numbers per day and its span; nothing set is no plan', () => {
+  const { macroPlanClean, macroPlanUntil } = require('../renderer/js/health');
+  assert.deepStrictEqual(macroPlanClean({ kcal: '2100', protein: 160.4, carbs: '', fat: -5, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 7 }),
+    { kcal: 2100, protein: 160, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 7 });
+  assert.strictEqual(macroPlanClean({ kcal: '', protein: 0, span: 'week' }), null);
+  assert.strictEqual(macroPlanClean(null), null);
+  assert.strictEqual(macroPlanClean({ protein: 150, span: 'forever', from: 'soon' }).span, 'open');
+  assert.strictEqual(macroPlanUntil('week', '2026-11-07'), '2026-11-13');
+  assert.strictEqual(macroPlanUntil('2weeks', '2026-11-07'), '2026-11-20');
+  assert.strictEqual(macroPlanUntil('month', '2026-11-07'), '2026-12-06');
+  assert.strictEqual(macroPlanUntil('open', '2026-11-07'), null);
+});
+
+test('the plan line says what a day is and how long it runs', () => {
+  const { macroPlanSay, macroPlanDaysLeft } = require('../renderer/js/health');
+  const p = { kcal: 2100, protein: 160, carbs: 200, fat: 65, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 1 };
+  assert.strictEqual(macroPlanSay(p, '2026-11-07'), '2,100 kcal · 160 g protein · 200 g carbs · 65 g fat a day · 7 days left (ends Nov 13)');
+  assert.strictEqual(macroPlanSay(p, '2026-11-13'), '2,100 kcal · 160 g protein · 200 g carbs · 65 g fat a day · last day today (ends Nov 13)');
+  assert.strictEqual(macroPlanSay(p, '2026-11-14'), '2,100 kcal · 160 g protein · 200 g carbs · 65 g fat a day · ended Nov 13');
+  assert.strictEqual(macroPlanSay({ protein: 150, span: 'open', until: null }, '2026-11-07'), '150 g protein a day · until you change it');
+  assert.strictEqual(macroPlanDaysLeft(p, '2026-11-10'), 4);
+  assert.strictEqual(macroPlanDaysLeft({ until: null }, '2026-11-10'), null);
+});

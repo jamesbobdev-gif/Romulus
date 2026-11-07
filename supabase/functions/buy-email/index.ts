@@ -3,8 +3,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Emails James the link to something he chose in the Tasks app: a product to buy ("Choose this"), a
 // 3D model to print ("Print this"), or anything else, like a job posting or booking page ("Send me
 // link"). Sends via Resend from a neutral address TO his own inbox, so his personal email grants nothing.
-// Never places an order or starts a print. Auth = the token (Authorization: Bearer, or ?token= in the URL
-// for older configs; the app holds it in its local config). The token and the Resend API key live in the app_secrets
+// Never places an order or starts a print. Auth = the token, as Authorization: Bearer only (a token in the address
+// would land in request logs; the app holds it in its local config). The token and the Resend API key live in the app_secrets
 // table (row-level security, service role only), never in the app or this source.
 
 const FROM = "Tasks <onboarding@resend.dev>"; // Resend's shared sender; works for sending to your own account with no domain
@@ -61,10 +61,9 @@ function html(b: any): string {
 }
 
 Deno.serve(async (req) => {
-  const url = new URL(req.url);
   if (!FN_TOKEN || !ONLY_TO) return new Response("Not configured: app_secrets needs buy_email_token and buy_email_to", { status: 503 });
   const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
-  if (!(await tokenOk(bearer || url.searchParams.get("token")))) return new Response("Not found", { status: 404 });
+  if (!(await tokenOk(bearer))) return new Response("Not found", { status: 404 });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
   // deno-lint-ignore no-explicit-any

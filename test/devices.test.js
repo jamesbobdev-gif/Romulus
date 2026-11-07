@@ -36,6 +36,16 @@ test('the list puts this device first, then the latest seen', () => {
   assert.deepStrictEqual(d.devicesList(null, 'me'), []);
 });
 
+test('each device shows its version, marked behind when another runs a newer one', () => {
+  const items = [{ version: '1.1.1' }, { version: '1.2.2' }, { version: 'v1.2.10' }, {}];
+  assert.strictEqual(d.devicesNewest(items), 'v1.2.10');
+  assert.strictEqual(d.devicesNewest([{}]), null);
+  assert.strictEqual(d.devicesVersionLabel({ version: '1.1.1' }, '1.2.2'), 'v1.1.1 · behind');
+  assert.strictEqual(d.devicesVersionLabel({ version: '1.2.2' }, '1.2.2'), 'v1.2.2');
+  assert.strictEqual(d.devicesVersionLabel({ version: '1.2.2' }, null), 'v1.2.2');
+  assert.strictEqual(d.devicesVersionLabel({}, '1.2.2'), null);
+});
+
 test('labels', () => {
   assert.strictEqual(d.devicesSeenLabel(NOW - 5 * 60000, NOW), 'active in the last hour');
   assert.strictEqual(d.devicesSeenLabel(NOW - 5 * 3600000, NOW), 'seen 5 hours ago');

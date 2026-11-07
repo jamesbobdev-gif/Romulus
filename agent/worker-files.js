@@ -7,8 +7,10 @@
    - another computer shows that list (Agent tab, main/downloads.js), downloads one from the bucket, and removes
      one by deleting it there and naming its key in the ':files-gone' row ({v:1, at, keys}), which the worker
      reads to move its own copy to the trash (recoverable there).
-   The bucket is public, so the folder is a hash of the agent key, never the key (the same formula as
-   renderer/js/agent-chat.js attachFolder). No Electron here, so it can be tested on its own. */
+   The bucket is public, so the folder is a hash, never the key. Adding, listing and removing need a proof in an
+   x-romulus-proof header: a one-way hash of the agent key, and the folder is the hash of that proof (setup.sql
+   agent_folder_proved). So the server, its request logs and its backups never see the key itself, which in
+   end-to-end mode is also what the lists are sealed under. No Electron here, so it can be tested on its own. */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -31,7 +33,10 @@ const MIME = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-off
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const ext = (name) => ((String(name).match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || '').toLowerCase();
 const mimeFor = (name) => MIME[ext(name)] || 'application/octet-stream';
-const folderFor = (syncKey) => 'tk_agent_att_' + sha(syncKey).slice(0, 40);
+// what a request shows the bucket instead of the key: sha256 can't be run backwards, so a proof seen on the server is
+// not the key (the same formula as supabase/functions/sync-delete filesFolder)
+const proofFor = (syncKey) => sha('romulus-files-v1|' + syncKey);
+const folderFor = (syncKey) => 'tk_agent_att_' + sha(proofFor(syncKey)).slice(0, 40);
 // a file's identity across the two rows: the same name downloaded again (a new size or time) is a new file
 const fileKey = (f) => String(f.name) + '|' + Number(f.size) + '|' + Number(f.at);
 // where it goes in the bucket: the folder, then a name made from the key; the extension stays (viewers go by it)
@@ -64,9 +69,10 @@ function listDownloads(dir) {
    path it already has or marked for upload → {keep (published entries still here), upload (new ones),
    drop (published entries whose file is gone from this computer: out of the bucket), trash (local paths another
    computer removed)} */
-function plan(local, published, gone, dir = '') {
+function plan(local, published, gone, dir = '', own = () => true) {
   const goneSet = new Set((gone || []).map(String));
-  const have = new Map((published || []).filter((p) => p && p.path).map((p) => [fileKey(p), p]));
+  // a published entry outside the own folder (from before the folder formula changed) is put up again
+  const have = new Map((published || []).filter((p) => p && p.path && own(p.path)).map((p) => [fileKey(p), p]));
   const keep = [], upload = [], trash = [];
   const kept = new Set();
   for (const f of local || []) {
@@ -97,13 +103,13 @@ function trashFiles(paths) {
 }
 
 async function putObject(a, p, body, name, f = fetch) {
-  // x-romulus-key: the storage policies let a request see and remove only the folder of the key it proves (setup.sql agent_folder_proved)
-  const r = await f(storageBase(a) + BUCKET + '/' + p, { method: 'POST', body, headers: supabase.headers(a, { 'Content-Type': mimeFor(name), 'x-romulus-key': a.syncKey }), signal: AbortSignal.timeout(120000) });
+  // x-romulus-proof: the storage policies let a request see and remove only the folder of the proof it carries (setup.sql agent_folder_proved)
+  const r = await f(storageBase(a) + BUCKET + '/' + p, { method: 'POST', body, headers: supabase.headers(a, { 'Content-Type': mimeFor(name), 'x-romulus-proof': proofFor(a.syncKey) }), signal: AbortSignal.timeout(120000) });
   if (r.ok || r.status === 409) return true; // 409: already there from an earlier try
   throw new Error('upload failed (HTTP ' + r.status + ')');
 }
 async function deleteObject(a, p, f = fetch) {
-  const r = await f(storageBase(a) + BUCKET + '/' + p, { method: 'DELETE', headers: supabase.headers(a, { 'x-romulus-key': a.syncKey }), signal: AbortSignal.timeout(20000) });
+  const r = await f(storageBase(a) + BUCKET + '/' + p, { method: 'DELETE', headers: supabase.headers(a, { 'x-romulus-proof': proofFor(a.syncKey) }), signal: AbortSignal.timeout(20000) });
   if (!r.ok && r.status !== 404) throw new Error('remove failed (HTTP ' + r.status + ')');
   return true;
 }
@@ -120,7 +126,7 @@ async function sync(a, { dir = downloadsDir(), fetch: f = fetch, trash = trashFi
   syncing = (async () => {
     const [filesRow, goneRow] = await Promise.all([supabase.readRow(a, FILES, { fetch: f }), supabase.readRow(a, GONE, { fetch: f })]);
     const published = rowFiles(filesRow), gone = rowGone(goneRow);
-    const { keep, upload, drop, trash: toTrash } = plan(listDownloads(dir), published, gone, dir);
+    const { keep, upload, drop, trash: toTrash } = plan(listDownloads(dir), published, gone, dir, (p) => ownPath(a.syncKey, p));
     if (toTrash.length) { if (await trash(toTrash)) log('files: ' + toTrash.length + ' file(s) he removed went to the trash'); }
     const out = keep.slice();
     for (const x of upload) {
@@ -131,7 +137,8 @@ async function sync(a, { dir = downloadsDir(), fetch: f = fetch, trash = trashFi
         log('files: ' + x.name + ' is on sync for his other devices');
       } catch (e) { log('files: ' + x.name + ' didn’t go up: ' + e.message); }
     }
-    for (const p of drop) await deleteObject(a, p.path, f).catch((e) => log('files: ' + p.name + ' stayed in the bucket: ' + e.message));
+    // an object outside the own folder can't be removed with this proof; the cleanup function drops it after 30 days
+    for (const p of drop) if (ownPath(a.syncKey, p.path)) await deleteObject(a, p.path, f).catch((e) => log('files: ' + p.name + ' stayed in the bucket: ' + e.message));
     out.sort((x, y) => y.at - x.at);
     if (filesRow && sameList(published, out)) return true;
     return supabase.writeRow(a, FILES, { v: 1, at: Date.now(), host: os.hostname().slice(0, 60), files: out }, filesRow ? filesRow.updated_at : null, { fetch: f });
@@ -177,4 +184,4 @@ async function remove(a, entries, { fetch: f = fetch } = {}) {
   return true;
 }
 
-module.exports = { FILES, GONE, BUCKET, MAX_BYTES, mimeFor, folderFor, fileKey, objectPath, publicUrl, downloadsDir, ownPath, listDownloads, plan, addGone, sameList, trashFiles, sync, list, download, remove };
+module.exports = { FILES, GONE, BUCKET, MAX_BYTES, mimeFor, proofFor, folderFor, fileKey, objectPath, publicUrl, downloadsDir, ownPath, listDownloads, plan, addGone, sameList, trashFiles, sync, list, download, remove };

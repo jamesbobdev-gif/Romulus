@@ -77,3 +77,24 @@ test('he hears once when the worker goes quiet and once when it comes back; noth
   assert.strictEqual(worker.stateNotice('quiet', doc(30 * 1000), now).title, 'Lupa Au Palatine is back');
   assert.strictEqual(worker.stateNotice('none', doc(30 * 1000), now).title, null); // first heartbeat ever: no fanfare
 });
+
+test('the heartbeat carries the worker browser actions, trimmed, and other computers merge them in', () => {
+  const lines = [
+    { at: 300, task: 'Order paper towels', what: 'clicked', label: 'Place order', url: 'https://www.walmart.com/checkout/' + 'x'.repeat(400) },
+    { at: 200, task: 'Apply', what: 'uploaded', files: ['resume.pdf'], url: 'https://jobs.example.com/apply' },
+    { at: 0, what: 'broken' }, null];
+  const doc = worker.heartbeat({ name: 'Lupa', actions: lines }, 1000);
+  assert.strictEqual(doc.actions.length, 2);
+  assert.ok(doc.actions[0].url.length <= 160);
+  assert.deepStrictEqual(doc.actions[1].files, ['resume.pdf']);
+  assert.strictEqual(worker.heartbeat({ name: 'Lupa', actions: [] }, 1000).actions, undefined);
+  assert.strictEqual(worker.actionsForBeat(Array.from({ length: 50 }, (_, i) => ({ at: i + 1, what: 'clicked' }))).length, worker.ACTIONS_MAX);
+
+  const own = [{ at: 250, what: 'opened mail', url: 'https://mail.google.com/' }];
+  const merged = worker.mergeActions(own, doc);
+  assert.deepStrictEqual(merged.map((l) => l.at), [300, 250, 200]);
+  assert.strictEqual(merged[0].where, 'Lupa');
+  assert.strictEqual(merged[1].where, undefined, 'its own lines are not marked');
+  assert.strictEqual(worker.mergeActions(merged.slice(0, 1).map((l) => Object.assign({}, l, { where: undefined })), doc).length, 2, 'a line it already has is not added twice');
+  assert.deepStrictEqual(worker.mergeActions(own, null), own);
+});

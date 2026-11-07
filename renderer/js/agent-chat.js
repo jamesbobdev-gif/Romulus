@@ -318,6 +318,8 @@ function moveTask(t,toWs,id){ // id: keep a known one (holoBackToSchool); otherw
   state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:now});
   touch();
+  // its encrypted photos reach Claude as plain copies in the Agent's own photo folder (task-files.js)
+  if(toWs==='agent'&&Array.isArray(c.files)&&c.files.length&&typeof taskFilesToAgent==='function')taskFilesToAgent(c);
 }
 /* Undo the short-lived "every School assignment goes to Holo by itself" (2026-10-17): those Agent tasks
    ("holo-<old id>") go back to School under their old id, so the course calendars still know them. */
@@ -349,6 +351,7 @@ function deleteTask(t){
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; }); state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:Date.now()});
+  if(typeof taskFilesForget==='function')taskFilesForget(t); // its photos and files go from the server too
   buzz('delete');
   touch();
 }

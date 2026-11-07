@@ -116,7 +116,13 @@ function readActions(max = 200) {
   let text = ''; try { text = fs.readFileSync(actionsLogFile(), 'utf8'); } catch (e) { return []; }
   return text.split('\n').filter(Boolean).slice(-max).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean).reverse();
 }
-handle('agent:actions', () => readActions());
+// plus what the local model's own computer (Lupa) did, from its heartbeat (agent/worker.js), on his other computers
+handle('agent:actions', async () => {
+  const worker = require('./worker'), cfg = ctx.readConfig();
+  if (worker.isWorker(cfg)) return readActions();
+  await worker.present(require('./supabase').channel(cfg)).catch(() => null); // read at most once a minute
+  return worker.mergeActions(readActions(), worker.lastDoc());
+});
 
 /* opts (all optional):
    approvedHosts: his yes was to an order or application on these sites, so the order button is unlocked

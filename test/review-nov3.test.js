@@ -115,16 +115,25 @@ test('the migration in last position carries every side row, the moved check and
   // a later migration that redefines some of these keeps the side-row list and the moved check (one that leaves them alone, like a plan or perks migration, has nothing to keep)
   for (const name of all.filter((n) => n > '20261103_review_final.sql')) {
     const later = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', name), 'utf8');
-    const redefined = (later.match(/create or replace function public\.sync_(?:get|put|set|usage)\(/g) || []).length;
-    if (!redefined) continue;
+    const redefined = (later.match(/create or replace function public\.sync_(?:put|set|usage)\(/g) || []).length;
+    const readAgain = /create or replace function public\.sync_get\(/.test(later);
+    if (!redefined && !readAgain) continue;
+    // the writes and usage name the side rows one by one; a read takes any side row (:[a-z-]+), as the review migration's own sync_get does
     assert.strictEqual((later.match(/prefs\|locked\|routing\|standing\|ideas\|hours\|worker\|updates\|finance\|files\|files-gone/g) || []).length, redefined, name + ' keeps the side rows');
-    assert.ok(later.includes('sync_is_moved(p_sync_key)'), name + ' keeps the moved check');
+    if (readAgain) assert.ok(later.includes('(:[a-z-]+)?$') || /prefs\|locked\|routing/.test(later), name + ' reads the side rows too');
+    // the moved check guards the writes alone (sync_put, sync_set): a migration that only redefines a read keeps nothing
+    if (/create or replace function public\.sync_(?:put|set)\(/.test(later)) assert.ok(later.includes('sync_is_moved(p_sync_key)'), name + ' keeps the moved check');
   }
   for (const fn of ['sync_get', 'sync_put', 'sync_set', 'sync_usage', 'agent_folder_proved', 'agent_file_upload_allowed', 'sync_pair_put', 'sync_pair_take'])
     assert.ok(sql.includes('create or replace function public.' + fn + '('), fn);
   assert.strictEqual((sql.match(/prefs\|locked\|routing\|standing\|ideas\|hours\|worker\|updates\|finance\|files\|files-gone/g) || []).length, 3);
   assert.strictEqual((sql.match(/sync_is_moved\(p_sync_key\)/g) || []).length, 2);
-  assert.match(sql, /x-romulus-key/);
+  // the bucket's proof: whichever migration last defines agent_folder_proved asks for a hash of the key (x-romulus-proof,
+  // 20261114_agent_files_proof.sql), never the key itself; comments may still tell the story of the old header
+  const proofFile = all.filter((n) => fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', n), 'utf8').includes('function public.agent_folder_proved(')).pop();
+  const proofCode = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', proofFile), 'utf8').split(/\r?\n/).filter((l) => !/^\s*--/.test(l)).join('\n');
+  assert.match(proofCode, /x-romulus-proof/, proofFile + ' proves the key with a hash');
+  assert.ok(!/x-romulus-key/.test(proofCode), proofFile + ': the bucket never asks for the key itself');
   assert.ok(!/create policy "agent files: app can see"[^;]*like 'tk_agent_att_%'/.test(sql), 'listing needs the key proof');
   const setup = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'setup.sql'), 'utf8');
   assert.strictEqual((setup.match(/pairing codes \(supabase\/migrations/g) || []).length, 1, 'the pairing section once');

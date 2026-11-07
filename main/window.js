@@ -60,7 +60,9 @@ function createWindow() {
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // the page runs in Chromium's OS-level sandbox; preload.js only needs contextBridge + ipcRenderer
+      sandbox: true
     }
   });
   // The window only ever shows the app itself: no navigating away, no pop-ups.

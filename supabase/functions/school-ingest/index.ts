@@ -7,7 +7,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //
 //   POST with Authorization: Bearer <token>   -> commit (writes new tasks)
 //   …?dry=1                                   -> dry run (reports what it would add, no write)
-//   (?token=<token> in the URL still works for an older scheduler.) Anything without the token 404s.
+//   (A token in the address is refused: it would land in request logs.) Anything without the token 404s.
 //
 // The token, the School list's key and the feed links live in the app_secrets table (row-level security,
 // service role only), never in this file: rows school_ingest_token, sync_key_school and school_feeds
@@ -113,14 +113,13 @@ function todayStr(): string {
 class UserError extends Error {}
 
 // ── storage (compare-and-swap, mirrors tasks-mcp) ───────────────────────────
+// through the same sync_get / sync_put functions the app uses: the list key travels in the request body, never in the
+// address, so it stays out of the API gateway's request logs
 async function load() {
-  const r = await fetch(
-    `${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(SCHOOL_KEY)}&select=doc,updated_at`,
-    { headers: H },
-  );
+  const r = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: SCHOOL_KEY }) });
   if (!r.ok) throw new Error(`load: HTTP ${r.status}`);
   const rows = await r.json();
-  const doc = rows.length ? rows[0].doc : null;
+  const doc = rows.length && rows[0].updated_at ? rows[0].doc : null;
   // the app moved this list to end-to-end encryption and left a marker under the old key: writing a plain list
   // over it would destroy the marker and never reach the real (sealed) list
   if (doc && doc.moved === "v2") throw new UserError("The School list is end-to-end encrypted on the devices; this server can't read or change it.");
@@ -130,35 +129,22 @@ async function load() {
       tasks: doc && Array.isArray(doc.tasks) ? doc.tasks : [],
       tombstones: doc && Array.isArray(doc.tombstones) ? doc.tombstones : [],
     },
-    updated_at: rows.length ? rows[0].updated_at : null,
+    updated_at: rows.length && rows[0].updated_at ? rows[0].updated_at : null,
   };
 }
+// compare-and-swap on updated_at: false when somebody else wrote since the read (or the row is sealed, or too large)
 // deno-lint-ignore no-explicit-any
 async function save(row: any): Promise<boolean> {
-  const body = { doc: row.doc, updated_at: new Date().toISOString() };
-  if (row.updated_at === null) {
-    const r = await fetch(`${BASE}/rest/v1/tasks_sync`, {
-      method: "POST",
-      headers: { ...H, Prefer: "return=minimal" },
-      body: JSON.stringify([{ sync_key: SCHOOL_KEY, ...body }]),
-    });
-    if (r.status === 409) return false;
-    if (!r.ok) throw new Error(`save: HTTP ${r.status}`);
-    return true;
-  }
-  const r = await fetch(
-    `${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(SCHOOL_KEY)}&updated_at=eq.${encodeURIComponent(row.updated_at)}`,
-    { method: "PATCH", headers: { ...H, Prefer: "return=representation" }, body: JSON.stringify(body) },
-  );
+  const r = await fetch(`${BASE}/rest/v1/rpc/sync_put`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: SCHOOL_KEY, p_doc: row.doc, p_prev: row.updated_at }) });
   if (!r.ok) throw new Error(`save: HTTP ${r.status}`);
-  return (await r.json()).length === 1;
+  return (await r.json()) === true;
 }
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (!INGEST_TOKEN || !SCHOOL_KEY) return new Response("Not configured: app_secrets needs school_ingest_token, sync_key_school and school_feeds", { status: 503 });
   const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
-  if (!(await tokenOk(bearer || url.searchParams.get("token")))) return new Response("Not found", { status: 404 });
+  if (!(await tokenOk(bearer))) return new Response("Not found", { status: 404 });
   const dry = url.searchParams.get("dry") === "1";
   const today = todayStr();
 

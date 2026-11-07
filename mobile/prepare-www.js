@@ -48,6 +48,8 @@ const store = '<script src="store.js"></script>';
 const storeArg = process.argv.indexOf('--store');
 const storeName = storeArg > 0 ? process.argv[storeArg + 1] : null;
 if (storeArg > 0 && !/^[a-z]+$/.test(storeName || '')) { console.error('usage: node prepare-www.js [--store appstore]'); process.exit(1); }
+// the desktop page's Content-Security-Policy bans inline scripts, and the phone page is built from them, so it stays desktop-only
+html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\r?\n?/, '');
 html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + healthPhone + '\n' + updatePhone);
 
 fs.mkdirSync(outDir, { recursive: true });

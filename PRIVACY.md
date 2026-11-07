@@ -31,8 +31,9 @@ Only when you turn the feature on:
 | Feature | What is sent | Where |
 |---|---|---|
 | Device sync | Your lists, end-to-end encrypted on your device before they are sent | The Romulus server (a Supabase project run by the Romulus developer), or your own Supabase project if you choose one in Settings → Device sync. Only devices with your sync key can read your lists; the Romulus server can't. See "The Romulus server" below. |
-| Photos on Agent tasks, and files the Agent downloads | The photo or file | The sync server, in a folder named by a hash of your key. These are not end-to-end encrypted: anyone with a file's exact web address can open it. Photos are deleted after 30 days. |
-| The $5 plan (computers only) | Payment details, entered on Stripe's own page | Stripe, which handles the payment under its own privacy policy. The Romulus server learns only that your account paid, and Stripe's customer and subscription ids. |
+| Photos and files you add to a task | The photo or file, encrypted on your device before it is sent | The sync server, under a random name in a folder named by a hash of your key. Only devices that can read the task hold the key to open it. Kept until you remove it or the task, and counted toward your space. |
+| Photos sent to the Agent, and files the Agent downloads | The photo or file | The sync server, in a folder named by a hash of your key. These are not end-to-end encrypted, because the AI has to see them: anyone with a file's exact web address can open it. The Agent's photos are deleted after 30 days. |
+| The paid plans (computers only) | Payment details, entered on Stripe's own page | Stripe, which handles the payment under its own privacy policy. The Romulus server learns only that your account paid, and Stripe's customer and subscription ids. |
 | AI chat and the Agent | The text of a task, its conversation, and the pages the Agent reads for it | The AI service you connected and chose for that task (Anthropic Claude, Google Gemini, OpenAI ChatGPT, OpenRouter, xAI Grok, Groq or NVIDIA), or a model on your own computer. Tasks containing words you mark private go only to your own model. Each service handles that data under its own privacy policy. |
 | Calendars | Read-only access to your calendar list and events | Google or Microsoft, after you sign in. Events are shown in Romulus and are not sent anywhere else. |
 | Gmail (receipts and dates) | Read-only access to messages | Google, after you sign in. Receipt emails are read by Claude to match purchases. Romulus never sends mail without your yes. |
@@ -49,15 +50,15 @@ including its Limited Use requirements.
 
 To count space and stop abuse, the Romulus server keeps, for each sync account: the encrypted lists, a hash
 of your sync key's id (not the key), how much space you use and how often you write, when you last ran out of
-space, and, if you paid, until when and the Stripe ids above. To limit how many new accounts one network can
+space, and, if you paid, which plan, until when and the Stripe ids above. To limit how many new accounts one network can
 make, it keeps a hash of your IP address for a day. Supabase hosts it, and handles that data under its own
 privacy policy. None of it is sold or shared, and none of it is used for anything but running sync.
 
-With the $5 plan it also keeps:
+With a paid plan it also keeps:
 
 - **History**: one copy of each list per day for 30 days, so you can restore a day. The copies are as
   encrypted as the lists, so nobody but your devices can read them, and they go when the lists are deleted.
-- **Family**: which accounts share a plan, and when each joined. A family code is kept for at most 2 days.
+- **Family** (the family/group plan): which accounts share a plan, and when each joined. A family code is kept for at most 2 days.
 - **Supporters list**: only if you type a name into the optional field when you pay, that name is shown in
   the app and at the bottom of the Romulus website while you pay. Leave it empty and you are not listed.
 
@@ -108,7 +109,7 @@ app is open, and only to tick off a goal to-do such as "Walk 8,000 steps".
 
 - **On a device**: uninstalling the app removes everything it kept there.
 - **On the Romulus server**: Settings → Device sync → **Delete my synced data** deletes your lists, photos,
-  files and account record there at once, and cancels a $5 plan. Turn sync off on your other devices first,
+  files and account record there at once, and cancels a paid plan. Turn sync off on your other devices first,
   or they will upload their copy again. If you no longer have any device with Romulus on it, nobody can read
   what is left there, us included, and without your key we can't tell which encrypted account is yours.
 - **On your own Supabase project**: delete the project, or the rows in it.

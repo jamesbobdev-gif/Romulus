@@ -13,6 +13,17 @@ const http = require('http');
 const [cli, chrome, profile, port, flagsJson] = process.argv.slice(2);
 const endpoint = 'http://127.0.0.1:' + port;
 
+/* The environment a child gets. This launcher runs inside the AI's command (Claude Code, the Gemini CLI), whose
+   environment carries that AI's API key, and Chrome outlives the run: any program of this user can read a running
+   program's environment. So nothing that looks like a key, token or password is handed down; the browser, Playwright
+   and Link's tool never need one. */
+const SECRET_ENV = /API_KEY|_TOKEN$|^TOKEN$|SECRET|PASSWORD|PASSWD|CREDENTIAL|^ANTHROPIC_|^GEMINI_|^OPENAI_|^OPENROUTER_|^CLAUDE_CODE_OAUTH/i;
+function childEnv(base = process.env) {
+  const out = {};
+  for (const [k, v] of Object.entries(base)) if (!SECRET_ENV.test(k)) out[k] = v;
+  return out;
+}
+
 function browserUp() {
   return new Promise((resolve) => {
     const req = http.get(endpoint + '/json/version', { timeout: 1000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
@@ -27,7 +38,7 @@ async function ensureBrowser() {
   let flags = null; try { flags = flagsJson ? JSON.parse(flagsJson) : null; } catch (e) {}
   const p = spawn(chrome, flags || ['--user-data-dir=' + profile, '--remote-debugging-port=' + port, '--remote-debugging-address=127.0.0.1',
     '--no-first-run', '--no-default-browser-check',
-    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore' });
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore', env: childEnv() });
   p.unref(); // outlives this run
   for (let i = 0; i < 40 && !(await browserUp()); i++) await new Promise((r) => setTimeout(r, 250));
 }
@@ -439,7 +450,7 @@ function fileRefusal(msg) {
    three work only once his yes has unlocked the order button on this store (the same gate as buyRefusal),
    and the AI never sees the number: the launcher keeps it in memory, types it, blanks it out of every page it
    passes on afterwards, and refuses screenshots once a card is on the page. */
-const LINK = process.env.TASKS_LINK_CLI ? { node: process.execPath, cli: process.env.TASKS_LINK_CLI, auth: process.env.TASKS_LINK_AUTH || '',
+const LINK = process.env.TASKS_LINK_CLI ? { node: process.execPath, cli: process.env.TASKS_LINK_CLI, auth: process.env.TASKS_LINK_AUTH || '', env: childEnv(),
   test: process.env.TASKS_LINK_TEST === '1', pending: process.env.TASKS_LINK_PENDING || '', task: TASK_TITLE } : null;
 const LINK_NAMES = new Set(['link_pay_request', 'link_wait', 'link_enter_card', 'link_cancel']);
 const LINK_TOOLS = [
@@ -598,7 +609,7 @@ async function shopTabs(msg) { // → a refusal, or null (msg may be changed to 
 }
 
 function main() {
-  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'] });
+  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'], env: childEnv() });
   child.on('exit', (code) => process.exit(code || 0));
   process.on('exit', () => { try { child.kill(); } catch (e) {} });
 
@@ -656,7 +667,7 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
+else module.exports = { childEnv, SECRET_ENV, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
   // his Link wallet
   LINK_TOOLS, LINK_NAMES, withLinkTools, linkRefusal, linkCall, linkSay, blank, screenshotRefusal,
   _link: { listIds, setWallet: (w) => { linkWallet = w; }, setFill: (f) => { fillFields = f; }, setType: (f) => { typeField = f; }, cardOnPage: () => cardOnPage } }; // tests

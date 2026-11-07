@@ -111,7 +111,7 @@ function start() {
 }
 
 let started = false;
-// early access (the $5 plan, Settings → Device sync): versions published as pre-releases are offered too
+// early access (a paid plan, Settings → Device sync): versions published as pre-releases are offered too
 function earlyAccess(cfg) { return !!(cfg && cfg.earlyAccess); }
 function checkNow() {
   if (!started) return;

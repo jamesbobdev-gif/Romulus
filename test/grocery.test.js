@@ -47,3 +47,20 @@ test('an Amazon order is not his last grocery order', () => {
     { ws: 'agent', title: 'Groceries', lastOrder: { at: 1, items: [{ name: 'Eggs' }] } }]);
   assert.equal(last.items[0].name, 'Eggs');
 });
+
+test('a grocery run gets his macro plan per day, with the days left; none once it ran out or when nothing is set', () => {
+  const { macroBrief } = require('../agent/grocery');
+  const now = day('2026-11-07');
+  const b = macroBrief(JSON.stringify({ kcal: 2100, protein: 160, carbs: '200', fat: 0, span: 'week', from: '2026-11-05', until: '2026-11-11', at: 5 }), now);
+  assert.deepStrictEqual(b.perDay, { kcal: 2100, protein: 160, carbs: 200 });
+  assert.strictEqual(b.until, '2026-11-11');
+  assert.strictEqual(b.daysLeft, 5);
+  assert.strictEqual(b.today, '2026-11-07');
+  const open = macroBrief(JSON.stringify({ protein: 150, span: 'open' }), now);
+  assert.deepStrictEqual(open.perDay, { protein: 150 });
+  assert.strictEqual(open.until, undefined);
+  assert.strictEqual(macroBrief(JSON.stringify({ protein: 150, until: '2026-11-06' }), now), undefined); // ended yesterday
+  assert.strictEqual(macroBrief(JSON.stringify({ span: 'week', until: '2026-11-20' }), now), undefined); // no numbers
+  assert.strictEqual(macroBrief('', now), undefined);
+  assert.strictEqual(macroBrief('not json', now), undefined);
+});

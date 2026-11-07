@@ -17,7 +17,7 @@ function finSwitchSource(csv){
   finApi=finUseCsv()?(window.csvFinance||null):finNative; fin.data=null; finSay(''); renderFinance();
 }
 if(window.csvFinance)window.csvFinance.onFinanceLocked(function(){ if(finApi===window.csvFinance){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); } });
-if(finApi)$('tabFinance').dataset.na=''; // shown by tabsApply (settings.js) unless switched off in Settings -> Tabs
+if(finApi)$('tabFinance').hidden=false; // Settings > Tabs (tab-picker.js) can still switch it off
 if(finNative){
   // SimpleFIN's own lock and update events count only while it's the one showing
   finNative.onFinanceLocked(function(){ if(finApi!==finNative)return; fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });
@@ -1003,9 +1003,76 @@ function finDebtsCard(d,cur){
     r.appendChild(el('span','fin-amt neg',finMoney(x.owed,cur)));
     box.appendChild(r);
   });
-  box.appendChild(el('p','fin-note','The rate is worked out from the interest actually charged, so it’s rough. On a card, paying the full statement balance by the due date stops new interest.'));
   const owed=p.debts.reduce(function(s,x){ return s+x.owed; },0);
   return finFoldable(box,'debts','Debts',finMoney(owed,cur)+(p.interestMonth>0?' · '+finMoney(p.interestMonth,cur)+' interest/mo':''));
+}
+/* EBT wallet (finance-ebt.js): about what's left on his EBT card, when the next deposit lands, and what the
+   Agent's grocery orders put on it since the last one. He types the balance in now and then; the Agent's
+   checkout notes keep it current in between */
+// the phone and CSV files: a copy of the EBT settings on this device, for the grocery list while Finance is
+// locked (grocery-list.js loadGroceryEbt). The computer keeps a sealed one in main/finance.js instead
+function finKeepEbtCopy(e){
+  if(window.desktop&&window.desktop.financeEbtNow)return;
+  try{ localStorage.setItem('finance.ebtCopy',JSON.stringify(ebtClean(e))); }catch(err){}
+  if(typeof loadGroceryEbt==='function')loadGroceryEbt();
+}
+function finEbtCard(d){
+  if(JSON.stringify(ebtClean(d.ebt))!==JSON.stringify(groceryEbt))finKeepEbtCopy(d.ebt); // an older copy, or none yet
+  const box=el('div','fin-card fin-chart fin-ebt');
+  box.appendChild(el('h3',null,'EBT'));
+  const w=ebtWallet(d.ebt,agentOrders(state.tasks));
+  const e=ebtClean(d.ebt);
+  const day=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
+  if(w.known){
+    const r=el('div','fin-acct');
+    r.appendChild(el('b',null,'Left on EBT'));
+    r.appendChild(el('span','fin-amt'+(w.balance<0?' neg':''),finMoney(w.balance)));
+    box.appendChild(r);
+    box.appendChild(el('p','fin-note',(w.from==='checkout'?'From the balance a grocery checkout showed on '+day(w.asOf):'From the balance you entered on '+day(w.asOf))
+      +(w.deposits?', plus '+w.deposits+(w.deposits===1?' deposit':' deposits')+' since':'')+'.'
+      +(w.balance<0?' That’s under zero, so the balance is probably out of date: enter the one on your last receipt.':'')));
+  }else box.appendChild(el('p','fin-note','Enter your EBT balance below (it’s on your last grocery receipt, your state’s EBT site, or the Propel app) and this keeps track from there.'));
+  if(w.nextDeposit!=null){
+    box.appendChild(el('p','fin-note','Next deposit: '+day(w.nextDeposit)+(w.daysToDeposit<=0?', today':w.daysToDeposit===1?', tomorrow':', in '+w.daysToDeposit+' days')
+      +(e.monthly?' ('+finMoney(e.monthly)+')':'')+'.'));
+  }
+  if(w.spent.length){
+    box.appendChild(el('div','mono fin-label fin-org',w.nextDeposit!=null?'Since the last deposit':'Last 30 days'));
+    w.spent.forEach(function(x){
+      const r=el('div','fin-acct');
+      const who=el('span','fin-desc'); who.appendChild(el('span',null,x.title)); who.appendChild(el('span','fin-sub',day(x.at)));
+      r.appendChild(who); r.appendChild(el('span','fin-amt',finMoney(x.ebt)));
+      box.appendChild(r);
+    });
+  }
+  if(finApi.financeSetEbt){
+    const field=function(label,input){ const l=el('label','fin-ebt-field'); l.appendChild(el('span','mono fin-label',label)); l.appendChild(input); return l; };
+    const bal=finInput('text','e.g. 143.20'); bal.inputMode='decimal';
+    const dd=finInput('number','e.g. 3'); dd.min='1'; dd.max='31'; if(e.day)dd.value=String(e.day);
+    const mo=finInput('text','e.g. 291'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly);
+    const row=el('div','fin-row fin-ebt-form');
+    row.appendChild(field('Balance now',bal)); row.appendChild(field('Deposit day',dd)); row.appendChild(field('Monthly amount',mo));
+    const save=el('button','btn-accent','Save');
+    const msg=el('p','fin-msg err'); msg.hidden=true;
+    save.addEventListener('click',async function(){
+      const money=function(s){ const t=String(s).replace(/[$,\s]/g,''); return t===''?null:Number(t); };
+      const b=money(bal.value), m=money(mo.value), n=dd.value===''?null:Number(dd.value);
+      if((b!=null&&!(b>=0))||(m!=null&&!(m>0))||(n!=null&&!(n>=1&&n<=31))){ msg.textContent='Use amounts like 143.20 and a day from 1 to 31.'; msg.hidden=false; return; }
+      const next={day:n||undefined,monthly:m||undefined};
+      if(b!=null){ next.balance=b; next.at=Date.now(); }
+      else if(e.balance!=null){ next.balance=e.balance; next.at=e.at; } // only the deposit changed
+      save.disabled=true;
+      const r=await finApi.financeSetEbt(next).catch(function(err){ return {ok:false,error:err.message}; });
+      save.disabled=false;
+      if(!r.ok){ msg.textContent=r.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'; msg.hidden=false; return; }
+      fin.data.ebt=r.ebt; finKeepEbtCopy(r.ebt); box.replaceWith(finEbtCard(fin.data));
+    });
+    row.appendChild(save);
+    box.appendChild(row); box.appendChild(msg);
+  }
+  box.appendChild(el('p','fin-note','Store trips you pay for yourself aren’t seen here, so enter the balance from a receipt now and then. This never asks for your card number or PIN.'));
+  const sum=w.known?finMoney(w.balance)+' left'+(w.daysToDeposit!=null?' · deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):''):'not set up';
+  return finFoldable(box,'ebt','EBT',sum);
 }
 /* Subscriptions (finance-insights.js subscriptionCheck): price rises first, then ones that just started (a free
    trial turning paid looks like that), then everything that charges each month and since when */
@@ -1211,12 +1278,14 @@ function drawFinMain(v){
   v.appendChild(finFoldable(accts,'accounts','Accounts',d.accounts.length+(d.accounts.length===1?' account':' accounts')));
   v.appendChild(finWorthChart(d.accounts,cur));
   const debts=finDebtsCard(d,cur); if(debts)v.appendChild(debts);
+  if(ebtOn())v.appendChild(finEbtCard(d)); // Settings → EBT (grocery-list.js)
   if(!d.csv)v.appendChild(finStocksCard(cur)); // a CSV has no holdings
 
   // fixed and variable costs (finance-costs.js): drawn again when he corrects a payee below
   const costBox=el('div','fin-charts');
   v.appendChild(costBox);
   const subsBox=el('div'); v.appendChild(subsBox);
+  costMarkInvestMoves(d.accounts); // money sent to his brokerage isn't spending
   const allTxs=[];
   d.accounts.forEach(function(a){ a.transactions.forEach(function(t){ allTxs.push(t); }); });
   let costs=null;

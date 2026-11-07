@@ -68,11 +68,12 @@ const ctx = {
   memoryTidying: () => memoryTidy.isTidying(),
   compactHowtos: (asked) => localLane.compactHowtos(asked),
   // Windows' own encryption for a whole file's text (main/finance.js wraps its vault in it)
-  seal: store.sealValue, unseal: store.openValue,
+  seal: store.sealAsync, unseal: store.openAsync,
   windowHandle: win.windowHandle, // Windows Hello's prompt opens on the Tasks window
   protectWindow: win.protect, // no screen capture while Finance is showing
   // The local model’s money questions (agent/local-lane.js): read-only, only while Finance is unlocked here
-  finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked() },
+  finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked(),
+    ebtNow: () => finance.ebtNow() }, // the EBT wallet's settings, for grocery runs (agent/grocery.js ebtBrief), locked or not
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdate: (u) => trayMod.setUpdate(u),
@@ -124,8 +125,9 @@ if (!gotLock) {
 } else {
   app.on('second-instance', showWindow);
 
-  app.whenReady().then(() => {
-    store.sealPlainSecrets(); // secrets still in config.json as plain text get encrypted
+  app.whenReady().then(async () => {
+    // every secret in config.json opened (and any still in plain text encrypted) before anything reads them
+    await store.load();
     // Setting up another computer: drop seed-config.json (sync links, runner off) into its user-data
     // folder (%APPDATA%/tasks) before first launch. It fills in a fresh install that has no sync yet, so
     // every list shows up without setup; it never overrides. It is never bundled into the installer —
@@ -198,7 +200,11 @@ if (!gotLock) {
   });
 
   app.on('before-quit', () => win.setQuitting());
-  app.on('will-quit', () => overlay.stop());
+  app.on('will-quit', (e) => {
+    overlay.stop();
+    // config.json is written in the background (main/store.js): a change made just now lands before the app goes
+    if (store.writing()) { e.preventDefault(); store.flush().finally(() => app.quit()); }
+  });
 
   // Window closed -> keep running in the tray (don't quit).
   app.on('window-all-closed', () => {});

@@ -49,7 +49,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -200,6 +200,18 @@ async function startAgentRun() {
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
   let allTasks = [];
   try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  // his EBT wallet for grocery runs (agent/grocery.js ebtBrief): about what's left, from Finance's sealed copy
+  let ebt;
+  if (tasks.some((t) => isGroceryRun(t, allTasks)) && ctx.finance && ctx.finance.ebtNow && !readConfig().ebtOff) { // Settings → EBT off: none
+    try { ebt = ebtBrief(await ctx.finance.ebtNow(), allTasks); } catch (e) {}
+    if (ebt) agentLog('ebt: balance handed over');
+  }
+  // his macro plan (the Health tab's Food plan) for grocery runs: the order is built to add up to it
+  let macros;
+  if (tasks.some((t) => isGroceryRun(t, allTasks))) {
+    try { macros = macroBrief(await agentRow(':macros')); } catch (e) {}
+    if (macros) agentLog('macros: plan handed over');
+  }
   // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
   const allSkills = loadSkills();
   const nearMe = tasks.filter((t) => wantsNearby(t, allSkills)).map((t) => t.id);
@@ -212,6 +224,8 @@ async function startAgentRun() {
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
+    ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
+    macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
@@ -454,7 +468,7 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
       // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway)
-      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)'];
+      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)', 'Read(**/finance-ebt.json)'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];

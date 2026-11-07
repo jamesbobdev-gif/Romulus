@@ -1,10 +1,17 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-// Romulus sync, $5 a month or $50 a year (supabase/migrations/20261106_sync_paid_plan.sql). The app opens a Stripe Payment Link
-// with ?client_reference_id=<account id> (sha256 of the sync key's id part, never the key: renderer/js/hosted-sync.js).
+// Romulus sync's two plans (supabase/migrations/20261106_sync_paid_plan.sql, 20261114_sync_solo_plan.sql): the
+// family/group plan, $5 a month or $50 a year, and the individual plan, $3 or $30. The app opens a Stripe Payment
+// Link with ?client_reference_id=<account id> (sha256 of the sync key's id part, never the key: renderer/js/hosted-sync.js).
 // Stripe calls this function when someone pays; it gives that account the paid space until a few days past the
 // period Stripe billed. A cancelled or failed subscription just stops renewing, so the paid space runs out on
 // its own and nothing is deleted.
+// Which plan was bought comes from the Payment Link the checkout came through: the app_secrets row
+// stripe_solo_links holds the individual links' ids (plink_…, commas between; Stripe → Payment links → the link's
+// page shows it). Any other link is the family plan, so a server without that row sells only the family plan.
+// Someone moving from one plan to the other buys the other link: the account keeps one subscription, and the
+// one it had is cancelled at Stripe with the app_secrets row stripe_api_key (a restricted key with Subscriptions:
+// write, the one sync-delete uses); without that key the log says so, and they cancel it from their receipt.
 // Deploy with JWT verification off (Stripe can't send a Supabase token): every request is checked against the
 // Stripe signing secret instead, the app_secrets row stripe_webhook_secret (service role only).
 
@@ -13,13 +20,28 @@ const SKEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRACE_S = 3 * 24 * 60 * 60; // a renewal that's a day or two late doesn't pause anyone's sync
 const TOLERANCE_S = 5 * 60; // Stripe's own default for how old a signed request may be
 
-async function secret(): Promise<string> {
-  const r = await fetch(`${BASE}/rest/v1/app_secrets?name=eq.stripe_webhook_secret&select=value`, {
+async function secret(name = "stripe_webhook_secret"): Promise<string> {
+  const r = await fetch(`${BASE}/rest/v1/app_secrets?name=eq.${name}&select=value`, {
     headers: { apikey: SKEY, Authorization: `Bearer ${SKEY}` },
   });
   if (!r.ok) return "";
   const rows = await r.json();
   return rows[0]?.value || "";
+}
+// which plan a checkout bought (pure, for tests): the individual plan when its Payment Link is one of the ids
+// in stripe_solo_links, else the family plan
+export function planOf(paymentLink: unknown, soloLinks: string): "solo" | "family" {
+  const ids = String(soloLinks || "").split(/[\s,]+/).filter(Boolean);
+  return paymentLink && ids.includes(String(paymentLink)) ? "solo" : "family";
+}
+async function cancelAtStripe(sub: string): Promise<boolean> {
+  const k = await secret("stripe_api_key");
+  if (!k) return false;
+  const r = await fetch("https://api.stripe.com/v1/subscriptions/" + encodeURIComponent(sub), {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + k },
+  });
+  return r.ok || r.status === 404; // already cancelled counts as done
 }
 
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
@@ -50,14 +72,12 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   if (!r.ok) throw new Error(fn + " HTTP " + r.status);
   return await r.json();
 }
-async function markPaid(account: string | null, subscription: string | null, customer: string | null, untilS: number) {
-  const r = await fetch(`${BASE}/rest/v1/rpc/sync_mark_paid`, {
-    method: "POST",
-    headers: { apikey: SKEY, Authorization: `Bearer ${SKEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ p_account: account, p_subscription: subscription, p_customer: customer, p_until: new Date(untilS * 1000).toISOString() }),
-  });
-  if (!r.ok) throw new Error("sync_mark_paid HTTP " + r.status);
-  return await r.json();
+// plan: 'solo' | 'family' on the first payment, null on a renewal (the plan stays). Answers whether the account
+// exists and, when this subscription took the place of another still paid up, that other one's id.
+async function markPaid(account: string | null, subscription: string | null, customer: string | null, untilS: number, plan: string | null): Promise<{ ok: boolean; replaced: string | null }> {
+  const rows = await rpc("sync_mark_paid2", { p_account: account, p_subscription: subscription, p_customer: customer, p_until: new Date(untilS * 1000).toISOString(), p_plan: plan });
+  const r = Array.isArray(rows) ? rows[0] : rows;
+  return { ok: !!r?.ok, replaced: r?.replaced || null };
 }
 
 // One line per call in the function's logs (Supabase → Edge Functions → stripe-webhook → Logs): which Stripe
@@ -87,11 +107,14 @@ Deno.serve(async (req) => {
       // a free trial charges nothing now (payment_status no_payment_required): a day for the moment, then the trial's
       // own end comes with its invoice below, so cancelling during the trial ends the plan with it
       const trial = o.payment_status === "no_payment_required";
-      const ok = await markPaid(account, o.subscription || null, o.customer || null, now + (trial ? 1 : 31) * 24 * 60 * 60 + GRACE_S);
+      const plan = planOf(o.payment_link, await secret("stripe_solo_links"));
+      const { ok, replaced } = await markPaid(account, o.subscription || null, o.customer || null, now + (trial ? 1 : 31) * 24 * 60 * 60 + GRACE_S, plan);
       // the optional "name for the supporters list" field on the payment link (key: supportername)
       const name = (o.custom_fields || []).find((f: any) => f?.key === "supportername")?.text?.value;
       if (ok && name) await rpc("sync_mark_supporter", { p_account: account, p_name: String(name) }).catch(() => {});
-      return answer(ev, 200, ok ? (trial ? "trial started: plan on" : "paid: plan on") + (name ? ", supporter name saved" : "") : "no such account: that app hasn't synced yet");
+      // moved between the plans: the subscription they had is cancelled so they don't pay for both
+      const swapped = replaced ? (await cancelAtStripe(replaced) ? ", the earlier subscription cancelled" : ", the earlier subscription NOT cancelled (no stripe_api_key): they cancel it from their receipt") : "";
+      return answer(ev, 200, ok ? (trial ? "trial started: " : "paid: ") + (plan === "solo" ? "individual" : "family") + " plan on" + (name ? ", supporter name saved" : "") + swapped : "no such account: that app hasn't synced yet");
     }
     // newer Stripe API versions put the subscription under parent.subscription_details
     const sub = o.subscription || o.parent?.subscription_details?.subscription || null;
@@ -99,7 +122,7 @@ Deno.serve(async (req) => {
       // every invoice: paid until the end of the period it covers (a free trial's days, a month, or a year)
       const ends = (o.lines?.data || []).map((l: any) => Number(l?.period?.end) || 0).filter((x: number) => x > now);
       const end = ends.length ? Math.max(...ends) : now + 31 * 24 * 60 * 60;
-      const ok = await markPaid(null, sub, o.customer || null, end + GRACE_S);
+      const { ok } = await markPaid(null, sub, o.customer || null, end + GRACE_S, null);
       // the first invoice can arrive before checkout.session.completed has said whose subscription it is:
       // answer 500 so Stripe sends it again in a few minutes, by when it's known (a yearly plan needs its year)
       if (!ok && o.billing_reason === "subscription_create") return answer(ev, 500, "not linked yet: Stripe sends it again");

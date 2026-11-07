@@ -26,6 +26,7 @@ test('the space line, and the choice once the free space is nearly used', () => 
   assert.strictEqual(near.full, true);
   assert.match(near.line, /\$5 a month \(600 MB\)/);
   assert.match(near.line, /Pro at \$25 a month/);
+  assert.match(h.hostedPlanText({ used_bytes: 4.6 * MB, quota_bytes: 5 * MB, paid_quota_bytes: 600 * MB }, true, true).line, /from \$3 a month \(600 MB\)/); // a build with the individual plan too
   const refused = h.hostedPlanText({ used_bytes: 1, quota_bytes: 5 * MB, refused: 'full', paid_quota_bytes: 600 * MB }, false);
   assert.strictEqual(refused.full, true);
   assert.doesNotMatch(refused.line, /\$5/); // no payment link in this build: only the move is offered
@@ -106,19 +107,84 @@ test('restoring a day brings its tasks back everywhere and removes what came aft
 test('a paid plan says how much its history uses', () => {
   const MB = 1024 * 1024;
   const t = h.hostedPlanText({ used_bytes: 2 * MB, quota_bytes: 600 * MB, paid_until: '2026-12-09T00:00:00Z', paid_quota_bytes: 600 * MB, history_bytes: 9 * MB }, true);
-  assert.match(t.line, /History uses 9 MB more\./);
+  assert.doesNotMatch(t.line, /History/); // kept short: history size isn't shown
   assert.doesNotMatch(h.hostedPlanText({ used_bytes: 1, quota_bytes: 5 * MB, history_bytes: 9 * MB }, true).line, /History/);
 });
 
-test('the plan is offered as a family plan, with a free trial only when the links have one', () => {
+test('without an individual link the family plan is offered alone, with a free trial only when the links have one', () => {
   const plain = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x' });
-  assert.strictEqual(plain.button, 'Family plan: $5 a month for up to 5 people');
-  assert.match(plain.pitch, /^The family plan: share Romulus with up to 4 more people/);
-  assert.ok(plain.pitch.indexOf('30 days of history') < plain.pitch.indexOf('600 MB')); // storage comes last
-  assert.doesNotMatch(plain.pitch, /free for|trial/i);
+  assert.strictEqual(plain.solo, null);
+  assert.strictEqual(plain.family.button, 'Family/Group plan: $5 a month for up to 5 people');
+  assert.match(plain.family.pitch, /^The family\/group plan: share Romulus with up to 4 more people/);
+  assert.ok(plain.family.pitch.indexOf('30 days of history') < plain.family.pitch.indexOf('600 MB')); // storage comes last
+  assert.doesNotMatch(plain.family.pitch, /free for|trial/i);
   const trial = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x', trialDays: 14 });
-  assert.strictEqual(trial.button, 'Try the family plan free for 14 days');
-  assert.match(trial.pitch, /Free for 14 days, then \$5 a month\. Cancel before the trial ends and you pay nothing\.$/);
-  assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).button, plain.button);
-  assert.strictEqual(h.hostedPlanPitch(null).year, 'Pay yearly: 2 months free');
+  assert.strictEqual(trial.family.button, 'Try the family/group plan free for 14 days');
+  assert.match(trial.family.pitch, /Free for 14 days, then \$5 a month\. Cancel before the trial ends and you pay nothing\.$/);
+  assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).family.button, plain.family.button);
+  assert.strictEqual(h.hostedPlanPitch(null).family.year, 'Pay yearly: 2 months free');
+});
+
+test('with an individual link the two plans sit side by side, the family one the same for up to 5 people for $2 more', () => {
+  const two = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x', paySolo: 'https://buy.stripe.com/s' });
+  assert.strictEqual(two.solo.button, 'Individual: $3 a month');
+  assert.strictEqual(two.solo.year, '$30 a year: 2 months free');
+  assert.match(two.solo.pitch, /^Just you: /);
+  assert.match(two.solo.pitch, /30 days of history/);
+  assert.doesNotMatch(two.solo.pitch, /family|share/i); // nothing shared on the individual plan
+  assert.strictEqual(two.family.button, 'Family/Group: $5 a month for up to 5 people');
+  assert.strictEqual(two.family.year, '$50 a year: 2 months free');
+  assert.match(two.family.pitch, /^Everything in Individual for up to 5 people, plus a family list/);
+  assert.match(two.family.pitch, /\$2 more a month than going alone\.$/);
+  const trial = h.hostedPlanPitch({ pay: 'x', paySolo: 's', trialDays: 7 });
+  assert.strictEqual(trial.solo.button, 'Individual: free for 7 days, then $3 a month');
+  assert.strictEqual(trial.family.button, 'Family/Group: free for 7 days, then $5 a month');
+  assert.match(trial.family.pitch, /Cancel before the trial ends and you pay nothing\.$/);
+});
+
+test('which plan sync_usage says covers the account', () => {
+  assert.strictEqual(h.hostedPlanOf({ paid_until: '2026-12-01', plan: 'solo' }), 'solo');
+  assert.strictEqual(h.hostedPlanOf({ paid_until: '2026-12-01', plan: 'family' }), 'family');
+  assert.strictEqual(h.hostedPlanOf({ paid_until: '2026-12-01' }), 'family'); // a server from before the individual plan
+  assert.strictEqual(h.hostedPlanOf({ plan: 'solo' }), null); // ran out: the free space, whatever it was
+  assert.strictEqual(h.hostedPlanOf(null), null);
+  assert.strictEqual(h.hostedPlanName('solo'), 'individual plan');
+  assert.strictEqual(h.hostedPlanName('family'), 'family/group plan');
+});
+
+test('fireworks only when this device saw the free space and now sees the plan', () => {
+  assert.equal(h.hostedJustPaid('free', true), true);
+  assert.equal(h.hostedJustPaid('paid', true), false); // a restart
+  assert.equal(h.hostedJustPaid(null, true), false); // a new device of someone already paying
+  assert.equal(h.hostedJustPaid('free', false), false);
+});
+
+test('Settings says which plan someone is on', () => {
+  const MB = 1024 * 1024;
+  assert.equal(h.hostedMyPlanText('payer', { paid_until: '2026-12-01', quota_bytes: 600 * MB, paid_quota_bytes: 600 * MB }).title, 'Family/Group plan');
+  assert.match(h.hostedMyPlanText('payer', null).text, /30 days of history, up to 4 more people/);
+  assert.strictEqual(h.hostedMyPlanText('solo', { paid_until: '2026-12-01', quota_bytes: 600 * MB, paid_quota_bytes: 600 * MB }).title, 'Individual plan');
+  assert.match(h.hostedMyPlanText('solo', null).text, /30 days of history, just you/);
+  assert.doesNotMatch(h.hostedMyPlanText('solo', null).text, /more people/);
+  assert.match(h.hostedMyPlanText('member', null).text, /by someone in your family\/group/);
+  assert.doesNotMatch(h.hostedMyPlanText('member', null).text, /4 more people/);
+  const free = h.hostedMyPlanText('free', { quota_bytes: 5 * MB, paid_quota_bytes: 600 * MB });
+  assert.equal(free.title, 'Free plan');
+  assert.match(free.text, /^5 MB of space\.$/);
+  assert.equal(h.hostedMyPlanText('own', null).title, 'Your own Supabase');
+});
+
+test('moving to your own project leaves the encrypted-list marker under every plain key there, and stops if a list key is refused', async () => {
+  const sent = [];
+  global.syncRpc = async (p, fn, body) => { sent.push([p.url, fn, body.p_sync_key, JSON.stringify(body.p_doc)]); return true; };
+  await h.hostedSealMarkers({ url: 'https://own.supabase.co', key: 'k' }, 'tk_abc');
+  assert.deepStrictEqual(sent.map((s) => s[2]), h.hostedMarkerKeys('tk_abc'));
+  assert.ok(sent.every((s) => s[0] === 'https://own.supabase.co' && s[1] === 'sync_set' && s[3] === '{"moved":"v2"}'));
+  // a side row an older setup.sql doesn't know may be refused; a list's own key may not
+  global.syncRpc = async (p, fn, body) => body.p_sync_key.indexOf(':') !== -1 ? false : true;
+  await h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc');
+  global.syncRpc = async (p, fn, body) => body.p_sync_key === 'tk_work_abc' ? false : true;
+  global.syncRefusal = async () => 'the project is full';
+  await assert.rejects(h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc'), /the project is full/);
+  delete global.syncRpc; delete global.syncRefusal;
 });

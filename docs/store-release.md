@@ -57,7 +57,7 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
     Delete my synced data, which needs the `sync-delete` function deployed; see below). Play's
     account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
     the privacy policy's "Deleting your data" section as the deletion web link when Play asks for one.
-  - **Payments**: the $5 sync plan is a Stripe link, and Play requires Play Billing for subscriptions bought
+  - **Payments**: the sync plans ($3 alone, $5 for a family) are Stripe links, and Play requires Play Billing for subscriptions bought
     inside the app, so the Play build never shows it (`hostedInStore` in hosted-sync.js, keyed on
     `window.ROMULUS_STORE`). Someone who pays on a computer gets the space on their phone too. The same goes
     for an iPhone build: give it its own `ROMULUS_STORE` value and the button stays hidden.

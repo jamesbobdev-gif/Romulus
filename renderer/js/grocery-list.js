@@ -104,6 +104,65 @@ function groceryNextLine(){
   return d;
 }
 
+/* ── his EBT wallet (finance-ebt.js), on grocery tasks ──
+   The settings (balance, deposit day, monthly) come from Finance's sealed copy on the computer
+   (main/finance.js finance:ebtNow), or the copy Finance keeps on this device on the phone and with CSV
+   files (finance.js finKeepEbtCopy), so they show while Finance is locked. He chose this (2026-11-06). */
+let groceryEbt={};
+async function loadGroceryEbt(){
+  let e={};
+  try{
+    if(window.desktop&&window.desktop.financeEbtNow)e=await window.desktop.financeEbtNow()||{};
+    else e=JSON.parse(localStorage.getItem('finance.ebtCopy')||'{}')||{};
+  }catch(err){ e={}; }
+  const was=JSON.stringify(groceryEbt);
+  groceryEbt=typeof ebtClean==='function'?ebtClean(e):{};
+  if(JSON.stringify(groceryEbt)!==was&&typeof render==='function')render();
+}
+// once every page script has run (finance-ebt.js loads after this one)
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadGroceryEbt); else setTimeout(loadGroceryEbt,0);
+if(window.desktop&&window.desktop.onFinanceUpdated)window.desktop.onFinanceUpdated(function(what){ if(what==='ebt')loadGroceryEbt(); });
+/* Settings → EBT: most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
+   Never set: on when there's a sign he uses it (a wallet, an order paid partly with EBT, a grocery task
+   that talks about EBT), else off. Off hides the Finance card and the grocery list's EBT lines, and on the
+   computer grocery runs get no balance (main/finance.js finance:setEbtOn → config.ebtOff) */
+function ebtOn(){
+  let v=null; try{ v=localStorage.getItem('ebt.on'); }catch(e){}
+  if(v==='1')return true; if(v==='0')return false;
+  if(groceryEbt.balance!=null||groceryEbt.day)return true;
+  return state.tasks.some(function(t){
+    return taskWs(t)==='agent'&&((Array.isArray(t.orders)&&t.orders.some(function(o){ return o&&o.ebt>0; }))||/\bEBT\b/i.test(String(t.title||'')+' '+String(t.note||'')));
+  });
+}
+// only his own flip reaches the computer's Agent side: until then grocery runs get the balance when there is one
+function setEbtOn(on){
+  try{ localStorage.setItem('ebt.on',on?'1':'0'); }catch(e){}
+  if(window.desktop&&window.desktop.financeSetEbtOn)window.desktop.financeSetEbtOn(on).catch(function(){});
+  if(typeof render==='function')render();
+}
+function wireEbtSetting(){
+  const box=$('ebtOn'); if(!box)return;
+  const sec=$('ebtSection');
+  const show=function(){ box.checked=ebtOn(); };
+  show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
+  box.addEventListener('change',function(){ setEbtOn(box.checked); });
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireEbtSetting); else setTimeout(wireEbtSetting,0);
+// → the wallet (finance-ebt.js ebtWallet) when he's set one up and EBT is on, else null
+function groceryWallet(){
+  if(typeof ebtWallet!=='function'||!ebtOn())return null;
+  const w=ebtWallet(groceryEbt,agentOrders(state.tasks));
+  return w.known?w:null;
+}
+// one line in a grocery task's panel: about what's left on EBT, and the next deposit
+function groceryEbtLine(){
+  const w=groceryWallet(); if(!w)return null;
+  const d=el('div','panel-meta grocery-ebt');
+  d.appendChild(el('span','lbl','EBT left'));
+  d.appendChild(el('span','next','about $'+w.balance.toFixed(2)+(w.nextDeposit!=null?' · next deposit '+new Date(w.nextDeposit).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')));
+  return d;
+}
+
 // the agent asked for a yes ("Reply yes to place this order"): one tap answers it. An order it's waiting
 // on (even for something else first, like "add your EBT card, then reply done") always shows its items
 function asksYes(t){
@@ -149,7 +208,11 @@ function keepLastOrder(t,note){
   if(!items.length)return;
   t.lastOrder={at:Date.now(),items:items};
   const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
-  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{})]).slice(-12);
+  // the EBT part, for the Finance tab's EBT wallet (finance-ebt.js): what went on EBT, and the balance left
+  const e1=orderEbtFrom(note), e2=orderEbtFrom(t.note);
+  const ebt=e1.ebt||e2.ebt, left=e1.left!=null?e1.left:e2.left;
+  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{},
+    ebt?{ebt:ebt}:{},left!=null&&left>=0?{ebtLeft:left}:{})]).slice(-12);
 }
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){
@@ -199,6 +262,12 @@ function cartStrip(t){
     const total=kept.reduce(function(s,it){ return s+cartPrice(shown(it).price); },0);
     const base=items.filter(function(it){ return !it.suggested; }).length, ideas=items.length-base, picked=kept.filter(function(it){ return it.suggested; }).length;
     head.textContent='Your order · '+kept.length+' items'+(ideas?' ('+picked+' of '+ideas+' ideas added)':'')+(total?' · about $'+total.toFixed(2):'');
+    // against his EBT wallet: what's left after it, or how far over (checkout has the real balance)
+    const w=total?groceryWallet():null;
+    if(w){
+      const left=Math.round((w.balance-total)*100)/100;
+      head.appendChild(el('span','cart-ebt'+(left<0?' over':''),left<0?' · about $'+(-left).toFixed(2)+' over EBT':' · about $'+left.toFixed(2)+' left on EBT after'));
+    }
     all.hidden=o.slice().sort().join('|')===startOff().sort().join('|')&&!Object.keys(picks()).length; // as the Agent set it: nothing to reset
     go.disabled=!kept.length;
     go.textContent=!kept.length?'Nothing selected':!asksYes(t)?'Done, use these '+kept.length+' items':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';

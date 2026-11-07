@@ -17,18 +17,21 @@ const bugsOnly = {
   'no-inner-declarations': 'off',
 };
 
+// inlined into the phone's page by mobile/prepare-www.js, so they share the renderer's globals (finance-phone.js calls ebtClean)
+const PHONE_PAGE_SCRIPTS = ['mobile/cal-phone.js', 'mobile/finance-phone.js', 'mobile/health-phone.js', 'mobile/update-phone.js'];
+
 module.exports = [
   { ignores: ['node_modules/**', 'dist/**', 'mobile/android/**', 'mobile/node_modules/**', 'mobile/www/**', 'site/**', 'supabase/functions/**', 'minipc/**', 'scripts/demo/build/**'] /* the demo build is a copy of renderer/ */ },
   // Electron main process, the Agent and the tests: CommonJS on Node
   {
-    files: ['main.js', 'preload.js', 'main/**/*.js', 'agent/**/*.js', 'test/**/*.js', 'scripts/**/*.js', 'mobile/*.js', 'eslint.config.js'], ignores: ['mobile/update-phone.js'],
+    files: ['main.js', 'preload.js', 'main/**/*.js', 'agent/**/*.js', 'test/**/*.js', 'scripts/**/*.js', 'mobile/*.js', 'eslint.config.js'], ignores: PHONE_PAGE_SCRIPTS,
     languageOptions: { ecmaVersion: 2023, sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
     rules: bugsOnly,
   },
   // the renderer: plain scripts sharing one global scope, loaded in the order index.html lists them, so a name
   // declared in one file is used in the others and no-undef cannot know about it
   {
-    files: ['renderer/**/*.js', 'mobile/update-phone.js'], // update-phone.js is inlined into the phone's page by mobile/prepare-www.js
+    files: ['renderer/**/*.js', ...PHONE_PAGE_SCRIPTS],
     languageOptions: { ecmaVersion: 2023, sourceType: 'script', globals: { ...globals.browser } },
     rules: { ...bugsOnly, 'no-undef': 'off' },
   },

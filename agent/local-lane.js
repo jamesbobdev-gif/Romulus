@@ -19,6 +19,7 @@ const providers = require('./providers');
 const helpers = require('./helpers');
 const legion = require('./legion');
 const coach = require('./coach');
+const classSweep = require('./class-sweep');
 const fileText = require('./file-text');
 const { makeDocx } = require('./docx-writer');
 const usage = require('./usage-limit');
@@ -33,7 +34,7 @@ const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFo
 const mailSend = require('./mail-send');
 const { tidyAgentTabs, holdTabs, startTab, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const workerFiles = require('./worker-files');
-const { formFiles } = require('./agent-browser');
+const { formFiles, readActions } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
 const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_file',
   description: 'Put one of his files into the file box a site opened (click its Upload / Attach / Choose file button first). file = the file name: ' + files.map((f) => f.name).join(', ') + '. No file = close the box without uploading.',
@@ -91,7 +92,8 @@ function workerBeat() {
   if (!worker.isWorker(readConfig())) return Promise.resolve(false);
   const c = localCfg(), l = readConfig().localModel || {}, a = require('./supabase').channel(readConfig());
   syncFiles(); // what its browser downloaded, for his other computers
-  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), doing: nowDoing(), version: APP_VERSION, stats: runLog.summary(runLog.load(runLogFile())) });
+  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), doing: nowDoing(), version: APP_VERSION, stats: runLog.summary(runLog.load(runLogFile())),
+    actions: readActions(worker.ACTIONS_MAX) }); // what its browser let through, for his other computers' log
 }
 // the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
 const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
@@ -566,6 +568,9 @@ async function runLocalTask(c, t) {
   const coachSaved = coaching ? loadCoach(t.id) : null;
   if (coachSaved && coachSaved.dossier && !coach.wantsLookAgain(t.reply)) return rewriteCoach(c, t, coachSaved);
   const dossier = {};
+  // the weekly class sweep (agent/class-sweep.js): through every class, adding the work the calendar links miss
+  const sweeping = !money && !coaching && classSweep.isSweep(t);
+  const found = [];
   if (!money && await ensureQwenBrowser()) {
     sites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
     // the sites the run may open: links he wrote (title, notes, replies) and the options he can pick from, not links an
@@ -589,14 +594,16 @@ async function runLocalTask(c, t) {
     : 'he hasn\'t added any (Settings → About you → Files for forms). If a site needs his resume, fill the rest and say in your note that he should add it there, then reply "try again".';
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
-      coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : []);
+      coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
+      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, fileText.READ_FILE_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
-  const taskNotes = siteNotesFor(taskLinks(t).concat(coaching ? coach.SCHOOL_HOSTS : []));
+  const taskNotes = siteNotesFor(taskLinks(t).concat(coaching || sweeping ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
   // which of his classes is on Blackboard and which on D2L (agent/course-sites.js), from the School list
-  let classes = []; try { classes = courseSites.courseSites(JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks); } catch (e) {}
-  const classesText = !money && courseSites.relevant(t, classes, { coaching }) ? courseSites.show(classes) : '';
+  let allTasks = []; try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  const classes = courseSites.courseSites(allTasks);
+  const classesText = !money && courseSites.relevant(t, classes, { coaching: coaching || sweeping }) ? courseSites.show(classes) : '';
   const schools = courseSites.schoolHosts(classes, prefs); // his real Blackboard / D2L, for when it strays onto the companies' sites
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
@@ -604,8 +611,10 @@ async function runLocalTask(c, t) {
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
-  let maxSteps = browser ? (coaching ? 80 : 40) : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') + calText + classesText +
+  // the class sweep goes through every class: the most room of all
+  let maxSteps = browser ? (sweeping ? 120 : coaching ? 80 : 40) : LOCAL_MAX_STEPS;
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') +
+    (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -760,7 +769,8 @@ async function runLocalTask(c, t) {
         } else if (name === 'read_page') { show('\nReading: ' + args.url + '\n', true); opened.add(String(args.url)); result = await localReadPage(args.url); }
         else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
         else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
-        else if (coaching && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
+        else if (sweeping && name === 'add_class_item') { result = classSweep.addItem(found, args); show('\n' + result.split('. So far')[0] + '\n', true); }
+        else if ((coaching || sweeping) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
         else if (name === 'search_my_data') {
           show('\nSearching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
@@ -893,7 +903,7 @@ async function runLocalTask(c, t) {
   // stuck, or it says it couldn't do it: the cloud AIs get a go before it comes back to him (not a private task).
   // Not one waiting on his password or code: that's his to do, in this browser. Not a coach brief either: "only
   // you can record this" is the point of it, and no cloud AI can open his courses
-  if (final.status !== 'done' && !(stuck && stuck.verify) && !coaching && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
+  if (final.status !== 'done' && !(stuck && stuck.verify) && !coaching && !sweeping && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
     agentLog('local: couldn’t do it, passing it to the cloud AIs');
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160) }]);
     return;
@@ -937,6 +947,7 @@ async function runLocalTask(c, t) {
     note: (coaching ? coach.noEmoji(final.note) : String(final.note || '')).slice(0, coaching ? 12000 : 6000) || 'Done.', options: opts.length ? opts : null, pref: prefLine(final.pref), stuck, shot, thoughts: live, draft: toPost,
     email: final.status === 'done' ? null : (mailSend.cleanEmail(final.email) || null), // sent only by his Send (agent/mail-send.js)
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
+    school: sweeping && found.length ? found : undefined, // the class sweep's finds, for his School list (renderer/js/wiring.js importClassItems)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
 

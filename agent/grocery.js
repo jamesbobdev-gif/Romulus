@@ -61,4 +61,41 @@ function lastOrderFor(tasks) {
   return kept.length ? { notPlacedYet: true, items: items(kept) } : undefined;
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, lastOrderFor };
+/* his EBT wallet (renderer/js/finance-ebt.js) as a grocery run sees it, or undefined when he hasn't set one
+   up: about what's left, as of when, and the next deposit. Only these; never anything else from Finance.
+   He chose to let grocery runs have it (2026-11-06), so the cart fits from the start */
+function ebtBrief(settings, tasks, now = Date.now()) {
+  const { ebtWallet, ebtYmd } = require('../renderer/js/finance-ebt');
+  const { agentOrders } = require('../renderer/js/order-match');
+  const w = ebtWallet(settings, agentOrders(tasks), now);
+  if (!w.known) return undefined;
+  return { aboutLeft: w.balance, asOf: ebtYmd(w.asOf), nextDeposit: w.nextDeposit ? ebtYmd(w.nextDeposit) : undefined,
+    note: 'Worked out by the app from his last known balance minus your EBT orders since; checkout shows the real one.' };
+}
+const isGroceryRun = (t, tasks) => !!groceryListFor(t, tasks) || (t && t.ws === 'agent' && GROCERY_WORDS.test(String(t.title || '')));
+
+/* his macro plan (the Health tab's Food plan, renderer/js/health.js: the agent list's ':macros' row holds it
+   as JSON text) as a grocery run sees it, or undefined when there is none or it has run out. Per day, for him
+   alone: {kcal, protein, carbs, fat} in grams, with when it ends. The run buys food that adds up to it. */
+const MACRO_KEYS = ['kcal', 'protein', 'carbs', 'fat'];
+function macroBrief(text, now = Date.now()) {
+  let p; try { p = JSON.parse(String(text || '')); } catch (e) { return undefined; }
+  if (!p || typeof p !== 'object') return undefined;
+  const perDay = {};
+  MACRO_KEYS.forEach((k) => { const n = Math.round(Number(p[k])); if (n > 0 && n < 20000) perDay[k] = n; });
+  if (!Object.keys(perDay).length) return undefined;
+  const today = new Date(now); today.setHours(12, 0, 0, 0);
+  const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const out = { perDay, forWhom: 'him alone (the rest of the household eats as usual)' };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(p.until)) {
+    const end = new Date(p.until + 'T12:00:00');
+    const daysLeft = Math.round((end - today) / 864e5) + 1; // the last day counts
+    if (daysLeft <= 0) return undefined; // the plan ran out: no macros on this order
+    out.until = p.until; out.daysLeft = daysLeft;
+  }
+  if (p.note && String(p.note).trim()) out.note = String(p.note).replace(/\s+/g, ' ').trim().slice(0, 200);
+  out.today = ymd(today);
+  return out;
+}
+
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief };

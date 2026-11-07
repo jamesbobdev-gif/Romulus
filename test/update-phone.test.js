@@ -34,6 +34,13 @@ test("pickRelease finds the APK among a release's files", () => {
   assert.equal(pickRelease(null), null);
 });
 
+test('a check that failed is tried again in five minutes, one that answered in six hours', () => {
+  const { lastCheckAfter } = load();
+  const now = 1_700_000_000_000;
+  assert.equal(lastCheckAfter(true, now), now);
+  assert.equal(lastCheckAfter(false, now), now - 6 * 60 * 60 * 1000 + 5 * 60 * 1000);
+});
+
 // with Capacitor present: does the check get as far as scheduling itself?
 function scheduled(store) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'update-phone.js'), 'utf8');

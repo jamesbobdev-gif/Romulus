@@ -87,3 +87,19 @@ test('Public is an investment account, and money sent to it is not spending', ()
   assert.ok(notSpending.test('Public.com deposit'));
   assert.ok(!notSpending.test('PUBLIC STORAGE 1234'));
 });
+
+test('money sent to his brokerage is not spending, whatever the bank calls it', () => {
+  const bank = { id: 'k', name: 'Checking', org: 'Chase', balance: 1000, transactions: [
+    tx('ACH DEBIT WEB 8834', -500, on(9, 3)),       // vague name, matched to Public's deposit below
+    tx('PUBLIC 8005551234', -200, on(9, 6)),        // Public's ACH by name alone
+    tx('APEX CLEARING ACH', -50, on(9, 7)),         // Public's clearing firm
+    tx('FIDELITY INVESTMENTS 4410', -300, on(9, 9)),
+    tx('FID BKG SVC LLC MONEYLINE', -25, on(9, 10)),
+    tx('PUBLIC STORAGE 0412', -90, on(9, 8)),       // a real bill that only starts with "Public"
+    tx('Corner Deli', -500, on(9, 20)),             // same amount, but no deposit matches it
+  ] };
+  const pub = { id: 'p', name: 'Brokerage', org: 'Public', balance: 750, transactions: [tx('Deposit', 500, on(9, 4))] };
+  const s = incomeStatement([bank, pub], {}, NOW);
+  assert.strictEqual(s.expenseTotal[3], 590, 'the deli and Public Storage only');
+  assert.strictEqual(s.incomeTotal[3], 0, 'the deposit into Public isn’t income either');
+});

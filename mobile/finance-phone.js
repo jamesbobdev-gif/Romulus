@@ -132,7 +132,7 @@
       if (!key) return { locked: true };
       stillHere();
       var c = vault.cache || {};
-      return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {},
+      return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, ebt: vault.ebt || {},
         receipts: [], mail: { phone: true } };
     },
     financeRefresh: async function () {
@@ -150,6 +150,14 @@
       vault.kinds = kinds;
       await save();
       return { ok: true, kinds: kinds };
+    },
+    // the EBT wallet (renderer/js/finance-ebt.js, a page script here): kept in this phone's vault
+    financeSetEbt: async function (ebt) {
+      if (!key) return { ok: false, error: 'locked' };
+      stillHere();
+      vault.ebt = ebtClean(ebt);
+      await save();
+      return { ok: true, ebt: vault.ebt };
     },
     // the tab asks every minute while it's open: that doesn't count as using it
     financeStocks: async function (force) {
@@ -177,7 +185,7 @@
       return C.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning, sectorsKnown);
     },
     // this phone only: the computer and SimpleFIN keep working
-    financeForget: async function () { lock('forgotten'); await call('forget'); return { ok: true }; },
+    financeForget: async function () { lock('forgotten'); await call('forget'); try { localStorage.removeItem('finance.ebtCopy'); } catch (e) {} return { ok: true }; },
     onFinanceLocked: function (cb) { lockedCbs.push(cb); },
     onFinanceUpdated: function (cb) { updatedCbs.push(cb); },
     _readPairing: readPairing,

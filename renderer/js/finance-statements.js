@@ -13,15 +13,11 @@
    Also loaded by test/finance-statements.test.js. */
 'use strict';
 
-const STMT_COSTS=typeof module!=='undefined'&&module.exports?require('./finance-costs'):{costsOf:costsOf,costKey:costKey,notSpending:COST_NOT_SPENDING};
+const STMT_COSTS=typeof module!=='undefined'&&module.exports?require('./finance-costs'):{costsOf:costsOf,costKey:costKey,notSpending:COST_NOT_SPENDING,isInvest:costIsInvest,markInvestMoves:costMarkInvestMoves,isInvestMove:costIsInvestMove};
 const STMT_PAY=/\b(payroll|direct ?dep(osit)?|salary|paycheck|pay ?check|wages|dir dep|ach credit.*(pay|sal))\b/i;
 const STMT_INTEREST=/\b(interest|dividend|div(idend)? ?(paid|reinv)|apy)\b/i;
 const STMT_REFUND=/\b(refund|return|reversal|credit adj|chargeback|cashback|cash back)\b/i;
-const STMT_INVEST=/\b(brokerage|invest|ira|401 ?k|403 ?b|roth|hsa|individual|stock|etf|fidelity|schwab|vanguard|robinhood|e\*?trade|webull|public\.com|public investing|public holdings)\b/i;
-// the brokerage Public: its org is just "Public", so match that whole (not "Public Service Credit Union")
-const STMT_INVEST_ORG=/^\s*public(\.com)?\s*$/i;
-
-const stmtIsInvest=function(a){ return !!((a.holdings&&a.holdings.length)||STMT_INVEST.test((a.name||'')+' '+(a.org||''))||STMT_INVEST_ORG.test(a.org||'')); };
+const stmtIsInvest=STMT_COSTS.isInvest;
 // money in: does it count as income? → 'income' | 'skip' (his mark first, then the rules)
 function stmtIncomeKind(t,a,kinds){
   const mark=(kinds||{})['in:'+STMT_COSTS.costKey(t)];
@@ -47,6 +43,7 @@ function incomeStatement(accounts,kinds,now,full){
     d.setMonth(d.getMonth()+1);
   }
   const n=cols.length;
+  STMT_COSTS.markInvestMoves(accounts); // money sent to his brokerage isn't spending
   const txs=[];
   (accounts||[]).forEach(function(a){ (a.transactions||[]).forEach(function(t){ if(t&&t.posted&&!t.pending&&at[stmtMonth(t.posted*1000)]!=null)txs.push({t:t,a:a}); }); });
   const costs=STMT_COSTS.costsOf(txs.map(function(x){ return x.t; }),kinds,now,full+1);

@@ -120,9 +120,13 @@ The EBT rules below are for when he pays with EBT/SNAP.
 - **EBT-eligible only (when he pays with EBT):** with EBT as his only grocery payment, keep the cart to SNAP-eligible food (Walmart
   marks it "EBT eligible"). Leave out non-eligible items (hot food, household, paper goods) and tell
   him which ones you left out.
-- **EBT balance:** checkout shows his EBT balance. If the cart is over it, take off the least
-  essential items until it fits (snacks before staples; items that just came due before items he ran
-  out of) and say what you took off. Put the balance left after this order in the note.
+- **EBT balance:** the task's `ebtBalance` (when there is one) is about what's left on his EBT card,
+  worked out by the app, and when the next deposit lands. Build the cart to fit `aboutLeft` from the
+  start, and if the next deposit is only a day or two away and money is tight, say so in the note (he
+  may want to wait). Checkout shows the real balance: that one wins. If the cart is over it, take off
+  the least essential items until it fits (snacks before staples; items that just came due before
+  items he ran out of) and say what you took off. In the note, write the EBT part of the total as
+  "$X.XX EBT" and the balance left after this order as "EBT left: $Y.YY": the app reads both.
 - **Swaps:** out of stock → pick the closest match (same size, similar price) and list every swap in
   the note. Allow the store's own substitutions only if he said so.
 - **Delivery:** to his door, unless his preferences say pickup. EBT usually can't pay the delivery fee or tip:
@@ -137,6 +141,31 @@ The EBT rules below are for when he pays with EBT/SNAP.
   add the ideas (below) and go on to checkout and the final review. Skip this stop only when the
   conversation shows he already went through it for this order.
 
+## His macro plan (when the task has `macroPlan`)
+- `macroPlan` is what he set in the app's Health tab (Food plan): per-day targets for him alone
+  (`perDay`: kcal, protein, carbs, fat in grams; a missing one isn't a target), with `until` and
+  `daysLeft` when it ends, else it runs until he changes it. The rest of the household eats as usual:
+  their share of his list stays as it is.
+- **Buy to the plan.** An order covers the days until the next one: 14 for the 2-week order, about 7
+  for a one-off order (unless he says how long), never more than `daysLeft`. His food for those days
+  should add up to about perDay × days: protein and calories within about 10%, carbs and fat
+  roughly. Start from his list (what's due), then change amounts and add foods until it fits: more
+  of the protein he already buys (chicken, eggs, Greek yogurt, beans, tuna) before new things, and
+  staples he can portion (rice, oats, potatoes) over snacks. Keep to his Groceries preferences,
+  EBT-eligible food and his EBT balance; if the plan and the balance don't both fit, the balance
+  wins and the note says how far short the protein (or calories) lands.
+- **Reckon macros from what you know**, per serving or per 100 g, for ordinary foods (a chicken breast
+  is about 31 g protein per 100 g; a large egg 6 g; cooked rice 28 g carbs per 100 g). Open a
+  nutrition label only for a packaged food you don't know, never item by item through the whole
+  cart. Count what he eats, not the package weight (raw meat shrinks; the serving size on the label).
+- **Show it.** In `why` on an item you added or sized for the plan, say what it covers ("protein:
+  about 60 g a day"). The note gets one line against the plan, before the total: "About 2,050 kcal,
+  158 g protein, 210 g carbs, 62 g fat a day over 14 days (plan: 2,100 / 160 / 200 / 65)", and what is
+  short or over, if anything. Ideas for the week (below) close a gap first: short on protein → cottage
+  cheese, canned tuna, lentils.
+- He can't tell you what's in his kitchen: count only this order, and say so in one clause the
+  first time ("counting this order only").
+
 ## Ideas for the week (once he has a list)
 - When his grocery list has items, add **3–6 ideas** to each order, after he's checked his items
   (the stop above): foods he doesn't usually buy that
@@ -146,7 +175,8 @@ The EBT rules below are for when he pays with EBT/SNAP.
   cart, and a little variety from last week (the conversation shows what you suggested before; don't
   repeat ones he skipped).
 - Follow his Groceries preferences (foods he avoids, brands, budget). EBT-eligible only, and keep the
-  whole cart, ideas included, inside his EBT balance.
+  whole cart, ideas included, inside his EBT balance. With a `macroPlan`, the first ideas are the
+  ones that close its gaps.
 - Put them in the store cart too, and in `cart` (with their picture and page, like every item) with `"suggested": true` and `why` = a few words on
   what it goes with ("with your chicken and rice"). The app shows them last, unselected: he taps the
   ones he wants. The note gives the total without the ideas. Ideas only come with the final review,
