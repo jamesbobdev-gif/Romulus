@@ -579,7 +579,8 @@ function logEntries(){
   logActions.forEach(function(a){
     let what=String(a.what||''); if(a.label)what+=' “'+a.label+'”'; if(Array.isArray(a.files))what+=' '+a.files.join(', ');
     const site=a.url?String(a.url).replace(/^https?:\/\/(www\.)?/,'').slice(0,60):'';
-    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:''),task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
+    const on=a.where?' · on '+a.where:''; // done by the local model's own computer (Lupa), from its heartbeat
+    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:'')+on,task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
   });
   state.tasks.forEach(function(t){
     if(taskWs(t)!=='agent'||!Array.isArray(t.history))return;

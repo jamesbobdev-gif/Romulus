@@ -33,7 +33,7 @@ const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFo
 const mailSend = require('./mail-send');
 const { tidyAgentTabs, holdTabs, startTab, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const workerFiles = require('./worker-files');
-const { formFiles } = require('./agent-browser');
+const { formFiles, readActions } = require('./agent-browser');
 // his files for forms, as a tool the mini PC's model calls by file name (never a path: the launcher checks the real one)
 const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_file',
   description: 'Put one of his files into the file box a site opened (click its Upload / Attach / Choose file button first). file = the file name: ' + files.map((f) => f.name).join(', ') + '. No file = close the box without uploading.',
@@ -91,7 +91,8 @@ function workerBeat() {
   if (!worker.isWorker(readConfig())) return Promise.resolve(false);
   const c = localCfg(), l = readConfig().localModel || {}, a = require('./supabase').channel(readConfig());
   syncFiles(); // what its browser downloaded, for his other computers
-  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), doing: nowDoing(), version: APP_VERSION, stats: runLog.summary(runLog.load(runLogFile())) });
+  return worker.beat(a, { name: l.name, model: c && c.model, busy: isBusy(), doing: nowDoing(), version: APP_VERSION, stats: runLog.summary(runLog.load(runLogFile())),
+    actions: readActions(worker.ACTIONS_MAX) }); // what its browser let through, for his other computers' log
 }
 // the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
 const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
