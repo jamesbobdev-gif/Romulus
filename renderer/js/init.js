@@ -71,6 +71,7 @@ store.load().then(async function(data){
   }
   state.ideas=normIdeas(data&&data.ideas);
   state.hours=normHours(data&&data.hours);
+  state.health=normHealth(data&&data.health); // daily health totals (health.js)
   rebuildSnap();
   if(spawnMissedRecurs())persist();
   if(state.activeTab==='list')render(); else switchTab(state.activeTab); // To do, unless it's switched off in Settings > Tabs (tab-picker.js)

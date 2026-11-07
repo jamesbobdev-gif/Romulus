@@ -162,6 +162,18 @@
       <p class="settings-hint">For groceries paid with EBT (SNAP). On, Finance keeps track of your EBT balance and next deposit, grocery orders show what's left, and the Agent keeps grocery carts under it. Set on each device.</p>
       <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
     </details>
+    <details class="settings-panel settings-collapse" id="healthSection">
+      <summary class="settings-label">Health</summary>
+      <p class="settings-hint">Tasks that check themselves off: <b>Walk #steps 8000</b>, <b>Gym #exercise 30</b> (minutes), <b>Bed early #sleep 7h</b>. One ticks off once that day's total gets there, the day it's due or today. Only daily totals are kept, and no AI sees them.</p>
+      <div id="healthPhone" hidden>
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="healthOn"><span class="track" aria-hidden="true"></span><span>Read steps, exercise and sleep from Health Connect</span></label>
+        <div class="settings-row">
+          <button id="healthManage" class="ghost mono" hidden>Health Connect settings</button>
+        </div>
+      </div>
+      <p id="healthDesk" class="settings-hint" hidden>The totals come from Romulus on your Android phone: turn this on there. They reach this computer when your lists use end-to-end encryption.</p>
+      <p class="mono" style="font-size:11px;color:var(--muted);margin:4px 0 0"><span id="healthStatus"></span> <span id="healthToday"></span></p>
+    </details>
     <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
       <summary class="settings-label">Agent features</summary>
       <div class="settings-sub" id="lookAheadSection" hidden>
@@ -596,6 +608,7 @@
 <script src="js/calendar-view.js"></script>
 <script src="js/ideas.js"></script>
 <script src="js/hours.js"></script>
+<script src="js/health.js"></script>
 <script src="js/finance-core.js"></script>
 <script src="js/finance-csv.js"></script>
 <script src="js/finance-costs.js"></script>

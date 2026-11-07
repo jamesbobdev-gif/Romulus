@@ -52,7 +52,8 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
     user-initiated transfer, not sharing.
   - Still declare what the app processes and sends on the user's behalf, marked "processed ephemerally" /
     "not collected" as appropriate: personal info (name, email, address in the Locked profile), financial
-    info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks).
+    info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks), health and
+    fitness (Health Connect daily totals: on the phone, or end-to-end encrypted between his own devices).
   - Encrypted in transit: yes. Users can request deletion: yes, in the app (Settings → Device sync →
     Delete my synced data, which needs the `sync-delete` function deployed; see below). Play's
     account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
@@ -67,8 +68,13 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
   say "Hey Romulus", show the app opening to listen.
 - **Exact alarms** (`SCHEDULE_EXACT_ALARM`, from the reminders plugin): declare that reminders at the
   time the user set are a core feature of a task and calendar app.
-- **Health, financial features**: Finance is a personal budget view, not a financial service: answer no to
+- **Financial features**: Finance is a personal budget view, not a financial service: answer no to
   loans, banking and crypto.
+- **Health**: the app reads Health Connect (steps, exercise, sleep; read only) so tasks with a goal like
+  "Walk #steps 8000" tick themselves off. Health apps: Yes, Fitness. Health Connect declaration: read Steps,
+  Exercise, Sleep, used only to tick off those tasks, not shared, not for ads, not sent to AI; privacy policy
+  link `.../PRIVACY.md#health`. Data safety: Fitness info, not collected by the developer (on the phone, or
+  synced end-to-end encrypted). Google can take a week or more to review the declaration.
 - **AI-generated content**: Romulus shows replies from AI services the user connects. If review treats it as
   a generative-AI app, it will ask for an in-app way to report offensive output; that isn't built yet.
 
