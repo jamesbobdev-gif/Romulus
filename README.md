@@ -18,7 +18,7 @@ Plus a School list that pulls due dates from course calendars, a Notes board, an
 
 **Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
 
-**Linux, macOS and Android:** the `.AppImage`, `.dmg` and `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
+**Linux, macOS and Android:** the `.deb` (Ubuntu, Debian, Mint) or `.AppImage` (other distributions), the `.dmg` and the `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
 **From source:** Node 22 or newer, then `npm install` and `npm start`.
 
