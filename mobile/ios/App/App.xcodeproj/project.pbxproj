@@ -18,6 +18,19 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		9A0C0001000000000000A001 /* HealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0C0001000000000000A002 /* HealthPlugin.swift */; };
 		9A0C0001000000000000A003 /* RomulusViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0C0001000000000000A004 /* RomulusViewController.swift */; };
+		A7C0DE00000000000000000F /* VoicePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000001 /* VoicePlugin.swift */; };
+		A7C0DE000000000000000010 /* WakeWordPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000002 /* WakeWordPlugin.swift */; };
+		A7C0DE000000000000000011 /* FinanceVaultPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000003 /* FinanceVaultPlugin.swift */; };
+		A7C0DE000000000000000012 /* ShareLinkPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000004 /* ShareLinkPlugin.swift */; };
+		A7C0DE000000000000000013 /* CalAccountsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000005 /* CalAccountsPlugin.swift */; };
+		A7C0DE000000000000000014 /* WidgetDataPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000006 /* WidgetDataPlugin.swift */; };
+		A7C0DE000000000000000015 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000009 /* WidgetShared.swift */; };
+		A7C0DE000000000000000016 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000007 /* PrivacyInfo.xcprivacy */; };
+		A7C0DE000000000000000017 /* oauth_clients.json in Resources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000008 /* oauth_clients.json */; };
+		A7C0DE000000000000000018 /* RomulusWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE00000000000000000A /* RomulusWidgets.swift */; };
+		A7C0DE000000000000000019 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0DE000000000000000009 /* WidgetShared.swift */; };
+		A7C0DE00000000000000001A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A7C0DE00000000000000000D /* PrivacyInfo.xcprivacy */; };
+		A7C0DE00000000000000001B /* RomulusWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A7C0DE00000000000000000E /* RomulusWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,7 +48,45 @@
 		9A0C0001000000000000A004 /* RomulusViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RomulusViewController.swift; sourceTree = "<group>"; };
 		9A0C0001000000000000A005 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		A7C0DE000000000000000001 /* VoicePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlugin.swift; sourceTree = "<group>"; };
+		A7C0DE000000000000000002 /* WakeWordPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWordPlugin.swift; sourceTree = "<group>"; };
+		A7C0DE000000000000000003 /* FinanceVaultPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceVaultPlugin.swift; sourceTree = "<group>"; };
+		A7C0DE000000000000000004 /* ShareLinkPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareLinkPlugin.swift; sourceTree = "<group>"; };
+		A7C0DE000000000000000005 /* CalAccountsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalAccountsPlugin.swift; sourceTree = "<group>"; };
+		A7C0DE000000000000000006 /* WidgetDataPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataPlugin.swift; sourceTree = "<group>"; };
+		A7C0DE000000000000000007 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A7C0DE000000000000000008 /* oauth_clients.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = oauth_clients.json; sourceTree = "<group>"; };
+		A7C0DE000000000000000009 /* WidgetShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShared.swift; sourceTree = "<group>"; };
+		A7C0DE00000000000000000A /* RomulusWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RomulusWidgets.swift; sourceTree = "<group>"; };
+		A7C0DE00000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A7C0DE00000000000000000C /* RomulusWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RomulusWidgets.entitlements; sourceTree = "<group>"; };
+		A7C0DE00000000000000000D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A7C0DE00000000000000000E /* RomulusWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RomulusWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		A7C0DE000000000000000020 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A7C0DE000000000000000022;
+			remoteInfo = RomulusWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A7C0DE00000000000000001F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A7C0DE00000000000000001B /* RomulusWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -43,6 +94,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A7C0DE00000000000000001D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -54,6 +112,8 @@
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				A7C0DE000000000000000027 /* Shared */,
+				A7C0DE000000000000000026 /* RomulusWidgets */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -62,6 +122,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				A7C0DE00000000000000000E /* RomulusWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -81,8 +142,35 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				A7C0DE000000000000000001 /* VoicePlugin.swift */,
+				A7C0DE000000000000000002 /* WakeWordPlugin.swift */,
+				A7C0DE000000000000000003 /* FinanceVaultPlugin.swift */,
+				A7C0DE000000000000000004 /* ShareLinkPlugin.swift */,
+				A7C0DE000000000000000005 /* CalAccountsPlugin.swift */,
+				A7C0DE000000000000000006 /* WidgetDataPlugin.swift */,
+				A7C0DE000000000000000007 /* PrivacyInfo.xcprivacy */,
+				A7C0DE000000000000000008 /* oauth_clients.json */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A7C0DE000000000000000027 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A7C0DE000000000000000009 /* WidgetShared.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A7C0DE000000000000000026 /* RomulusWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				A7C0DE00000000000000000A /* RomulusWidgets.swift */,
+				A7C0DE00000000000000000B /* Info.plist */,
+				A7C0DE00000000000000000C /* RomulusWidgets.entitlements */,
+				A7C0DE00000000000000000D /* PrivacyInfo.xcprivacy */,
+			);
+			path = RomulusWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -95,10 +183,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				A7C0DE00000000000000001F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A7C0DE000000000000000021 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -107,6 +197,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A7C0DE000000000000000022 /* RomulusWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7C0DE000000000000000025 /* Build configuration list for PBXNativeTarget "RomulusWidgets" */;
+			buildPhases = (
+				A7C0DE00000000000000001C /* Sources */,
+				A7C0DE00000000000000001D /* Frameworks */,
+				A7C0DE00000000000000001E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RomulusWidgets;
+			productName = RomulusWidgets;
+			productReference = A7C0DE00000000000000000E /* RomulusWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -122,10 +229,16 @@
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
 						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
 							com.apple.HealthKit = {
 								enabled = 1;
 							};
 						};
+					};
+					A7C0DE000000000000000022 = {
+						CreatedOnToolsVersion = 16.0;
 					};
 				};
 			};
@@ -146,6 +259,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				A7C0DE000000000000000022 /* RomulusWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -161,6 +275,16 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				A7C0DE000000000000000016 /* in Resources */,
+				A7C0DE000000000000000017 /* in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A7C0DE00000000000000001E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7C0DE00000000000000001A /* in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -173,12 +297,36 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				A7C0DE00000000000000000F /* in Sources */,
+				A7C0DE000000000000000010 /* in Sources */,
+				A7C0DE000000000000000011 /* in Sources */,
+				A7C0DE000000000000000012 /* in Sources */,
+				A7C0DE000000000000000013 /* in Sources */,
+				A7C0DE000000000000000014 /* in Sources */,
+				A7C0DE000000000000000015 /* in Sources */,
 				9A0C0001000000000000A001 /* HealthPlugin.swift in Sources */,
 				9A0C0001000000000000A003 /* RomulusViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A7C0DE00000000000000001C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7C0DE000000000000000018 /* in Sources */,
+				A7C0DE000000000000000019 /* in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A7C0DE000000000000000021 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A7C0DE000000000000000022 /* RomulusWidgets */;
+			targetProxy = A7C0DE000000000000000020 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -355,6 +503,52 @@
 			};
 			name = Release;
 		};
+		A7C0DE000000000000000023 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RomulusWidgets/RomulusWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = RomulusWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jartro.tasks.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A7C0DE000000000000000024 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RomulusWidgets/RomulusWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = RomulusWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jartro.tasks.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -372,6 +566,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A7C0DE000000000000000025 /* Build configuration list for PBXNativeTarget "RomulusWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7C0DE000000000000000023 /* Debug */,
+				A7C0DE000000000000000024 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

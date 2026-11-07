@@ -52,3 +52,4 @@ supabase/.temp/
 # the demo recording (scripts/demo): the built page and its frames
 scripts/demo/build/
 scripts/demo/frames/
+mobile/ios/App/App/oauth_clients.json
