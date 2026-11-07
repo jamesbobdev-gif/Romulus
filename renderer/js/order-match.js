@@ -23,6 +23,24 @@ function orderTotalFrom(note){
   const m=s.match(/total[^$\n]{0,40}?\$\s?(\d+(?:\.\d{1,2})?)/i)||s.match(/\babout \$\s?(\d+(?:\.\d{1,2})?)/i);
   return m?Number(m[1]):undefined;
 }
+/* the EBT part of an order, from the Agent's note, for the Finance tab's EBT wallet (finance-ebt.js):
+   {ebt: what went on EBT, left: the EBT balance after it}, either one maybe missing.
+   "Total $80.10 ($60.00 EBT, $20.10 Visa). EBT balance $143.20" → {ebt: 60, left: 83.2}. A balance checkout
+   shows is from before the order, unless the note says it's what's left ("EBT left: $83.20", "$83.20 left on EBT") */
+function orderEbtFrom(note){
+  let s=String(note||'').replace(/,/g,'');
+  const out={}; let before=null;
+  const bal=s.match(/\bEBT(?:\s*card)?\s*(balance|left|remaining)\s*(after|left|remaining|now)?\s*(?:is|of)?\s*:?\s*\$\s?(\d+(?:\.\d{1,2})?)/i);
+  const left=!bal&&s.match(/\$\s?(\d+(?:\.\d{1,2})?)\s*(?:left|remaining)\s*on\s*(?:your\s*|his\s*|the\s*)?EBT/i);
+  if(bal){ const n=Number(bal[3]); if(/left|remaining/i.test(bal[1])||bal[2])out.left=n; else before=n; s=s.replace(bal[0],' '); }
+  else if(left){ out.left=Number(left[1]); s=s.replace(left[0],' '); }
+  // "$60.00 EBT", "$60 on EBT", "$60 paid with EBT", "EBT: $60", "EBT pays $60" (not an item's "$3.98 EBT eligible")
+  const paid=s.match(/\$\s?(\d+(?:\.\d{1,2})?)\s*(?:(?:paid\s*)?(?:on|with|by|from|to)\s*)?(?:your\s*|his\s*|the\s*)?(?:EBT|SNAP)\b(?![\s-]*eligible)/i)
+    ||s.match(/\b(?:EBT|SNAP)(?:\s*card)?\s*(?:pays|paid|covers|covered|part|portion)?\s*:?\s*\$\s?(\d+(?:\.\d{1,2})?)/i);
+  if(paid)out.ebt=Number(paid[1]);
+  if(before!=null)out.left=Math.round((before-(out.ebt||0))*100)/100;
+  return out;
+}
 // the store, from the items' links (amazon.com, walmart.com, instacart.com…), else the task's title
 function orderStore(items,title){
   const hosts=(items||[]).map(function(it){ try{ return new URL(it.url).hostname; }catch(e){ return ''; } }).join(' ');
@@ -45,7 +63,8 @@ function agentOrders(tasks){
     list.forEach(function(o){
       if(!o||!Array.isArray(o.items)||!o.items.length)return;
       out.push({key:t.id+':'+(o.at||0),task:t.id,title:t.title||'',at:o.at||0,items:o.items,
-        total:o.total||undefined,store:o.store||orderStore(o.items,t.title)});
+        total:o.total||undefined,store:o.store||orderStore(o.items,t.title),
+        ebt:o.ebt>0?o.ebt:undefined,ebtLeft:typeof o.ebtLeft==='number'&&o.ebtLeft>=0?o.ebtLeft:undefined});
     });
   });
   return out.sort(function(a,b){ return b.at-a.at; });
@@ -83,4 +102,4 @@ function matchOrders(txs,orders,now){
   return out;
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={orderTotalFrom:orderTotalFrom,orderStore:orderStore,agentOrders:agentOrders,emailOrders:emailOrders,matchOrders:matchOrders}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={orderTotalFrom:orderTotalFrom,orderEbtFrom:orderEbtFrom,orderStore:orderStore,agentOrders:agentOrders,emailOrders:emailOrders,matchOrders:matchOrders}; }

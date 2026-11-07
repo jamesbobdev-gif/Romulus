@@ -221,7 +221,7 @@
     financeData: async function () {
       if (!key) return { locked: true };
       stillHere();
-      return { locked: false, csv: true, fetchedAt: lastAdded(), accounts: vault.accounts || [], errors: [], kinds: vault.kinds || {}, receipts: [], mail: null };
+      return { locked: false, csv: true, fetchedAt: lastAdded(), accounts: vault.accounts || [], errors: [], kinds: vault.kinds || {}, ebt: vault.ebt || {}, receipts: [], mail: null };
     },
     // file: { name, text, account (name to add it to), balance (typed, optional), flip }
     financeImport: async function (file) {
@@ -259,6 +259,13 @@
       if (kind == null) delete kinds[k]; else kinds[k] = kind;
       vault.kinds = kinds; await save();
       return { ok: true, kinds };
+    },
+    // the EBT wallet (finance-ebt.js): kept in this vault with the CSV accounts
+    financeSetEbt: async function (ebt) {
+      if (!key) return { ok: false, error: 'locked' };
+      stillHere();
+      vault.ebt = ebtClean(ebt); await save();
+      return { ok: true, ebt: vault.ebt };
     },
     financeStocks: async function () { return key ? { held: 0, rows: [] } : { locked: true }; },
     financeForget: async function () { lock('forgotten'); try { localStorage.removeItem(STORE); } catch (e) {} return { ok: true }; },

@@ -35,6 +35,7 @@ const stocks = require('./finance-stocks');
 const hello = require('./finance-hello');
 const billsLib = require('../renderer/js/finance-bills');
 const insights = require('../renderer/js/finance-insights');
+const { ebtClean } = require('../renderer/js/finance-ebt');
 // the SimpleFIN reading the phone shares (renderer/js/finance-core.js)
 const { checkSimplefinUrl, cleanAccounts, mergeAccounts: mergeWith, downloadAccounts, txt } = require('../renderer/js/finance-core');
 
@@ -546,7 +547,7 @@ const handlers = {
     stillHere();
     const c = vault.cache || {};
     const m = vault.mail || {};
-    return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, hello: helloReady(),
+    return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, ebt: vault.ebt || {}, hello: helloReady(),
       receipts: vault.receipts || [], mail: { last: m.last || 0, error: m.error || null, off: !!m.off, busy: mailBusy } };
   },
   // his correction for a payee on the cost charts: fixed, variable, not spending ('skip'), or back to the guess (null);
@@ -563,6 +564,14 @@ const handlers = {
     await writeVault();
     await keepBills();
     return { ok: true, kinds };
+  },
+  // the EBT wallet (renderer/js/finance-ebt.js): his balance, deposit day and monthly amount, kept in the vault
+  'finance:setEbt': async (_e, ebt) => {
+    if (!key) return { ok: false, error: 'locked' };
+    stillHere();
+    vault.ebt = ebtClean(ebt);
+    await writeVault();
+    return { ok: true, ebt: vault.ebt };
   },
   // the tab's minute-by-minute check doesn't count as using it (it still locks after 10 idle minutes)
   'finance:stocks': async (_e, force) => {

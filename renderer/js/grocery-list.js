@@ -149,7 +149,11 @@ function keepLastOrder(t,note){
   if(!items.length)return;
   t.lastOrder={at:Date.now(),items:items};
   const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
-  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{})]).slice(-12);
+  // the EBT part, for the Finance tab's EBT wallet (finance-ebt.js): what went on EBT, and the balance left
+  const e1=orderEbtFrom(note), e2=orderEbtFrom(t.note);
+  const ebt=e1.ebt||e2.ebt, left=e1.left!=null?e1.left:e2.left;
+  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{},
+    ebt?{ebt:ebt}:{},left!=null&&left>=0?{ebtLeft:left}:{})]).slice(-12);
 }
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){

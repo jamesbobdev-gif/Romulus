@@ -61,6 +61,13 @@ test('corrections on the cost charts are kept in the vault', async () => {
   assert.deepStrictEqual(h['finance:data']().kinds, { 'shell oil': 'fixed' });
   await h['finance:setKind'](null, 'shell oil', null);
   assert.deepStrictEqual(h['finance:data']().kinds, {});
+  // the EBT wallet: kept sealed with the rest, and only the fields it uses
+  assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291, pin: '1234' })).ok, true);
+  h['finance:lock']();
+  assert.strictEqual((await h['finance:setEbt'](null, { balance: 1 })).ok, false);
+  await h['finance:unlock'](null, 'correct horse battery');
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 143.2, at: 1000, day: 3, monthly: 291 });
+  assert.ok(!fs.readdirSync(d2).some((f) => /143\.2/.test(fs.readFileSync(path.join(d2, f), 'latin1'))));
   await h['finance:forget']();
 });
 
