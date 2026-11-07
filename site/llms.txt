@@ -5,7 +5,7 @@
 Key facts:
 
 - Platforms: Windows 10/11, macOS (Apple silicon and Intel), Linux (.deb and AppImage), Android (APK). iPhone runs from Xcode only, not on the App Store yet.
-- Price: the app is free. Device sync is free up to 5 MB on the Romulus server, $5 a month for more, or bring your own Supabase project.
+- Price: the app is free. Device sync is free up to 5 MB on the Romulus server, $5 a month for more, or bring your own Supabase project. Most people never need more: a typical list takes about 1% of the free space.
 - AI models: Claude, ChatGPT, Gemini, OpenRouter, free tiers like Grok and Groq, or a local model through Ollama. Several can be connected and are tried in the user's order.
 - Privacy: no telemetry. Banking, medical records, passwords and the Locked form-filling profile go only to the local model. Sync can be end-to-end encrypted. API keys never sync. The AI never sees a card number.
 - Shopping: Amazon, Walmart, Target, Best Buy and Shopify stores, plus any other store through a one-time Link card for the approved amount. Grocery orders wait at checkout for the user's yes.
@@ -17,6 +17,8 @@ Key facts:
 ## Links
 
 - [Website and downloads](https://jamesbobdev-gif.github.io/Romulus/)
+- [Free AI agent](https://jamesbobdev-gif.github.io/Romulus/free-ai-agent/)
+- [AI to-do list app](https://jamesbobdev-gif.github.io/Romulus/ai-to-do-list/)
 - [Latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest)
 - [Source code](https://github.com/jamesbobdev-gif/Romulus)
 - [README](https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/README.md)

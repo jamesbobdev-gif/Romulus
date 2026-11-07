@@ -2,6 +2,8 @@
 
 **Romulus killed Remus. This should kill your need for Meta Muse.**
 
+Romulus is a free, open-source to-do list app with an AI agent built in, for Windows, macOS, Linux and Android. **[Download it free](https://jamesbobdev-gif.github.io/Romulus/)**.
+
 **A to-do list with an agent in it.** Write a task the way you'd tell a person ("find the cheapest flight to Denver the weekend of the 14th", "order the groceries", "apply to these three internships", "draft a reply to the landlord"), hand it to the Agent, and it goes and does it: searches the web, reads pages, fills forms, compares prices, builds the cart, drafts the email. It comes back only when it needs a decision, and it **never buys, sends, submits or books anything until you reply "yes"** to the exact thing it described.
 
 **Bring your own model.** Plug in whatever you already pay for or can run: a Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama. Connect several and the app tries them in your order. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model.
