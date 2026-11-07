@@ -1,66 +1,61 @@
 package com.jartro.tasks;
 
-import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
-import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
-import android.net.Uri;
-import android.widget.RemoteViews;
+import android.content.SharedPreferences;
 
-public class TasksWidgetProvider extends AppWidgetProvider {
+/**
+ * Home-screen widget: List — one list, picked when it's placed (long-press, Widget settings, to
+ * change it): Personal (every open task, check-off circles) or Groceries (what's on the next
+ * order). Keeps the old Personal list's class name so widgets already on the home screen stay,
+ * showing Personal.
+ */
+public class TasksWidgetProvider extends ListWidgetProvider {
+    static final String[] CHOICES = {"personal", "groceries"};
+    static final String[] CHOICE_LABELS = {"Personal", "Groceries"};
 
-    public static final String ACTION_REFRESH = "com.jartro.tasks.WIDGET_REFRESH";
+    @Override String mode() { return "personal"; }
+    @Override String title() { return "Personal"; }
+    @Override String emptyText() { return "Nothing open."; }
+    @Override String tabToOpen() { return "list"; }
+    @Override int requestBase() { return 700; }
 
-    @Override
-    public void onUpdate(Context context, AppWidgetManager manager, int[] appWidgetIds) {
-        for (int id : appWidgetIds) {
-            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_tasks);
+    @Override String mode(Context ctx, int id) { return chosen(ctx, id); }
+    @Override String title(Context ctx, int id) { return chosen(ctx, id).equals("groceries") ? "Groceries" : "Personal"; }
+    @Override String emptyText(Context ctx, int id) {
+        return chosen(ctx, id).equals("groceries") ? "Nothing on the next order." : "Nothing open.";
+    }
+    @Override String tabToOpen(Context ctx, int id) { return chosen(ctx, id).equals("groceries") ? "agent" : "list"; }
+    // each List widget can show a different list, so each gets its own PendingIntents
+    @Override int requestBase(int id) { return 10000 + (id % 100000) * 4; }
 
-            Intent svc = new Intent(context, TasksWidgetService.class);
-            svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
-            svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
-            views.setRemoteAdapter(R.id.task_list, svc);
-            views.setEmptyView(R.id.task_list, R.id.empty_view);
+    private static SharedPreferences prefs(Context ctx) {
+        return ctx.getSharedPreferences("widget_lists", Context.MODE_PRIVATE);
+    }
 
-            // header + empty area open the app
-            Intent open = new Intent(context, MainActivity.class);
-            PendingIntent openPi = PendingIntent.getActivity(context, 0, open,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            views.setOnClickPendingIntent(R.id.widget_header, openPi);
-            views.setOnClickPendingIntent(R.id.empty_view, openPi);
+    static String chosen(Context ctx, int id) {
+        String v = prefs(ctx).getString("list_" + id, "personal");
+        return "groceries".equals(v) ? "groceries" : "personal";
+    }
 
-            // list rows open the app too (template + fill-in)
-            Intent rowTemplate = new Intent(context, MainActivity.class);
-            PendingIntent rowPi = PendingIntent.getActivity(context, 1, rowTemplate,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            views.setPendingIntentTemplate(R.id.task_list, rowPi);
-
-            // refresh icon re-fetches
-            Intent refresh = new Intent(context, TasksWidgetProvider.class);
-            refresh.setAction(ACTION_REFRESH);
-            PendingIntent refreshPi = PendingIntent.getBroadcast(context, 2, refresh,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            views.setOnClickPendingIntent(R.id.refresh_btn, refreshPi);
-
-            manager.updateAppWidget(id, views);
-            manager.notifyAppWidgetViewDataChanged(id, R.id.task_list);
-        }
+    static void choose(Context ctx, int id, String list) {
+        prefs(ctx).edit().putString("list_" + id, list).apply();
     }
 
     @Override
-    public void onReceive(Context context, Intent intent) {
-        super.onReceive(context, intent);
-        if (ACTION_REFRESH.equals(intent.getAction())) {
-            refreshAll(context);
-        }
+    public void onDeleted(Context ctx, int[] ids) {
+        SharedPreferences.Editor e = prefs(ctx).edit();
+        for (int id : ids) e.remove("list_" + id);
+        e.apply();
     }
 
-    /** Re-fetch and redraw every widget instance. Safe to call from anywhere. */
-    public static void refreshAll(Context context) {
-        AppWidgetManager mgr = AppWidgetManager.getInstance(context);
-        int[] ids = mgr.getAppWidgetIds(new ComponentName(context, TasksWidgetProvider.class));
-        if (ids.length > 0) mgr.notifyAppWidgetViewDataChanged(ids, R.id.task_list);
+    /** Redraw one List widget after its list changes. */
+    static void redraw(Context ctx, int id) {
+        new TasksWidgetProvider().draw(ctx, AppWidgetManager.getInstance(ctx), id);
+    }
+
+    static int[] ids(Context ctx) {
+        return AppWidgetManager.getInstance(ctx).getAppWidgetIds(new ComponentName(ctx, TasksWidgetProvider.class));
     }
 }

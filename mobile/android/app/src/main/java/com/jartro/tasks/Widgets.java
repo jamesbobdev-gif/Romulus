@@ -13,12 +13,11 @@ final class Widgets {
     /** Re-fetch and redraw every widget of every kind. */
     static void refreshAll(Context ctx) {
         AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
-        notify(mgr, ctx, TasksWidgetProvider.class, R.id.task_list);
         // the list widgets redraw their header (counts, next-test countdown) along with the rows
         notify(mgr, ctx, TodayWidgetProvider.class, R.id.w_list);
         notify(mgr, ctx, AgentWidgetProvider.class, R.id.w_list);
         notify(mgr, ctx, SchoolWidgetProvider.class, R.id.w_list);
-        notify(mgr, ctx, AgentStatusWidgetProvider.class, R.id.w_list);
+        notify(mgr, ctx, TasksWidgetProvider.class, R.id.w_list);
     }
 
     private static void notify(AppWidgetManager mgr, Context ctx, Class<?> provider, int listId) {
