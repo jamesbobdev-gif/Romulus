@@ -156,3 +156,25 @@ test('Settings says which plan someone is on', () => {
   assert.match(free.text, /^5 MB of space\.$/);
   assert.equal(h.hostedMyPlanText('own', null).title, 'Your own Supabase');
 });
+
+test('deleting the account: a 16-digit number, typed back with or without spaces', () => {
+  const code = h.hostedDeleteCode();
+  assert.match(code, /^[1-9]\d{15}$/);
+  assert.notEqual(h.hostedDeleteCode(), code); // fresh each time (1 in 10^15 to collide)
+  assert.equal(h.hostedDeleteCodeShown('1234567890123456'), '1234 5678 9012 3456');
+  assert.ok(h.hostedDeleteCodeMatches('1234567890123456', '1234 5678 9012 3456'));
+  assert.ok(h.hostedDeleteCodeMatches('1234567890123456', '1234567890123456'));
+  assert.ok(!h.hostedDeleteCodeMatches('1234567890123456', '1234 5678 9012 345'));
+  assert.ok(!h.hostedDeleteCodeMatches('1234567890123456', '12345678901234567'));
+  assert.ok(!h.hostedDeleteCodeMatches('', ''));
+  // a leading zero is turned into a 7, so the number never starts with one
+  assert.match(h.hostedDeleteCode((b) => b.fill(0)), /^70{15}$/);
+});
+
+test('deleting the account takes three clicks: the button says which one is next', () => {
+  assert.equal(h.hostedDeleteStepText(0).button, 'Delete my account');
+  assert.match(h.hostedDeleteStepText(1).button, /2 of 3/);
+  assert.match(h.hostedDeleteStepText(1).text, /can’t be undone/);
+  assert.match(h.hostedDeleteStepText(2).button, /3 of 3/);
+  assert.match(h.hostedDeleteStepText(2).text, /Type the number/);
+});

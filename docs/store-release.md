@@ -54,7 +54,7 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
     "not collected" as appropriate: personal info (name, email, address in the Locked profile), financial
     info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks).
   - Encrypted in transit: yes. Users can request deletion: yes, in the app (Settings → Device sync →
-    Delete my synced data, which needs the `sync-delete` function deployed; see below). Play's
+    Delete my account, which needs the `sync-delete` function deployed; see below). Play's
     account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
     the privacy policy's "Deleting your data" section as the deletion web link when Play asks for one.
   - **Payments**: the $5 sync plan is a Stripe link, and Play requires Play Billing for subscriptions bought
@@ -209,7 +209,7 @@ extension of its own.
   - **Tracking: no.** `PrivacyInfo.xcprivacy` says the same.
 - **Age rating**: answer the questionnaire as a productivity app (no violence, gambling, user chat); it
   should come out at 4+ or 9+. "Unrestricted web access": no (the Agent browses on the user's computer, not in the iPhone app).
-- **Data deletion (5.1.1(v))**: Settings → Device sync → Delete my synced data, as for Play.
+- **Data deletion (5.1.1(v))**: Settings → Device sync → Delete my account, as for Play.
 
 ### Store listing
 
