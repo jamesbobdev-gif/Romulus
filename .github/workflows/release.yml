@@ -62,16 +62,13 @@ jobs:
           echo "token permissions on romulus-releases: $perms"
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to romulus-releases"; exit 1; }
       - run: npm ci
-      # Known vulnerabilities. Critical only for now: electron and electron-builder still carry known highs
-      # until they're upgraded; raise this to --audit-level=high once Electron is current. What ships in the
-      # app (dependencies) is checked strictly; the build tooling (devDependencies: electron-builder pulls in
-      # an old tar with a critical advisory, fixed only in electron-builder 26) is reported as a warning
-      # until that upgrade lands, after which the second line can go and the first can drop --omit=dev.
+      # Known vulnerabilities: a high or critical advisory anywhere (what ships and the build tooling) stops the
+      # release; a moderate one in what ships is reported as a warning.
       - name: npm audit
         shell: bash
         run: |
-          npm audit --audit-level=critical --omit=dev
-          npm audit --audit-level=critical || echo "::warning::npm audit found critical advisories in the build tooling (devDependencies); upgrade electron-builder"
+          npm audit --audit-level=high
+          npm audit --audit-level=moderate --omit=dev || echo "::warning::npm audit found moderate advisories in what ships"
       - run: npm test
       - name: OAuth clients
         if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
