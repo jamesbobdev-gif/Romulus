@@ -1271,6 +1271,7 @@ function drawFinMain(v){
   const costBox=el('div','fin-charts');
   v.appendChild(costBox);
   const subsBox=el('div'); v.appendChild(subsBox);
+  costMarkInvestMoves(d.accounts); // money sent to his brokerage isn't spending
   const allTxs=[];
   d.accounts.forEach(function(a){ a.transactions.forEach(function(t){ allTxs.push(t); }); });
   let costs=null;
