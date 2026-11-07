@@ -28,10 +28,28 @@
 	<string>public.app-category.productivity</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<!-- the home-screen widgets open the app on romulus://hook?kind=...&arg=... (RomulusViewController.swift) -->
+			<key>CFBundleURLName</key>
+			<string>com.jartro.tasks.hook</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>romulus</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID opens Finance on this phone.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Romulus listens when you tap the microphone to add a task by talking, and for "Hey Romulus" if you turn it on in Settings (only while Romulus is open).</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Romulus turns what you say into a task. It uses the iPhone's own speech recognition, on the phone when the iPhone supports that.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Romulus reads your steps, sleep and workouts to tick off goal to-dos such as “Walk 8,000 steps”. The numbers stay on this phone.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Romulus uses the camera when you take a photo for a task.</string>
+	<string>Romulus uses the camera when you take a photo for a task, and to scan the Finance pairing code shown on your computer.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Romulus opens your photo library when you attach a picture to a task.</string>
 	<key>UIApplicationSceneManifest</key>
@@ -47,19 +65,15 @@
             <string>Default Configuration</string>
             <key>UISceneDelegateClassName</key>
             <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-            <key>UISceneStoryboardFile</key>
-            <string>Main</string>
         </dict>
       </array>
     </dict>
 	</dict>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

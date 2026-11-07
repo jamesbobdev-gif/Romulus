@@ -311,6 +311,13 @@ jobs:
         shell: bash
         run: |
           node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }) + ';\n')"
+      # the iPhone's own Google / Microsoft calendar sign-in clients (googleIos, microsoft), when the secret has them
+      - name: OAuth clients
+        if: steps.key.outputs.present == 'true'
+        env:
+          OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
+        shell: bash
+        run: if [ -n "$OAUTH_CLIENTS_JSON" ]; then printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json; fi
       - name: Build and upload to App Store Connect
         if: steps.key.outputs.present == 'true'
         env:

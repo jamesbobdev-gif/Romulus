@@ -723,7 +723,8 @@ if(window.desktop&&window.desktop.feedsFetch){
     // (the Google Play build can't ask for it at all: android/app/src/play/AndroidManifest.xml)
     const canAsk=window.ROMULUS_STORE!=='play';
     $('wakeOverlayBtn').hidden=!s.on||s.overlay||!canAsk;
-    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
+    // iPhone (WakeWordPlugin.swift): iOS lets it listen only while Romulus is open
+    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.foregroundOnly?'listening while Romulus is open':s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
   }
   function refresh(){ call('status').then(show).catch(function(){}); }
   cap.addListener('WakeWord','progress',function(d){ if(d&&d.pct!=null)$('wakeStatus').textContent='downloading speech model… '+d.pct+'%'; });
