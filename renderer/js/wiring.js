@@ -753,11 +753,13 @@ $('tabList').addEventListener('click',function(){ switchTab('list'); });
 $('tabAgent').addEventListener('click',function(){ switchTab('agent'); });
 $('connectBtn').addEventListener('click',function(){
   const ws=this.getAttribute('data-ws');
-  // every list syncs once the project is set up, so the personal fields are what to fill in
-  const field='syncUrl', label=null;
+  // every list syncs once the project is set up, so the personal fields are what to fill in. The family list has a
+  // box of its own, drawn once Device sync opens (hosted-sync.js), so it's looked for a moment later
+  const fam=ws==='family'&&$('familyListBox');
   setSettingsOpen(true);
   $('syncSection').open=true;
-  requestAnimationFrame(function(){
+  (fam?function(fn){ setTimeout(fn,900); }:requestAnimationFrame)(function(){
+    const field=fam&&!$('familyListBox').hidden?'familyListBox':fam&&!$('hostedBox').hidden?'hostedBox':'syncUrl', label=null;
     const f=$(field); (label?$(label):f).scrollIntoView({block:'center'}); f.focus();
     [f,label&&$(label)].filter(Boolean).forEach(function(n){ n.classList.add('flash'); setTimeout(function(){ n.classList.remove('flash'); },1800); });
   });
@@ -765,6 +767,7 @@ $('connectBtn').addEventListener('click',function(){
 $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
 $('tabWork').addEventListener('click',function(){ switchTab('work'); });
+$('tabFamily').addEventListener('click',function(){ switchTab('family'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
@@ -778,7 +781,7 @@ $('clearDone').addEventListener('click',function(){
   else {
     clearTimeout(clearTimer); state.confirmClear=false;
     const now=Date.now();
-    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':'list'; // only clear the tab you're looking at
+    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':state.activeTab==='family'?'family':'list'; // only clear the tab you're looking at
     const gone=function(t){ return t.done&&inTab(t,curTab); };
     reviewLogCleared(state.tasks.filter(gone)); // still counted in the year in review
     state.tasks.forEach(function(t){ if(gone(t))state.tombstones.push({id:t.id,deletedAt:now}); });

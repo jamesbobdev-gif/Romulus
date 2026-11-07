@@ -28,6 +28,12 @@ export async function folderFor(agentKey: string): Promise<string> {
   return "tk_agent_att_" + hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(agentKey))).slice(0, 40);
 }
 
+// the account's folder in task-files, photos and files on any task (supabase/functions/task-files-remove)
+export async function accountFolder(key: string): Promise<string> {
+  const id = key.replace(/^tk_(work_|agent_|school_)?/, "").replace(/:.*$/, "");
+  return "acct_" + hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(id)));
+}
+
 async function stripeKey(): Promise<string> {
   const { data } = await db.from("app_secrets").select("value").eq("name", "stripe_api_key").maybeSingle();
   return data?.value || "";
@@ -74,6 +80,9 @@ Deno.serve(async (req: Request) => {
     }
   }
   for (const s of subs) cancelled = (await cancelAtStripe(s)) && cancelled;
+  const folders = new Set<string>();
+  for (const k of keys) folders.add(await accountFolder(k));
+  for (const f of folders) files += await emptyFolder("task-files", f);
   for (const k of agentKeys) {
     const folder = await folderFor(k);
     for (const b of BUCKETS) files += await emptyFolder(b, folder);

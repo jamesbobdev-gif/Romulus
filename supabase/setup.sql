@@ -401,6 +401,24 @@ drop policy if exists "agent files: app can remove" on storage.objects;
 create policy "agent files: app can remove" on storage.objects for delete to anon
   using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
 
+-- ───────────── photos and files on any task ─────────────
+-- Encrypted on the device before they go up (renderer/js/task-files.js): the bucket holds only ciphertext under
+-- random names, in a folder named by a hash of the key's id part ('acct_' + sync_account_of). Up to 10 MB a
+-- file. A project of your own is yours alone, so the app may also remove files here directly; the shared Romulus
+-- server does that through a function instead (supabase/migrations/20261109_task_files.sql).
+insert into storage.buckets (id, name, public, file_size_limit)
+  values ('task-files', 'task-files', true, 10485760)
+  on conflict (id) do nothing;
+drop policy if exists "task files: app can upload" on storage.objects;
+create policy "task files: app can upload" on storage.objects for insert to anon
+  with check (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+drop policy if exists "task files: app can see" on storage.objects;
+create policy "task files: app can see" on storage.objects for select to anon
+  using (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+drop policy if exists "task files: app can remove" on storage.objects;
+create policy "task files: app can remove" on storage.objects for delete to anon
+  using (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+
 -- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
 -- Pairing codes (renderer/js/pair.js). A device that already syncs shows a 12-character code (60 random
 -- bits) and leaves its sync code here, sealed; the new device types the code and takes it. The code itself

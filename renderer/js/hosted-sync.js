@@ -39,11 +39,11 @@ async function hostedAccountId(rowKey){
 /* A fresh encrypted setup on the Romulus project. {moved:'v2'} goes under every plain key first: a device
    paired later (or an older build) that looks there switches to the encrypted lists (syncAdoptV2) and the
    database refuses anything but that marker under those keys, so the lists never go up in the clear. */
-async function hostedStart(){
-  const h=hostedServer();
-  if(!h||!syncCryptoOk())return false;
-  const sk=newSyncKey();
-  const p={url:h.url,key:h.key};
+/* {moved:'v2'} under every plain key of these lists on project p ({url,key}): a device paired later (or an older
+   build) that looks there switches to the encrypted lists (syncAdoptV2), and the database refuses anything but
+   that marker under those keys. Used for a fresh start here, and when the lists move to a project of one's own
+   (settings.js), so moving never turns the encryption off. */
+async function hostedSealMarkers(p,sk){
   for(const k of hostedMarkerKeys(sk)){
     // a side row the database doesn't know yet (an older setup.sql) can't be written in the clear either: only a list's own key has to take it
     if((await syncRpc(p,'sync_set',{p_sync_key:k,p_doc:{moved:'v2'}}))!==true&&k.indexOf(':')===-1){
@@ -51,6 +51,12 @@ async function hostedStart(){
       throw new Error(why||'the sync server said no');
     }
   }
+}
+async function hostedStart(){
+  const h=hostedServer();
+  if(!h||!syncCryptoOk())return false;
+  const sk=newSyncKey();
+  await hostedSealMarkers({url:h.url,key:h.key},sk);
   syncState.cfg=normalizeSyncCfg({personal:{url:h.url,key:h.key,syncKey:sk,v2:true}});
   await syncCfgPersist(syncState.cfg);
   hostedSetOptOut(false);
@@ -69,7 +75,7 @@ function hostedMb(b){ b=Number(b)||0; return b>=1024*1024*1024?(b/1024/1024/1024
    says the Stripe links start with that many free days; only then does it say so. */
 function hostedPlanPitch(h){
   const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0));
-  const pitch='The family/group plan: share Romulus with up to 4 more people, each with their own private lists, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
+  const pitch='The family/group plan: share Romulus with up to 4 more people, with a family list you all keep together (groceries, chores, a trip) and private lists of your own, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB for photos and files instead of 50 MB.';
   return days?{
     button:'Try the family/group plan free for '+days+' days',
     year:'Pay yearly: 2 months free',
@@ -211,6 +217,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     if(!on){
       planBox.hidden=famBox.hidden=histBox.hidden=earlyRow.hidden=supporters.hidden=true;
       setMyPlan(validProfile(p)?'own':null,null);
+      if(typeof familyDraw==='function')familyDraw('');
       info.textContent=validProfile(p)?'Your lists sync through your own Supabase project.':'Sync is off on this device.';
       return;
     }
@@ -272,6 +279,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const role=rows[0]&&rows[0].role;
     famBox.hidden=!role; inviteBtn.hidden=role!=='payer'; leaveBtn.hidden=role!=='member';
     famList.textContent='';
+    if(typeof familyDraw==='function')familyDraw(role||''); // the family list (family-list.js)
     if(role==='member'){ famInfo.textContent=''; setMyPlan('member',null); return; }
     if(role!=='payer')return;
     const members=rows.filter(function(r){ return r.member; });
@@ -282,9 +290,11 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
       s.textContent='Person '+(i+1)+(m.since?', joined '+new Date(m.since).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'');
       const b=document.createElement('button'); b.className='ghost mono'; b.textContent='Take off';
       b.addEventListener('click',async function(){
-        if(!confirm('Take this person off your plan? They go back to the free space and the shared lists leave their app; nothing of their own is deleted.'))return;
+        const shared=typeof familyConfigured==='function'&&familyConfigured();
+        if(!confirm('Take this person off your plan? They go back to the free space and the shared lists leave their app; nothing of their own is deleted.'+(shared?'\n\nThe family list moves to a new key their devices don’t get, so nothing new reaches them. What they already synced stays on their devices: that can’t be taken back.':'')))return;
         const k=await rowKey(); if(!k)return;
-        try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:m.member}); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
+        try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:m.member}); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); draw(); return; }
+        if(shared){ familyState.lastRotate=0; await familyCheckStale(); }
         draw();
       });
       row.appendChild(s); row.appendChild(b); famList.appendChild(row);
@@ -384,9 +394,15 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     }catch(e){ setSyncStatus('couldn’t make a code: '+e.message,true); }
   });
   leaveBtn.addEventListener('click',async function(){
-    if(!confirm('Leave the family/group plan? You go back to the free space, and the group’s shared lists leave this app. Your own lists aren’t touched.'))return;
+    const shared=typeof familyConfigured==='function'&&familyConfigured();
+    if(!confirm('Leave the family/group plan? You go back to the free space, and the group’s shared lists leave this app. Your own lists aren’t touched.'+(shared?'\n\nThe family list leaves this device too; everyone else keeps it.':'')))return;
     const k=await rowKey(); if(!k)return;
-    try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:null}); famForget(); setSyncStatus('you left the family/group plan'); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
+    try{
+      await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:null});
+      famForget();
+      if(shared)await familyDropHere();
+      setSyncStatus('you left the family/group plan');
+    }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
     draw();
   });
   restoreBtn.addEventListener('click',async function(){
@@ -449,4 +465,4 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   if(hostedServer())SYNC_REFUSED.full='sync paused: your free online space is full. Your lists are safe on this device. Settings → Device sync has the options.';
 }
 
-if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
+if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedSealMarkers,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
