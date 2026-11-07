@@ -39,11 +39,11 @@ async function hostedAccountId(rowKey){
 /* A fresh encrypted setup on the Romulus project. {moved:'v2'} goes under every plain key first: a device
    paired later (or an older build) that looks there switches to the encrypted lists (syncAdoptV2) and the
    database refuses anything but that marker under those keys, so the lists never go up in the clear. */
-async function hostedStart(){
-  const h=hostedServer();
-  if(!h||!syncCryptoOk())return false;
-  const sk=newSyncKey();
-  const p={url:h.url,key:h.key};
+/* {moved:'v2'} under every plain key of these lists on project p ({url,key}): a device paired later (or an older
+   build) that looks there switches to the encrypted lists (syncAdoptV2), and the database refuses anything but
+   that marker under those keys. Used for a fresh start here, and when the lists move to a project of one's own
+   (settings.js), so moving never turns the encryption off. */
+async function hostedSealMarkers(p,sk){
   for(const k of hostedMarkerKeys(sk)){
     // a side row the database doesn't know yet (an older setup.sql) can't be written in the clear either: only a list's own key has to take it
     if((await syncRpc(p,'sync_set',{p_sync_key:k,p_doc:{moved:'v2'}}))!==true&&k.indexOf(':')===-1){
@@ -51,6 +51,12 @@ async function hostedStart(){
       throw new Error(why||'the sync server said no');
     }
   }
+}
+async function hostedStart(){
+  const h=hostedServer();
+  if(!h||!syncCryptoOk())return false;
+  const sk=newSyncKey();
+  await hostedSealMarkers({url:h.url,key:h.key},sk);
   syncState.cfg=normalizeSyncCfg({personal:{url:h.url,key:h.key,syncKey:sk,v2:true}});
   await syncCfgPersist(syncState.cfg);
   hostedSetOptOut(false);
@@ -75,7 +81,7 @@ function hostedPrices(h){
 }
 function hostedPlanPitch(h){
   const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0)), pr=hostedPrices(h);
-  let pitch='The Group plan: share lists and send each other to-dos with up to 4 more people, and each of them gets the paid space too. Everyone keeps their own private lists. You also get 30 days of history, new versions early, and 600 MB of storage instead of 5 MB.';
+  let pitch='The Group plan: share lists and send each other to-dos with up to 4 more people, and each of them gets the paid space too. Everyone keeps their own private lists. You also get 30 days of history, new versions early, and 600 MB for photos and files instead of 50 MB.';
   if(pr.personal)pitch+=' Just you? The Personal plan is $'+pr.personal+' a month, with the same space and history.';
   const out=days?{
     button:'Try the Group plan free for '+days+' days',
@@ -493,4 +499,4 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   if(hostedServer())SYNC_REFUSED.full='sync paused: your free online space is full. Your lists are safe on this device. Settings → Device sync has the options.';
 }
 
-if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
+if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedSealMarkers,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};

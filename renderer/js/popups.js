@@ -79,7 +79,7 @@ function closeLightbox(){
 }
 function openLightbox(opts,startIdx){
   closeLightbox();
-  const pics=opts.map(function(o,i){ return {o:o,i:i}; }).filter(function(x){ return x.o.image&&/^https:\/\//i.test(String(x.o.image)); });
+  const pics=opts.map(function(o,i){ return {o:o,i:i}; }).filter(function(x){ return x.o.image&&/^(https:\/\/|blob:)/i.test(String(x.o.image)); }); // blob: a decrypted photo (task-files.js)
   if(!pics.length)return;
   let pos=Math.max(0,pics.findIndex(function(x){ return x.i===startIdx; }));
   const box=el('div','lightbox'); box.id='lightbox';

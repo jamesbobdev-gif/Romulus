@@ -141,6 +141,7 @@ if(typeof module!=='undefined'&&module.exports){
   }
   window.deviceId=deviceId;
   window.deviceMe=deviceMe;
+  window.deviceKeys=deviceKeys; // the family list hands its new key to this device's key pair too (family-list.js)
   window.devicesProfileOf=function(p){ return validProfile(p)?Object.assign({},p,{syncKey:p.syncKey+DEVICES_SFX}):null; };
   function devicesProfile(){ return devicesProfileOf(syncState.cfg&&syncState.cfg.personal); }
 

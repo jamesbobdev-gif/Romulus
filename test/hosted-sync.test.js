@@ -156,3 +156,18 @@ test('Settings says which plan someone is on', () => {
   assert.match(free.text, /^5 MB of space\.$/);
   assert.equal(h.hostedMyPlanText('own', null).title, 'Your own Supabase');
 });
+
+test('moving to your own project leaves the encrypted-list marker under every plain key there, and stops if a list key is refused', async () => {
+  const sent = [];
+  global.syncRpc = async (p, fn, body) => { sent.push([p.url, fn, body.p_sync_key, JSON.stringify(body.p_doc)]); return true; };
+  await h.hostedSealMarkers({ url: 'https://own.supabase.co', key: 'k' }, 'tk_abc');
+  assert.deepStrictEqual(sent.map((s) => s[2]), h.hostedMarkerKeys('tk_abc'));
+  assert.ok(sent.every((s) => s[0] === 'https://own.supabase.co' && s[1] === 'sync_set' && s[3] === '{"moved":"v2"}'));
+  // a side row an older setup.sql doesn't know may be refused; a list's own key may not
+  global.syncRpc = async (p, fn, body) => body.p_sync_key.indexOf(':') !== -1 ? false : true;
+  await h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc');
+  global.syncRpc = async (p, fn, body) => body.p_sync_key === 'tk_work_abc' ? false : true;
+  global.syncRefusal = async () => 'the project is full';
+  await assert.rejects(h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc'), /the project is full/);
+  delete global.syncRpc; delete global.syncRefusal;
+});

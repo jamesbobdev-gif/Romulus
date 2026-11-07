@@ -11,6 +11,7 @@ function syncFillForm(){
   $('syncKey').value=p.syncKey||'';
   // a list's own key shows; one made from the personal key shows as blank ("automatic")
   [['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']].forEach(function(x){ const l=c[x[0]]; $(x[1]).value=l&&!l.derived?l.syncKey||'':''; });
+  $('syncKeyF').value=c.family&&c.family.syncKey||''; // the family list's key rides along with the sync code to this person's other devices
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
@@ -420,7 +421,7 @@ function syncShowFirstSteps(){
 $('syncSection').addEventListener('toggle',function(){ if(this.open)syncShowFirstSteps(); });
 // one code carries the whole form to another device (the anon key box hides its text, so it can't be copied on its own)
 const SYNC_CODE_PREFIX='tasks-sync:';
-const SYNC_CODE_FIELDS=[['u','syncUrl'],['k','syncAnonKey'],['s','syncKey'],['w','syncKeyW'],['a','syncKeyA'],['c','syncKeyS']];
+const SYNC_CODE_FIELDS=[['u','syncUrl'],['k','syncAnonKey'],['s','syncKey'],['w','syncKeyW'],['a','syncKeyA'],['c','syncKeyS'],['f','syncKeyF']];
 $('syncCopyBtn').addEventListener('click',function(){
   const o={}; SYNC_CODE_FIELDS.forEach(function(x){ const v=$(x[1]).value.trim(); if(v)o[x[0]]=v; });
   if(!o.u||!o.k||!o.s){ setSyncStatus('fill in the three fields first',true); return; }
@@ -495,6 +496,12 @@ $('syncSaveBtn').addEventListener('click',function(){
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
   for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
+  // the family list (family-list.js) is always on the Romulus server, whichever project the other lists use
+  const fk=$('syncKeyF').value.trim(), fh=typeof hostedServer==='function'&&hostedServer();
+  if(fk){
+    if(!SYNC_KEY_SHAPE.test(fk)||fk===sk){ setSyncStatus('the family list key starts with tk_ and differs from the sync key',true); return; }
+    if(fh){ const old=syncState.cfg&&syncState.cfg.family; raw.family=old&&old.syncKey===fk?old:{url:fh.url,key:fh.key,syncKey:fk,v2:true}; }
+  }
   const hosted=typeof hostedIs==='function';
   const prev=syncState.cfg&&syncState.cfg.personal;
   // leaving the Romulus server for a project of one's own, same sync key: the other devices are told to follow
@@ -505,6 +512,13 @@ $('syncSaveBtn').addEventListener('click',function(){
       setSyncStatus('checking the project…');
       const bad=await syncCheckProject({url:url,key:key,syncKey:sk});
       if(bad){ setSyncStatus(bad,true); return; }
+    }
+    // leaving the Romulus server, where the lists are end-to-end encrypted: they stay encrypted in the new project
+    // too. The markers go first, so a device paired there later finds the encrypted lists, never plain ones.
+    if(leaving&&leaving.v2&&typeof hostedSealMarkers==='function'&&syncCryptoOk()){
+      try{ await hostedSealMarkers({url:url,key:key},sk); }
+      catch(e){ setSyncStatus('couldn’t set up encryption in that project: '+e.message,true); return; }
+      raw.personal.v2=true;
     }
     clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
     for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); }); // let a sync already running finish
@@ -591,7 +605,7 @@ async function syncRotateKey(opts){
     // 2. this device switches to the new keys
     const raw={personal:{url:p.url,key:p.key,syncKey:newKey}};
     if(p.v2)raw.personal.v2=true;
-    ['work','agent','school'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
+    ['work','agent','school','family'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
     // the device list, read before switching: the kept devices get the new settings sealed to their own keys (devices.js)
     const oldDevices=devicesProfileOf(p), newDevices=devicesProfileOf(raw.personal);
     let devDoc=null; try{ devDoc=await syncPull(oldDevices); }catch(e){}

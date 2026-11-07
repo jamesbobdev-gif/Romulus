@@ -335,6 +335,7 @@
         <input id="syncKeyW" class="settings-inp" placeholder="Work sync key (automatic)" autocomplete="off" spellcheck="false">
         <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key (automatic)" autocomplete="off" spellcheck="false">
         <input id="syncKeyS" class="settings-inp" placeholder="School sync key (automatic)" autocomplete="off" spellcheck="false">
+        <input id="syncKeyF" class="settings-inp" placeholder="Family list key (set by Family list below)" autocomplete="off" spellcheck="false">
       </details>
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
@@ -413,6 +414,8 @@
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
+    <!-- the Group tab: shared lists and sent to-dos (family.js) -->
+    <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Family</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
@@ -571,6 +574,7 @@
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
 <script src="js/ai-report.js"></script>
+<script src="js/task-files.js"></script>
 <script src="js/live-relay.js"></script>
 <script src="js/agent-live-view.js"></script>
 <script src="js/agent-ask.js"></script>
