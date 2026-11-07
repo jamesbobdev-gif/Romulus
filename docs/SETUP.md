@@ -123,6 +123,17 @@ Then choose, per calendar, whether its events become to-dos and whether your tas
 
 **The local model’s sites.** The list in **⚙ Settings → Routing → Sites the local model may open** fills itself: every site the local model reaches in a run is added, so it's allowed next time. When its browser refuses a site it needed, a to-do appears on your Human list (“Allow the local model on linkedin.com? …”). Check it off to allow the site and run the task again; delete it to say no.
 
+### Health goals (Android)
+
+On the phone, the **Health** tab → **Connect Health Connect** lets Romulus read your steps, sleep and
+workouts (read-only) from Health Connect, which Samsung Health, Fitbit, Google Fit, Oura, Garmin and most
+other health apps write to. On Android 13 or older the button first installs Health Connect from Play.
+
+Then write goals as ordinary to-dos, due today or with no date, and they tick themselves off once you've
+done them: **Walk 8,000 steps** (or 10k steps), **Sleep 7 hours** (or 8h of sleep), **Work out 30 min**
+(or 45 minutes of yoga, run 1 hour). A repeating one comes back the next day as usual. If you untick one,
+it stays unticked for the day. The numbers stay on the phone; only the tick syncs.
+
 ## 5. Where your keys live
 
 Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Romulus\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless if copied to another account or machine. The Settings page only ever shows a key's first and last characters.

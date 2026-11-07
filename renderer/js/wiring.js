@@ -717,6 +717,7 @@ $('tabWork').addEventListener('click',function(){ switchTab('work'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
+$('tabHealth').addEventListener('click',function(){ switchTab('health'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
@@ -736,7 +737,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||isViewTab(state.activeTab))return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -756,7 +757,7 @@ document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
     if(state.activeTab==='ideas'){ $('ideaSearch').focus(); $('ideaSearch').select(); return; } // Notes has its own search box
-    if(state.activeTab==='calendar'||state.activeTab==='hours'||state.activeTab==='finance')switchTab('list');
+    if(state.activeTab==='calendar'||isViewTab(state.activeTab))switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -767,7 +768,7 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
+  if(state.activeTab==='calendar'||isViewTab(state.activeTab))return;
   // the key's own target, not what has focus now: a field's handler (Enter adds a subtask and re-renders, or blurs)
   // runs first, so by the time this fires the focus is on the body and Enter would collapse the open task
   const a=e.target&&e.target.tagName?e.target:document.activeElement;

@@ -36,7 +36,19 @@ function persist(){
 function touch(){ persist(); renderActive(); }
 // a phone or tablet: fingers, and a keyboard that comes and goes on screen
 function touchDevice(){ return !!window.Capacitor||matchMedia('(pointer:coarse)').matches; }
-function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else if(state.activeTab==='hours') renderHours(); else if(state.activeTab==='finance') return; else render(); }
+function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else if(state.activeTab==='hours') renderHours(); else if(state.activeTab==='health') renderHealth(); else if(state.activeTab==='finance') return; else render(); }
+/* tabs that aren't lists (no composer, no list view) */
+function isViewTab(tab){ return tab==='ideas'||tab==='hours'||tab==='finance'||tab==='health'; }
+/* which tabs show: Settings -> Tabs hides any but To do (this device only); data-na="1" = not available here */
+const TAB_KEYS=[['tabAgent','agent','Agent'],['tabSchool','school','School'],['tabWork','work','Work'],['tabCal','calendar','Calendar'],['tabIdeas','ideas','Ideas'],['tabHours','hours','Hours'],['tabFinance','finance','Finance'],['tabHealth','health','Health']];
+const TABS_OFF_KEY='tasks.tabsOff.v1';
+function tabsOff(){ try{ const v=JSON.parse(localStorage.getItem(TABS_OFF_KEY)||'[]'); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+function tabsApply(){
+  const off=tabsOff();
+  TAB_KEYS.forEach(function(p){ const b=$(p[0]); if(b)b.hidden=b.dataset.na==='1'||off.indexOf(p[1])>=0; });
+  const cur=TAB_KEYS.find(function(p){ return p[1]===state.activeTab; });
+  if(cur&&$(cur[0]).hidden&&typeof switchTab==='function')switchTab('list');
+}
 function uid(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
 /* ── dates ── */
