@@ -46,6 +46,14 @@ Romulus's use of information received from Google APIs follows the
 [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
 including its Limited Use requirements.
 
+## The website
+
+The download page ([jamesbobdev-gif.github.io/Romulus](https://jamesbobdev-gif.github.io/Romulus/)) keeps a
+private tally of what visitors do: how many times a day the page was opened and each button used (a download,
+a plan, the source link). It is a count per day, not a record per person: no cookies, no IP address is kept with
+it (only the same one-day hash of your IP address the Romulus server keeps to limit abuse), and nothing is
+counted when your browser sends Do Not Track or Global Privacy Control. The counts are not public.
+
 ## The Romulus server
 
 To count space and stop abuse, the Romulus server keeps, for each sync account: the encrypted lists, a hash

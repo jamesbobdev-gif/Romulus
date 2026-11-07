@@ -71,6 +71,7 @@ function macroPlanClean(p){
   out.from=/^\d{4}-\d{2}-\d{2}$/.test(p.from)?p.from:null;
   out.until=/^\d{4}-\d{2}-\d{2}$/.test(p.until)?p.until:null;
   out.at=Number(p.at)>0?Number(p.at):0;
+  if(p.source&&String(p.source).trim())out.source=String(p.source).replace(/\s+/g,' ').trim().slice(0,120); // the Agent task that set it
   return out;
 }
 // days a plan still covers, counting today: null for open-ended, 0 or less once it's over
@@ -99,7 +100,7 @@ if(typeof module!=='undefined'&&module.exports){ module.exports={healthGoal:heal
 
 /* the Health tab: the Food plan everywhere; on the phone also connect, today's numbers, and the goal to-dos with
    how far along each is */
-let healthUi=null;
+let healthUi=null, healthSetPlan=null; // healthSetPlan: an Agent answer's `macros` → the Food plan (agent-results.js)
 function renderHealth(){ if(healthUi)healthUi.draw(); }
 
 if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getElementById('healthView')){
@@ -163,6 +164,7 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     say.textContent=plan?macroPlanSay(plan,today())+'. The Agent buys your groceries to add up to this, for you alone.'
       :'Set what you want to eat a day and the Agent buys groceries that add up to it (the 2-week order, or when you ask).';
     card.appendChild(say);
+    if(plan&&plan.source)card.appendChild(el('p','settings-hint health-plan-src','Set by the Agent from “'+plan.source+'”. Change the numbers here, or ask it for changes on that task.'));
     const foot=el('div','health-plan-foot');
     const st=el('span','settings-hint health-plan-st',planSync.msg); foot.appendChild(st);
     const save=el('button','btn-accent','Save plan'); foot.appendChild(save);
@@ -192,6 +194,16 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     view.appendChild(drawPlan());
     if(phone)phone.goals(view);
     else view.appendChild(el('p','settings-hint','Steps, sleep and exercise show here on your phone.'));
+  };
+  // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today
+  healthSetPlan=function(m,source){
+    const c=macroPlanClean(Object.assign({},m,{at:Date.now(),source:source||''}));
+    if(!c)return '';
+    c.from=today(); c.until=macroPlanUntil(c.span,c.from);
+    plan=c; planEdit=false; keepLocal();
+    pushPlan().then(function(){ if(state.activeTab==='health')draw(); });
+    if(state.activeTab==='health')draw();
+    return macroPlanSay(c,c.from);
   };
   healthUi={draw:draw,setPhone:function(p){ phone=p; }};
   // the synced copy, once sync has started; and again each time the tab opens

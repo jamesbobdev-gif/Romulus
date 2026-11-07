@@ -49,7 +49,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -419,6 +419,7 @@ async function startAgentRun() {
     delete u.cant;
     // changes to his grocery list: short plain names only, and never from a run that saw his mail
     u.list = sawMail ? undefined : groceryChanges(u.list);
+    u.macros = sawMail ? undefined : macroChanges(u.macros); // a meal plan's per-day targets: the app sets his Food plan to them
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them

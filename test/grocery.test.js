@@ -64,3 +64,22 @@ test('a grocery run gets his macro plan per day, with the days left; none once i
   assert.strictEqual(macroBrief('', now), undefined);
   assert.strictEqual(macroBrief('not json', now), undefined);
 });
+
+test('a meal plan’s macros: per-day numbers and how long, nothing without numbers', () => {
+  const { macroChanges } = require('../agent/grocery');
+  assert.deepStrictEqual(macroChanges({ kcal: '2100', protein: 160.2, carbs: 0, fat: 65, span: 'month' }), { kcal: 2100, protein: 160, fat: 65, span: 'month' });
+  assert.deepStrictEqual(macroChanges({ protein: 150, span: 'forever' }), { protein: 150, span: 'week' });
+  assert.strictEqual(macroChanges({ span: 'week' }), undefined);
+  assert.strictEqual(macroChanges([2100]), undefined);
+  assert.strictEqual(macroChanges(null), undefined);
+});
+
+test('the meal-plan skill matches meal planning, not everyday tasks', () => {
+  const { loadSkills } = require('../agent/task-context');
+  const s = loadSkills().find((x) => x.name === 'meal-plan');
+  assert.ok(s && s.match && !s.browser);
+  for (const t of ['help me plan my meals for the week', 'meal plan', 'I want to lose weight', 'meal prep for 2 weeks', 'set my macros', 'eat more protein'])
+    assert.ok(s.match.test(t), t);
+  for (const t of ['cut the grass', 'book a haircut', 'order groceries', 'plan the trip to Denver', 'what time is the game'])
+    assert.ok(!s.match.test(t), t);
+});

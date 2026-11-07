@@ -31,6 +31,7 @@ const { cloudOrder, couldntDo } = require('./ai-connections');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText,
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
+const { macroChanges } = require('./grocery');
 const mailSend = require('./mail-send');
 const { tidyAgentTabs, holdTabs, startTab, ensureQwenBrowser, startBrowserTools, miniPcScreenshot, QWEN_BROWSER_LOCAL_PORT } = require('./qwen-browser');
 const workerFiles = require('./worker-files');
@@ -948,6 +949,7 @@ async function runLocalTask(c, t) {
     email: final.status === 'done' ? null : (mailSend.cleanEmail(final.email) || null), // sent only by his Send (agent/mail-send.js)
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     school: sweeping && found.length ? found : undefined, // the class sweep's finds, for his School list (renderer/js/wiring.js importClassItems)
+    macros: money ? undefined : macroChanges(final.macros), // a meal plan's per-day targets: the app sets his Food plan to them (renderer/js/health.js)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
 

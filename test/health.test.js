@@ -124,3 +124,9 @@ test('the plan line says what a day is and how long it runs', () => {
   assert.strictEqual(macroPlanDaysLeft(p, '2026-11-10'), 4);
   assert.strictEqual(macroPlanDaysLeft({ until: null }, '2026-11-10'), null);
 });
+
+test('a plan the Agent set remembers which task it came from; his own save drops that', () => {
+  const { macroPlanClean } = require('../renderer/js/health');
+  assert.strictEqual(macroPlanClean({ protein: 150, span: 'week', source: '  Plan my   meals ' }).source, 'Plan my meals');
+  assert.strictEqual(macroPlanClean({ protein: 150, span: 'week' }).source, undefined);
+});
