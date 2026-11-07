@@ -320,7 +320,8 @@ async function startAgentRun() {
       if (id !== 'claude' || tries) live.note('-- ' + providers.NAMES[id] + (tries ? ' takes over' : ' is on it'));
       tries++;
       const untail = id !== 'claude' && browserCfg ? live.tail(stepsFile()) : null;
-      const steps = { steps: true };
+      // the other AIs get the same site limit on a shopping run as Claude (browserOpts.hosts), never his yes
+      const steps = { steps: true, hosts: runHosts, task: browserOpts.task };
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, browserOpts) }).finally(() => live.close())
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, steps), browserDenied: BROWSER_DENIED,
