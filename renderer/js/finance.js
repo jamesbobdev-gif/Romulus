@@ -1023,21 +1023,17 @@ function finEbtCard(d){
   const w=ebtWallet(d.ebt,agentOrders(state.tasks));
   const e=ebtClean(d.ebt);
   const day=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
-  if(w.known){
+  // two short rows: the balance, and the next deposit
+  const line=function(label,sub,amt,neg){
     const r=el('div','fin-acct');
-    r.appendChild(el('b',null,'Left on EBT'));
-    r.appendChild(el('span','fin-amt'+(w.balance<0?' neg':''),finMoney(w.balance)));
-    box.appendChild(r);
-    box.appendChild(el('p','fin-note',(w.from==='checkout'?'From the balance a grocery checkout showed on '+day(w.asOf):'From the balance you entered on '+day(w.asOf))
-      +(w.deposits?', plus '+w.deposits+(w.deposits===1?' deposit':' deposits')+' since':'')+'.'
-      +(w.balance<0?' That’s under zero, so the balance is probably out of date: enter the one on your last receipt.':'')));
-  }else box.appendChild(el('p','fin-note','Enter your EBT balance below (it’s on your last grocery receipt, your state’s EBT site, or the Propel app) and this keeps track from there.'));
-  if(w.nextDeposit!=null){
-    box.appendChild(el('p','fin-note','Next deposit: '+day(w.nextDeposit)+(w.daysToDeposit<=0?', today':w.daysToDeposit===1?', tomorrow':', in '+w.daysToDeposit+' days')
-      +(e.monthly?' ('+finMoney(e.monthly)+')':'')+'.'));
-  }
+    const who=el('span','fin-desc'); who.appendChild(el('b',null,label)); if(sub)who.appendChild(el('span','fin-sub',sub));
+    r.appendChild(who); r.appendChild(el('span','fin-amt'+(neg?' neg':''),amt)); box.appendChild(r);
+  };
+  if(w.known)line('Balance',w.balance<0?'out of date, update it':'as of '+day(w.asOf),finMoney(w.balance),w.balance<0);
+  if(w.nextDeposit!=null)line('Next deposit',w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days',
+    day(w.nextDeposit)+(e.monthly?' · '+finMoney(e.monthly):''));
   if(w.spent.length){
-    box.appendChild(el('div','mono fin-label fin-org',w.nextDeposit!=null?'Since the last deposit':'Last 30 days'));
+    box.appendChild(el('div','mono fin-label fin-org',w.nextDeposit!=null?'Spent since deposit':'Spent, last 30 days'));
     w.spent.forEach(function(x){
       const r=el('div','fin-acct');
       const who=el('span','fin-desc'); who.appendChild(el('span',null,x.title)); who.appendChild(el('span','fin-sub',day(x.at)));
@@ -1047,17 +1043,18 @@ function finEbtCard(d){
   }
   if(finApi.financeSetEbt){
     const field=function(label,input){ const l=el('label','fin-ebt-field'); l.appendChild(el('span','mono fin-label',label)); l.appendChild(input); return l; };
-    const bal=finInput('text','e.g. 143.20'); bal.inputMode='decimal';
-    const dd=finInput('number','e.g. 3'); dd.min='1'; dd.max='31'; if(e.day)dd.value=String(e.day);
-    const mo=finInput('text','e.g. 291'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly);
+    const bal=finInput('text','$0.00'); bal.inputMode='decimal'; bal.title='On your last grocery receipt, your state’s EBT site or the Propel app';
+    // the date his benefits next load: only its day of the month is kept, and it repeats monthly
+    const dd=finInput('date',''); if(w.nextDeposit!=null)dd.value=ebtYmd(w.nextDeposit); dd.title='When your benefits load next. It repeats on that day each month';
+    const mo=finInput('text','$0.00'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly); mo.title='How much loads each month';
     const row=el('div','fin-row fin-ebt-form');
-    row.appendChild(field('Balance now',bal)); row.appendChild(field('Deposit day',dd)); row.appendChild(field('Monthly amount',mo));
+    row.appendChild(field('Balance',bal)); row.appendChild(field('Next deposit',dd)); row.appendChild(field('Deposit amount',mo));
     const save=el('button','btn-accent','Save');
     const msg=el('p','fin-msg err'); msg.hidden=true;
     save.addEventListener('click',async function(){
       const money=function(s){ const t=String(s).replace(/[$,\s]/g,''); return t===''?null:Number(t); };
-      const b=money(bal.value), m=money(mo.value), n=dd.value===''?null:Number(dd.value);
-      if((b!=null&&!(b>=0))||(m!=null&&!(m>0))||(n!=null&&!(n>=1&&n<=31))){ msg.textContent='Use amounts like 143.20 and a day from 1 to 31.'; msg.hidden=false; return; }
+      const b=money(bal.value), m=money(mo.value), n=/^\d{4}-\d{2}-\d{2}$/.test(dd.value)?Number(dd.value.slice(8,10)):null;
+      if((b!=null&&!(b>=0))||(m!=null&&!(m>0))){ msg.textContent='Use amounts like 143.20.'; msg.hidden=false; return; }
       const next={day:n||undefined,monthly:m||undefined};
       if(b!=null){ next.balance=b; next.at=Date.now(); }
       else if(e.balance!=null){ next.balance=e.balance; next.at=e.at; } // only the deposit changed
@@ -1068,9 +1065,14 @@ function finEbtCard(d){
       fin.data.ebt=r.ebt; finKeepEbtCopy(r.ebt); box.replaceWith(finEbtCard(fin.data));
     });
     row.appendChild(save);
+    // set up: the boxes wait behind "update"; not yet: they're the whole card
+    if(w.known){
+      const up=el('button','ghost mono fin-ebt-update','update');
+      up.addEventListener('click',function(){ up.hidden=true; row.hidden=false; bal.focus(); });
+      row.hidden=true; box.appendChild(up);
+    }
     box.appendChild(row); box.appendChild(msg);
   }
-  box.appendChild(el('p','fin-note','Store trips you pay for yourself aren’t seen here, so enter the balance from a receipt now and then. This never asks for your card number or PIN.'));
   const sum=w.known?finMoney(w.balance)+' left'+(w.daysToDeposit!=null?' · deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):''):'not set up';
   return finFoldable(box,'ebt','EBT',sum);
 }
