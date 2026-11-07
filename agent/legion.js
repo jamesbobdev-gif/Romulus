@@ -13,7 +13,8 @@ const MIN_PIECES = 3, MAX_PIECES = 6;
 const SCOUT_MS = 5 * 60 * 1000, PLAN_MS = 10 * 60 * 1000, WRITE_MS = 25 * 60 * 1000;
 const FINDING_CHARS = 2500; // per piece, so every answer fits in Lupa's 16k context with room to write
 const TAG = /(^|\s)#(legion|research)\b/i;
-const LEAD_IN = /^\s*(deep research|legion|research legion)\s*[:\-–]\s*/i;
+// "Legion: …", or just "legion I need to…" as the first word (said or typed without the colon)
+const LEAD_IN = /^\s*(deep research|legion|research legion)(\s*[:\-–]\s*|\s+(?=\S))/i;
 
 const isLegion = (t) => !!t && (TAG.test(String(t.title || '')) || LEAD_IN.test(String(t.title || '')));
 // "#legion best e-bikes under $1500" → "best e-bikes under $1500"
