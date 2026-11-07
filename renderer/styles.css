@@ -253,6 +253,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
 .tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */
+@media(max-width:520px){.tab.busy{padding-right:14px}} /* phones' tighter tabs: room for the dot, so it never sits on the last letter */
 .tab.busy::after{content:'';position:absolute;top:50%;right:5px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
 @keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tab.busy::after{animation:none}}
@@ -426,7 +427,10 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
   .row{flex-wrap:wrap;row-gap:6px}
   .row .title{flex:1 1 0}
   .row .meta{flex:1 1 100%;padding-left:51px}
-  .row .chips{flex:1 1 auto;justify-content:flex-start}
+  /* the line under the title wraps: when chips + date + buttons don't fit, the buttons drop to a line of
+     their own instead of the chips shrinking under them (min-width:auto keeps each chip whole) */
+  .row .meta{flex-wrap:wrap;row-gap:4px}
+  .row .chips{flex:1 1 auto;justify-content:flex-start;min-width:auto}
   .row .acts{margin-left:auto}
   .list.donelist .row .meta{padding-left:29px}
   .row .meta .icon{padding:6px}
