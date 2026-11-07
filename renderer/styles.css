@@ -1191,3 +1191,12 @@ body.review-open .top-right{display:none!important}
 .fam-sent-state.ok{color:var(--accent)}
 .fam-sent .icon{opacity:.55}
 @media(max-width:520px){.fam-send>*{width:100%}.fam-send .btn-accent{margin-left:0}}
+/* Report an AI reply (ai-report.js): a quiet link under each answer, a small box once tapped */
+.ai-report{margin-top:4px;white-space:normal}
+.ai-report-link{background:none;border:0;padding:2px 0;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);cursor:pointer}
+.ai-report-link:hover{color:var(--ink);text-decoration:underline}
+.ai-report-box{margin-top:6px;padding:8px 10px;border:1px solid var(--hairline);border-radius:8px;font-size:12.5px;line-height:1.45;color:var(--ink)}
+.ai-report-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.ai-report-row .doc-dl{margin-top:0}
+.ai-report-reason{max-width:100%;min-width:0;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--hairline);border-radius:6px;background:var(--surface);color:var(--ink)}
+.ai-report-done{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}

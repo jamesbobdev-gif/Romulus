@@ -69,8 +69,10 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
   time the user set are a core feature of a task and calendar app.
 - **Health, financial features**: Finance is a personal budget view, not a financial service: answer no to
   loans, banking and crypto.
-- **AI-generated content**: Romulus shows replies from AI services the user connects. If review treats it as
-  a generative-AI app, it will ask for an in-app way to report offensive output; that isn't built yet.
+- **AI-generated content**: Romulus shows replies from AI services the user connects. Every AI reply has a
+  **Report** link (renderer/js/ai-report.js) that sends that one reply, which AI wrote it and a reason to the
+  Romulus server's `ai_reports` table, after the user confirms. Read reports in the Supabase dashboard
+  (Table editor, ai_reports). Needs `supabase/migrations/20261114_ai_reports.sql` pasted in the SQL editor first.
 
 ### Store listing
 
@@ -107,8 +109,8 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
    starting `CN=`), `MS_STORE_PUBLISHER_NAME` (Package/Properties/PublisherDisplayName).
 3. Push a tag; download `microsoft-store-appx` from the run and upload it as a submission. The Store signs it,
    so Store installs have no SmartScreen warning. Use the same privacy URL and listing text as above.
-4. Store tiles currently use electron-builder's stock images; for a better look, add the tile images to
-   `build/appx/` (StoreLogo 50×50, Square44x44Logo, Square150x150Logo, Wide310x150Logo).
+4. The Store tiles (StoreLogo, Square44x44, Small/Square150/Wide310x150/Large, each at 100% and 200%) are in
+   `build/appx/`, made from `build/icon.png`. Remake them the same way if the icon changes.
 
 ## Signing the Windows installer (Azure Trusted Signing)
 

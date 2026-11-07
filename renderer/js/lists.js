@@ -177,6 +177,7 @@ function buildPanel(t){
         if(Array.isArray(h.plan)&&h.plan.length&&typeof planBox==='function')b.appendChild(planBox(t,h)); // goals.js: Start these steps
         if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
+        if(who==='claude'&&h.text&&typeof aiReportControl==='function')b.appendChild(aiReportControl(t,h)); // ai-report.js: flag an offensive reply
         th.appendChild(b);
       });
       if(spinning){ // a "typing" line at the bottom while the answer is coming
@@ -300,6 +301,8 @@ function buildPanel(t){
     if(lastAns&&lastAns.thoughts&&t.status!=='working')foot.appendChild(thoughtsBox(t,lastAns));
     if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)foot.appendChild(retryButton(t));
     if(foot.firstChild)nb.appendChild(foot);
+    // the answer shown here can be reported too, without opening the conversation (ai-report.js)
+    if(lastAns&&lastAns.text&&t.status!=='working'&&!convOpen.has(t.id)&&typeof aiReportControl==='function')nb.appendChild(aiReportControl(t,lastAns));
     if(!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t)); // e.g. to log in, or check a cart (its own tabs: fine while another task runs)
     panel.appendChild(nb);
   }

@@ -25,6 +25,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -37,6 +39,9 @@ import java.util.zip.ZipInputStream;
         @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "mic")})
 public class WakeWordPlugin extends Plugin {
     private static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
+    // SHA-256 of that zip (41,205,931 bytes), from two downloads on 2026-11-07. A download that doesn't match is thrown
+    // away before it replaces the model, so a changed or tampered file never gets listened through.
+    static final String MODEL_SHA256 = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498";
     private volatile boolean downloading = false;
 
     @PluginMethod
@@ -121,7 +126,8 @@ public class WakeWordPlugin extends Plugin {
         long total = http.getContentLengthLong();
         String root = tmp.getCanonicalPath() + File.separator;
         int lastPct = -1;
-        CountingStream counted = new CountingStream(new BufferedInputStream(http.getInputStream()));
+        MessageDigest sha = MessageDigest.getInstance("SHA-256");
+        CountingStream counted = new CountingStream(new DigestInputStream(new BufferedInputStream(http.getInputStream()), sha));
         try (ZipInputStream zip = new ZipInputStream(counted)) {
             ZipEntry e;
             byte[] buf = new byte[65536];
@@ -147,11 +153,25 @@ public class WakeWordPlugin extends Plugin {
                     }
                 }
             }
+            // the zip's directory at the end isn't read by ZipInputStream: read it too, so the hash covers the whole file
+            byte[] rest = new byte[65536];
+            while (counted.read(rest, 0, rest.length) > 0) { /* hashed as it goes */ }
         } finally { http.disconnect(); }
+        String got = hex(sha.digest());
+        if (!MODEL_SHA256.equals(got)) {
+            deleteAll(tmp);
+            throw new Exception("the speech model download didn't match the expected file, so it wasn't used");
+        }
         if (!new File(tmp, "conf/model.conf").exists()) throw new Exception("the download didn't contain a model");
         File dir = WakeWordService.modelDir(c);
         deleteAll(dir);
         if (!tmp.renameTo(dir)) throw new Exception("couldn't save it");
+    }
+
+    static String hex(byte[] b) {
+        StringBuilder s = new StringBuilder(b.length * 2);
+        for (byte x : b) s.append(String.format("%02x", x & 0xff));
+        return s.toString();
     }
 
     private static void deleteAll(File f) {
