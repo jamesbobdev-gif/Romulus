@@ -93,6 +93,8 @@ test('money sent to his brokerage is not spending, whatever the bank calls it', 
     tx('ACH DEBIT WEB 8834', -500, on(9, 3)),       // vague name, matched to Public's deposit below
     tx('PUBLIC 8005551234', -200, on(9, 6)),        // Public's ACH by name alone
     tx('APEX CLEARING ACH', -50, on(9, 7)),         // Public's clearing firm
+    tx('FIDELITY INVESTMENTS 4410', -300, on(9, 9)),
+    tx('FID BKG SVC LLC MONEYLINE', -25, on(9, 10)),
     tx('PUBLIC STORAGE 0412', -90, on(9, 8)),       // a real bill that only starts with "Public"
     tx('Corner Deli', -500, on(9, 20)),             // same amount, but no deposit matches it
   ] };

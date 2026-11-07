@@ -15,8 +15,10 @@ const COST_DAY=86400000;
 const COST_INVEST=/\b(brokerage|invest|ira|401 ?k|403 ?b|roth|hsa|individual|stock|etf|fidelity|schwab|vanguard|robinhood|e\*?trade|webull|public\.com|public investing|public holdings)\b/i;
 const COST_INVEST_ORG=/^\s*public(\.com)?\s*$/i;
 const costIsInvest=function(a){ return !!(a&&((a.holdings&&a.holdings.length)||COST_INVEST.test((a.name||'')+' '+(a.org||''))||COST_INVEST_ORG.test(a.org||''))); };
-// a payee that is a brokerage by name: Public's ACH shows as just "PUBLIC" (not Public Storage) or its clearing firm, Apex
-const costToBroker=function(key,text){ return key==='public'||/\bapex clearing\b/i.test(text||''); };
+// a payee that is a brokerage by name: Public's ACH shows as just "PUBLIC" (not Public Storage) or its clearing firm,
+// Apex; Fidelity as "FIDELITY INVESTMENTS" or "FID BKG SVC LLC MONEYLINE"; and the other big ones by name
+const COST_BROKERS=/\b(apex clearing|fidelity|fid bkg|schwab|vanguard|robinhood|e\*?trade|webull|wealthfront|betterment|acorns|m1 finance|merrill|investments?)\b/i;
+const costToBroker=function(key,text){ return key==='public'||COST_BROKERS.test(text||''); };
 /* money he moved into his own brokerage isn't spending, whatever the bank calls it: an outflow from a
    non-brokerage account that shows up as the same amount coming into one of his brokerage accounts
    within 5 days. Kept in a WeakSet (not on the transaction, so it's never saved). */
