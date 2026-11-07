@@ -74,6 +74,7 @@ const ctx = {
   // The local model’s money questions (agent/local-lane.js): read-only, only while Finance is unlocked here
   finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked(),
     ebtNow: () => finance.ebtNow() }, // the EBT wallet's settings, for grocery runs (agent/grocery.js ebtBrief), locked or not
+  readPicture: (q, image) => overlay.readPicture(q, image), // an EBT receipt photo (main/finance.js finance:ebtReceipt): Lupa first, then the cloud
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdate: (u) => trayMod.setUpdate(u),

@@ -31,7 +31,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WakeWordPlugin.class); // "Hey Romulus"
         registerPlugin(CalAccountsPlugin.class); // Google / Microsoft calendar sign-in
         registerPlugin(FinanceVaultPlugin.class); // Finance: fingerprint lock, pairing scan, bank/price requests
-        registerPlugin(HealthDataPlugin.class); // Health Connect: steps, sleep and workouts for goal to-dos
+        registerPlugin(HealthPlugin.class); // Health Connect: daily steps, workouts and sleep (read only)
         super.onCreate(savedInstanceState);
         handle(getIntent());
     }

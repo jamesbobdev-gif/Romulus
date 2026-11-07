@@ -35,7 +35,7 @@ const stocks = require('./finance-stocks');
 const hello = require('./finance-hello');
 const billsLib = require('../renderer/js/finance-bills');
 const insights = require('../renderer/js/finance-insights');
-const { ebtClean } = require('../renderer/js/finance-ebt');
+const { ebtClean, ebtReceiptAnswer, EBT_RECEIPT_ASK } = require('../renderer/js/finance-ebt');
 // the SimpleFIN reading the phone shares (renderer/js/finance-core.js)
 const { checkSimplefinUrl, cleanAccounts, mergeAccounts: mergeWith, downloadAccounts, txt } = require('../renderer/js/finance-core');
 
@@ -605,6 +605,20 @@ const handlers = {
   },
   // the grocery list, locked or not: the sealed copy above
   'finance:ebtNow': () => ebtNow(),
+  // a receipt photo he picked → the SNAP balance printed on it. Lupa reads it when it's set up, else his cloud AIs
+  // (main/overlay.js readPicture). Only the picture and the question go; nothing from the vault
+  'finance:ebtReceipt': async (_e, pic) => {
+    const mime = pic && /^image\/(jpeg|png|webp)$/.test(pic.mime) ? pic.mime : null;
+    const b64 = pic && typeof pic.b64 === 'string' && /^[A-Za-z0-9+/=]+$/.test(pic.b64) ? pic.b64 : null;
+    if (!mime || !b64 || b64.length > 8 * 1024 * 1024) return { ok: false, error: 'That picture can’t be read.' };
+    if (!ctx.readPicture) return { ok: false, error: 'Reading pictures isn’t available here.' };
+    let r;
+    try { r = await ctx.readPicture(EBT_RECEIPT_ASK, { mime, b64 }); } catch (err) { r = { why: err.message }; }
+    if (!r || !r.text) return { ok: false, error: (r && r.why) || 'No AI could read it.' };
+    const found = ebtReceiptAnswer(r.text);
+    log('ebt receipt: ' + (found ? 'balance read' : 'no balance found') + ' by ' + r.via);
+    return found ? { ok: true, balance: found.balance, at: found.at, via: r.via } : { ok: false, error: 'No EBT balance on that receipt that ' + r.via + ' could read.' };
+  },
   // Settings → EBT switched off: grocery runs get no balance (agent/runner.js reads config.ebtOff)
   'finance:setEbtOn': async (_e, on) => {
     if (!ctx.readConfig || !ctx.writeConfig) return { ok: false };

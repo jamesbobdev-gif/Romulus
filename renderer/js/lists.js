@@ -176,7 +176,9 @@ function buildPanel(t){
         if(h.allow&&typeof allowBox==='function')b.appendChild(allowBox(t,h)); // standing.js: Allow / Keep asking
         if(Array.isArray(h.plan)&&h.plan.length&&typeof planBox==='function')b.appendChild(planBox(t,h)); // goals.js: Start these steps
         if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
+        if(who==='claude'&&h.text&&typeof famCanSend==='function'&&famCanSend())b.appendChild(famChatSendBox(t,h)); // family.js: its to-dos, to someone in the group
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
+        if(who==='claude'&&h.text&&typeof aiReportControl==='function')b.appendChild(aiReportControl(t,h)); // ai-report.js: flag an offensive reply
         th.appendChild(b);
       });
       if(spinning){ // a "typing" line at the bottom while the answer is coming
@@ -300,6 +302,8 @@ function buildPanel(t){
     if(lastAns&&lastAns.thoughts&&t.status!=='working')foot.appendChild(thoughtsBox(t,lastAns));
     if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)foot.appendChild(retryButton(t));
     if(foot.firstChild)nb.appendChild(foot);
+    // the answer shown here can be reported too, without opening the conversation (ai-report.js)
+    if(lastAns&&lastAns.text&&t.status!=='working'&&!convOpen.has(t.id)&&typeof aiReportControl==='function')nb.appendChild(aiReportControl(t,lastAns));
     if(!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t)); // e.g. to log in, or check a cart (its own tabs: fine while another task runs)
     panel.appendChild(nb);
   }
@@ -768,8 +772,8 @@ function render(){
   const ta=$('tabAgent'); if(ta){ ta.classList.toggle('busy',anyWorking); ta.title=anyWorking?'The Agent is working on a task':''; }
   const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work', onFamily=state.activeTab==='family';
   const tab=onAgent?'agent':onSchool?'school':onWork?'work':onFamily?'family':'list';
-  // the Family tab shows for people on a family plan, and wherever the family list is on (family-list.js)
-  const tf=$('tabFamily'); if(tf)tf.hidden=!(familyConfigured()||(typeof familyRole==='function'&&!!familyRole())||onFamily);
+  // the Group tab: family.js decides when it shows (everyone on the Romulus server, or anyone in a group)
+  if(typeof famShowTab==='function')famShowTab();
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
   const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():onFamily?!familyConfigured():false;
   document.querySelector('.composer').hidden=unconnected;
@@ -855,6 +859,7 @@ function render(){
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
   drawLupaStuck(onAgent||tab==='list',tab==='list'); // agent-live-view.js: the local model's browser, when it stopped on a task (Human tab too, his verification steps first)
   drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
+  if(typeof famDrawIncoming==='function')famDrawIncoming(tab==='list'); // family.js: to-dos sent to me, Add / No thanks
   drawYesPrompts(tab==='list'?needing:[]);
   drawSuggestions(tab==='list');
   const ol=$('openList'); ol.innerHTML='';

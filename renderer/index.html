@@ -174,8 +174,21 @@
     </details>
     <details class="settings-panel settings-collapse" id="ebtSection">
       <summary class="settings-label">EBT</summary>
-      <p class="settings-hint">For groceries paid with EBT (SNAP). On, Finance keeps track of your EBT balance and next deposit, grocery orders show what's left, and the Agent keeps grocery carts under it. Set on each device.</p>
-      <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
+      <p class="settings-hint">Your balance goes in Finance → EBT. Set on each device.</p>
+      <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
+      <div class="settings-row" id="ebtLowRow" style="margin-top:0;font-size:13.5px"><span>Alert me when it's under $</span><input id="ebtLow" class="settings-inp" inputmode="decimal" style="width:80px;margin:0" aria-label="Low balance alert, in dollars"></div>
+    </details>
+    <details class="settings-panel settings-collapse" id="healthSection">
+      <summary class="settings-label">Health</summary>
+      <p class="settings-hint">Tasks that check themselves off: <b>Walk #steps 8000</b>, <b>Gym #exercise 30</b> (minutes), <b>Bed early #sleep 7h</b>. One ticks off once that day's total gets there, the day it's due or today. Only daily totals are kept, and no AI sees them.</p>
+      <div id="healthPhone" hidden>
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="healthOn"><span class="track" aria-hidden="true"></span><span id="healthOnText">Read steps, exercise and sleep from Health Connect</span></label>
+        <div class="settings-row">
+          <button id="healthManage" class="ghost mono" hidden>Health Connect settings</button>
+        </div>
+      </div>
+      <p id="healthDesk" class="settings-hint" hidden>The totals come from Romulus on your phone: turn this on there. They reach this computer when your lists use end-to-end encryption.</p>
+      <p class="mono" style="font-size:11px;color:var(--muted);margin:4px 0 0"><span id="healthStatus"></span> <span id="healthToday"></span></p>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
       <summary class="settings-label">Agent features</summary>
@@ -263,32 +276,16 @@
           <div id="hostedMyPlanTitle" class="settings-label" style="margin-bottom:2px;color:var(--accent)">Your plan</div>
           <p id="hostedMyPlanInfo" class="settings-hint" style="margin:0"></p>
         </div>
-        <!-- on the individual plan: the family/group plan is the same for up to 5 people, $2 more (hosted-sync.js) -->
-        <div id="hostedUpgrade" hidden style="margin:0 0 8px">
-          <p class="settings-hint" style="margin:0 0 6px">Share it with up to 4 more people, with a family list you all keep together and to-dos you send each other, for $2 more a month. Your individual plan ends once the family plan is paid; if it still shows on a later Stripe receipt, cancel it from there.</p>
-          <div class="settings-row">
-            <button id="hostedUpgradeBtn" class="btn-accent">Move to Family/Group: $5 a month</button>
-            <button id="hostedUpgradeYearBtn" class="ghost mono" hidden>$50 a year</button>
-          </div>
-        </div>
         <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
-        <!-- the two plans, offered all along on the free space, not only once it's nearly full (hosted-sync.js):
-             the individual one first, then the family/group one, which is the same for up to 5 people for $2 more -->
+        <!-- the Group plan (and Personal, when its links are set), offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
         <div id="hostedPlan" hidden style="margin:0 0 10px">
           <!-- the words come from hostedPlanPitch (hosted-sync.js), which knows whether the links start with a free trial -->
-          <div id="hostedSoloBox" hidden style="margin:0 0 8px">
-            <div class="settings-label" style="margin-bottom:2px">Individual</div>
-            <p id="hostedSoloPitch" class="settings-hint" style="margin:0 0 6px"></p>
-            <div class="settings-row">
-              <button id="hostedPaySoloBtn" class="ghost mono"></button>
-              <button id="hostedPaySoloYearBtn" class="ghost mono" hidden></button>
-            </div>
-          </div>
-          <div id="hostedFamilyLabel" class="settings-label" hidden style="margin-bottom:2px">Family/Group</div>
           <p id="hostedPitch" class="settings-hint" style="margin:0 0 6px"></p>
           <div class="settings-row">
             <button id="hostedPayBtn" class="btn-accent" hidden></button>
             <button id="hostedPayYearBtn" class="ghost mono" hidden>$50 a year</button>
+            <button id="hostedPayPersonalBtn" class="ghost mono" hidden></button>
+            <button id="hostedPayPersonalYearBtn" class="ghost mono" hidden></button>
             <button id="hostedPlanOwnBtn" class="ghost mono" hidden>Or use my own Supabase</button>
             <button id="hostedJoinBtn" class="ghost mono">I have a group code</button>
           </div>
@@ -298,19 +295,7 @@
           <div id="hostedFamilyList"></div>
           <div class="settings-row">
             <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
-            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family/group plan</button>
-          </div>
-          <!-- one list everyone on the plan shares, end-to-end encrypted, handed over by a code (family-list.js) -->
-          <div id="familyListBox" hidden style="margin:10px 0 0">
-            <div class="settings-label" style="margin-bottom:4px">Family list</div>
-            <p id="familyListInfo" class="settings-hint" style="margin:0 0 6px"></p>
-            <div id="familyListCode" class="mono" hidden style="font-size:24px;letter-spacing:3px;user-select:all;margin:0 0 6px"></div>
-            <div class="settings-row">
-              <button id="familyStartBtn" class="btn-accent" hidden>Share a list with my family</button>
-              <button id="familyCodeBtn" class="ghost mono" hidden>Make a code for my family</button>
-              <button id="familyJoinBtn" class="ghost mono">I have a family list code</button>
-              <button id="familyLeaveBtn" class="ghost mono" hidden>Leave the family list</button>
-            </div>
+            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the group</button>
           </div>
         </div>
         <!-- the rarely used settings, out of the way until wanted -->
@@ -460,7 +445,7 @@
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
-    <!-- shown for people on a family plan, and wherever the family list is on (family-list.js) -->
+    <!-- the Group tab: shared lists and sent to-dos (family.js) -->
     <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Family</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
@@ -557,6 +542,8 @@
     <details id="lupaFiles" class="lupa-files" hidden></details>
     <!-- the Agent is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
     <div id="yesPrompts" class="yes-prompts" hidden></div>
+    <!-- to-dos someone in the group sent: add to the list or say no (family.js famDrawIncoming) -->
+    <div id="famIncoming" class="yes-prompts" hidden></div>
     <div id="suggestPrompts" class="yes-prompts" hidden></div>
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
@@ -633,6 +620,7 @@
 <script src="js/order-match.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
+<script src="js/ai-report.js"></script>
 <script src="js/task-files.js"></script>
 <script src="js/live-relay.js"></script>
 <script src="js/agent-live-view.js"></script>
@@ -655,6 +643,7 @@
 <script src="js/finance-bills.js"></script>
 <script src="js/finance-insights.js"></script>
 <script src="js/finance-ebt.js"></script>
+<script src="js/ebt-alerts.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/year-review-view.js"></script>
 <script src="js/popups.js"></script>
@@ -667,7 +656,6 @@
 <script src="js/hosted-sync.js"></script>
 <script src="js/family.js"></script>
 <script src="js/devices.js"></script>
-<script src="js/family-list.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
 <script src="js/task-import.js"></script>

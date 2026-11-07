@@ -1,28 +1,38 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
-const { healthGoal, healthToTick, healthSay } = require('../renderer/js/health');
+const { healthGoal, healthGoalWords, isHealthWord, healthMet, healthSay, normHealth, healthMergeDocs, healthDue } = require('../renderer/js/health');
+const { tagFromWords } = require('../renderer/js/quick-add');
 
-test('steps goals, written the ways people write them', () => {
-  assert.deepStrictEqual(healthGoal('Walk 8,000 steps'), { kind: 'steps', target: 8000 });
-  assert.deepStrictEqual(healthGoal('10k steps'), { kind: 'steps', target: 10000 });
-  assert.deepStrictEqual(healthGoal('get 7.5k steps in'), { kind: 'steps', target: 7500 });
-  assert.deepStrictEqual(healthGoal('6000 steps'), { kind: 'steps', target: 6000 });
+test('goals in a title, as a hashtag', () => {
+  assert.deepStrictEqual(healthGoal('Walk #steps 8000'), { kind: 'steps', target: 8000 });
+  assert.deepStrictEqual(healthGoal('Walk #steps 8k'), { kind: 'steps', target: 8000 });
+  assert.deepStrictEqual(healthGoal('Walk #STEPS 10000 daily'), { kind: 'steps', target: 10000 });
+  assert.deepStrictEqual(healthGoal('Gym #exercise 30'), { kind: 'exercise', target: 30 });
+  assert.deepStrictEqual(healthGoal('Gym #workout 1h'), { kind: 'exercise', target: 60 });
+  assert.deepStrictEqual(healthGoal('Gym #exercise 45m'), { kind: 'exercise', target: 45 });
+  assert.deepStrictEqual(healthGoal('Bed early #sleep 7'), { kind: 'sleep', target: 420 });
+  assert.deepStrictEqual(healthGoal('Bed early #sleep 7h30'), { kind: 'sleep', target: 450 });
+  assert.deepStrictEqual(healthGoal('Bed early #sleep 7.5h'), { kind: 'sleep', target: 450 });
+  assert.deepStrictEqual(healthGoal('Nap #sleep 90m'), { kind: 'sleep', target: 90 });
+  assert.strictEqual(healthGoal('Count #steps later'), null);
+  assert.strictEqual(healthGoal('Walk #steps 2h'), null);
+  assert.strictEqual(healthGoal('Walk #steps 0'), null);
+  assert.strictEqual(healthGoal('Buy steps#steps 800'), null); // needs a space before the #
 });
 
-test('sleep goals, in hours either side of the word', () => {
-  assert.deepStrictEqual(healthGoal('Sleep 7 hours'), { kind: 'sleep', target: 420 });
-  assert.deepStrictEqual(healthGoal('8h of sleep'), { kind: 'sleep', target: 480 });
-  assert.deepStrictEqual(healthGoal('sleep at least 7.5 hrs'), { kind: 'sleep', target: 450 });
-});
-
-test('exercise goals, in minutes or hours', () => {
-  assert.deepStrictEqual(healthGoal('Work out 30 min'), { kind: 'exercise', target: 30 });
-  assert.deepStrictEqual(healthGoal('45 minutes of yoga'), { kind: 'exercise', target: 45 });
-  assert.deepStrictEqual(healthGoal('Run 1 hour'), { kind: 'exercise', target: 60 });
-  assert.deepStrictEqual(healthGoal('workout 20 mins'), { kind: 'exercise', target: 20 });
+test('goals in plain words, written the ways people write them', () => {
+  assert.deepStrictEqual(healthGoal('Walk 8000 steps'), { kind: 'steps', target: 8000 }); // the same goal without the #
+  assert.deepStrictEqual(healthGoalWords('Walk 8,000 steps'), { kind: 'steps', target: 8000 });
+  assert.deepStrictEqual(healthGoalWords('10k steps'), { kind: 'steps', target: 10000 });
+  assert.deepStrictEqual(healthGoalWords('get 7.5k steps in'), { kind: 'steps', target: 7500 });
+  assert.deepStrictEqual(healthGoalWords('6000 steps'), { kind: 'steps', target: 6000 });
+  assert.deepStrictEqual(healthGoalWords('Sleep 7 hours'), { kind: 'sleep', target: 420 });
+  assert.deepStrictEqual(healthGoalWords('8h of sleep'), { kind: 'sleep', target: 480 });
+  assert.deepStrictEqual(healthGoalWords('sleep at least 7.5 hrs'), { kind: 'sleep', target: 450 });
+  assert.deepStrictEqual(healthGoalWords('Work out 30 min'), { kind: 'exercise', target: 30 });
+  assert.deepStrictEqual(healthGoalWords('45 minutes of yoga'), { kind: 'exercise', target: 45 });
+  assert.deepStrictEqual(healthGoalWords('Run 1 hour'), { kind: 'exercise', target: 60 });
+  assert.deepStrictEqual(healthGoalWords('workout 20 mins'), { kind: 'exercise', target: 20 });
 });
 
 test('ordinary to-dos are not goals', () => {
@@ -30,74 +40,72 @@ test('ordinary to-dos are not goals', () => {
     'Call mom', 'Book a 30 min meeting', 'Sleep by 11pm', 'Next steps', '']) assert.strictEqual(healthGoal(t), null, t);
 });
 
+test('a goal is not a tag', () => {
+  assert.ok(isHealthWord('steps', ' 8000'));
+  assert.ok(!isHealthWord('steps', ' later'));
+  assert.deepStrictEqual(tagFromWords('Walk #steps 8000'), { title: 'Walk #steps 8000', tag: null });
+  assert.deepStrictEqual(tagFromWords('Walk #steps 8000 #home'), { title: 'Walk #steps 8000', tag: 'home' });
+  assert.deepStrictEqual(tagFromWords('Water plants #home'), { title: 'Water plants', tag: 'home' });
+  assert.deepStrictEqual(tagFromWords('Fix the #steps'), { title: 'Fix the', tag: 'steps' }); // no number: an ordinary tag
+});
+
+test('met, and what it says', () => {
+  const g = healthGoal('Walk #steps 8000');
+  assert.ok(healthMet(g, { steps: 8000 }));
+  assert.ok(!healthMet(g, { steps: 7999 }));
+  assert.ok(!healthMet(g, { sleepMin: 600 })); // steps not allowed: never met
+  assert.ok(!healthMet(g, undefined));
+  assert.strictEqual(healthSay(g, { steps: 8412 }), '8,412 steps');
+  assert.strictEqual(healthSay(healthGoal('#sleep 7'), { sleepMin: 445 }), '7h 25m of sleep');
+  assert.strictEqual(healthSay(healthGoal('#exercise 30'), { exerciseMin: 30 }), '30m of exercise');
+});
+
+test('stored days are cleaned up', () => {
+  const h = normHealth({ days: { '2026-11-07': { steps: 120.4, sleepMin: -3, at: 5, junk: 1 }, 'nope': { steps: 1 }, '2026-11-06': null } });
+  assert.deepStrictEqual(h, { days: { '2026-11-07': { steps: 120, at: 5 } } });
+  assert.deepStrictEqual(normHealth(null), { days: {} });
+});
+
+test('merging: the newer reading of a day wins, old days go', () => {
+  const now = new Date(2026, 10, 7, 12).getTime();
+  const local = { days: { '2026-11-07': { steps: 5000, at: 20 }, '2026-11-06': { steps: 9000, at: 10 } } };
+  const remote = { v: 1, days: { '2026-11-07': { steps: 4000, at: 15 }, '2026-11-05': { steps: 300, at: 9 }, '2026-08-01': { steps: 1, at: 1 } } };
+  const r = healthMergeDocs(local, remote, now);
+  assert.deepStrictEqual(Object.keys(r.merged.days).sort(), ['2026-11-05', '2026-11-06', '2026-11-07']);
+  assert.strictEqual(r.merged.days['2026-11-07'].steps, 5000);
+  assert.ok(r.changedLocal && r.changedRemote);
+  const again = healthMergeDocs(r.merged, { v: 1, days: r.merged.days }, now);
+  assert.ok(!again.changedLocal && !again.changedRemote);
+  const empty = healthMergeDocs({ days: {} }, null, now);
+  assert.ok(!empty.changedLocal && !empty.changedRemote);
+});
+
 const ws = (t) => t.ws || 'personal';
-const day = { date: '2026-11-04', steps: 8412, sleepMin: 400, exerciseMin: 35 };
 
-test('ticks off met goals due today or undated, and nothing else', () => {
+test('which tasks tick off', () => {
+  const health = { days: { '2026-11-07': { steps: 8500, sleepMin: 380, at: 1 }, '2026-11-06': { steps: 12000, at: 1 } } };
   const tasks = [
-    { id: 'a', title: 'Walk 8,000 steps', due: '2026-11-04' },
-    { id: 'b', title: '10k steps', due: null },                       // not met yet
-    { id: 'c', title: 'Sleep 7 hours', due: null },                   // 6h40m: not met
-    { id: 'd', title: 'Work out 30 min' },                            // met, undated
-    { id: 'e', title: 'Walk 8,000 steps', due: '2026-11-03' },        // yesterday's: today's numbers don't count
-    { id: 'f', title: 'Walk 8,000 steps', due: '2026-11-05' },        // tomorrow's
-    { id: 'g', title: 'Walk 8,000 steps', done: true },               // already done
-    { id: 'h', title: 'Walk 8,000 steps', ws: 'agent' },              // the Agent's
+    { id: 'a', title: 'Walk #steps 8000', done: false, due: null },               // today: yes
+    { id: 'b', title: 'Walk #steps 10000', done: false, due: '2026-11-06' },      // yesterday's total: yes
+    { id: 'c', title: 'Walk #steps 10000', done: false, due: '2026-11-07' },      // not yet
+    { id: 'd', title: 'Walk #steps 1000', done: false, due: '2026-11-08' },       // tomorrow: no
+    { id: 'e', title: 'Walk #steps 1000', done: true, due: null },                // already done
+    { id: 'f', title: 'Bed #sleep 7', done: false, due: null },                   // 6h 20m: no
+    { id: 'g', title: 'Gym #exercise 20', done: false, due: null },               // exercise not read: no
+    { id: 'h', title: 'Walk #steps 1000', done: false, due: null, ws: 'agent' },  // the Agent's: never
+    { id: 'i', title: 'Walk the dog', done: false, due: null },
+    { id: 'j', title: 'Walk 8,000 steps', done: false, due: null },               // in words: yes
   ];
-  assert.deepStrictEqual(healthToTick(tasks, day, {}, ws).map((h) => h.id), ['a', 'd']);
+  const due = healthDue(tasks, health, '2026-11-07', ws);
+  assert.deepStrictEqual(due.map((x) => x.task.id), ['a', 'b', 'j']);
+  assert.strictEqual(due[1].said, '12,000 steps');
 });
 
-test('a goal unticked by hand today stays unticked; yesterday’s tick does not count', () => {
-  const tasks = [{ id: 'a', title: 'Walk 8,000 steps' }, { id: 'b', title: 'Walk 8,000 steps' }];
-  assert.deepStrictEqual(healthToTick(tasks, day, { a: '2026-11-04', b: '2026-11-03' }, ws).map((h) => h.id), ['b']);
-});
-
-test('a number Health Connect did not give (not allowed, or nothing logged) never ticks', () => {
-  const tasks = [{ id: 'a', title: 'Sleep 1 hour' }, { id: 'b', title: '100 steps' }];
-  assert.deepStrictEqual(healthToTick(tasks, { date: '2026-11-04', steps: null, sleepMin: null, exerciseMin: null }, {}, ws), []);
-  assert.deepStrictEqual(healthToTick(tasks, null, {}, ws), []);
-});
-
-test('the toast says what Health Connect saw', () => {
-  assert.strictEqual(healthSay('steps', 8412), '8,412 steps today');
-  assert.strictEqual(healthSay('sleep', 400), '6h 40m of sleep last night');
-  assert.strictEqual(healthSay('sleep', 420), '7h of sleep last night');
-  assert.strictEqual(healthSay('exercise', 35), '35m of exercise today');
-});
-
-/* mobile/health-phone.js against a fake HealthData plugin */
-function loadPhone(plugin) {
-  const window = {
-    Capacitor: {
-      isPluginAvailable: (n) => n === 'HealthData',
-      nativePromise: async (n, m) => plugin[m](),
-    },
-  };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'health-phone.js'), 'utf8'), { window });
-  return window.phoneHealth;
-}
-
-test('phone bridge: today keeps numbers and turns what is missing into null', async () => {
-  const h = loadPhone({ today: () => ({ date: '2026-11-04', steps: 1200, exerciseMin: 0 }) });
-  assert.deepStrictEqual({ ...(await h.today()) }, { date: '2026-11-04', steps: 1200, sleepMin: null, exerciseMin: 0 });
-});
-
-test('phone bridge: the tab calls it Apple Health on an iPhone, Health Connect elsewhere', () => {
-  const load = (platform) => {
-    const window = { Capacitor: { isPluginAvailable: () => true, nativePromise: async () => ({}), getPlatform: () => platform } };
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'health-phone.js'), 'utf8'), { window });
-    return window.phoneHealth;
-  };
-  assert.strictEqual(load('ios').app, 'Apple Health');
-  assert.strictEqual(load('ios').ios, true);
-  assert.strictEqual(load('android').app, 'Health Connect');
-  assert.strictEqual(load('android').ios, false);
-});
-
-test('phone bridge: absent without the plugin', () => {
-  const window = { Capacitor: { isPluginAvailable: () => false, nativePromise: async () => ({}) } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'health-phone.js'), 'utf8'), { window });
-  assert.strictEqual(window.phoneHealth, undefined);
+test('a goal unticked by hand stays unticked for that day; another day ticks again', () => {
+  const health = { days: { '2026-11-07': { steps: 8500, at: 1 }, '2026-11-06': { steps: 9000, at: 1 } } };
+  const tasks = [{ id: 'a', title: 'Walk #steps 8000', done: false, due: null }, { id: 'b', title: 'Walk #steps 8000', done: false, due: '2026-11-06' }];
+  assert.deepStrictEqual(healthDue(tasks, health, '2026-11-07', ws, { a: '2026-11-07', b: '2026-11-07' }).map((x) => x.task.id), ['b']);
+  assert.deepStrictEqual(healthDue(tasks, health, '2026-11-07', ws, { a: '2026-11-06' }).map((x) => x.task.id), ['a', 'b']);
 });
 
 /* the Food plan (renderer/js/health.js): his per-day macros, which grocery runs are built to */

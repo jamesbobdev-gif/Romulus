@@ -5,6 +5,6 @@ import Capacitor
 /// Capacitor's. The Android side does the same in MainActivity.java.
 class RomulusViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
-        bridge?.registerPluginInstance(HealthDataPlugin()) // Apple Health: steps, sleep and workouts for goal to-dos
+        bridge?.registerPluginInstance(HealthPlugin()) // Apple Health: daily steps, exercise and sleep for tasks that tick themselves off
     }
 }

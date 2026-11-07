@@ -34,7 +34,7 @@ function releaseNotes(version) {
     'It updates an existing copy in place; your tasks and settings stay.',
     'Windows shows an "unrecognized app" warning because the installer isn\'t code-signed yet: click **More info → Run anyway**.',
     '',
-    `**Mac** (Apple silicon): \`Romulus-${version}-arm64.dmg\`. **Linux**: \`Romulus-${version}.AppImage\`. **Android**: \`Romulus-${version}.apk\` (open it on the phone).`,
+    `**Mac** (Apple silicon): \`Romulus-${version}-arm64.dmg\`. **Linux**: \`Romulus-${version}-amd64.deb\` on Ubuntu, Debian and Mint, \`Romulus-${version}.AppImage\` elsewhere. **Android**: \`Romulus-${version}.apk\` (open it on the phone).`,
     'A file is missing here only when that build didn\'t run for this release.',
     '',
     'Not code-signed yet, so check what you downloaded: its SHA-256 is in `SHA256SUMS-<os>.txt` here (`certutil -hashfile <file> SHA256` on Windows,',

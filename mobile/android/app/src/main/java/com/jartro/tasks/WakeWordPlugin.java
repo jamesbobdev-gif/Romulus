@@ -25,6 +25,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -172,6 +174,12 @@ public class WakeWordPlugin extends Plugin {
         File dir = WakeWordService.modelDir(c);
         deleteAll(dir);
         if (!tmp.renameTo(dir)) throw new Exception("couldn't save it");
+    }
+
+    static String hex(byte[] b) {
+        StringBuilder s = new StringBuilder(b.length * 2);
+        for (byte x : b) s.append(String.format("%02x", x & 0xff));
+        return s.toString();
     }
 
     private static void deleteAll(File f) {

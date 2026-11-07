@@ -1,19 +1,46 @@
-/* The Health tab. Everywhere: the Food plan, his per-day macros (calories, protein, carbs, fat) for a week, two
-   weeks, a month or until he changes it; the Agent builds grocery orders to add up to it (agent/grocery.js
-   macroBrief, groceries skill). It's kept on this device and in the agent list's ':macros' sync row, so the
-   computer that runs the Agent sees it.
-   On the phone: a to-do that names a goal checks itself off once Apple Health (iPhone) or Health Connect
-   (Android) shows it was met. "Walk 8,000 steps" / "10k steps", "Sleep 7 hours" / "8h of sleep", "Work out 30 min"
-   / "45 minutes of yoga". Only to-dos due today or with no date; the Agent's tasks never. The numbers come from
-   mobile/health-phone.js and stay on the phone: nothing here saves, syncs or sends them, and only the tick reaches
-   the other devices.
-   One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
+/* Health: tasks with a goal tick themselves off from the phone's health store, which is Health Connect on Android
+   (HealthPlugin.kt) and Apple Health on an iPhone (HealthPlugin.swift): both read-only, both the "Health" plugin.
+   A goal is a hashtag, "Walk #steps 8000", "Gym #exercise 30" (minutes, or "1h"), "Bed early #sleep 7h30" (hours),
+   or plain words, "Walk 8,000 steps", "Sleep 7 hours", "Work out 30 min". It's ticked off once that day's total gets
+   there: the day the task is due, or today when it has no date. Agent tasks never are, and one he unticked by hand
+   stays unticked for that day.
+   The phone keeps one line per day in state.health:
+     {days: {'YYYY-MM-DD': {steps, exerciseMin, sleepMin, at}}}   a kind he didn't allow is left out, not 0
+   Sleep counts toward the morning it ended. The days sync through their own row next to the personal list
+   (syncKey+':health') so the computer can tick tasks off too, but only when the lists are end-to-end
+   encrypted; otherwise they stay on the phone. They are never put in front of any AI.
+   The Health tab shows today's numbers, the goals and how far along each is, and, everywhere, the Food plan: his
+   per-day macros (calories, protein, carbs, fat) for a week, two weeks, a month or until he changes it, which the
+   Agent builds grocery orders to add up to (agent/grocery.js macroBrief, groceries skill). It's kept on this device
+   and in the agent list's ':macros' sync row, so the computer that runs the Agent sees it.
+   One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists
+   them. The parts without page globals are also loaded by test/health.test.js. */
 'use strict';
 
+const HEALTH_KEEP_DAYS=60;
+const HEALTH_FIELD={steps:'steps',exercise:'exerciseMin',sleep:'sleepMin'};
+const HEALTH_WORD=/^(steps|exercise|workout|sleep)$/i;
+const HEALTH_GOAL=/(^|\s)#(steps|exercise|workout|sleep)\s+(\d+(?:\.\d+)?)\s*(k|h|hrs?|hours?|m|mins?|minutes?)?(?:\s*(\d{1,2})\s*m?(?:ins?)?)?(?=\s|$|[,.;:!?])/i;
+
+// → {kind:'steps'|'exercise'|'sleep', target} (steps, or minutes), or null when the title has no goal
+function healthGoal(title){
+  const m=HEALTH_GOAL.exec(String(title||'')); if(!m)return healthGoalWords(title);
+  const word=m[2].toLowerCase(), kind=word==='workout'?'exercise':word;
+  const n=+m[3], unit=(m[4]||'').toLowerCase(), hours=/^h/.test(unit), mins=/^m/.test(unit);
+  const extra=m[5]&&hours?+m[5]:0;
+  let target;
+  if(kind==='steps'){ if(hours||mins)return null; target=unit==='k'?n*1000:n; }
+  else if(unit==='k')return null;
+  else if(kind==='exercise')target=hours?n*60+extra:n;   // a bare number is minutes
+  else target=mins?n:n*60+extra;                         // a bare number is hours
+  target=Math.round(target);
+  return target>0?{kind:kind,target:target}:null;
+}
+// the same goal in plain words: "Walk 8,000 steps" / "10k steps", "Sleep 7 hours" / "8h of sleep", "Work out 30 min" /
+// "45 minutes of yoga". Within what a day can hold, so "Plan the 3 steps" and "Book a 30 min meeting" aren't goals.
 const HEALTH_EX='work ?out|exercise|training|train|gym|cardio|run|jog|walk|hike|yoga|swim|bike|cycle|lift|hiit|pilates|stretch';
 const HEALTH_H='h|hr|hrs|hours?';
-/* {kind:'steps'|'sleep'|'exercise', target} (steps, or minutes) from a to-do's title, or null */
-function healthGoal(title){
+function healthGoalWords(title){
   const s=String(title||'').toLowerCase().replace(/[’']/g,'');
   let m=s.match(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s*k|\d+)\s*steps?\b/);
   if(m){
@@ -33,24 +60,62 @@ function healthGoal(title){
   }
   return null;
 }
-function healthValue(kind,d){ return !d?null:kind==='steps'?d.steps:kind==='sleep'?d.sleepMin:d.exerciseMin; }
-function healthSay(kind,v){
-  if(kind==='steps')return Number(v).toLocaleString('en-US')+' steps today';
-  const h=Math.floor(v/60), mn=v%60, dur=(h?h+'h ':'')+(mn||!h?mn+'m':'').trim();
-  return kind==='sleep'?dur.trim()+' of sleep last night':dur.trim()+' of exercise today';
+// "#steps 8000" is a goal, not a tag (tagFromWords in quick-add.js skips it)
+function isHealthWord(word,rest){ return HEALTH_WORD.test(word)&&/^\s+\d/.test(rest||''); }
+
+function healthMet(goal,day){
+  const v=day&&day[HEALTH_FIELD[goal.kind]];
+  return typeof v==='number'&&v>=goal.target;
 }
-/* the to-dos to tick off: open, not the Agent's, due today or undated, a goal the phone's health data shows as met,
-   and not one already ticked off by this today (unticking it by hand keeps it unticked) */
-function healthToTick(tasks,d,skip,wsOf){
-  if(!d||!d.date)return [];
+function healthFmtMin(m){ const h=Math.floor(m/60), r=m%60; return h&&r?h+'h '+r+'m':h?h+'h':r+'m'; }
+function healthSay(goal,day){
+  const v=day[HEALTH_FIELD[goal.kind]];
+  if(goal.kind==='steps')return v.toLocaleString('en-US')+' steps';
+  return healthFmtMin(v)+(goal.kind==='sleep'?' of sleep':' of exercise');
+}
+
+function normHealth(raw){
+  const r=raw||{}, days={};
+  const src=r.days&&typeof r.days==='object'?r.days:{};
+  Object.keys(src).forEach(function(k){
+    const d=src[k]; if(!/^\d{4}-\d{2}-\d{2}$/.test(k)||!d||typeof d!=='object')return;
+    const o={at:+d.at||0};
+    Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; if(isFinite(d[f])&&d[f]!==null&&d[f]>=0)o[f]=Math.round(+d[f]); });
+    days[k]=o;
+  });
+  return {days:days};
+}
+function healthYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function healthCutoff(now){ const d=new Date(now||Date.now()); d.setHours(0,0,0,0); d.setDate(d.getDate()-HEALTH_KEEP_DAYS); return healthYmd(d); }
+function healthPrune(h,now){ const cut=healthCutoff(now); Object.keys(h.days).forEach(function(k){ if(k<cut)delete h.days[k]; }); return h; }
+
+// each day: the newer reading wins. → {merged, changedLocal, changedRemote}
+function healthMergeDocs(local,remoteDoc,now){
+  const remote=normHealth(remoteDoc), days={};
+  Object.keys(local.days).concat(Object.keys(remote.days)).forEach(function(k){
+    const a=local.days[k], b=remote.days[k];
+    days[k]=!a?b:!b?a:((b.at||0)>(a.at||0)?b:a);
+  });
+  const merged=healthPrune({days:days},now);
+  const canon=function(h){ return JSON.stringify(Object.keys(h.days).sort().map(function(k){ const d=h.days[k]; return [k,d.at,d.steps,d.exerciseMin,d.sleepMin]; })); };
+  return {merged:merged,changedLocal:canon(merged)!==canon(local),changedRemote:canon(merged)!==canon(healthPrune(remote,now))};
+}
+
+// The tasks to tick off now: not done, not the Agent's, with a goal the day's total has reached, and not one this
+// already ticked off for that day (skip: task id → day; unticking it by hand keeps it unticked). → [{task, goal, day, said}]
+function healthDue(tasks,health,today,wsOf,skip){
   const out=[];
-  (tasks||[]).forEach(function(t){
-    if(t.done||wsOf(t)==='agent'||(t.due&&t.due!==d.date)||(skip&&skip[t.id]===d.date))return;
-    const g=healthGoal(t.title), v=g&&healthValue(g.kind,d);
-    if(g&&v!=null&&v>=g.target)out.push({id:t.id,kind:g.kind,value:v});
+  tasks.forEach(function(t){
+    if(t.done||(wsOf&&wsOf(t)==='agent'))return;
+    const goal=healthGoal(t.title); if(!goal)return;
+    const d=t.due||today; if(d>today)return;
+    if(skip&&skip[t.id]===d)return;
+    const day=health.days[d]; if(!healthMet(goal,day))return;
+    out.push({task:t,goal:goal,day:d,said:healthSay(goal,day)});
   });
   return out;
 }
+
 /* ── the Food plan (pure, for tests) ── */
 const MACRO_KEYS=['kcal','protein','carbs','fat'];
 const MACRO_SPANS=[['week','a week',7],['2weeks','2 weeks',14],['month','a month',30],['open','until you change it',0]];
@@ -59,7 +124,7 @@ function macroPlanUntil(span,fromYmd){
   const sp=MACRO_SPANS.find(function(x){ return x[0]===span; });
   if(!sp||!sp[2])return null;
   const d=new Date(fromYmd+'T12:00:00'); d.setDate(d.getDate()+sp[2]-1);
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return healthYmd(d);
 }
 // what's saved → a plan with at least one target, or null. {kcal, protein, carbs, fat (per day), span, from, until, at}
 function macroPlanClean(p){
@@ -96,18 +161,150 @@ function macroPlanSay(p,todayYmd){
   }
   return s;
 }
-if(typeof module!=='undefined'&&module.exports){ module.exports={healthGoal:healthGoal,healthToTick:healthToTick,healthSay:healthSay,macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay}; }
 
-/* the Health tab: the Food plan everywhere; on the phone also connect, today's numbers, and the goal to-dos with
-   how far along each is */
+if(typeof module!=='undefined'&&module.exports){
+  module.exports={healthGoal:healthGoal,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
+    healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
+    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay};
+}
+
+/* ── the page: sync row, the phone's reads, ticking tasks off, Settings → Health, the Health tab ── */
+// end-to-end encrypted lists only: health totals never go up in the clear
+function healthProfile(){
+  const p=syncState.cfg&&syncState.cfg.personal;
+  if(!validProfile(p))return null;
+  const hp={url:p.url,key:p.key,syncKey:p.syncKey+':health'};
+  return syncV2(hp)?hp:null;
+}
+function healthDoc(){ return {v:1,days:state.health.days}; }
+function mergeHealth(remoteDoc){
+  const r=healthMergeDocs(state.health,remoteDoc);
+  state.health=r.merged;
+  return {changedLocal:r.changedLocal,changedRemote:r.changedRemote};
+}
+
+const HEALTH_AUTO_KEY='tasks.healthAuto.v1'; // task id → the day this ticked it off, so an untick by hand holds for that day
+function healthAutoSkip(){ try{ return JSON.parse(localStorage.getItem(HEALTH_AUTO_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function healthAutoCheck(){
+  const skip=healthAutoSkip(), cut=healthCutoff();
+  Object.keys(skip).forEach(function(id){ if(typeof skip[id]!=='string'||skip[id]<cut)delete skip[id]; });
+  const due=healthDue(state.tasks.slice(),state.health,healthYmd(new Date()),taskWs,skip);
+  if(!due.length)return 0;
+  due.forEach(function(x){ setDone(x.task,true); skip[x.task.id]=x.day; });
+  try{ localStorage.setItem(HEALTH_AUTO_KEY,JSON.stringify(skip)); }catch(e){}
+  touch();
+  voiceToast(due.length===1?'Checked off "'+due[0].task.title+'": '+due[0].said+'.':'Checked off '+due.length+' tasks from your health totals.');
+  return due.length;
+}
+
+const healthCap=function(){ const cap=window.Capacitor; return cap&&typeof cap.nativePromise==='function'&&cap.isPluginAvailable&&cap.isPluginAvailable('Health')?cap:null; };
+// which store this phone has: Apple Health on an iPhone, Health Connect on Android
+function healthIos(){ const cap=window.Capacitor; return !!(cap&&typeof cap.getPlatform==='function'&&cap.getPlatform()==='ios'); }
+function healthStoreName(){ return healthIos()?'Apple Health':'Health Connect'; }
+const HEALTH_ON_KEY='tasks.health.on';
+function healthOn(){ try{ return localStorage.getItem(HEALTH_ON_KEY)==='1'; }catch(e){ return false; } }
+function healthSetOn(v){ try{ if(v)localStorage.setItem(HEALTH_ON_KEY,'1'); else localStorage.removeItem(HEALTH_ON_KEY); }catch(e){} }
+const healthRun={last:0,busy:false,noRowUntil:0}; // noRowUntil: sync.js waits after the database refused the :health row
+
+// the phone: today and the days before it from the health store into state.health, then tick off what's reached
+async function healthRead(days){
+  const cap=healthCap(); if(!cap||!healthOn()||healthRun.busy)return false;
+  healthRun.busy=true;
+  try{
+    const r=await cap.nativePromise('Health','read',{days:days||7});
+    const now=Date.now(); let changed=false;
+    (r&&Array.isArray(r.days)?r.days:[]).forEach(function(d){
+      if(!d||!/^\d{4}-\d{2}-\d{2}$/.test(d.date))return;
+      const prev=state.health.days[d.date]||{}, next={at:now};
+      Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; if(typeof d[f]==='number')next[f]=Math.round(d[f]); });
+      const same=Object.keys(HEALTH_FIELD).every(function(kind){ const f=HEALTH_FIELD[kind]; return prev[f]===next[f]; });
+      if(!same){ state.health.days[d.date]=next; changed=true; }
+    });
+    healthRun.last=now;
+    if(changed){ healthPrune(state.health); persist(); }
+    if(!healthAutoCheck()&&state.activeTab==='health')renderHealth(); // a tick redraws through touch()
+    healthDraw();
+    return true;
+  }finally{ healthRun.busy=false; }
+}
+// the store's own permission sheet, then the last 30 days. → the plugin's status, or null without a store
+async function healthConnect(){
+  const cap=healthCap(); if(!cap)return null;
+  const s=await cap.nativePromise('Health','connect',{});
+  if(s&&(s.steps||s.exercise||s.sleep)){ healthSetOn(true); await healthRead(30); }
+  else healthSetOn(false);
+  return s;
+}
+
+// Settings → Health's one line: today so far
+function healthDraw(){
+  const box=$('healthToday'); if(!box)return;
+  const t=state.health.days[healthYmd(new Date())];
+  if(!t){ box.textContent=''; return; }
+  const parts=[];
+  if(typeof t.steps==='number')parts.push(t.steps.toLocaleString('en-US')+' steps');
+  if(typeof t.exerciseMin==='number')parts.push(healthFmtMin(t.exerciseMin)+' exercise');
+  if(typeof t.sleepMin==='number')parts.push(healthFmtMin(t.sleepMin)+' sleep');
+  box.textContent=parts.length?'Today so far: '+parts.join(' · ')+(t.at?' (read '+new Date(t.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+')':''):'';
+}
+
+if(typeof document!=='undefined')(function(){
+  const sec=$('healthSection'); if(!sec)return;
+  const cap=healthCap();
+  const status=$('healthStatus');
+  const say=function(s){ status.textContent=s||''; };
+  if(!cap){
+    // the computer: it only sees what the phone synced
+    $('healthPhone').hidden=true; $('healthDesk').hidden=false;
+    sec.addEventListener('toggle',function(){ if(sec.open)healthDraw(); });
+    healthDraw();
+    return;
+  }
+  $('healthPhone').hidden=false; $('healthDesk').hidden=true;
+  const on=$('healthOn'), manage=$('healthManage'), STORE=healthStoreName();
+  $('healthOnText').textContent='Read steps, exercise and sleep from '+STORE;
+  manage.textContent=healthIos()?'The Health app':'Health Connect settings';
+  function show(s){
+    on.checked=healthOn()&&!!(s&&s.granted);
+    manage.hidden=!(s&&s.available==='yes'&&(s.steps||s.exercise||s.sleep));
+    if(!s)return say('');
+    if(s.available==='no')return say(STORE+' isn’t available on this phone.');
+    if(s.available==='install')return say('Health Connect needs installing or updating from Google Play.');
+    if(!healthOn())return say('');
+    if(!s.granted){
+      const some=['steps','exercise','sleep'].filter(function(k){ return s[k]; });
+      return say(some.length?'Reading '+some.join(' and ')+' only. Allow the rest in '+STORE+'.':'Romulus isn’t allowed to read '+STORE+'.');
+    }
+    say((healthProfile()?'Reading steps, exercise and sleep. Your computer sees the daily totals, encrypted.':'Reading steps, exercise and sleep. They stay on this phone until your lists use end-to-end encryption.')+
+      (healthIos()?' A number that stays blank wasn’t allowed: the Health app, Sharing, Apps, Romulus.':''));
+  }
+  function refresh(){ cap.nativePromise('Health','status',{}).then(show).catch(function(){ show(null); }); }
+  on.addEventListener('change',async function(){
+    const want=this.checked; this.disabled=true;
+    try{
+      if(!want){ healthSetOn(false); show(await cap.nativePromise('Health','status',{})); if(state.activeTab==='health')renderHealth(); return; }
+      say('Reading the last 30 days…');
+      show(await healthConnect());
+      if(state.activeTab==='health')renderHealth();
+    }catch(e){ healthSetOn(false); on.checked=false; say((e&&e.message)||'didn’t work'); }
+    finally{ this.disabled=false; }
+  });
+  manage.addEventListener('click',function(){ cap.nativePromise('Health','openSettings',{}).catch(function(){}); });
+  // coming back to the app is when new steps are likely; at most every 10 minutes, and every 30 while it's open
+  const tick=function(){ if(healthOn()&&Date.now()-healthRun.last>10*60000)healthRead(7).catch(function(){}); };
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden){ refresh(); tick(); } });
+  setTimeout(tick,6000); setInterval(tick,30*60000);
+  refresh(); healthDraw();
+})();
+
+/* the Health tab: today's numbers and the goals (from the phone's totals, synced to a computer), and the Food plan */
 let healthUi=null, healthSetPlan=null; // healthSetPlan: an Agent answer's `macros` → the Food plan (agent-results.js)
 function renderHealth(){ if(healthUi)healthUi.draw(); }
 
 if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getElementById('healthView')){
   const view=$('healthView');
   const MACRO_KEY='health.macros.v1'; // this device's copy of the plan
-  let phone=null; // the phone's part of the page (below), when this is a phone with a health store
-  let plan=null, planSync={loadedAt:undefined,pulled:false,msg:''}, planEdit=false;
+  let plan=null, planSync={loadedAt:undefined,pulled:false,msg:''}, planEdit=false, msg='';
   try{ plan=macroPlanClean(JSON.parse(localStorage.getItem(MACRO_KEY)||'null')); }catch(e){ plan=null; }
   const macrosProfile=function(){ // the agent list's ':macros' row: the Agent's computer reads it before a grocery run
     const a=typeof syncState!=='undefined'&&syncState.cfg&&syncState.cfg.agent;
@@ -133,13 +330,74 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       for(let i=0;i<3;i++){
         if(!planSync.pulled||i){ const r=await syncPullRow(p); planSync.loadedAt=r.updatedAt; planSync.pulled=true; }
         if(await syncPushCas(p,doc,planSync.loadedAt)){ planSync.msg='saved'; break; } // false: changed elsewhere meanwhile, and his Save wins
-        // no row, and the server won't make one: it doesn't know ':macros' yet (supabase/migrations/20261115_sync_macros_key.sql)
-        if(!planSync.loadedAt&&!(await syncPullRow(p)).updatedAt){ planSync.msg='saved here only: the sync server needs one update before the Agent’s computer can see it (paste supabase/migrations/20261115_sync_macros_key.sql into its SQL Editor and press Run)'; break; }
+        // no row, and the server won't make one: it doesn't know ':macros' yet (supabase/migrations/20261117_sync_macros_key.sql)
+        if(!planSync.loadedAt&&!(await syncPullRow(p)).updatedAt){ planSync.msg='saved here only: the sync server needs one update before the Agent’s computer can see it (paste supabase/migrations/20261117_sync_macros_key.sql into its SQL Editor and press Run)'; break; }
         if(i===2)planSync.msg='couldn’t save: it kept changing elsewhere';
       }
     }catch(e){ planSync.msg='saved here; not synced yet ('+e.message+')'; }
   };
-  const today=function(){ return phone&&phone.date()||formatDate(new Date()); };
+  const today=function(){ return healthYmd(new Date()); };
+  const fmt=function(kind,v){ return typeof v!=='number'?'–':kind==='steps'?v.toLocaleString('en-US'):healthFmtMin(v); };
+  // today's numbers: on the phone with Connect or Manage above them; on a computer what the phone synced
+  const drawNumbers=function(){
+    const cap=healthCap(), t=state.health.days[today()]||null, wrap=el('div','health-numbers');
+    if(cap){
+      const head=el('div','health-head');
+      if(!healthOn()){
+        const btn=el('button','btn-accent','Connect '+healthStoreName());
+        btn.addEventListener('click',async function(){
+          btn.disabled=true; msg='';
+          try{ const s=await healthConnect(); if(s&&!(s.steps||s.exercise||s.sleep))msg=s.available==='no'?healthStoreName()+' isn’t available on this phone.':s.available==='install'?'Install or update Health Connect from Google Play, then try again.':'Romulus isn’t allowed to read '+healthStoreName()+'.'; }
+          catch(e){ msg=(e&&e.message)||'didn’t work'; }
+          draw();
+        });
+        head.appendChild(btn);
+      } else {
+        const mng=el('button','ghost mono','Manage'); mng.title=healthIos()?'The Health app: Sharing, Apps, Romulus':'Health Connect’s settings for Romulus';
+        mng.addEventListener('click',function(){ cap.nativePromise('Health','openSettings',{}).catch(function(){}); });
+        head.appendChild(mng);
+      }
+      wrap.appendChild(head);
+      if(msg)wrap.appendChild(el('p','settings-hint',msg));
+      else if(!healthOn())wrap.appendChild(el('p','settings-hint','Not connected. Steps, exercise and sleep stay on this phone; with end-to-end sync the daily totals reach your computer too.'));
+    }
+    if(t||(cap&&healthOn())){
+      const tiles=el('div','health-tiles');
+      [['Steps today','steps',t&&t.steps],['Exercise today','exercise',t&&t.exerciseMin],['Sleep last night','sleep',t&&t.sleepMin]].forEach(function(x){
+        const c=el('div','health-tile');
+        c.appendChild(el('div','health-tile-k',x[0]));
+        c.appendChild(el('div','health-tile-v',fmt(x[1],x[2])));
+        tiles.appendChild(c);
+      });
+      wrap.appendChild(tiles);
+      // Apple Health never says which reads were allowed: a kind said no to simply comes back empty
+      if(cap&&healthIos()&&(!t||typeof t.steps!=='number'||typeof t.exerciseMin!=='number'||typeof t.sleepMin!=='number'))
+        wrap.appendChild(el('p','settings-hint','A blank number means nothing logged yet, or not allowed: the Health app, Sharing, Apps, Romulus.'));
+    } else if(!cap)wrap.appendChild(el('p','settings-hint','Steps, exercise and sleep come from Romulus on your phone (Settings → Health there), and reach this computer once your lists use end-to-end encryption.'));
+    return wrap;
+  };
+  // the goal to-dos due today or undated, ticked today or still open, with how far along each is
+  const drawGoals=function(){
+    const wrap=el('div','health-goals-sec'), tk=today();
+    const goals=state.tasks.filter(function(t){
+      return taskWs(t)!=='agent'&&(!t.due||t.due===tk)&&(!t.done||(t.doneAt&&healthYmd(new Date(t.doneAt))===tk))&&healthGoal(t.title);
+    });
+    wrap.appendChild(el('h3','settings-subhead','Goals'));
+    if(!goals.length){ wrap.appendChild(el('p','settings-hint','Add a to-do like “Walk 8,000 steps” or “Gym #exercise 30” and it ticks itself off.')); return wrap; }
+    const ul=el('div','health-goals'), day=state.health.days[tk]||{};
+    goals.forEach(function(t){
+      const gl=healthGoal(t.title), v=day[HEALTH_FIELD[gl.kind]];
+      const row=el('div','health-goal'+(t.done?' done':''));
+      row.appendChild(el('span','health-goal-t',t.title));
+      row.appendChild(el('span','mono health-goal-v',t.done?'Done':fmt(gl.kind,v)+' / '+fmt(gl.kind,gl.target)));
+      const bar=el('div','health-bar'), fill=el('div','health-fill');
+      fill.style.width=(t.done?100:Math.min(100,Math.round(100*(typeof v==='number'?v:0)/gl.target)))+'%';
+      bar.appendChild(fill); row.appendChild(bar);
+      ul.appendChild(row);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  };
   const drawPlan=function(){
     const card=el('div','health-plan');
     const head=el('div','health-plan-head');
@@ -190,10 +448,9 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
   };
   const draw=function(){
     view.innerHTML='';
-    if(phone)phone.top(view);
+    view.appendChild(drawNumbers());
     view.appendChild(drawPlan());
-    if(phone)phone.goals(view);
-    else view.appendChild(el('p','settings-hint','Steps, sleep and exercise show here on your phone.'));
+    view.appendChild(drawGoals());
   };
   // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today
   healthSetPlan=function(m,source){
@@ -205,95 +462,8 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     if(state.activeTab==='health')draw();
     return macroPlanSay(c,c.from);
   };
-  healthUi={draw:draw,setPhone:function(p){ phone=p; }};
+  healthUi={draw:draw};
   // the synced copy, once sync has started; and again each time the tab opens
   setTimeout(async function(){ await pullPlan(); if(state.activeTab==='health')draw(); },6000);
   $('tabHealth').addEventListener('click',function(){ if(planSync.pulled)pullPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); });
-}
-
-/* the phone's part: connect, today's numbers, and the goal to-dos with how far along each is */
-if(typeof window!=='undefined'&&window.phoneHealth&&healthUi){
-  const hApi=window.phoneHealth, APP=hApi.app||'Health Connect'; // "Apple Health" on an iPhone
-  const AUTO_KEY='tasks.healthAuto.v1'; // task id → the day this ticked it off
-  let last=null, st=null, msg='';
-  const draw=function(){ healthUi.draw(); };
-  const on=function(){ const g=st&&st.granted; return !!(st&&st.sdk==='ready'&&g&&(g.steps||g.sleep||g.exercise)); };
-  const auto=function(){ try{ return JSON.parse(localStorage.getItem(AUTO_KEY)||'{}')||{}; }catch(e){ return {}; } };
-  const dur=function(v){ return healthSay('exercise',v).split(' of ')[0]; };
-  const fmt=function(kind,v){ return v==null?'–':kind==='steps'?Number(v).toLocaleString('en-US'):dur(v); };
-  const top=function(view){
-    const head=el('div','health-head');
-    const btn=el('button','btn-accent',st&&st.sdk==='install'?'Get Health Connect':'Connect '+APP);
-    btn.hidden=on()||!!(st&&st.sdk==='none');
-    btn.addEventListener('click',async function(){
-      btn.disabled=true;
-      try{ await hApi.connect(); }catch(e){ msg='Couldn’t open '+APP+'.'; }
-      await refresh();
-    });
-    const mng=el('button','ghost mono','Manage'); mng.hidden=!on();
-    mng.addEventListener('click',function(){ hApi.manage().catch(function(){ msg='Couldn’t open '+APP+'.'; draw(); }); });
-    head.appendChild(btn); head.appendChild(mng);
-    view.appendChild(head);
-    const say=msg||(!st?'':st.sdk==='none'?APP+' isn’t available on this phone.':st.sdk==='install'?'Install or update Health Connect first.':!on()?'Not connected.':'');
-    if(say)view.appendChild(el('p','settings-hint',say));
-    if(on()){
-      const g=st.granted, tiles=el('div','health-tiles');
-      [['Steps today','steps',last&&last.steps,g.steps],['Sleep last night','sleep',last&&last.sleepMin,g.sleep],['Exercise today','exercise',last&&last.exerciseMin,g.exercise]].forEach(function(x){
-        const c=el('div','health-tile');
-        c.appendChild(el('div','health-tile-k',x[0]));
-        c.appendChild(el('div','health-tile-v',x[3]?fmt(x[1],x[2]):'–'));
-        if(!x[3])c.appendChild(el('div','health-tile-s','not allowed'));
-        tiles.appendChild(c);
-      });
-      view.appendChild(tiles);
-      // Apple Health never says which reads were allowed: a type said no to simply comes back empty
-      if(hApi.ios&&last&&(last.steps==null||last.sleepMin==null||last.exerciseMin==null))
-        view.appendChild(el('p','settings-hint','A blank number means nothing logged yet, or not allowed: the Health app, Sharing, Apps, Romulus.'));
-    }
-  };
-  const goals=function(view){
-    const today=last&&last.date||formatDate(new Date());
-    const goals=state.tasks.filter(function(t){
-      return taskWs(t)!=='agent'&&(!t.due||t.due===today)&&(!t.done||(t.doneAt&&formatDate(new Date(t.doneAt))===today))&&healthGoal(t.title);
-    });
-    view.appendChild(el('h3','settings-subhead','Goals'));
-    if(!goals.length){ view.appendChild(el('p','settings-hint','Add a to-do like “Walk 8,000 steps” and it ticks itself off.')); return; }
-    const ul=el('div','health-goals');
-    goals.forEach(function(t){
-      const gl=healthGoal(t.title), v=last?(gl.kind==='steps'?last.steps:gl.kind==='sleep'?last.sleepMin:last.exerciseMin):null;
-      const row=el('div','health-goal'+(t.done?' done':''));
-      row.appendChild(el('span','health-goal-t',t.title));
-      row.appendChild(el('span','mono health-goal-v',t.done?'Done':fmt(gl.kind,v)+' / '+fmt(gl.kind,gl.target)));
-      const bar=el('div','health-bar'), fill=el('div','health-fill');
-      fill.style.width=(t.done?100:Math.min(100,Math.round(100*(v||0)/gl.target)))+'%';
-      bar.appendChild(fill); row.appendChild(bar);
-      ul.appendChild(row);
-    });
-    view.appendChild(ul);
-  };
-  const tick=async function(){
-    if(!on()||document.hidden)return;
-    try{ last=await hApi.today(); }catch(e){ return; }
-    const skip=auto(), hits=healthToTick(state.tasks,last,skip,taskWs);
-    hits.forEach(function(h){
-      const t=state.tasks.find(function(x){ return x.id===h.id; });
-      if(!t||t.done)return;
-      setDone(t,true);
-      skip[h.id]=last.date;
-      voiceToast('Checked off “'+t.title+'”: '+healthSay(h.kind,h.value));
-    });
-    Object.keys(skip).forEach(function(id){ if(skip[id]!==last.date)delete skip[id]; }); // only today's count
-    try{ localStorage.setItem(AUTO_KEY,JSON.stringify(skip)); }catch(e){}
-    if(hits.length)touch();
-    else if(state.activeTab==='health')draw();
-  };
-  const refresh=async function(){
-    try{ st=await hApi.status(); msg=''; }catch(e){ msg='Couldn’t reach '+APP+'.'; }
-    await tick();
-    if(state.activeTab==='health')draw();
-  };
-  healthUi.setPhone({top:top,goals:goals,date:function(){ return last&&last.date||null; }});
-  document.addEventListener('visibilitychange',function(){ if(!document.hidden)refresh(); }); // back from the permission sheet, or a new day
-  setTimeout(refresh,8000); // after the tasks have loaded
-  setInterval(tick,10*60*1000);
 }

@@ -37,8 +37,6 @@ ${addChannel('school', schoolCfg)}
 const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.js'), 'utf8') + '</script>';
 // Finance on the phone (window.phoneFinance: fingerprint-locked, paired from the computer's Finance tab)
 const financePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'finance-phone.js'), 'utf8') + '</script>';
-// Health Connect on the phone (window.phoneHealth: goal to-dos check themselves off, renderer/js/health.js)
-const healthPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'health-phone.js'), 'utf8') + '</script>';
 // "Update" banner when a newer release is on GitHub (update-phone.js)
 const updatePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'update-phone.js'), 'utf8') + '</script>';
 // store.js says which build of the phone app this is. On Android each build flavor brings its own copy from
@@ -50,7 +48,7 @@ const storeName = storeArg > 0 ? process.argv[storeArg + 1] : null;
 if (storeArg > 0 && !/^[a-z]+$/.test(storeName || '')) { console.error('usage: node prepare-www.js [--store appstore]'); process.exit(1); }
 // the desktop page's Content-Security-Policy bans inline scripts, and the phone page is built from them, so it stays desktop-only
 html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\r?\n?/, '');
-html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + healthPhone + '\n' + updatePhone);
+html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 // everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is

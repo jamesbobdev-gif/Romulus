@@ -52,7 +52,8 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
     user-initiated transfer, not sharing.
   - Still declare what the app processes and sends on the user's behalf, marked "processed ephemerally" /
     "not collected" as appropriate: personal info (name, email, address in the Locked profile), financial
-    info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks).
+    info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks), health and
+    fitness (Health Connect daily totals: on the phone, or end-to-end encrypted between his own devices).
   - Encrypted in transit: yes. Users can request deletion: yes, in the app (Settings → Device sync →
     Delete my synced data, which needs the `sync-delete` function deployed; see below). Play's
     account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
@@ -67,18 +68,17 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
   say "Hey Romulus", show the app opening to listen.
 - **Exact alarms** (`SCHEDULE_EXACT_ALARM`, from the reminders plugin): declare that reminders at the
   time the user set are a core feature of a task and calendar app.
-- **Health, financial features**: Finance is a personal budget view, not a financial service: answer no to
+- **Financial features**: Finance is a personal budget view, not a financial service: answer no to
   loans, banking and crypto.
-- **Health Connect** (`READ_STEPS`, `READ_SLEEP`, `READ_EXERCISE`): fill in the Health apps declaration
-  (App content → Health apps) and the Health Connect permissions form. Purpose for each: "Ticks off the
-  user's own goal to-dos (for example 'Walk 8,000 steps') when Health Connect shows the goal was met. Read
-  only, while the app is open; the totals stay in memory on the phone and are never stored, synced or
-  shared." Category: fitness / habit tracking. Data safety: add *Health and fitness → Health info and
-  Fitness info*, "processed ephemerally", not collected, not shared. Play asks for a video: the
-  Health tab → Connect, the Health Connect permission screen, then a "Walk 1,000 steps" to-do ticking itself
-  off. The privacy policy already has the Health Connect section the review checks for.
-- **AI-generated content**: Romulus shows replies from AI services the user connects. If review treats it as
-  a generative-AI app, it will ask for an in-app way to report offensive output; that isn't built yet.
+- **Health**: the app reads Health Connect (steps, exercise, sleep; read only) so tasks with a goal like
+  "Walk #steps 8000" tick themselves off. Health apps: Yes, Fitness. Health Connect declaration: read Steps,
+  Exercise, Sleep, used only to tick off those tasks, not shared, not for ads, not sent to AI; privacy policy
+  link `.../PRIVACY.md#health`. Data safety: Fitness info, not collected by the developer (on the phone, or
+  synced end-to-end encrypted). Google can take a week or more to review the declaration.
+- **AI-generated content**: Romulus shows replies from AI services the user connects. Every AI reply has a
+  **Report** link (renderer/js/ai-report.js) that sends that one reply, which AI wrote it and a reason to the
+  Romulus server's `ai_reports` table, after the user confirms. Read reports in the Supabase dashboard
+  (Table editor, ai_reports). Needs `supabase/migrations/20261114_ai_reports.sql` pasted in the SQL editor first.
 
 ### Store listing
 
@@ -115,8 +115,8 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
    starting `CN=`), `MS_STORE_PUBLISHER_NAME` (Package/Properties/PublisherDisplayName).
 3. Push a tag; download `microsoft-store-appx` from the run and upload it as a submission. The Store signs it,
    so Store installs have no SmartScreen warning. Use the same privacy URL and listing text as above.
-4. Store tiles currently use electron-builder's stock images; for a better look, add the tile images to
-   `build/appx/` (StoreLogo 50×50, Square44x44Logo, Square150x150Logo, Wide310x150Logo).
+4. The Store tiles (StoreLogo, Square44x44, Small/Square150/Wide310x150/Large, each at 100% and 200%) are in
+   `build/appx/`, made from `build/icon.png`. Remake them the same way if the icon changes.
 
 ## Signing the Windows installer (Azure Trusted Signing)
 
@@ -171,11 +171,11 @@ prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`).
 7. **Reviewer note** (App Review Information): the same as Play's: no accounts of ours, tasks work offline,
    AI features need the reviewer's own key, entered in Settings → AI. Apple's reviewers do ask for a demo
    path; say which free key to use (a Gemini key from aistudio.google.com).
-8. **HealthKit** (the Health tab, `HealthDataPlugin.swift`): the App ID needs the HealthKit capability. With
+8. **HealthKit** (the Health tab, `HealthPlugin.swift`): the App ID needs the HealthKit capability. With
    automatic signing and the Admin key the first build turns it on itself; if the archive fails on
    "entitlement not supported", switch it on by hand at developer.apple.com → Identifiers →
    `com.jartro.tasks` → HealthKit. Review checks three things: a privacy policy with a HealthKit section (the
-   Apple Health section of `PRIVACY.md`), the purpose string in `Info.plist`
+   Health section of `PRIVACY.md`), the purpose string in `Info.plist`
    (`NSHealthShareUsageDescription`), and that health data is used for the feature alone. Add to the
    reviewer note: "The Health tab reads steps, sleep and workouts from Apple Health, read-only, to tick off
    the user's own goal to-dos such as 'Walk 8,000 steps'. Nothing is stored, synced or shared." App Privacy:

@@ -218,11 +218,19 @@ end $$;
 
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours,
--- :worker, :updates, :finance, :files, :files-gone, :devices, :macros; the id is 13+ characters of letters, digits, - and _) and a document of at
--- most 4 MB, so the anon key alone can't fill the table (supabase/migrations/20261028_sync_limits.sql), a row moved to v2
--- takes nothing but another moved marker, and sync_guard has to let the write through: false is also the answer for an
--- account that is full or saving too often (sync_usage says which).
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone, :devices, :health, :macros;
+-- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
+-- can't fill the table (supabase/migrations/20261028_sync_limits.sql), and sync_guard has to let the write through:
+-- false is also the answer for an account that is full or saving too often (sync_usage says which).
+-- A device that moves its lists to end-to-end encryption (renderer/js/sync-crypto.js) leaves {"moved":"v2"}
+-- under the old key; from then on that row takes no write but another moved marker, so an older build that
+-- only knows the old key can't upload its copy in the clear on top (supabase/migrations/20261031_sync_moved_v2.sql).
+create or replace function public.sync_is_moved(p_sync_key text)
+returns boolean
+language sql stable
+set search_path = public
+as $$ select coalesce((select doc->>'moved' = 'v2' from public.tasks_sync where sync_key = p_sync_key), false) $$;
+
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
 -- still the version read (updated_at unchanged). false = someone else wrote in between: read and merge again.
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
@@ -232,7 +240,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|macros))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -252,7 +260,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|macros))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -269,7 +277,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|macros))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then

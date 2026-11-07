@@ -6,17 +6,18 @@ import android.net.Uri;
 import android.os.Bundle;
 
 /**
- * Health Connect's "why does this app want your data?" link (its permission screen, and Android 14's
- * permission-usage page): opens the Health part of PRIVACY.md in the browser, then gets out of the way.
- * Health Connect won't show its permission screen for an app that doesn't answer these.
+ * Health Connect opens this from its permission screen ("Read privacy policy") and from Android's
+ * permission settings. It shows the privacy policy, whose Health section says what is read and where it goes.
  */
 public class HealthPrivacyActivity extends Activity {
-    static final String URL = "https://github.com/jamesbobdev-gif/Romulus/blob/main/PRIVACY.md#health-connect-android";
+    static final String POLICY = "https://github.com/jamesbobdev-gif/Romulus/blob/main/PRIVACY.md#health";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(URL))); } catch (Exception ignored) {}
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(POLICY)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception ignored) {}
         finish();
     }
 }

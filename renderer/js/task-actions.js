@@ -84,6 +84,8 @@ async function addTask(){
   if(!tag&&ws!=='agent'){ const h=hashTag(title); if(h){ title=h.title; tag=h.tag; } }
   // "every sunday at 5": the weekday wins over the today-or-tomorrow a lone time would give; a repeat needs a date
   if(recur&&!$('newDue').value&&(recur.onDay||!due))due=recur.due;
+  // typed "@Sam": it goes to Sam in the group, waiting on their To do tab, not onto my list (family.js)
+  if(ws!=='agent'&&!photoUrls.length&&!recur&&typeof famSendTyped==='function'&&famSendTyped(title,due)){ titleEl.value=''; $('newDue').value=''; buzz('send'); titleEl.focus(); return; }
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
   if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }

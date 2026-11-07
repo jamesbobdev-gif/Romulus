@@ -33,15 +33,15 @@ jobs:
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       # the project the supporters line at the bottom reads from, and the private click counter writes to: the same
       # publishable project the app's release build uses (repository variables PAIR_URL, PAIR_KEY). Without them
-      # the line just doesn't show and nothing is counted. solo: the Individual plan's card shows only once the
-      # release build carries its Stripe link (PAY_SOLO_URL), so the page never sells a plan the app can't turn on.
+      # the line just doesn't show and nothing is counted. personal: the Personal plan's card shows only once the
+      # release build carries its Stripe link (PAY_PERSONAL_URL), so the page never sells a plan the app can't turn on.
       - name: Point the page at the Romulus server
         env:
           PAIR_URL: ${{ vars.PAIR_URL }}
           PAIR_KEY: ${{ vars.PAIR_KEY }}
-          PAY_SOLO_URL: ${{ vars.PAY_SOLO_URL }}
+          PAY_PERSONAL_URL: ${{ vars.PAY_PERSONAL_URL }}
         run: |
-          node -e "if (process.env.PAIR_URL && process.env.PAIR_KEY) require('fs').writeFileSync('site/romulus-server.js', 'window.ROMULUS_SERVER=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY, solo: !!process.env.PAY_SOLO_URL }) + ';\n')"
+          node -e "if (process.env.PAIR_URL && process.env.PAIR_KEY) require('fs').writeFileSync('site/romulus-server.js', 'window.ROMULUS_SERVER=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY, personal: !!process.env.PAY_PERSONAL_URL }) + ';\n')"
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: site

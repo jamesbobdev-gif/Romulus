@@ -15,7 +15,7 @@ Romulus works the moment you install it: a to-do list on your computer, nothing 
 
 **Mac:** download the `.dmg` from the same page and drag Romulus to Applications. It isn't signed by Apple yet, so the first open needs **System Settings → Privacy & Security → Open Anyway**, and updates have to be downloaded by hand until it is.
 
-**Linux:** download the `.AppImage`, `chmod +x` it and run it. Encrypted keys need a keyring (GNOME Keyring or KWallet).
+**Linux:** on Ubuntu, Debian or Mint, download `Romulus-<version>-amd64.deb` and open it (or `sudo apt install ./Romulus-<version>-amd64.deb`): it adds Romulus to the app menu, and updates install after your password. Elsewhere, download the `.AppImage`, `chmod +x` it and run it; on Ubuntu 22.04 and newer an AppImage also needs `sudo apt install libfuse2t64` (`libfuse2` on 22.04) and, from 24.04, the `--no-sandbox` flag, which is why the `.deb` is the better pick there. Encrypted keys need a keyring (GNOME Keyring or KWallet).
 
 **From source:** `npm install` then `npm start` (Node 22 or newer).
 
@@ -125,16 +125,19 @@ Then choose, per calendar, whether its events become to-dos and whether your tas
 
 ### Health goals (phone)
 
-On the phone, the **Health** tab → **Connect** lets Romulus read your steps, sleep and workouts (read-only)
-from the phone's health store. On an iPhone that is **Apple Health**, which the phone, an Apple Watch and most
-health apps write to; if a number stays blank, allow it in the Health app under Sharing → Apps → Romulus. On
-Android it is **Health Connect**, which Samsung Health, Fitbit, Google Fit, Oura, Garmin and most other health
-apps write to; on Android 13 or older the button first installs Health Connect from Play.
+On the phone, **Settings → Health** (or **Connect** on the **Health** tab) lets Romulus read your steps, exercise
+and sleep, read-only. On Android that is **Health Connect**, which Samsung Health, Fitbit, Google Fit, Oura, Garmin
+and most other health apps write to (on Android 13 or older it first installs Health Connect from Play). On an
+iPhone it is **Apple Health**, which the phone, an Apple Watch and most health apps write to; if a number stays
+blank, allow it in the Health app under Sharing → Apps → Romulus.
 
-Then write goals as ordinary to-dos, due today or with no date, and they tick themselves off once you've
-done them: **Walk 8,000 steps** (or 10k steps), **Sleep 7 hours** (or 8h of sleep), **Work out 30 min**
-(or 45 minutes of yoga, run 1 hour). A repeating one comes back the next day as usual. If you untick one,
-it stays unticked for the day. The numbers stay on the phone; only the tick syncs.
+Then give a to-do a goal and it ticks itself off once the day's total gets there. As a hashtag: **Walk #steps
+8000**, **Gym #exercise 30** (minutes, or 1h), **Bed early #sleep 7h30**. Or in plain words: **Walk 8,000 steps**
+(or 10k steps), **Sleep 7 hours** (or 8h of sleep), **Work out 30 min** (or 45 minutes of yoga, run 1 hour). A
+to-do due today or with no date goes by today's total; one due yesterday by yesterday's. A repeating one comes
+back the next day as usual, and one you untick stays unticked for the day. The Health tab shows today's numbers
+and how far along each goal is. The daily totals stay on the phone unless your lists are end-to-end encrypted:
+then they sync, sealed, and your computer ticks the goals off too.
 
 ## 5. Where your keys live
 
@@ -151,6 +154,7 @@ A Link wallet's sign-in lives in `link-wallet\auth.json` in the same folder, kep
 - **The Claude card says "not installed" after installing.** Press **I already have it**: the app looks again. If `claude` works in a terminal but not here, restart Romulus so it sees the new PATH.
 - **Sign in to Claude never finishes.** Close the terminal window it opened, run `claude auth login` yourself in any terminal, then press Sign in again (or just restart Romulus: it checks on start).
 - **"not reachable" on the Local model panel.** Ollama isn't running on this computer (`ollama serve` should be up). For a model on another machine, don't point this computer at it over the network: install Romulus there, switch on **Run local tasks here for all my devices**, and this computer picks it up through sync ([docs/second-machine.md](second-machine.md)).
+- **A task says "This task needs your local model, and none is set up".** It has private words or is about your money, so no cloud AI may see it, and local tasks wait until a model exists. Set one up (above), or for a private-word task put `#claude` in its title to let a cloud AI have it anyway.
 - **Device sync says "fill in the three personal fields".** All three are needed: URL, anon key, sync key.
 - **The phone and computer show different lists.** Check the sync key matches exactly on both; one character off is a different (empty) list.
 - **Something else.** The app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log`; it usually names the problem. Open an issue with the relevant lines (strip anything personal).

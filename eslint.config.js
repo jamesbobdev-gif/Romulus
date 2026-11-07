@@ -18,7 +18,7 @@ const bugsOnly = {
 };
 
 // inlined into the phone's page by mobile/prepare-www.js, so they share the renderer's globals (finance-phone.js calls ebtClean)
-const PHONE_PAGE_SCRIPTS = ['mobile/cal-phone.js', 'mobile/finance-phone.js', 'mobile/health-phone.js', 'mobile/update-phone.js'];
+const PHONE_PAGE_SCRIPTS = ['mobile/cal-phone.js', 'mobile/finance-phone.js', 'mobile/update-phone.js'];
 
 module.exports = [
   { ignores: ['node_modules/**', 'dist/**', 'mobile/android/**', 'mobile/node_modules/**', 'mobile/www/**', 'site/**', 'supabase/functions/**', 'minipc/**', 'scripts/demo/build/**'] /* the demo build is a copy of renderer/ */ },

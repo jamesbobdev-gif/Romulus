@@ -22,7 +22,29 @@ goes only to services *you* connect, under your own accounts and keys.
 - The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.
-- Health data on a phone (see below): read on the phone, never stored, synced or sent anywhere.
+- Health (a phone, when you turn it on): see "Health" below.
+
+## Health
+
+When you turn on Health on a phone (Settings → Health, or Connect on the Health tab), Romulus reads three things from
+the phone's health store, which is Health Connect on Android and Apple Health (HealthKit) on an iPhone: your
+**steps**, your **exercise** (workouts; on an iPhone also the watch's exercise minutes) and your **sleep**. It reads
+only; it never writes to either. From them it keeps one line per day (total steps, minutes of exercise, minutes of
+sleep) for the last 60 days, and uses them for one thing: ticking off tasks you gave a health goal, such as
+"Walk #steps 8000" or "Walk 8,000 steps".
+
+- The individual samples (each walk, each night's stages) are not kept or sent anywhere.
+- The daily totals are never sent to any AI service, cloud or local, and are not used for ads or sold.
+- When your lists are end-to-end encrypted, the daily totals sync to your other devices the same way, so a
+  computer can tick those tasks off too. The sync server can't read them. Without end-to-end encryption they
+  stay on the phone.
+- Turning Health off stops the reading. Health Connect's own settings, or on an iPhone the Health app under
+  Sharing → Apps → Romulus, take the permission back, and uninstalling removes what was kept on the phone.
+
+Romulus's use of Health Connect data follows the
+[Health Connect Permissions policy](https://support.google.com/googleplay/android-developer/answer/12991134),
+including its limited use requirements. Its use of Apple Health data follows Apple's HealthKit rules: never for
+advertising or marketing, never sold, never given to a third party.
 
 ## What leaves your device, and where it goes
 
@@ -86,24 +108,11 @@ for one thing: ticking off a to-do that names a goal, such as "Walk 8,000 steps"
 - To stop it, tap **Manage** on the Health tab, or take the permissions back in Health Connect's own
   settings.
 
-## Apple Health (iPhone)
-
-The same feature on an iPhone reads from Apple Health (HealthKit) when you tap **Connect Apple Health** on the
-Health tab and allow it: **steps**, **sleep**, **workouts** and **exercise minutes**, read-only, only while the
-app is open, and only to tick off a goal to-do such as "Walk 8,000 steps".
-
-- As on Android, the totals stay in the app's memory and are dropped when it closes: not saved, not synced, not
-  sent to any AI service, not sent to us or anyone else. Only the ticked-off to-do syncs.
-- Romulus never writes to Apple Health, never uses health data for advertising or marketing, never sells it,
-  and never gives it to a third party. That is what Apple's HealthKit rules require, and it is also simply
-  true: there is nowhere for it to go.
-- To stop it, tap **Manage** on the Health tab, which opens the Health app: Sharing → Apps → Romulus.
-
 ## Permissions on iPhone
 
 - **Notifications**: reminders.
-- **Health** (read only): steps, sleep, workouts and exercise minutes, to tick off goal to-dos, when you
-  connect it.
+- **Health** (read only): steps, exercise and sleep, for tasks that tick themselves off, when you turn on
+  Health. See "Health" above.
 
 ## Permissions on Android
 
@@ -111,7 +120,8 @@ app is open, and only to tick off a goal to-do such as "Walk 8,000 steps".
 - **Notifications**: reminders, and the notice that shows while "Hey Romulus" is listening.
 - **Biometrics**: to unlock Finance.
 - **Camera** (through Google's code scanner): to scan the pairing code from your computer.
-- **Health Connect: steps, sleep, exercise** (read only): to tick off goal to-dos, when you connect it.
+- **Health Connect** (steps, exercise, sleep; read only): for tasks that tick themselves off, when you turn
+  on Settings → Health. See "Health" above.
 
 ## Deleting your data
 
