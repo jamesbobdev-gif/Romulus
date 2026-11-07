@@ -496,6 +496,9 @@ function famInput(id,ph,val,cls){ const i=el('input','sm'+(cls?' '+cls:'')); if(
 function famDueText(due){ return due?dateInfo(due,null).text:''; }
 function renderFamily(){
   const view=$('familyView'); if(!view)return;
+  const a=document.activeElement;
+  if(a&&a.isContentEditable&&view.contains(a)){ fam.renderLater=true; return; } // someone is typing in a line: after
+  fam.renderLater=false;
   view.textContent='';
   const d=fam.doc, me=fam.me;
   if(!famOn()){
@@ -617,6 +620,24 @@ function famInviteShown(sec){
   sec.appendChild(el('p','fam-hint',r.say));
   if(r.share){ const row=el('div','fam-row'); row.appendChild(famCopyButton(r.share)); sec.appendChild(row); }
 }
+/* Text that edits in place: one click puts the cursor where it landed. Enter or leaving it saves, Escape puts
+   it back. While it's being typed in, the tab doesn't redraw under it (renderFamily waits for it). */
+function famEditable(node,text,save){
+  node.contentEditable='plaintext-only';
+  if(node.contentEditable!=='plaintext-only')node.contentEditable='true';
+  node.spellcheck=true; node.setAttribute('role','textbox'); node.setAttribute('aria-label','Edit: '+text);
+  let undone=false;
+  node.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){ e.preventDefault(); node.blur(); }
+    else if(e.key==='Escape'){ undone=true; node.textContent=text; node.blur(); }
+  });
+  node.addEventListener('blur',function(){
+    const v=famStr(node.textContent,200);
+    if(!undone&&v!==text)save(v);
+    undone=false;
+    if(fam.renderLater){ fam.renderLater=false; setTimeout(function(){ if(state.activeTab==='family')renderFamily(); },0); }
+  });
+}
 function famListCard(l){
   const d=fam.doc, card=el('div','fam-list');
   const items=d.items.filter(function(it){ return it.list===l.id; });
@@ -630,11 +651,16 @@ function famListCard(l){
   del.addEventListener('click',function(){ if(confirm('Delete “'+l.name+'” for everyone in the group?'))famDel([l.id].concat(items.map(function(it){ return it.id; }))); });
   head.appendChild(pen); head.appendChild(del); card.appendChild(head);
   open.concat(done).forEach(function(it){
-    const row=el('label','fam-item'+(it.done?' done':''));
-    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=it.done;
+    // the box ticks; the words are edited where they are, the cursor landing where the click did
+    const row=el('div','fam-item'+(it.done?' done':''));
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=it.done; cb.setAttribute('aria-label','Got it: '+it.text);
     cb.addEventListener('change',function(){ famPut('items',Object.assign({},it,{done:cb.checked})); });
     row.appendChild(cb);
     const tx=el('span','fam-item-text',it.text);
+    famEditable(tx,it.text,function(v){
+      if(!v)famDel(it.id); // emptied: the line goes
+      else famPut('items',Object.assign({},it,{text:v}));
+    });
     if(it.by&&it.by!==fam.me)tx.title='Added by '+famName(d,it.by);
     row.appendChild(tx);
     if(it.by&&it.by!==fam.me)row.appendChild(el('span','fam-by',famName(d,it.by)));
@@ -654,6 +680,8 @@ function famListCard(l){
     setTimeout(function(){ const x=document.querySelector('[data-fam-add="'+l.id+'"]'); if(x)x.focus(); },0);
   };
   inp.dataset.famAdd=l.id;
+  // a click on the card's empty space goes straight to typing a new line
+  card.addEventListener('click',function(e){ if(e.target===card||e.target===head||e.target.classList.contains('fam-list-name'))inp.focus(); });
   inp.addEventListener('keydown',function(e){ if(e.key==='Enter')put(); });
   add.appendChild(inp); add.appendChild(famBtn('Add','ghost mono',put));
   if(done.length)add.appendChild(famBtn('Clear checked ('+done.length+')','ghost mono',function(){ famDel(done.map(function(it){ return it.id; })); }));
