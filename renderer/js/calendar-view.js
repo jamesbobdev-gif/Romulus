@@ -67,6 +67,8 @@ function switchTab(tab){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
+  const act=document.querySelector('.tab.active'); // the bar scrolls sideways: bring the tab picked into view
+  if(act&&act.scrollIntoView)act.scrollIntoView({inline:'center',block:'nearest'}); // centred, so it isn't under an edge fade
   $('listView').hidden=tab==='calendar'||isViewTab(tab);
   $('calView').hidden=tab!=='calendar';
   $('ideasView').hidden=tab!=='ideas';
