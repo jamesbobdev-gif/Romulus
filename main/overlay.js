@@ -148,4 +148,18 @@ function start() {
 }
 function stop() { try { globalShortcut.unregisterAll(); } catch (e) {} if (overlay && !overlay.isDestroyed()) overlay.destroy(); }
 
-module.exports = { init, start, stop, toggle, shortcutLabel };
+/* a picture he picked (an EBT receipt for main/finance.js finance:ebtReceipt) and one question about it: Lupa first
+   when it's set up, so the picture stays home, then his cloud AIs in his order. → {text, via} or {why} */
+async function readPicture(question, image) {
+  const cfg = ctx.readConfig(), local = localModel();
+  const deps = {
+    fetch, order: ai.cloudOrder(), local,
+    notReady: providers.settings(cfg).order.filter((o) => o.on && !ai.cloudReady(o.id)).map((o) => o.id),
+    claudeCli: overlayAsk.claudeCliRunner({ spawn, exe: claudeExe(cfg), env: claudeEnv(cfg), dir: path.join(ctx.userData(), 'screen-helper'), model: (cfg.ai || {}).claudeModel }),
+  };
+  let r = local ? await overlayAsk.ask(cfg, { question, image, lane: 'local' }, deps) : null;
+  if (!r || !r.text) r = await overlayAsk.ask(cfg, { question, image, lane: 'cloud' }, deps);
+  return r;
+}
+
+module.exports = { init, start, stop, toggle, shortcutLabel, readPicture };

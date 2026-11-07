@@ -15,7 +15,7 @@ Romulus works the moment you install it: a to-do list on your computer, nothing 
 
 **Mac:** download the `.dmg` from the same page and drag Romulus to Applications. It isn't signed by Apple yet, so the first open needs **System Settings → Privacy & Security → Open Anyway**, and updates have to be downloaded by hand until it is.
 
-**Linux:** download the `.AppImage`, `chmod +x` it and run it. Encrypted keys need a keyring (GNOME Keyring or KWallet).
+**Linux:** on Ubuntu, Debian or Mint, download `Romulus-<version>-amd64.deb` and open it (or `sudo apt install ./Romulus-<version>-amd64.deb`): it adds Romulus to the app menu, and updates install after your password. Elsewhere, download the `.AppImage`, `chmod +x` it and run it; on Ubuntu 22.04 and newer an AppImage also needs `sudo apt install libfuse2t64` (`libfuse2` on 22.04) and, from 24.04, the `--no-sandbox` flag, which is why the `.deb` is the better pick there. Encrypted keys need a keyring (GNOME Keyring or KWallet).
 
 **From source:** `npm install` then `npm start` (Node 22 or newer).
 

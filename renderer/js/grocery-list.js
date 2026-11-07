@@ -144,9 +144,9 @@ function setEbtOn(on){
 function wireEbtSetting(){
   const box=$('ebtOn'); if(!box)return;
   const sec=$('ebtSection');
-  const show=function(){ box.checked=ebtOn(); };
+  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; };
   show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
-  box.addEventListener('change',function(){ setEbtOn(box.checked); });
+  box.addEventListener('change',function(){ setEbtOn(box.checked); show(); });
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireEbtSetting); else setTimeout(wireEbtSetting,0);
 // → the wallet (finance-ebt.js ebtWallet) when he's set one up and EBT is on, else null

@@ -878,6 +878,9 @@ textarea.ask-other{min-height:70px}
 .fin-ebt-form{align-items:flex-end;flex-wrap:wrap;margin-top:10px}
 .fin-ebt-field{display:flex;flex-direction:column;flex:1;min-width:110px}
 .fin-ebt-field .fin-input{margin:4px 0 0}
+.fin-ebt-form .btn-accent{align-self:flex-end;height:36px}
+.fin-ebt-update{margin-top:8px}
+.fin-ebt-tools{display:flex;gap:8px;margin-top:8px}
 .fin-alert{margin:4px 0;padding:6px 10px;border:1px solid var(--late-line);border-radius:8px;background:var(--late-bg);color:var(--late);font-size:12.5px}
 .fin-mix{margin:4px 0 8px}
 .fin-mix .fin-hbar{grid-template-columns:minmax(0,12em) 1fr auto}

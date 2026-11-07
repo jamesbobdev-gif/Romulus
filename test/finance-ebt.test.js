@@ -73,3 +73,26 @@ test('a grocery run gets about what is left on EBT, and nothing when there is no
   assert.strictEqual(isGroceryRun(tasks[0], tasks), true);
   assert.strictEqual(isGroceryRun({ ws: 'agent', title: 'Book a haircut' }, tasks), false);
 });
+
+test('a receipt answer gives the balance and the receipt day', () => {
+  const { ebtReceiptAnswer } = require('../renderer/js/finance-ebt');
+  const r = ebtReceiptAnswer('Here you go: {"balance": 83.2, "date": "2026-11-05"}', NOW);
+  assert.strictEqual(r.balance, 83.2);
+  assert.strictEqual(new Date(r.at).getDate(), 5);
+  assert.strictEqual(ebtReceiptAnswer('{"balance": null, "date": null}', NOW), null);
+  assert.strictEqual(ebtReceiptAnswer('I cannot read it', NOW), null);
+  assert.strictEqual(ebtReceiptAnswer('{"balance": 10, "date": "2027-01-01"}', NOW).at, NOW); // a future date isn't trusted
+});
+
+test('alerts: deposit day, each EBT order, and low balance, each once', () => {
+  const { ebtAlertsDue } = require('../renderer/js/finance-ebt');
+  const dep = at(10, 6, 8);
+  const ebt = { balance: 40, at: at(10, 1), day: 6, monthly: 291 };
+  const orders = [{ title: 'Groceries', at: at(10, 6, 7), ebt: 320 }, { title: 'Old', at: at(9, 1), ebt: 5 }];
+  const a = ebtAlertsDue(ebt, orders, {}, 25, dep);
+  assert.deepStrictEqual(a.map((x) => x.key), ['dep|2026-11-06', 'ord|' + at(10, 6, 7), 'low|2026-11-06']);
+  assert.match(a[1].body, /About \$11\.00 left/);
+  const seen = {}; a.forEach((x) => { seen[x.key] = 1; });
+  assert.deepStrictEqual(ebtAlertsDue(ebt, orders, seen, 25, dep), []);
+  assert.deepStrictEqual(ebtAlertsDue({}, [], {}, 25, dep), []);
+});

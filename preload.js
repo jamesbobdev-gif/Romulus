@@ -118,6 +118,7 @@ contextBridge.exposeInMainWorld('desktop', {
   financeSetEbt: (ebt) => ipcRenderer.invoke('finance:setEbt', ebt),
   financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
   financeSetEbtOn: (on) => ipcRenderer.invoke('finance:setEbtOn', !!on),
+  financeEbtReceipt: (pic) => ipcRenderer.invoke('finance:ebtReceipt', pic),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),
