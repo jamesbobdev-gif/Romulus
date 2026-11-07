@@ -228,7 +228,7 @@
     </details>
     <details class="settings-panel settings-collapse" id="syncSection">
       <summary class="settings-label">Device sync</summary>
-      <p class="settings-hint">Adding a device? Press <b>Add a device</b> on one that already syncs, then type the code it shows into <b>Pairing code</b> on the new one. On a phone, press <b>Scan code</b> instead.</p>
+      <p class="settings-hint">New device? Press <b>Add a device</b> here, then enter the code on the new one.</p>
       <div class="settings-row">
         <input id="pairCodeIn" class="settings-inp mono" placeholder="Pairing code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" style="max-width:220px">
         <button id="pairUseBtn" class="btn-accent">Pair</button>
@@ -243,12 +243,12 @@
       <span id="syncStatus" class="mono" style="display:block;font-size:11px;color:var(--muted)"></span>
       <!-- the Romulus server new installs sync through, its space, and moving off it (hosted-sync.js) -->
       <div id="hostedBox" hidden style="margin-top:14px">
-        <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
-        <!-- shown once someone has the plan, so it's plain in Settings what they're on (hosted-sync.js) -->
-        <div id="hostedMyPlan" hidden style="margin:0 0 10px;padding:10px 12px;border:1px solid var(--accent);border-radius:10px">
-          <div class="settings-label" style="margin-bottom:4px;color:var(--accent)">Your plan: Family</div>
+        <!-- which plan, in a line, then the space used (hosted-sync.js) -->
+        <div id="hostedMyPlan" hidden style="margin:0 0 4px">
+          <div id="hostedMyPlanTitle" class="settings-label" style="margin-bottom:2px;color:var(--accent)">Your plan</div>
           <p id="hostedMyPlanInfo" class="settings-hint" style="margin:0"></p>
         </div>
+        <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
         <!-- the $5 plan, offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
         <div id="hostedPlan" hidden style="margin:0 0 10px">
           <!-- the words come from hostedPlanPitch (hosted-sync.js), which knows whether the links start with a free trial -->
@@ -257,37 +257,46 @@
             <button id="hostedPayBtn" class="btn-accent" hidden></button>
             <button id="hostedPayYearBtn" class="ghost mono" hidden>$50 a year</button>
             <button id="hostedPlanOwnBtn" class="ghost mono" hidden>Or use my own Supabase</button>
-            <button id="hostedJoinBtn" class="ghost mono">I have a family code</button>
+            <button id="hostedJoinBtn" class="ghost mono">I have a group code</button>
           </div>
         </div>
         <div id="hostedFamily" hidden style="margin:0 0 10px">
-          <div class="settings-label" style="margin-bottom:4px">Family</div>
           <p id="hostedFamilyInfo" class="settings-hint" style="margin:0 0 6px"></p>
           <div id="hostedFamilyList"></div>
           <div class="settings-row">
             <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
-            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family plan</button>
+            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family/group plan</button>
           </div>
         </div>
-        <div id="hostedHistory" hidden style="margin:0 0 10px">
-          <div class="settings-label" style="margin-bottom:4px">History</div>
-          <p class="settings-hint" style="margin:0 0 6px">Your lists as they were at the end of a day, for the last 30 days. Restoring brings back what was on them that day on every device; anything added since is removed.</p>
-          <div class="settings-row" style="align-items:center">
-            <select id="hostedHistoryDay" class="settings-inp" style="width:auto;margin:0"></select>
-            <button id="hostedRestoreBtn" class="ghost mono">Restore</button>
+        <!-- the rarely used settings, out of the way until wanted -->
+        <details class="settings-sub" id="hostedMore" style="margin-top:6px">
+          <summary class="settings-label">More</summary>
+          <div id="hostedHistory" hidden style="margin:8px 0 10px">
+            <p class="settings-hint" style="margin:0 0 6px">Restore your lists as they were at the end of a day (last 30 days).</p>
+            <div class="settings-row" style="align-items:center">
+              <select id="hostedHistoryDay" class="settings-inp" style="width:auto;margin:0"></select>
+              <button id="hostedRestoreBtn" class="ghost mono">Restore</button>
+            </div>
           </div>
-        </div>
-        <div id="hostedEarlyRow" hidden style="margin:0 0 10px">
-          <label class="settings-hint" style="display:flex;gap:8px;align-items:center;margin:0">
-            <input type="checkbox" id="hostedEarly"> Early access: get new versions of the app before everyone else (they may have rough edges)
-          </label>
-        </div>
-        <p id="hostedSupporters" class="settings-hint" hidden style="margin:0 0 10px"></p>
-        <div class="settings-row">
-          <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
-          <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
-          <button id="hostedDeleteBtn" class="ghost mono" hidden>Delete my synced data</button>
-        </div>
+          <!-- someone paying can put a name on the thanks list, or take it off (hosted-sync.js) -->
+          <div id="hostedNameRow" hidden style="margin:0 0 10px">
+            <div class="settings-row" style="align-items:center">
+              <input id="hostedNameIn" class="settings-inp" placeholder="Name on the thanks list (optional)" maxlength="40" autocomplete="off" style="max-width:260px;margin:0">
+              <button id="hostedNameBtn" class="ghost mono">Save name</button>
+            </div>
+          </div>
+          <div id="hostedEarlyRow" hidden style="margin:0 0 10px">
+            <label class="settings-hint" style="display:flex;gap:8px;align-items:center;margin:0">
+              <input type="checkbox" id="hostedEarly"> Get new versions early
+            </label>
+          </div>
+          <p id="hostedSupporters" class="settings-hint" hidden style="margin:0 0 10px"></p>
+          <div class="settings-row">
+            <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
+            <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
+            <button id="hostedDeleteBtn" class="ghost mono" hidden>Delete my synced data</button>
+          </div>
+        </details>
       </div>
       <!-- every device on these lists, and taking one off (devices.js) -->
       <div id="devicesBox" hidden style="margin-top:14px">
@@ -406,6 +415,7 @@
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
     <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
+    <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Group</button>
   </div>
 
   <section class="composer" aria-label="Add a task">
@@ -543,6 +553,7 @@
 
   <!-- Hours worked for school or work (hidden by default; js/hours.js draws it) -->
   <div id="hoursView" hidden></div>
+  <div id="familyView" class="fam-view" hidden></div>
 
   <!-- Finance (SimpleFIN on the computer and phone, CSV files anywhere; js/finance.js draws it) -->
   <div id="financeView" hidden></div>
@@ -588,6 +599,7 @@
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
 <script src="js/hosted-sync.js"></script>
+<script src="js/family.js"></script>
 <script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>

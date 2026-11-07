@@ -109,6 +109,12 @@ function buildRow(t,canDrag){
   const del=iconBtn(I.x,'Delete task');
   del.addEventListener('click',function(e){ e.stopPropagation(); deleteTask(t); });
   acts.appendChild(pen);
+  // send it to someone on the family plan: it waits on their Family tab for Add / No thanks (family.js)
+  if(!isAgentTask&&!t.done&&typeof famCanSend==='function'&&famCanSend()){
+    const sd=iconBtn(FAM_SEND_ICON,'Send to someone in the group'); sd.title='Send to someone in the group';
+    sd.addEventListener('click',function(e){ e.stopPropagation(); famSendTask(t); });
+    acts.appendChild(sd);
+  }
   // send an Agent task out as a legion: Lupa splits it so no cloud AI sees the whole of it (agent/legion.js)
   if(isAgentTask&&!t.done&&t.status!=='working'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
     const lg=iconBtn(I.legion,'Send out as a legion'); lg.title='Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report';

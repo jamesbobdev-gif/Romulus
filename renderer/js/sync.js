@@ -522,6 +522,10 @@ async function syncOnce(){
       if(!firstErr)firstErr=e;
     }
   }
+  // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
+  if(typeof familySync==='function'){
+    try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
+  }
   if(anyLocal){
     rebuildSnap();
     store.save(currentDoc());
@@ -584,6 +588,7 @@ function liveTargets(){
   profileList().forEach(function(ws){ add(syncState.cfg[ws]); });
   if(typeof ideasProfile==='function')add(ideasProfile());
   if(typeof hoursProfile==='function')add(hoursProfile());
+  if(typeof familyProfile==='function')add(familyProfile());
   Object.keys(out).forEach(function(id){ if(!out[id].topics.length)delete out[id]; });
   return out;
 }

@@ -1159,3 +1159,35 @@ body.review-open .top-right{display:none!important}
 .connect-err:empty{display:none}
 .connect-wait{margin-top:8px}
 .connect-done{margin:10px 0 0;padding:10px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--accent);font-size:13px}
+
+/* ── Family tab (renderer/js/family.js) ── */
+.fam-view{max-width:760px;margin:0 auto}
+.fam-sec{margin:0 0 18px}
+.fam-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 6px}
+.fam-hint{color:var(--muted);font-size:12.5px;margin:0 0 6px}
+.fam-empty{color:var(--muted);font-size:13px;text-align:center;padding:24px 0}
+.fam-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fam-grow{flex:1;min-width:140px}
+.fam-offer,.fam-list,.fam-send{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px;margin:0 0 8px}
+.fam-offer{border-left:3px solid var(--accent)}
+.fam-offer-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.fam-offer-title{font-weight:600;font-size:14.5px}
+.fam-note{font-size:13px;white-space:pre-wrap;margin:0 0 8px}
+.fam-send{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fam-list-head{display:flex;align-items:center;gap:8px;margin:0 0 4px}
+.fam-list-head .fam-hint{margin:0 auto 0 0}
+.fam-list-name{font-weight:600;font-size:14.5px}
+.fam-list-head .icon{opacity:.55}
+.fam-list-head:hover .icon{opacity:1}
+.fam-item{display:flex;align-items:center;gap:10px;padding:5px 2px;font-size:14px;cursor:pointer}
+.fam-item input{flex:none}
+.fam-item-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.fam-item.done .fam-item-text{color:var(--muted);text-decoration:line-through}
+.fam-by{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:none}
+.fam-list .fam-row{margin-top:6px}
+.fam-sent{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13.5px;border-bottom:1px solid var(--hairline)}
+.fam-sent-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fam-sent-state{font-size:12px;color:var(--muted);flex:none}
+.fam-sent-state.ok{color:var(--accent)}
+.fam-sent .icon{opacity:.55}
+@media(max-width:520px){.fam-send>*{width:100%}.fam-send .btn-accent{margin-left:0}}
