@@ -201,7 +201,7 @@ test('The local model’s view of Finance: only while unlocked, plain text, read
   const gas = finance.forAgent({ what: 'transactions', query: 'shell' });
   assert.match(gas, /1 transaction\(s\) matching "shell": \$42\.10 out/);
   assert.ok(!gas.includes('Deli'));
-  assert.match(finance.forAgent({ what: 'statement' }), /Contribution margin/);
+  assert.match(finance.forAgent({ what: 'statement' }), /Net income/);
   assert.ok(logs.filter((m) => /the local model read/.test(m)).every((m) => !/\d+\.\d\d/.test(m)), 'the log never gets amounts');
   h['finance:lock']();
   assert.match(finance.forAgent({ what: 'overview' }), /locked/);

@@ -67,13 +67,18 @@ test('every line keeps its transactions; his income / not income mark wins', () 
   assert.strictEqual(incomeStatement([t], { 'in:transfer from mom': 'income' }, NOW).incomeTotal[2], 300);
 });
 
-test('contribution margin: income minus variable costs, and its share of income', () => {
+test('no contribution margin on the income statement', () => {
   const s = incomeStatement([checking, visa], {}, NOW);
-  const sep = 2;
-  assert.strictEqual(Math.round(s.contribution[sep] * 100) / 100, 3001.5 - 15);
-  assert.strictEqual(Math.round((s.contribution[sep] - s.fixedTotal[sep]) * 100) / 100, Math.round(s.net[sep] * 100) / 100, 'margin − fixed = net income');
-  assert.ok(Math.abs(s.contributionRatio[sep] - (3001.5 - 15) / 3001.5) < 1e-9);
-  assert.strictEqual(s.contributionRatio[0], null, 'no income in July');
+  assert.strictEqual(s.contribution, undefined);
+  assert.strictEqual(s.contributionRatio, undefined);
+});
+
+test('working capital: cash minus cards and short-term debt, not long-term loans or investments', () => {
+  const mortgage = { id: 'm', name: 'Home Mortgage', org: 'Rocket', balance: -150000, transactions: [] };
+  const b = balanceSheet([checking, visa, broker, mortgage], NOW);
+  assert.deepStrictEqual([b.currentLiabilityTotal[0], b.workingCapital[0]], [640, 2000 - 640]);
+  assert.strictEqual(b.liabilityTotal[0], 150640, 'the mortgage is still a liability');
+  assert.strictEqual(b.workingCapital[1], b.cashTotal[1] - b.currentLiabilityTotal[1], '30 days ago too');
 });
 
 test('Public is an investment account, and money sent to it is not spending', () => {
