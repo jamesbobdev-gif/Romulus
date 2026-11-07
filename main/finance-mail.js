@@ -1,7 +1,7 @@
 /* Purchase emails for the Finance tab: receipts and order confirmations from his Gmail, read the same
-   read-only way as the date check (main/gmail-dates.js), turned into {store, total, items} by Claude in one
-   short call per handful of emails. The Finance tab then shows under a bank charge what it bought.
-   Only email text goes to Claude; nothing from the bank does. What comes back is kept in the finance vault
+   read-only way as the date check (main/gmail-dates.js), turned into {store, total, items} by his AIs (in his order,
+   main/gmail-dates.js aiJson) in one short call per handful of emails. The Finance tab then shows under a bank
+   charge what it bought. Only email text goes to the AI; nothing from the bank does. What comes back is kept in the finance vault
    (encrypted, on this computer), never in config.json or tasks. Email text is data, never instructions. */
 const { bodyText } = require('../agent/mail-events');
 

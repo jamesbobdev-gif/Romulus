@@ -59,9 +59,10 @@ const google = {
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token',
   // calendar events, the list of calendars, reading (never changing) Gmail for dates (agent/mail-events.js), and
-  // sending an email he pressed Send on (agent/mail-send.js; gmail.send can only send, not read);
-  // Google's screen lets people untick either Gmail one
-  scope: 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send',
+  // sending an email he pressed Send on (agent/mail-send.js; gmail.send can only send, not read), and the Agent's
+  // mail tools changing his mail (agent/mail-mcp.js: drafts, labels, archive, and after his yes send and trash;
+  // gmail.modify never deletes for good). Google's screen lets people untick any Gmail one
+  scope: 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify',
   authExtra: { access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true' },
   async api(token, method, url, body) {
     const res = await fetch('https://www.googleapis.com/calendar/v3/' + url, { method, signal: AbortSignal.timeout(20000),
@@ -124,7 +125,8 @@ const microsoft = {
   client: msClient,
   authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
   tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-  scope: 'openid email profile offline_access User.Read Calendars.ReadWrite Mail.Send', // Mail.Send: an email he pressed Send on
+  // Mail.Send: an email he pressed Send on; Mail.ReadWrite: the Agent's mail tools (agent/mail-mcp.js) reading and changing his Outlook
+  scope: 'openid email profile offline_access User.Read Calendars.ReadWrite Mail.Send Mail.ReadWrite',
   authExtra: { prompt: 'select_account' },
   // Microsoft allows any port on a localhost redirect, but the host has to be "localhost"
   redirectHost: 'localhost',
@@ -241,11 +243,12 @@ function when(p) {
 const PROVIDERS = { google, microsoft, ics, caldav: caldavProvider };
 
 /* ---------- tokens ---------- */
-// Microsoft refreshes only to scopes the account agreed to: one connected before Mail.Send was asked for
-// would fail its refresh (and its calendar) if the refresh asked for it. It gets Mail.Send by connecting again.
+// Microsoft refreshes only to scopes the account agreed to: one connected before Mail.Send (or Mail.ReadWrite) was
+// asked for would fail its refresh (and its calendar) if the refresh asked for it. It gets them by connecting again.
 function msRefreshScope(a) {
-  const granted = String(a.scope || '');
-  return microsoft.scope.split(' ').filter((s) => s !== 'Mail.Send' || /mail\.send/i.test(granted)).join(' ');
+  // granted names come as "Mail.Send" or "https://graph.microsoft.com/Mail.Send"
+  const granted = String(a.scope || '').toLowerCase().split(/\s+/).map((s) => s.replace(/^https:\/\/graph\.microsoft\.com\//, ''));
+  return microsoft.scope.split(' ').filter((s) => !/^Mail\./.test(s) || granted.includes(s.toLowerCase())).join(' ');
 }
 async function tokenFor(acctId) {
   const cfg = io.readConfig();
@@ -287,7 +290,7 @@ function idTokenEmail(idToken) {
 
 // noMail (he unticked email when connecting): calendars only, so the sign-in screen doesn't ask about his mailbox;
 // connecting the same account again without it adds the mail permissions
-const MAIL_SCOPES = /^(https:\/\/www\.googleapis\.com\/auth\/gmail\.\w+|Mail\.Send)$/;
+const MAIL_SCOPES = /^(https:\/\/www\.googleapis\.com\/auth\/gmail\.\w+|Mail\.Send|Mail\.ReadWrite)$/;
 function scopeFor(p, opts) {
   return opts.noMail ? p.scope.split(' ').filter((s) => !MAIL_SCOPES.test(s)).join(' ') : p.scope;
 }
@@ -541,10 +544,19 @@ function setReceipts(acctId, on) {
   return true;
 }
 
+/* the mailboxes the Agent's mail tools use (agent/mail-mcp.js): every Gmail he let the app read and every Outlook
+   with Mail.ReadWrite, each with what it lets the app do. write: drafts, labels, archive; send: send and trash */
+function mailToolAccounts() {
+  const has = (a, re) => re.test(String(a.scope || ''));
+  return accounts(io.readConfig()).filter((a) => !a.broken && a.tokens && a.tokens.refresh_token)
+    .map((a) => a.provider === 'google' && has(a, /gmail\.readonly|gmail\.modify/) ? { id: a.id, provider: 'google', email: a.email || null, write: has(a, /gmail\.modify/), send: has(a, /gmail\.modify|gmail\.send/) }
+      : a.provider === 'microsoft' && has(a, /(^|[\s\/])mail\.readwrite(\s|$)/i) ? { id: a.id, provider: 'microsoft', email: a.email || null, write: true, send: has(a, /mail\.send/i) } : null)
+    .filter(Boolean);
+}
 // the accounts an email can go out from (agent/mail-send.js canSend), and whether any is connected that can't yet
 function sendAccounts() {
   const all = accounts(io.readConfig()).filter((a) => a.provider === 'google' || a.provider === 'microsoft');
   return { accounts: all.filter(mailSend.canSend), needReconnect: all.filter((a) => !mailSend.canSend(a)) };
 }
 
-module.exports = { init, connect, scopeFor, addLink, addCaldav, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, msRefreshScope };
+module.exports = { init, connect, scopeFor, addLink, addCaldav, removeAccount, overview, setPrefs, pushTarget, putEvent, deleteEvent, pull, upcoming, gmailAccount, receiptAccounts, setReceipts, tokenFor, parseIcs, tagFor, sendAccounts, mailToolAccounts, msRefreshScope };

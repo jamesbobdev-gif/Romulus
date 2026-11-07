@@ -16,6 +16,20 @@ function ebtCents(n){ return Math.round(n*100)/100; }
 function ebtDepositOn(y,m,day){ const last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(day,last)).getTime(); }
 function ebtYmd(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
+/* The phone and CSV files keep a plain copy of these settings in 'finance.ebtCopy' for the grocery list
+   (finance.js finKeepEbtCopy). Saved from Settings → EBT while Finance is locked, the copy gets pending: true,
+   and the next unlock (finance-phone.js, finance-csv.js) moves it into the vault. The computer does the same
+   with its sealed file (main/finance.js takeLockedEbt). */
+const EBT_COPY_KEY='finance.ebtCopy';
+function ebtKeepPending(e){
+  try{ localStorage.setItem(EBT_COPY_KEY,JSON.stringify(Object.assign(ebtClean(e),{pending:true}))); return true; }catch(err){ return false; }
+}
+// → the settings saved while locked, or null. ebtFinishPending drops the mark once they're in the vault
+function ebtPending(){
+  try{ const c=JSON.parse(localStorage.getItem(EBT_COPY_KEY)||'null'); return c&&c.pending?ebtClean(c):null; }catch(err){ return null; }
+}
+function ebtFinishPending(e){ try{ localStorage.setItem(EBT_COPY_KEY,JSON.stringify(ebtClean(e))); }catch(err){} }
+
 // what he typed, cleaned: {balance, at (ms), day (1-31), monthly} with anything missing or wrong left out
 function ebtClean(e){
   e=e&&typeof e==='object'?e:{};
@@ -120,4 +134,5 @@ function ebtAlertsDue(ebt,orders,seen,low,now){
   return out;
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={ebtWallet:ebtWallet,ebtClean:ebtClean,ebtYmd:ebtYmd,ebtReceiptAnswer:ebtReceiptAnswer,ebtAlertsDue:ebtAlertsDue,EBT_RECEIPT_ASK:EBT_RECEIPT_ASK}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={ebtWallet:ebtWallet,ebtClean:ebtClean,ebtYmd:ebtYmd,ebtReceiptAnswer:ebtReceiptAnswer,ebtAlertsDue:ebtAlertsDue,EBT_RECEIPT_ASK:EBT_RECEIPT_ASK,
+  ebtKeepPending:ebtKeepPending,ebtPending:ebtPending,ebtFinishPending:ebtFinishPending}; }

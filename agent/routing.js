@@ -125,7 +125,6 @@ function routeTask(t) {
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
   // "chapter 8" and nothing else: Lupa, signed in to his courses, finds out which class and what it is, then does it (agent/find-out.js)
   if (isVague(t)) return { lane: 'local', reason: 'only names the work: your local model finds it in your classes, then does it' };
-  if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
   // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
@@ -137,9 +136,9 @@ function routeTask(t) {
     const hit = wordHit(text, words);
     if (hit && (rule.lane === 'claude' || rule.lane === 'local')) return fallBack({ lane: rule.lane, reason: 'rule: ' + words.join(', ') });
   }
-  if (routing.default === 'auto') return autoRoute(text, t);
-  const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
-  return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
+  // every task is routed: nothing waits for him to pick a lane ('ask' from older settings routes automatically too)
+  if (routing.default === 'local' || routing.default === 'claude') return { lane: routing.default, reason: 'default' };
+  return autoRoute(text, t);
 }
 // a task the local model read his Finance for stays on the mini PC even if it was switched to Claude by hand
 // a #legion task is Lupa's even if it was on Claude before (its title was edited): only Lupa may see the whole request
@@ -164,7 +163,6 @@ function askForRoutes(raw) {
 /* d1 sees new Agent tasks before they're routed. false = it's still looking (both runs are scheduled again
    once it's done); true = go ahead (decided, or d1 isn't available and the rules decide alone) */
 let deciding = false;
-const toldScrap = new Set();
 function decided(raw) {
   if (deciding) return false;
   if (!decider.usable()) return true;
@@ -174,13 +172,7 @@ function decided(raw) {
     !t.lane && !t.financeSeen && String(t.title || '').trim() && !decider.get(t));
   if (!fresh.length) return true;
   deciding = true;
-  decider.decide(fresh).then(() => {
-    // a scrap waits for him: it shows as needing him, and a reply (or the lane switch) sends it on
-    const scraps = fresh.filter((t) => decider.looksLikeScrap(t) && !toldScrap.has(t.id));
-    scraps.forEach((t) => toldScrap.add(t.id));
-    if (scraps.length) sendToRenderer('agent:results', scraps.map((t) => ({ id: t.id, status: 'needs-you', options: undefined, pref: null,
-      note: 'This sounded like a bit of conversation Hey Romulus picked up, not a request, so nothing ran. Reply if you meant it.' })));
-  }).finally(() => { deciding = false; ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); });
+  decider.decide(fresh).finally(() => { deciding = false; ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); });
   return false;
 }
 

@@ -29,6 +29,11 @@
       <h2>Settings</h2>
     </div>
     <div id="settingsAlerts" hidden></div>
+    <!-- setup-list.js: the four things worth setting up, each done or one button away; gone once all four are done -->
+    <div id="setupList" class="setup-list" hidden>
+      <b>Get set up</b>
+      <div id="setupRows"></div>
+    </div>
     <div id="aiUsage" hidden></div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Agent &amp; AI</summary>
@@ -41,6 +46,15 @@
       <div class="settings-sub adv" id="localSection" hidden>
         <h3 class="settings-subhead">Local model</h3>
         <p class="settings-hint">Your own model through <a id="ollamaLink" href="#">Ollama</a>, on this computer or another one on your network. Nothing it works on leaves your machines. Tasks with private words always go here.</p>
+        <!-- local-model.js: start or install Ollama, download a model that fits this computer, switch it on -->
+        <div id="localEasy" class="local-easy">
+          <div class="settings-row" style="margin-top:0">
+            <button id="localEasyBtn" class="btn-accent">Set it up for me</button>
+            <span id="localEasyNote" class="settings-hint" style="margin:0"></span>
+          </div>
+          <div id="localPullBar" class="local-pull" hidden><div id="localPullFill"></div></div>
+          <p class="settings-hint" style="margin:6px 0 10px">Or pick a model yourself:</p>
+        </div>
         <div class="settings-row" style="margin-top:0">
           <input id="localUrl" class="settings-inp mono" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" style="flex:1;margin:0">
           <button id="localProbeBtn" class="ghost mono">Find models</button>
@@ -123,17 +137,17 @@
     </details>
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
       <summary class="settings-label">About you</summary>
-      <div class="settings-sub" id="prefsSection" hidden>
-        <h3 class="settings-subhead">What the Agent knows about you</h3>
+      <details class="settings-sub settings-collapse" id="prefsSection" hidden>
+        <summary class="settings-subhead">What the Agent knows about you</summary>
         <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
         <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “Alex”&#10;- Morning appointments work best"></textarea>
         <div class="settings-row">
           <button id="prefsSaveBtn" class="btn-accent">Save</button>
           <span id="prefsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-      <div class="settings-sub" id="lockedSection" hidden>
-        <h3 class="settings-subhead">Locked — only the local model sees this</h3>
+      </details>
+      <details class="settings-sub settings-collapse" id="lockedSection" hidden>
+        <summary class="settings-subhead">Locked — only the local model sees this</summary>
         <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. The Agent’s cloud AIs never read it. No passwords, card numbers or SSN.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
@@ -141,16 +155,16 @@
           <button id="lockedFormBtn" class="ghost mono" title="Adds the questions forms keep asking, for you to answer once">+ Form answers</button>
           <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-      <div class="settings-sub" id="formFilesSection" hidden>
-        <h3 class="settings-subhead">Files for forms</h3>
+      </details>
+      <details class="settings-sub settings-collapse" id="formFilesSection" hidden>
+        <summary class="settings-subhead">Files for forms</summary>
         <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, the Agent or the local model attaches it; nothing else on this computer can be uploaded.</p>
         <div id="formFilesList"></div>
         <div class="settings-row">
           <button id="formFileAddBtn" class="ghost mono">+ Add a file</button>
           <span id="formFilesStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
+      </details>
     </details>
     <details class="settings-panel settings-collapse" id="tabsSection">
       <summary class="settings-label">Tabs</summary>
@@ -159,9 +173,10 @@
     </details>
     <details class="settings-panel settings-collapse" id="ebtSection">
       <summary class="settings-label">EBT</summary>
-      <p class="settings-hint">Your balance goes in Finance → EBT. Set on each device.</p>
+      <p class="settings-hint">Change your balance here or in Finance → EBT. The switch and alert are set on each device.</p>
       <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
       <div class="settings-row" id="ebtLowRow" style="margin-top:0;font-size:13.5px"><span>Alert me when it's under $</span><input id="ebtLow" class="settings-inp" inputmode="decimal" style="width:80px;margin:0" aria-label="Low balance alert, in dollars"></div>
+      <div id="ebtEditBox" class="fin-ebt"></div>
     </details>
     <details class="settings-panel settings-collapse" id="healthSection">
       <summary class="settings-label">Health</summary>
@@ -281,6 +296,24 @@
           <div class="settings-row">
             <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
             <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the group</button>
+          </div>
+        </div>
+        <!-- where the links he picks on Agent tasks are emailed, once the address is confirmed with a code (link-email.js) -->
+        <div id="linkEmailBox" hidden style="margin:0 0 10px">
+          <div class="settings-label" style="margin-bottom:2px">Email me links</div>
+          <p id="linkEmailInfo" class="settings-hint" style="margin:0 0 6px"></p>
+          <div id="linkEmailAskRow" class="settings-row" style="align-items:center">
+            <input id="linkEmailIn" type="email" class="settings-inp" placeholder="you@example.com" maxlength="254" autocomplete="email" spellcheck="false" style="max-width:260px;margin:0">
+            <button id="linkEmailSendBtn" class="ghost mono">Send code</button>
+          </div>
+          <div id="linkEmailCodeRow" class="settings-row" hidden style="align-items:center">
+            <input id="linkEmailCode" class="settings-inp mono" placeholder="6-digit code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" spellcheck="false" style="max-width:140px;margin:0">
+            <button id="linkEmailConfirmBtn" class="btn-accent">Confirm</button>
+            <button id="linkEmailBack" class="ghost mono">Use another address</button>
+          </div>
+          <div id="linkEmailDoneRow" class="settings-row" hidden>
+            <button id="linkEmailChange" class="ghost mono">Change address</button>
+            <button id="linkEmailForget" class="ghost mono">Stop emailing me</button>
           </div>
         </div>
         <!-- the rarely used settings, out of the way until wanted -->
@@ -526,9 +559,9 @@
     <div id="lupaStuck" class="lupa-stuck" hidden></div>
     <details id="lupaFiles" class="lupa-files" hidden></details>
     <!-- the Agent is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
-    <div id="yesPrompts" class="yes-prompts" hidden></div>
     <!-- to-dos someone in the group sent: add to the list or say no (family.js famDrawIncoming) -->
     <div id="famIncoming" class="yes-prompts" hidden></div>
+    <div id="yesPrompts" class="yes-prompts" hidden></div>
     <div id="suggestPrompts" class="yes-prompts" hidden></div>
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
@@ -634,10 +667,12 @@
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
 <script src="js/hosted-sync.js"></script>
+<script src="js/link-email.js"></script>
 <script src="js/family.js"></script>
 <script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
+<script src="js/setup-list.js"></script>
 <script src="js/task-import.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>

@@ -101,7 +101,9 @@ function skillText(t) {
   const mine = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-2).map((h) => h.text || '');
   return [t.title, t.reply, t.notes, ...mine].filter(Boolean).join('\n');
 }
-function wantsInbox(t) { return !!t.useInbox || /\bintern(ship)?s?\b/i.test(String(t.title || '')); }
+// an inbox run (agent/runner.js mailRun): internships, and tasks about his mailbox itself (agent/mail-mcp.js tools)
+const MAILBOX_RE = /\b(inbox|gmail|outlook|unread|unsubscribe|my (e-?)?mails?|e-?mails? (from|about)|reply to|forward (the|this|that|my)|archive|label (my|the|these|all))\b/i;
+function wantsInbox(t) { const s = String(t.title || ''); return !!t.useInbox || /\bintern(ship)?s?\b/i.test(s) || MAILBOX_RE.test(s); }
 async function agentRow(suffix) { // a doc next to the agent list ({v, text}): ':prefs' or ':locked'
   const a = supabase.channel(readConfig());
   return a ? supabase.readText(a, suffix) : '';

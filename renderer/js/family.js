@@ -543,22 +543,47 @@ async function famInviteMake(){
       +'In Romulus, open the Group tab, press I have a code, and type: '+r.code+'. '
       +(covered?'It’s free for you: the Group plan covers you, with 600 MB and 30 days of history.':'It’s free.')+' The code works for 2 days.'};
 }
-async function famJoinPrompt(){
-  const code=prompt('The group code someone gave you:');
-  if(!code||!code.trim())return false;
-  const p=famPersonal(); if(!p){ setSyncStatus('couldn’t join: turn on sync first',true); return false; }
+// → '' when joined, or what went wrong
+async function famJoinCode(code){
+  code=String(code||'').trim(); if(!code)return 'type the code first';
+  const fail=function(why){ setSyncStatus('couldn’t join: '+why,true); return 'Couldn’t join: '+why; };
+  const p=famPersonal(); if(!p)return fail('turn on sync first');
   try{
     let r;
-    try{ r=await famJoin(p,code.trim()); }
+    try{ r=await famJoin(p,code); }
     catch(e){ if(!/HTTP 404/.test(e.message))throw e; r={why:await syncRpc(p,'sync_family_join',{p_sync_key:await syncRowKey(p),p_code:famCodeSplit(code).server})||null,lists:false}; }
-    if(r.why){ setSyncStatus('couldn’t join: '+(typeof HOSTED_FAMILY_WHY!=='undefined'&&HOSTED_FAMILY_WHY[r.why]||r.why),true); return false; }
+    if(r.why)return fail(typeof HOSTED_FAMILY_WHY!=='undefined'&&HOSTED_FAMILY_WHY[r.why]||r.why);
     const said=r.lists?'You’re in '+(r.from?r.from+'’s':'the')+' group. Shared lists and to-dos are on the Group tab.':'You’re in the group. For the shared lists, ask for a new code: this one is from an older version.';
     setSyncStatus(said);
     if(typeof voiceToast==='function')voiceToast(said);
     if(typeof hostedDraw==='function')hostedDraw();
     if(state.activeTab==='family')renderFamily();
-    return true;
-  }catch(e){ setSyncStatus('couldn’t join: '+e.message,true); return false; }
+    return '';
+  }catch(e){ return fail(e.message); }
+}
+// Electron has no window.prompt(), so the code box opens next to the button that asked for it
+function famJoinPrompt(btn,after){
+  if(!btn||!btn.parentNode)return;
+  if(btn._codeBox){ btn._codeBox.querySelector('input').focus(); return; }
+  const box=el('div','fam-row fam-code');
+  const inp=famInput(null,'The code someone gave you','');
+  inp.autocomplete='off'; inp.spellcheck=false;
+  const say=el('span','fam-hint','');
+  const close=function(){ box.remove(); btn._codeBox=null; btn.style.display=''; };
+  const join=famBtn('Join','btn-accent',async function(){
+    if(!inp.value.trim()){ inp.focus(); return; }
+    join.disabled=true; say.textContent='Joining…';
+    const why=await famJoinCode(inp.value);
+    join.disabled=false;
+    if(why){ say.textContent=why; inp.focus(); inp.select(); return; }
+    close(); if(after)after();
+  });
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter')join.click(); else if(e.key==='Escape')close(); });
+  box.appendChild(inp); box.appendChild(join); box.appendChild(famBtn('Cancel','ghost mono',close)); box.appendChild(say);
+  btn._codeBox=box; btn.style.display='none';
+  const host=btn.closest('.fam-row')||btn;
+  host.parentNode.insertBefore(box,host.nextSibling);
+  inp.focus();
 }
 async function famLeave(){
   if(!confirm('Leave the group? The group’s shared lists leave this app, and if the group’s plan covered you, you go back to the free space. Your own lists aren’t touched.'))return false;
@@ -570,8 +595,14 @@ function famCopyButton(text){
   const b=el('button','ghost mono','Copy invite');
   b.addEventListener('click',function(){
     const done=function(){ if(typeof voiceToast==='function')voiceToast('Invite copied. Paste it in a text or email to them.'); };
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,function(){ prompt('Copy this:',text); });
-    else prompt('Copy this:',text);
+    // no window.prompt() in Electron: when the clipboard says no, show the text selected for Ctrl+C
+    const show=function(){
+      if(b._shown){ b._shown.select(); return; }
+      const t=el('textarea','sm fam-copy'); t.readOnly=true; t.value=text; t.rows=4;
+      b.parentNode.insertBefore(t,b.nextSibling); b._shown=t; t.focus(); t.select();
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,show);
+    else show();
   });
   return b;
 }
@@ -608,7 +639,8 @@ function renderFamily(){
     const s=famSection(view,'Start a group','Share lists, like groceries, and send each other to-dos. Everyone keeps their own private lists. Free with one other person; the Group plan makes room for 4 more and covers their space.');
     const row=el('div','fam-row');
     row.appendChild(famBtn('Invite someone','btn-accent',famInviteHere));
-    row.appendChild(famBtn('I have a code','ghost mono',function(){ famJoinPrompt(); }));
+    const have=famBtn('I have a code','ghost mono',function(){ famJoinPrompt(have); });
+    row.appendChild(have);
     s.appendChild(row); famInviteShown(s);
     return;
   }
@@ -737,7 +769,21 @@ function famListCard(l){
   head.appendChild(el('span','fam-list-name',l.name));
   head.appendChild(el('span','fam-hint',open.length?open.length+' to get':'all done'));
   const pen=iconBtn(I.pen,'Rename list'); pen.title='Rename';
-  pen.addEventListener('click',function(){ const n=prompt('Rename the list:',l.name); if(n&&n.trim())famPut('lists',Object.assign({},l,{name:n.trim()})); });
+  // renamed in place: Electron has no window.prompt()
+  pen.addEventListener('click',function(){
+    const nameEl=head.querySelector('.fam-list-name'); if(!nameEl)return;
+    const inp=famInput(null,'List name',l.name,'fam-list-rename');
+    let gone=false;
+    const done=function(save){
+      if(gone)return; gone=true;
+      const n=inp.value.trim();
+      if(save&&n&&n!==l.name)famPut('lists',Object.assign({},l,{name:n}));
+      else inp.replaceWith(nameEl);
+    };
+    inp.addEventListener('keydown',function(e){ if(e.key==='Enter')done(true); else if(e.key==='Escape')done(false); });
+    inp.addEventListener('blur',function(){ if(inp.isConnected)done(true); });
+    nameEl.replaceWith(inp); inp.focus(); inp.select();
+  });
   const del=iconBtn(I.x,'Delete list'); del.title='Delete list';
   del.addEventListener('click',function(){ if(confirm('Delete “'+l.name+'” for everyone in the group?'))famDel([l.id].concat(items.map(function(it){ return it.id; }))); });
   head.appendChild(pen); head.appendChild(del); card.appendChild(head);

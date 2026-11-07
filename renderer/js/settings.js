@@ -75,6 +75,7 @@ function setSettingsOpen(open){
     $('themeName').value=themeSavedNameOf($('themeCss').value);
     drawThemeColors(); drawThemeSaved();
     if(gcalRefreshFn)gcalRefreshFn();
+    if(typeof drawSetupList==='function')drawSetupList();
     prefsLoad();
   }
   window.scrollTo(0,0);

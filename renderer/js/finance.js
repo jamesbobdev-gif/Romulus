@@ -1029,6 +1029,58 @@ function finShrinkImage(file){
     im.src=url;
   });
 }
+// a saved EBT wallet: Finance's copy and the grocery list's copy. Saved while locked, the copy already has
+// it, marked for the next unlock (finance-ebt.js ebtKeepPending), so it's only read again
+function finEbtSaved(ebt,locked){
+  if(locked){ if(typeof loadGroceryEbt==='function')loadGroceryEbt(); return; }
+  if(fin.data)fin.data.ebt=ebt;
+  finKeepEbtCopy(ebt);
+}
+/* the balance / next deposit / deposit amount boxes and Save, for the Finance card and Settings → EBT.
+   e: ebtClean settings, w: ebtWallet. → {row, msg, bal}; onSaved runs after a save went through */
+function finEbtForm(e,w,onSaved){
+  const field=function(label,input){ const l=el('label','fin-ebt-field'); l.appendChild(el('span','mono fin-label',label)); l.appendChild(input); return l; };
+  const bal=finInput('text','$0.00'); bal.inputMode='decimal'; bal.title='On your last grocery receipt, your state’s EBT site or the Propel app';
+  // the date his benefits next load: only its day of the month is kept, and it repeats monthly
+  const dd=finInput('date',''); if(w.nextDeposit!=null)dd.value=ebtYmd(w.nextDeposit); dd.title='When your benefits load next. It repeats on that day each month';
+  const mo=finInput('text','$0.00'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly); mo.title='How much loads each month';
+  const row=el('div','fin-row fin-ebt-form');
+  row.appendChild(field('Balance',bal)); row.appendChild(field('Next deposit',dd)); row.appendChild(field('Deposit amount',mo));
+  const save=el('button','btn-accent','Save');
+  const msg=el('p','fin-msg err'); msg.hidden=true;
+  save.addEventListener('click',async function(){
+    const money=function(s){ const t=String(s).replace(/[$,\s]/g,''); return t===''?null:Number(t); };
+    const b=money(bal.value), m=money(mo.value), n=/^\d{4}-\d{2}-\d{2}$/.test(dd.value)?Number(dd.value.slice(8,10)):null;
+    if((b!=null&&!(b>=0))||(m!=null&&!(m>0))){ msg.textContent='Use amounts like 143.20.'; msg.hidden=false; return; }
+    const next={day:n||undefined,monthly:m||undefined};
+    if(b!=null){ next.balance=b; next.at=Date.now(); }
+    else if(e.balance!=null){ next.balance=e.balance; next.at=e.at; } // only the deposit changed
+    if(!finApi||!finApi.financeSetEbt){ msg.textContent='Set up Finance first.'; msg.hidden=false; return; }
+    save.disabled=true;
+    const r=await finApi.financeSetEbt(next).catch(function(err){ return {ok:false,error:err.message}; });
+    save.disabled=false;
+    if(!r.ok){ msg.textContent=r.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'; msg.hidden=false; return; }
+    finEbtSaved(r.ebt,r.locked); if(onSaved)onSaved(r.ebt,!!r.locked);
+  });
+  row.appendChild(save);
+  return {row:row,msg:msg,bal:bal};
+}
+// Settings → EBT: the same boxes, filled from the copy the grocery list keeps (it's there while Finance is
+// locked, and a save then waits in it for the next unlock). saved/locked: what a save just returned
+function drawEbtSettingsForm(saved,locked){
+  const host=$('ebtEditBox'); if(!host)return;
+  host.innerHTML='';
+  if(!ebtOn())return;
+  const e=ebtClean(saved||(fin.data&&fin.data.ebt?fin.data.ebt:groceryEbt));
+  const w=ebtWallet(e,agentOrders(state.tasks));
+  if(w.known)host.appendChild(el('p','settings-hint','About '+finMoney(w.balance)+' left'+(w.daysToDeposit!=null?', next deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):'')+'.'));
+  const f=finEbtForm(e,w,function(ebt,wasLocked){
+    drawEbtSettingsForm(ebt,wasLocked);
+    if(state.activeTab==='finance'&&fin.data&&!fin.busy)renderFinance(); // the Finance card shows the new numbers too
+  });
+  host.appendChild(f.row); host.appendChild(f.msg);
+  if(locked)host.appendChild(el('p','settings-hint','Saved. Finance picks it up the next time you unlock it.'));
+}
 function finEbtCard(d){
   if(JSON.stringify(ebtClean(d.ebt))!==JSON.stringify(groceryEbt))finKeepEbtCopy(d.ebt); // an older copy, or none yet
   const box=el('div','fin-card fin-chart fin-ebt');
@@ -1055,29 +1107,8 @@ function finEbtCard(d){
     });
   }
   if(finApi.financeSetEbt){
-    const field=function(label,input){ const l=el('label','fin-ebt-field'); l.appendChild(el('span','mono fin-label',label)); l.appendChild(input); return l; };
-    const bal=finInput('text','$0.00'); bal.inputMode='decimal'; bal.title='On your last grocery receipt, your state’s EBT site or the Propel app';
-    // the date his benefits next load: only its day of the month is kept, and it repeats monthly
-    const dd=finInput('date',''); if(w.nextDeposit!=null)dd.value=ebtYmd(w.nextDeposit); dd.title='When your benefits load next. It repeats on that day each month';
-    const mo=finInput('text','$0.00'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly); mo.title='How much loads each month';
-    const row=el('div','fin-row fin-ebt-form');
-    row.appendChild(field('Balance',bal)); row.appendChild(field('Next deposit',dd)); row.appendChild(field('Deposit amount',mo));
-    const save=el('button','btn-accent','Save');
-    const msg=el('p','fin-msg err'); msg.hidden=true;
-    save.addEventListener('click',async function(){
-      const money=function(s){ const t=String(s).replace(/[$,\s]/g,''); return t===''?null:Number(t); };
-      const b=money(bal.value), m=money(mo.value), n=/^\d{4}-\d{2}-\d{2}$/.test(dd.value)?Number(dd.value.slice(8,10)):null;
-      if((b!=null&&!(b>=0))||(m!=null&&!(m>0))){ msg.textContent='Use amounts like 143.20.'; msg.hidden=false; return; }
-      const next={day:n||undefined,monthly:m||undefined};
-      if(b!=null){ next.balance=b; next.at=Date.now(); }
-      else if(e.balance!=null){ next.balance=e.balance; next.at=e.at; } // only the deposit changed
-      save.disabled=true;
-      const r=await finApi.financeSetEbt(next).catch(function(err){ return {ok:false,error:err.message}; });
-      save.disabled=false;
-      if(!r.ok){ msg.textContent=r.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'; msg.hidden=false; return; }
-      fin.data.ebt=r.ebt; finKeepEbtCopy(r.ebt); box.replaceWith(finEbtCard(fin.data));
-    });
-    row.appendChild(save);
+    const f=finEbtForm(e,w,function(){ box.replaceWith(finEbtCard(fin.data)); });
+    const row=f.row, msg=f.msg, bal=f.bal;
     const tools=el('div','fin-ebt-tools');
     // set up: the boxes wait behind "update"; not yet: they're the whole card
     if(w.known){

@@ -144,7 +144,8 @@ function setEbtOn(on){
 function wireEbtSetting(){
   const box=$('ebtOn'); if(!box)return;
   const sec=$('ebtSection');
-  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; };
+  // the balance boxes (finance.js drawEbtSettingsForm), filled fresh each time the section opens
+  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; if(typeof drawEbtSettingsForm==='function')drawEbtSettingsForm(); };
   show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
   box.addEventListener('change',function(){ setEbtOn(box.checked); show(); });
 }

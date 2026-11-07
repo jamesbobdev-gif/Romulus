@@ -182,9 +182,9 @@ function cloudOrder() {
 }
 const claudeLast = () => providers.settings(readConfig()).claudeLast;
 
-/* who a run asks, in turn, until every task is answered: inbox runs Claude only (the others can't read
-   Gmail and could reach the web); a task he put on Gemini or ChatGPT that one first, then the rest of his
-   order. order = cloudOrder(), ready = cloudReady */
+/* who a run asks, in turn, until every task is answered: his order (inbox runs too: each AI gets the app's
+   own mail tools there and no web, agent/mail-mcp.js); a task he put on Gemini or ChatGPT that one
+   first, then the rest of his order. order = cloudOrder(), ready = cloudReady */
 /* the cloud AI a task is on: the one he picked (the pill), else whoever answered it last. It is asked
    first; when it fails, the next AI in his order takes over (and the pill moves with it). null = new.
    saveClaude ("Save Claude for last"): Claude having answered last doesn't keep the task on Claude; only his pick on the pill does */
@@ -209,8 +209,7 @@ function couldntDo(u) {
   if (typeof u.cant === 'string' && u.cant.trim()) return true;
   return CANT.test(String(u.note || '')) || HANDOFF.test(String(u.note || ''));
 }
-function runOrder({ order, pinned, mailRun, ready }) {
-  if (mailRun) return order.filter((id) => id === 'claude');
+function runOrder({ order, pinned, ready }) {
   if (!pinned) return order.slice();
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }

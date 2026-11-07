@@ -33,6 +33,7 @@ const runner = require('./agent/runner');
 const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
+const ollamaSetup = require('./agent/ollama-setup'); // Settings → Local model → Set it up for me
 const liveView = require('./agent/live-view');
 const finance = require('./main/finance');
 const downloads = require('./main/downloads');
@@ -81,7 +82,7 @@ const ctx = {
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
+  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);

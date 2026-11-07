@@ -25,6 +25,11 @@ test('wantsInbox: internship tasks or useInbox', () => {
   assert.ok(ctx.wantsInbox({ title: 'Daily internship hunt' }));
   assert.ok(ctx.wantsInbox({ title: 'x', useInbox: true }));
   assert.ok(!ctx.wantsInbox({ title: 'internal memo' }));
+  // tasks about his mailbox itself
+  assert.ok(ctx.wantsInbox({ title: 'Clean up my inbox' }));
+  assert.ok(ctx.wantsInbox({ title: 'Archive the newsletters in Gmail' }));
+  assert.ok(ctx.wantsInbox({ title: 'Reply to the landlord email' }));
+  assert.ok(!ctx.wantsInbox({ title: 'Find a cheap flight to Denver' }));
 });
 
 test('skillText is only his words', () => {

@@ -449,7 +449,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   payPersonalYearBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payPersonalYear); });
   planOwnBtn.addEventListener('click',function(){ ownBtn.click(); });
   // the same invite and join as the Group tab's buttons (family.js)
-  joinBtn.addEventListener('click',async function(){ await famJoinPrompt(); draw(); });
+  joinBtn.addEventListener('click',function(){ famJoinPrompt(joinBtn,draw); });
   inviteBtn.addEventListener('click',async function(){
     const r=await famInviteMake();
     if(!r.code){ setSyncStatus(r.say,true); return; }

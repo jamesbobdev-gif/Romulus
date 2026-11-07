@@ -48,9 +48,9 @@ test('new tasks wait for d1, then route with its answers', async () => {
   assert.strictEqual(await decide(tasks), true);
   // private: d1 catches what the word list misses
   assert.deepStrictEqual(routing.routeTask(tasks[0]), { lane: 'local', reason: 'private: d1 thinks it’s personal (health, money, IDs or grades)' });
-  // a scrap is held, and he's told once
-  assert.strictEqual(routing.laneOf(tasks[1]), 'hold');
-  assert.deepStrictEqual(sent.map(([ch, p]) => [ch, p.map((u) => u.id + ':' + u.status)]), [['agent:results', ['b:needs-you']]]);
+  // even a scrap of talk is routed, never held for him
+  assert.notStrictEqual(routing.laneOf(tasks[1]), 'hold');
+  assert.deepStrictEqual(sent, []);
   // auto: d1's sure pick, or the keyword rules when it isn't sure
   assert.deepStrictEqual(routing.routeTask(tasks[2]), { lane: 'local', reason: 'auto: d1 says the local model can do this without the web' });
   // "Ch 8 Quiz" alone used to fall to the cloud, which can't open his courses: the local model finds out what it is (agent/find-out.js)

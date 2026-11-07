@@ -144,8 +144,8 @@ if(calApi){
   // shortly after start (sync has loaded the lists by then), then every 15 minutes
   setTimeout(calTick,45*1000); setInterval(calTick,15*60*1000);
 
-  /* Dates from Gmail: main checks the mailbox (free when nothing's new) and asks Claude
-     about new mail that mentions a date. Each found date is a suggestion on the Human tab with its own id
+  /* Dates from Gmail: main checks the mailbox (free when nothing's new) and asks his AIs
+     (in his order) about new mail that mentions a date. Each found date is a suggestion on the Human tab with its own id
      (lists.js drawSuggestions): Accept puts it on his list, Deny drops it. Added once: one he denied or
      deleted isn't brought back, and one already on a list (same day, same name) isn't doubled. */
   if(window.desktop&&window.desktop.mailCheck){

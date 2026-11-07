@@ -337,7 +337,7 @@ function buildPanel(t){
         // email the link to yourself (the desktop sends it; nothing is picked or bought);
         // not when "Send me link" below already does exactly that
         if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
-        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); buzz('send'); touch(); });
+        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); if(typeof linkEmailPick==='function')linkEmailPick(t); buzz('send'); touch(); });
         btns.appendChild(mb); } }
       if(canPick&&isLegionTask(t)){
         const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
@@ -354,7 +354,7 @@ function buildPanel(t){
           if(kind==='order')agentSay(t,'sys','Getting the '+store+' order ready. You’ll see it before anything is bought.');
           else if(kind==='tickets')agentSay(t,'sys','Getting the booking ready. You’ll see the total before anything is bought.');
           // other links: stage an email with it — the desktop sends it (never orders anything)
-          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); }
+          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); if(typeof linkEmailPick==='function')linkEmailPick(t); }
           touch(); });
         btns.appendChild(pb);
       }
