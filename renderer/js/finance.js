@@ -1016,6 +1016,20 @@ function finKeepEbtCopy(e){
   try{ localStorage.setItem('finance.ebtCopy',JSON.stringify(ebtClean(e))); }catch(err){}
   if(typeof loadGroceryEbt==='function')loadGroceryEbt();
 }
+// a photo he picked → {mime, b64}, at most 1600 px on its long side (small print stays readable, sends quickly)
+function finShrinkImage(file){
+  return new Promise(function(ok,fail){
+    const url=URL.createObjectURL(file), im=new Image();
+    im.onload=function(){
+      const k=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight));
+      const c=document.createElement('canvas'); c.width=Math.round(im.naturalWidth*k); c.height=Math.round(im.naturalHeight*k);
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url);
+      ok({mime:'image/jpeg',b64:c.toDataURL('image/jpeg',0.85).split(',')[1]});
+    };
+    im.onerror=function(){ URL.revokeObjectURL(url); fail(new Error('not a picture')); };
+    im.src=url;
+  });
+}
 function finEbtCard(d){
   if(JSON.stringify(ebtClean(d.ebt))!==JSON.stringify(groceryEbt))finKeepEbtCopy(d.ebt); // an older copy, or none yet
   const box=el('div','fin-card fin-chart fin-ebt');
@@ -1065,12 +1079,33 @@ function finEbtCard(d){
       fin.data.ebt=r.ebt; finKeepEbtCopy(r.ebt); box.replaceWith(finEbtCard(fin.data));
     });
     row.appendChild(save);
+    const tools=el('div','fin-ebt-tools');
     // set up: the boxes wait behind "update"; not yet: they're the whole card
     if(w.known){
-      const up=el('button','ghost mono fin-ebt-update','update');
+      const up=el('button','ghost mono','update');
       up.addEventListener('click',function(){ up.hidden=true; row.hidden=false; bal.focus(); });
-      row.hidden=true; box.appendChild(up);
+      row.hidden=true; tools.appendChild(up);
     }
+    // a receipt photo: the SNAP balance printed on it becomes the balance (main/finance.js finance:ebtReceipt)
+    if(finApi.financeEbtReceipt){
+      const pick=document.createElement('input'); pick.type='file'; pick.accept='image/*'; pick.hidden=true;
+      const rb=el('button','ghost mono','read a receipt'); rb.title='A photo of a store receipt. Lupa reads it if it’s set up, otherwise your AI connections';
+      rb.addEventListener('click',function(){ pick.click(); });
+      pick.addEventListener('change',async function(){
+        const f=pick.files&&pick.files[0]; pick.value=''; if(!f)return;
+        rb.disabled=true; rb.textContent='reading…'; msg.hidden=true;
+        let r;
+        try{ r=await finApi.financeEbtReceipt(await finShrinkImage(f)); }catch(err){ r={ok:false,error:'That picture can’t be read.'}; }
+        if(r.ok){
+          const s=await finApi.financeSetEbt(Object.assign({},e,{balance:r.balance,at:r.at})).catch(function(err){ return {ok:false,error:err.message}; });
+          if(s.ok){ voiceToast('EBT balance from the receipt: '+finMoney(r.balance)+' (read by '+r.via+')'); fin.data.ebt=s.ebt; finKeepEbtCopy(s.ebt); box.replaceWith(finEbtCard(fin.data)); return; }
+          r={ok:false,error:s.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'};
+        }
+        rb.disabled=false; rb.textContent='read a receipt'; msg.textContent=r.error; msg.hidden=false;
+      });
+      tools.appendChild(rb); tools.appendChild(pick);
+    }
+    if(tools.childNodes.length)box.appendChild(tools);
     box.appendChild(row); box.appendChild(msg);
   }
   const sum=w.known?finMoney(w.balance)+' left'+(w.daysToDeposit!=null?' · deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):''):'not set up';

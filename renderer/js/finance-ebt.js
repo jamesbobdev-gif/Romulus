@@ -75,4 +75,49 @@ function ebtWallet(ebt,orders,now){
     daysToDeposit:nextDeposit==null?null:Math.ceil((nextDeposit-now)/EBT_DAY)};
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={ebtWallet:ebtWallet,ebtClean:ebtClean,ebtYmd:ebtYmd}; }
+/* ── a receipt photo (Finance → EBT → read a receipt): most store receipts print the SNAP balance left ── */
+const EBT_RECEIPT_ASK='The attached picture is a photo of a store receipt, not his screen. Find the EBT / SNAP food balance '+
+  'left after this purchase (often "SNAP BAL", "FS BAL", "EBT FOOD BAL", "FOOD STAMP BALANCE" or "Ending balance" in the EBT '+
+  'section; not the cash benefit balance, not the total, not change due) and the date on the receipt. Answer with only this '+
+  'JSON, nothing else: {"balance": 0.00 or null, "date": "YYYY-MM-DD" or null}. Use null when it isn\'t printed or you can\'t read it.';
+// the AI's answer → {balance, at (ms)} or null. A date in the future or over 60 days old isn't trusted: today then
+function ebtReceiptAnswer(text,now){
+  now=now||Date.now();
+  const m=String(text||'').match(/\{[\s\S]*?\}/); if(!m)return null;
+  let j; try{ j=JSON.parse(m[0]); }catch(e){ return null; }
+  const b=Number(j&&j.balance);
+  if(j==null||j.balance==null||!Number.isFinite(b)||b<0||b>=100000)return null;
+  let at=now;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(j.date||''))){
+    const p=j.date.split('-').map(Number), d=new Date(p[0],p[1]-1,p[2],20).getTime(); // evening: after that day's shopping
+    if(d<=now+EBT_DAY&&d>now-60*EBT_DAY)at=Math.min(d,now);
+  }
+  return {balance:ebtCents(b),at:at};
+}
+
+/* ── alerts (ebt-alerts.js): what to tell him now, each once ──
+   seen: {key: ms} of ones already told. → [{key, title, body}]
+   - deposit day: "EBT deposit today", with about the balance after it
+   - each Agent order that put money on EBT (in the last 2 days): how much, and about what's left
+   - under his low mark (low, dollars): once per deposit cycle */
+function ebtAlertsDue(ebt,orders,seen,low,now){
+  now=now||Date.now(); seen=seen||{};
+  const w=ebtWallet(ebt,orders,now), e=ebtClean(ebt), out=[];
+  const money=function(n){ return '$'+n.toFixed(2); };
+  if(w.lastDeposit!=null&&now-w.lastDeposit<EBT_DAY){
+    const k='dep|'+ebtYmd(w.lastDeposit);
+    if(!seen[k])out.push({key:k,title:'EBT deposit today',body:(e.monthly?money(e.monthly)+' should load today.':'Your benefits should load today.')+(w.known?' About '+money(w.balance)+' on the card.':'')});
+  }
+  (orders||[]).forEach(function(o){
+    if(!o||!(o.ebt>0)||!(o.at>now-2*EBT_DAY)||o.at>now)return;
+    const k='ord|'+o.at;
+    if(!seen[k])out.push({key:k,title:money(o.ebt)+' on EBT',body:(o.title||'Grocery order')+(w.known?'. About '+money(w.balance)+' left.':'.')});
+  });
+  if(w.known&&low>0&&w.balance<low){
+    const k='low|'+(w.lastDeposit!=null?ebtYmd(w.lastDeposit):ebtYmd(now).slice(0,7));
+    if(!seen[k])out.push({key:k,title:'EBT running low',body:'About '+money(w.balance)+' left'+(w.nextDeposit!=null?', next deposit '+new Date(w.nextDeposit).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')+'.'});
+  }
+  return out;
+}
+
+if(typeof module!=='undefined'&&module.exports){ module.exports={ebtWallet:ebtWallet,ebtClean:ebtClean,ebtYmd:ebtYmd,ebtReceiptAnswer:ebtReceiptAnswer,ebtAlertsDue:ebtAlertsDue,EBT_RECEIPT_ASK:EBT_RECEIPT_ASK}; }

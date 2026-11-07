@@ -159,8 +159,9 @@
     </details>
     <details class="settings-panel settings-collapse" id="ebtSection">
       <summary class="settings-label">EBT</summary>
-      <p class="settings-hint">For groceries paid with EBT (SNAP). On, Finance keeps track of your EBT balance and next deposit, grocery orders show what's left, and the Agent keeps grocery carts under it. Set on each device.</p>
-      <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
+      <p class="settings-hint">Your balance goes in Finance → EBT. Set on each device.</p>
+      <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
+      <div class="settings-row" id="ebtLowRow" style="margin-top:0;font-size:13.5px"><span>Alert me when it's under $</span><input id="ebtLow" class="settings-inp" inputmode="decimal" style="width:80px;margin:0" aria-label="Low balance alert, in dollars"></div>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
       <summary class="settings-label">Agent features</summary>
@@ -592,6 +593,7 @@
 <script src="js/finance-bills.js"></script>
 <script src="js/finance-insights.js"></script>
 <script src="js/finance-ebt.js"></script>
+<script src="js/ebt-alerts.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/year-review-view.js"></script>
 <script src="js/popups.js"></script>

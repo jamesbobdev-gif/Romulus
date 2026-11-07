@@ -249,3 +249,17 @@ test('Settings → EBT off: kept in the config so grocery runs get no balance', 
   await h['finance:setEbtOn'](null, true);
   assert.deepStrictEqual(cfg, { other: 1 });
 });
+
+test('an EBT receipt photo: only the picture and the question go, and the balance comes back', async () => {
+  const asked = [];
+  finance.init({ userData: () => dir, agentLog: () => {}, sendToRenderer: () => {},
+    readPicture: async (q, img) => { asked.push([q, img]); return { text: '{"balance": 52.75, "date": null}', via: 'Lupa' }; } });
+  const r = await h['finance:ebtReceipt'](null, { mime: 'image/jpeg', b64: 'aGVsbG8=' });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.balance, 52.75);
+  assert.strictEqual(r.via, 'Lupa');
+  assert.deepStrictEqual(asked[0][1], { mime: 'image/jpeg', b64: 'aGVsbG8=' });
+  assert.match(asked[0][0], /receipt/);
+  assert.strictEqual((await h['finance:ebtReceipt'](null, { mime: 'text/html', b64: 'aGVsbG8=' })).ok, false);
+  assert.strictEqual((await h['finance:ebtReceipt'](null, { mime: 'image/png', b64: '<script>' })).ok, false);
+});
