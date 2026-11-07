@@ -88,6 +88,10 @@ Deno.serve(async (req) => {
       // own end comes with its invoice below, so cancelling during the trial ends the plan with it
       const trial = o.payment_status === "no_payment_required";
       const ok = await markPaid(account, o.subscription || null, o.customer || null, now + (trial ? 1 : 31) * 24 * 60 * 60 + GRACE_S);
+      // which plan: the Personal Payment Link carries metadata plan=personal; anything else is the Group plan
+      // (supabase/migrations/20261115_sync_group_plans.sql). A server without that migration just skips it.
+      const plan = o.metadata?.plan === "personal" ? "personal" : "group";
+      if (ok) await rpc("sync_set_plan", { p_account: account, p_subscription: o.subscription || null, p_plan: plan }).catch(() => {});
       // the optional "name for the supporters list" field on the payment link (key: supportername)
       const name = (o.custom_fields || []).find((f: any) => f?.key === "supportername")?.text?.value;
       if (ok && name) await rpc("sync_mark_supporter", { p_account: account, p_name: String(name) }).catch(() => {});

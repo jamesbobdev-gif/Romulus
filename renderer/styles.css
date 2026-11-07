@@ -1167,6 +1167,7 @@ body.review-open .top-right{display:none!important}
 .fam-hint{color:var(--muted);font-size:12.5px;margin:0 0 6px}
 .fam-empty{color:var(--muted);font-size:13px;text-align:center;padding:24px 0}
 .fam-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fam-row>.btn-accent:first-child{margin-left:0}
 .fam-grow{flex:1;min-width:140px}
 .fam-offer,.fam-list,.fam-send{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px;margin:0 0 8px}
 .fam-offer{border-left:3px solid var(--accent)}

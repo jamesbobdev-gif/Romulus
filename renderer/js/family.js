@@ -7,12 +7,17 @@
      - in the invite code: its first 12 characters are the server's code, the last 16 a secret the server
        never sees, which seals the copy of the key kept with the invite;
      - each account keeps a copy sealed with its own lists' key, so all of a person's devices find it.
-   Anyone given the key can read the shared row, so a to-do sent to one person is readable by the family.
-   Taking someone off the plan drops their copy and their devices stop showing it; a device that already
-   had the key could still read the row, as with any shared password.
+   Anyone given the key can read the shared row, so a to-do sent to one person is readable by the group.
+   Taking someone off (or someone leaving) moves the group to a new key they never get (famRotate): the
+   owner's app copies the shared row to the new key, seals the new key to each remaining person's public key
+   (supabase/migrations/20261115_sync_group_plans.sql, family_key_next), and leaves {moved:1} in the old row.
+   Each person's P-256 key pair travels inside their own sealed copy of the key, so all their devices have it.
+   What was already on the removed person's device stays there; nothing new reaches them.
+   Anyone can start a group for free with one other person; the Group plan makes room for 4 more.
 
    The document: {v:1, people, lists, items, offers, tombstones}, each record {id, created, updatedAt, ...}.
-     people  {name}                                   who is who; id = a hash of their own sync key
+     people  {name, acct, owner}                      who is who; id = a hash of their own sync key, acct = their
+                                                      server account id (so the owner's list of members has names)
      lists   {name}                                   a shared list
      items   {list, text, done, by}                   a line on a list
      offers  {from, to, title, due, note, answer, answeredAt}   a to-do sent to someone; answer 'added' | 'no'
@@ -32,7 +37,7 @@ function famStr(s,max){ return String(s==null?'':s).replace(/[\u0000-\u001f]/g,'
 function famRec(coll,r){
   if(!r||typeof r!=='object'||typeof r.id!=='string'||!r.id||r.id.length>80)return null;
   const o={id:r.id,created:Number(r.created)||0,updatedAt:Number(r.updatedAt)||0};
-  if(coll==='people'){ o.name=famStr(r.name,40); }
+  if(coll==='people'){ o.name=famStr(r.name,40); o.acct=/^[0-9a-f]{64}$/.test(r.acct)?r.acct:null; o.owner=!!r.owner; }
   else if(coll==='lists'){ o.name=famStr(r.name,60)||'List'; }
   else if(coll==='items'){ o.list=String(r.list||''); o.text=famStr(r.text,200); o.done=!!r.done; o.by=String(r.by||''); if(!o.text||!o.list)return null; }
   else if(coll==='offers'){
@@ -93,6 +98,45 @@ function famName(doc,id){ const p=(doc.people||[]).find(function(x){ return x.id
 function famForMe(doc,me){ return (doc.offers||[]).filter(function(o){ return o.to===me&&!o.answer; }); }
 function famSentByMe(doc,me){ return (doc.offers||[]).filter(function(o){ return o.from===me; }); }
 
+// people the server no longer lists (taken off, or left): their account isn't the owner's or a member's.
+// People without an account id (older builds) can't be told apart, so they never count.
+function famGone(doc,keepAccts){
+  const keep={}; (keepAccts||[]).forEach(function(a){ if(a)keep[a]=1; });
+  return famNorm(doc).people.filter(function(x){ return x.acct&&!keep[x.acct]; });
+}
+// the document without them: their name, and to-dos sent to or from them; tombstones so no old copy brings
+// them back. What they added to lists stays (it's the group's now)
+function famWithout(doc,keepAccts,now){
+  const gone=famGone(doc,keepAccts); if(!gone.length)return famNorm(doc);
+  const ids={}; gone.forEach(function(x){ ids[x.id]=1; });
+  const d=famNorm(doc), t=now||Date.now(), tombs=[];
+  d.people.forEach(function(x){ if(ids[x.id])tombs.push({id:x.id,deletedAt:t}); });
+  d.offers.forEach(function(o){ if(ids[o.from]||ids[o.to])tombs.push({id:o.id,deletedAt:t}); });
+  return famMerge(d,{tombstones:tombs},t);
+}
+// the shared list the Agent's grocery order reads: the one called Groceries
+function famGroceryList(doc){ return (doc.lists||[]).find(function(l){ return /^\s*groceries\s*$/i.test(l.name); })||null; }
+function famOpenGroceries(doc){
+  const l=famGroceryList(doc); if(!l)return [];
+  return (doc.items||[]).filter(function(it){ return it.list===l.id&&!it.done; });
+}
+/* the shared Groceries list folded into his own grocery list (grocery-list.js items {name, every, last, out}):
+   each open line is flagged for the next order, added if it's new. A line bought (last) after it was last
+   edited isn't flagged again, so a device that hasn't seen the check-off yet doesn't buy it twice.
+   → the new list, or null when nothing changed. */
+function famFeedList(list,open,same){
+  const out=(list||[]).map(function(x){ return Object.assign({},x); }); let changed=false;
+  open.forEach(function(it){
+    const hit=out.find(function(x){ return same(x.name,it.text); });
+    if(hit){
+      if(hit.out)return;
+      if(hit.last&&new Date(hit.last+'T23:59:59').getTime()>=it.updatedAt)return;
+      hit.out=true; changed=true;
+    } else { out.push({name:it.text,every:1,last:null,out:true}); changed=true; }
+  });
+  return changed?out:null;
+}
+
 /* ── invite codes (pure) ── 'F0B3-65FB-585B' from the server + a 16-letter secret, shown in groups of 4 */
 function famCodeShow(server,secret){
   const s=String(server||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase()+String(secret||'').toUpperCase();
@@ -115,17 +159,28 @@ async function famSecretKey(secret){
   const raw=await crypto.subtle.importKey('raw',enc.encode(String(secret)),'HKDF',false,['deriveKey']);
   return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:enc.encode('romulus-family-invite'),info:enc.encode('family-key')},raw,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
-async function famSealForInvite(secret,famKey){
+async function famSealForInvite(secret,famKey,from){
   const iv=crypto.getRandomValues(new Uint8Array(12));
-  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},await famSecretKey(secret),new TextEncoder().encode(JSON.stringify({k:famKey})));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},await famSecretKey(secret),new TextEncoder().encode(JSON.stringify(from?{k:famKey,from:famStr(from,40)}:{k:famKey})));
   return JSON.stringify({iv:syncB64(iv),ct:syncB64(new Uint8Array(ct))});
 }
 async function famOpenInvite(secret,sealed){
   const env=JSON.parse(sealed);
   const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:syncUnB64(env.iv)},await famSecretKey(secret),syncUnB64(env.ct));
-  const k=JSON.parse(new TextDecoder().decode(pt)).k;
-  if(!/^tk_[A-Za-z0-9_-]{32,}$/.test(k))throw new Error('not a family key');
-  return k;
+  const o=JSON.parse(new TextDecoder().decode(pt));
+  if(!/^tk_[A-Za-z0-9_-]{32,}$/.test(o.k))throw new Error('not a family key');
+  return {k:o.k,from:o.from?famStr(o.from,40):null};
+}
+// each person's key pair for a new group key: made once, kept inside their own sealed copy of the key
+async function famNewKeys(){
+  const pair=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+  const priv=await crypto.subtle.exportKey('jwk',pair.privateKey), pub=await crypto.subtle.exportKey('jwk',pair.publicKey);
+  return {priv:pair.privateKey,privJwk:priv,pub:{kty:pub.kty,crv:pub.crv,x:pub.x,y:pub.y}};
+}
+async function famKeysFrom(env){
+  if(!env||!env.priv||!env.pub)return null;
+  try{ return {priv:await crypto.subtle.importKey('jwk',env.priv,{name:'ECDH',namedCurve:'P-256'},false,['deriveBits']),privJwk:env.priv,pub:env.pub}; }
+  catch(e){ return null; }
 }
 // who I am to the family: the same on all my devices (they share my sync key), and it leads nowhere
 async function famMemberId(syncKey){
@@ -134,29 +189,111 @@ async function famMemberId(syncKey){
 }
 
 /* ── state ── */
-const fam={key:null, me:null, doc:famEmpty(), checkedAt:0, loading:null, ui:{to:'',title:'',due:'',note:'',newList:'',adding:{}}};
+const fam={key:null, me:null, acct:null, keys:null, role:null, roster:null, rosterRows:null, doc:famEmpty(), checkedAt:0, loading:null, ui:{to:'',title:'',due:'',note:'',newList:'',adding:{},invite:null}};
 (function(){ try{ const c=JSON.parse(localStorage.getItem(FAM_CACHE_KEY)); if(c&&c.doc){ fam.doc=famNorm(c.doc); fam.me=c.me||null; fam.cached=true; } }catch(e){} })();
 function famSaveCache(){ try{ if(fam.key||fam.cached)localStorage.setItem(FAM_CACHE_KEY,JSON.stringify({doc:fam.doc,me:fam.me})); }catch(e){} }
 function famPersonal(){ const p=syncState.cfg&&syncState.cfg.personal; return validProfile(p)&&typeof hostedIs==='function'&&hostedIs(p.url)?p:null; }
 function familyProfile(){ const p=famPersonal(); return p&&fam.key?{url:p.url,key:p.key,syncKey:fam.key,v2:true}:null; }
 function famOn(){ return !!(fam.key||fam.cached); }
 
-// my copy of the family key, from the server. null on the server = I'm not (or no longer) in a family with lists
+// my copy of the group key, from the server. null on the server = I'm not (or no longer) in a group with lists.
+// A new key waiting for me (the owner removed someone) is opened with my key pair and kept instead.
 async function famLoadKey(){
   const p=famPersonal(); if(!p)return;
   fam.checkedAt=Date.now();
-  let sealed;
-  try{ sealed=await syncRpc(p,'sync_family_key_get',{p_sync_key:await syncRowKey(p)}); }
-  catch(e){ return; } // offline, or the migration isn't on the server yet
+  let row;
+  try{
+    const rk=await syncRowKey(p);
+    try{ row=(await syncRpc(p,'sync_family_key_get2',{p_sync_key:rk}))[0]||{}; }
+    catch(e){ if(!/HTTP 404/.test(e.message))throw e; row={sealed:await syncRpc(p,'sync_family_key_get',{p_sync_key:rk}),old:true}; }
+    fam.acct=await hostedAccountId(rk);
+  }catch(e){ return; } // offline, or the migrations aren't on the server yet
   fam.me=await famMemberId(p.syncKey);
-  if(!sealed){ if(famOn())famForget(); return; }
-  try{ fam.key=(await syncOpen(p.syncKey,JSON.parse(sealed))).k; }catch(e){ return; } // sealed under a sync key this device no longer has
+  if(!row.sealed){ if(famOn())famForget(); await famRoster(p); return; }
+  let env; try{ env=await syncOpen(p.syncKey,JSON.parse(row.sealed)); }catch(e){ return; } // sealed under a sync key this device no longer has
+  fam.key=env.k;
+  fam.keys=await famKeysFrom(env);
+  if(row.next&&fam.keys){
+    try{
+      const k2=JSON.parse(await devicesOpen(fam.keys.priv,JSON.parse(row.next))).k;
+      if(/^tk_[A-Za-z0-9_-]{32,}$/.test(k2)){ await famKeep(p,k2); syncNow(); }
+    }catch(e){}
+  } else if(!fam.keys&&!row.old){
+    try{ await famKeep(p,fam.key); }catch(e){} // from before key pairs: make one now, so a new key can reach me
+  }
   famShowTab();
+  await famRoster(p);
 }
-async function famKeep(p,key){ // keep my copy of the key on the server, sealed with my own lists' key
-  const ok=await syncRpc(p,'sync_family_key_set',{p_sync_key:await syncRowKey(p),p_sealed:JSON.stringify(await syncSeal(p.syncKey,{k:key}))});
-  if(ok!==true)throw new Error('the server didn’t keep the family key');
-  fam.key=key; fam.me=await famMemberId(p.syncKey); fam.checkedAt=Date.now();
+// who the server says is in the group; the owner's app moves the group to a new key when someone it still
+// lists in the shared row has gone
+async function famRoster(p){
+  let rows=null;
+  try{ rows=await syncRpc(p,'sync_family_list2',{p_sync_key:await syncRowKey(p)}); }catch(e){ return; }
+  famNoteRoster(rows);
+  if(fam.role==='owner'&&fam.key&&famGone(fam.doc,[fam.acct].concat(fam.roster)).length){
+    try{ await famRotate(p); }catch(e){}
+  }
+}
+function famNoteRoster(rows){
+  rows=Array.isArray(rows)?rows:[];
+  fam.rosterRows=rows; fam.role=rows[0]&&rows[0].role||null;
+  fam.roster=rows.filter(function(r){ return r.member; }).map(function(r){ return r.member; });
+}
+async function famKeep(p,key){ // keep my copy of the key on the server, sealed with my own lists' key, with my key pair
+  const keys=fam.keys||await famNewKeys();
+  const sealed=JSON.stringify(await syncSeal(p.syncKey,{k:key,priv:keys.privJwk,pub:keys.pub})), rk=await syncRowKey(p);
+  let ok;
+  try{ ok=await syncRpc(p,'sync_family_key_set2',{p_sync_key:rk,p_sealed:sealed,p_pub:JSON.stringify(keys.pub)}); }
+  catch(e){ if(!/HTTP 404/.test(e.message))throw e; ok=await syncRpc(p,'sync_family_key_set',{p_sync_key:rk,p_sealed:sealed}); }
+  if(ok!==true)throw new Error('the server didn’t keep the group key');
+  fam.key=key; fam.keys=keys; fam.me=await famMemberId(p.syncKey); fam.checkedAt=Date.now();
+}
+/* Move the group to a new key (the owner's app, after someone is removed or has left). → {left:[names of
+   people on an older version, who need a new code]}, {busy:true} when another of the owner's devices is on
+   it, or null (nothing to do, or a server without the migration). */
+async function famRotate(p,opts){
+  const old=familyProfile(); if(!old)return null;
+  const rk=await syncRowKey(p);
+  let locked; try{ locked=await syncRpc(p,'sync_family_rekey_lock',{p_sync_key:rk}); }catch(e){ if(/HTTP 404/.test(e.message))return null; throw e; }
+  if(locked!==true)return {busy:true};
+  const rows=await syncRpc(p,'sync_family_list2',{p_sync_key:rk});
+  famNoteRoster(rows);
+  if(fam.role!=='owner')return null;
+  const keep=[fam.acct].concat(fam.roster);
+  let first=await syncPullRow(old);
+  let doc=famWithout(famTidy(famMerge(fam.doc,first.doc&&!first.doc.moved?first.doc:{})),keep);
+  if(!(opts&&opts.force)&&!famGone(famMerge(fam.doc,first.doc&&!first.doc.moved?first.doc:{}),keep).length)return null;
+  const k2='tk_'+syncB64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const next=Object.assign({},old,{syncKey:k2});
+  await famPushMerged(next,doc);
+  const left=[];
+  for(const m of rows.filter(function(r){ return r.member; })){
+    const name=(doc.people.find(function(x){ return x.acct===m.member; })||{}).name||'someone';
+    if(!m.pub){ left.push(name); continue; }
+    try{
+      const wrapped=JSON.stringify(await devicesSeal(JSON.parse(m.pub),JSON.stringify({k:k2})));
+      if(await syncRpc(p,'sync_family_rekey',{p_sync_key:rk,p_member:m.member,p_wrapped:wrapped})!==true)left.push(name);
+    }catch(e){ left.push(name); }
+  }
+  await famKeep(p,k2);
+  // the old row says it moved, after folding in anything written to it meanwhile
+  for(let attempt=0;attempt<4;attempt++){
+    const r=await syncPullRow(old);
+    if(r.doc&&!r.doc.moved&&r.updatedAt!==first.updatedAt){ doc=famWithout(famMerge(doc,r.doc),keep); await famPushMerged(next,doc); }
+    if(await syncPushCas(old,{v:1,moved:1},r.updatedAt))break;
+    first=r;
+  }
+  fam.doc=doc; famSaveCache(); famShowTab(); if(state.activeTab==='family')renderFamily();
+  return {left:left};
+}
+// download, merge, upload with the usual compare-and-set: what someone else just wrote isn't lost
+async function famPushMerged(p,doc){
+  for(let attempt=0;attempt<4;attempt++){
+    const row=await syncPullRow(p);
+    const merged=famMerge(doc,row.doc&&!row.doc.moved?row.doc:{});
+    if(await syncPushCas(p,merged,row.updatedAt))return merged;
+  }
+  throw new Error('the group lists kept changing; try again');
 }
 function famForget(){
   fam.key=null; fam.cached=false; fam.doc=famEmpty();
@@ -177,7 +314,8 @@ async function famEnsureKey(p){
 // Settings → Invite someone: a code that carries the key. → the code to show, or {why}
 async function famInvite(p){
   const key=await famEnsureKey(p), secret=famNewSecret();
-  const r=(await syncRpc(p,'sync_family_invite2',{p_sync_key:await syncRowKey(p),p_sealed:await famSealForInvite(secret,key)}))[0]||{};
+  const mine=fam.doc.people.find(function(x){ return x.id===fam.me; });
+  const r=(await syncRpc(p,'sync_family_invite2',{p_sync_key:await syncRowKey(p),p_sealed:await famSealForInvite(secret,key,mine&&mine.name)}))[0]||{};
   if(r.why)return {why:r.why};
   return {code:famCodeShow(r.code,secret)};
 }
@@ -187,10 +325,11 @@ async function famJoin(p,input){
   const r=(await syncRpc(p,'sync_family_join2',{p_sync_key:await syncRowKey(p),p_code:c.server}))[0]||{};
   if(r.why)return {why:r.why};
   if(!r.sealed||!c.secret)return {lists:false};
-  let key; try{ key=await famOpenInvite(c.secret,r.sealed); }catch(e){ return {lists:false}; } // the last 16 letters were typed wrong
-  await famKeep(p,key);
-  famShowTab(); syncNow();
-  return {lists:true};
+  let o; try{ o=await famOpenInvite(c.secret,r.sealed); }catch(e){ return {lists:false}; } // the last 16 letters were typed wrong
+  fam.keys=null; // a key pair of my own for this group
+  await famKeep(p,o.k);
+  fam.checkedAt=0; famShowTab(); syncNow();
+  return {lists:true,from:o.from};
 }
 
 /* ── sync: called from syncOnce (sync.js), the same download-merge-upload as every list ── */
@@ -201,6 +340,8 @@ async function familySync(){
   const before=famCanon(fam.doc);
   for(let attempt=0;attempt<4;attempt++){
     const row=await syncPullRow(p);
+    // the owner moved the group to a new key: pick it up (or, if it never came, I was taken off)
+    if(row.doc&&row.doc.moved){ fam.checkedAt=0; await famLoadKey(); if(fam.key&&fam.key!==p.syncKey)syncNow(); return; }
     const merged=famTidy(famMerge(fam.doc,row.doc));
     fam.doc=merged;
     if(row.doc&&famStable(famMerge(row.doc,{}))===famStable(merged))break;
@@ -208,6 +349,32 @@ async function familySync(){
     if(attempt===3)throw new Error('the family lists kept changing; will retry');
   }
   if(famCanon(fam.doc)!==before){ famSaveCache(); famNoticeNew(); famShowTab(); if(state.activeTab==='family')renderFamily(); }
+  famKeepMine();
+  famFeedGroceries();
+}
+// my own record says who I am to the server and whether I run the group, so the owner's list has names
+function famKeepMine(){
+  const mine=fam.doc.people.find(function(x){ return x.id===fam.me; });
+  if(!mine||!mine.name||!fam.acct)return;
+  const owner=fam.role==='owner';
+  if(mine.acct===fam.acct&&mine.owner===owner)return;
+  famPut('people',Object.assign({},mine,{acct:fam.acct,owner:owner}));
+}
+// the shared Groceries list goes on the next grocery order, for anyone who has the Agent order groceries
+function famFeedGroceries(){
+  if(typeof groceryTask!=='function'||typeof normList!=='function')return;
+  const t=groceryTask(); if(!t)return;
+  const next=famFeedList(normList(t.list),famOpenGroceries(fam.doc),sameItem);
+  if(next){ t.list=next; touch(); }
+}
+// what the Agent bought gets ticked off the shared Groceries list (grocery-list.js applyListUpdate)
+function famCheckOff(names){
+  if(!famOn()||!Array.isArray(names)||!names.length||typeof sameItem!=='function')return;
+  const hits=famOpenGroceries(fam.doc).filter(function(it){ return names.some(function(n){ return sameItem(n,it.text); }); });
+  if(!hits.length)return;
+  const now=Date.now(), d=famNorm(fam.doc);
+  hits.forEach(function(it){ d.items=d.items.filter(function(x){ return x.id!==it.id; }).concat([Object.assign({},it,{done:true,updatedAt:Math.max(now,it.updatedAt+1)})]); });
+  fam.doc=famMerge(d,{}); famChanged();
 }
 // a to-do someone sent me since I last looked: say so once
 function famNoticeNew(){
@@ -254,11 +421,63 @@ function famSendTask(t){
 function famOthers(){ return fam.doc.people.filter(function(x){ return x.id!==fam.me&&x.name; }); }
 function famCanSend(){ return famOn()&&!!fam.me&&famOthers().length>0; }
 
-/* ── the Family tab ── */
+/* ── invite, join, leave: the Group tab's buttons and Settings → Device sync use the same ones ── */
+// → {code, say, share} or {say} when it didn't work
+async function famInviteMake(){
+  const p=famPersonal(); if(!p)return {say:'Sync has to be on, on the Romulus server, before you can start a group.'};
+  let r;
+  try{
+    try{ r=await famInvite(p); }
+    catch(e){ if(!/HTTP 404/.test(e.message))throw e; r=(await syncRpc(p,'sync_family_invite',{p_sync_key:await syncRowKey(p)}))[0]||{}; r.old=true; }
+  }catch(e){ return {say:'couldn’t make a code: '+e.message}; }
+  if(r.why)return {say:'couldn’t make a code: '+(typeof HOSTED_FAMILY_WHY!=='undefined'&&HOSTED_FAMILY_WHY[r.why]||r.why)};
+  famRoster(p).then(function(){ if(typeof hostedDraw==='function')hostedDraw(); }).catch(function(){});
+  const covered=fam.rosterRows&&fam.rosterRows[0]&&fam.rosterRows[0].plan==='group';
+  const mine=fam.doc.people.find(function(x){ return x.id===fam.me; });
+  return {code:r.code,
+    say:'Code for them: '+r.code+'. It adds one person and works for 2 days.',
+    share:(mine&&mine.name?mine.name+' invited you':'You’re invited')+' to a group on Romulus, to share lists and send each other to-dos. '
+      +'In Romulus, open the Group tab, press I have a code, and type: '+r.code+'. '
+      +(covered?'It’s free for you: the Group plan covers you, with 600 MB and 30 days of history.':'It’s free.')+' The code works for 2 days.'};
+}
+async function famJoinPrompt(){
+  const code=prompt('The group code someone gave you:');
+  if(!code||!code.trim())return false;
+  const p=famPersonal(); if(!p){ setSyncStatus('couldn’t join: turn on sync first',true); return false; }
+  try{
+    let r;
+    try{ r=await famJoin(p,code.trim()); }
+    catch(e){ if(!/HTTP 404/.test(e.message))throw e; r={why:await syncRpc(p,'sync_family_join',{p_sync_key:await syncRowKey(p),p_code:famCodeSplit(code).server})||null,lists:false}; }
+    if(r.why){ setSyncStatus('couldn’t join: '+(typeof HOSTED_FAMILY_WHY!=='undefined'&&HOSTED_FAMILY_WHY[r.why]||r.why),true); return false; }
+    const said=r.lists?'You’re in '+(r.from?r.from+'’s':'the')+' group. Shared lists and to-dos are on the Group tab.':'You’re in the group. For the shared lists, ask for a new code: this one is from an older version.';
+    setSyncStatus(said);
+    if(typeof voiceToast==='function')voiceToast(said);
+    if(typeof hostedDraw==='function')hostedDraw();
+    if(state.activeTab==='family')renderFamily();
+    return true;
+  }catch(e){ setSyncStatus('couldn’t join: '+e.message,true); return false; }
+}
+async function famLeave(){
+  if(!confirm('Leave the group? The group’s shared lists leave this app, and if the group’s plan covered you, you go back to the free space. Your own lists aren’t touched.'))return false;
+  const p=famPersonal(); if(!p)return false;
+  try{ await syncRpc(p,'sync_family_remove',{p_sync_key:await syncRowKey(p),p_member:null}); famForget(); setSyncStatus('you left the group'); return true; }
+  catch(e){ setSyncStatus('couldn’t: '+e.message,true); return false; }
+}
+function famCopyButton(text){
+  const b=el('button','ghost mono','Copy invite');
+  b.addEventListener('click',function(){
+    const done=function(){ if(typeof voiceToast==='function')voiceToast('Invite copied. Paste it in a text or email to them.'); };
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,function(){ prompt('Copy this:',text); });
+    else prompt('Copy this:',text);
+  });
+  return b;
+}
+
+/* ── the Group tab ── */
 function famShowTab(){
   const tab=$('tabFamily'); if(!tab)return;
-  const on=famOn();
-  const waiting=fam.me?famForMe(fam.doc,fam.me).length:0;
+  const on=famOn()||!!famPersonal();
+  const waiting=fam.me&&famOn()?famForMe(fam.doc,fam.me).length:0;
   tab.textContent=waiting?'Group ('+waiting+')':'Group';
   if(tab.hidden!==!on){
     tab.hidden=!on;
@@ -279,7 +498,14 @@ function renderFamily(){
   const view=$('familyView'); if(!view)return;
   view.textContent='';
   const d=fam.doc, me=fam.me;
-  if(!famOn()){ view.appendChild(el('p','fam-empty','Shared lists show up here once you’re on a family/group plan.')); return; }
+  if(!famOn()){
+    const s=famSection(view,'Start a group','Share lists, like groceries, and send each other to-dos. Everyone keeps their own private lists. Free with one other person; the Group plan makes room for 4 more and covers their space.');
+    const row=el('div','fam-row');
+    row.appendChild(famBtn('Invite someone','btn-accent',famInviteHere));
+    row.appendChild(famBtn('I have a code','ghost mono',function(){ famJoinPrompt(); }));
+    s.appendChild(row); famInviteShown(s);
+    return;
+  }
 
   // first time here: the name the others see
   const mine=d.people.find(function(x){ return x.id===me; });
@@ -287,7 +513,7 @@ function renderFamily(){
     const s=famSection(view,'Your name','What your group sees next to what you add and send.');
     const row=el('div','fam-row');
     const inp=famInput('famMyName','Your name','');
-    const save=function(){ const n=inp.value.trim(); if(!n){ inp.focus(); return; } famPut('people',{id:me,name:n,created:mine?mine.created:Date.now(),updatedAt:mine?mine.updatedAt:0}); };
+    const save=function(){ const n=inp.value.trim(); if(!n){ inp.focus(); return; } famPut('people',{id:me,name:n,acct:fam.acct,owner:fam.role==='owner',created:mine?mine.created:Date.now(),updatedAt:mine?mine.updatedAt:0}); };
     inp.addEventListener('keydown',function(e){ if(e.key==='Enter')save(); });
     row.appendChild(inp); row.appendChild(famBtn('Save','btn-accent',save)); s.appendChild(row);
   }
@@ -323,7 +549,7 @@ function renderFamily(){
 
   // send a to-do
   const others=famOthers();
-  const ss=famSection(view,'Send a to-do',others.length?'It shows up in their Group tab. They choose whether it goes on their list.':'Nobody else is here yet. Invite someone from Settings → Device sync → Family/Group plan; once they open this tab, you can send them to-dos.');
+  const ss=famSection(view,'Send a to-do',others.length?'It shows up in their Group tab. They choose whether it goes on their list.':'Nobody else is here yet. Invite someone under People below; once they open this tab, you can send them to-dos.');
   if(others.length&&me){
     const form=el('div','fam-send');
     const to=el('select','sm'); to.id='famTo'; to.setAttribute('aria-label','Send to');
@@ -348,6 +574,23 @@ function renderFamily(){
     ss.appendChild(form);
   }
 
+  // who is here, and room for one more
+  const ps=famSection(view,'People');
+  d.people.filter(function(x){ return x.name; }).forEach(function(x){
+    const row=el('div','fam-sent');
+    row.appendChild(el('span','fam-sent-title',x.name+(x.id===me?' (you)':'')));
+    row.appendChild(el('span','fam-sent-state',x.owner?'runs the group':''));
+    ps.appendChild(row);
+  });
+  const pr=el('div','fam-row');
+  if(fam.role==='owner'){
+    const r0=fam.rosterRows&&fam.rosterRows[0], room=r0&&Number(r0.room)||1;
+    if((fam.roster||[]).length<room)pr.appendChild(famBtn('Invite someone','ghost mono',famInviteHere));
+    else if(room<4)ps.appendChild(el('p','fam-hint','A free group is you and one other person. The Group plan makes room for 4 more, and covers their space: Settings → Device sync.'));
+  }
+  pr.appendChild(famBtn(fam.role==='owner'?'Manage people':'Group settings','ghost mono',function(){ if(typeof openSettingsAt==='function')openSettingsAt(null,'syncSection'); }));
+  ps.appendChild(pr); famInviteShown(ps);
+
   // what I sent, and what they said
   const sent=me?famSentByMe(d,me):[];
   if(sent.length){
@@ -362,6 +605,17 @@ function renderFamily(){
       row.appendChild(x); s.appendChild(row);
     });
   }
+}
+async function famInviteHere(){
+  const r=await famInviteMake();
+  fam.ui.invite=r;
+  if(state.activeTab==='family')renderFamily();
+}
+// the code just made, with a button to copy an invite to send them
+function famInviteShown(sec){
+  const r=fam.ui.invite; if(!r)return;
+  sec.appendChild(el('p','fam-hint',r.say));
+  if(r.share){ const row=el('div','fam-row'); row.appendChild(famCopyButton(r.share)); sec.appendChild(row); }
 }
 function famListCard(l){
   const d=fam.doc, card=el('div','fam-list');
@@ -414,4 +668,4 @@ if(typeof document!=='undefined'&&document.getElementById('tabFamily')){
   Promise.resolve(syncState.ready).then(function(){ setTimeout(function(){ famLoadKey().then(function(){ if(fam.key)syncNow(); }); },3000); });
 }
 
-if(typeof module!=='undefined')module.exports={famEmpty,famNorm,famMerge,famTidy,famCanon,famStable,famForMe,famSentByMe,famName,famCodeShow,famCodeSplit,famNewSecret};
+if(typeof module!=='undefined')module.exports={famEmpty,famNorm,famMerge,famTidy,famCanon,famStable,famForMe,famSentByMe,famName,famCodeShow,famCodeSplit,famNewSecret,famGone,famWithout,famGroceryList,famOpenGroceries,famFeedList};

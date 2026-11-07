@@ -69,3 +69,49 @@ test('names fall back when someone has not picked one yet', () => {
   assert.strictEqual(f.famName(d, 'sam'), 'Sam');
   assert.strictEqual(f.famName(d, 'who'), 'Someone');
 });
+
+const person = (id, name, acct, extra) => Object.assign({ id, name, acct, created: T, updatedAt: T }, extra);
+const A = 'a'.repeat(64), B = 'b'.repeat(64), C = 'c'.repeat(64);
+
+test('people keep their account id and whether they run the group', () => {
+  const d = f.famNorm({ people: [person('p1', 'Ana', A, { owner: true }), person('p2', 'Bo', 'not-an-id')] });
+  assert.strictEqual(d.people[0].acct, A);
+  assert.strictEqual(d.people[0].owner, true);
+  assert.strictEqual(d.people[1].acct, null);
+  assert.strictEqual(d.people[1].owner, false);
+});
+
+test('someone the server no longer lists is gone, along with to-dos to and from them', () => {
+  const doc = {
+    people: [person('p1', 'Ana', A, { owner: true }), person('p2', 'Bo', B), person('p3', 'Cy', C), person('p4', 'Old', null)],
+    lists: [list('g', 'Groceries', T)],
+    items: [item('1', 'g', 'eggs', T, { by: 'p3' })],
+    offers: [{ id: 'o1', from: 'p1', to: 'p3', title: 'Call', created: T, updatedAt: T }, { id: 'o2', from: 'p1', to: 'p2', title: 'Bins', created: T, updatedAt: T }],
+  };
+  assert.deepStrictEqual(f.famGone(doc, [A, B]).map((x) => x.name), ['Cy']); // no account id: can't tell, never counts
+  const out = f.famWithout(doc, [A, B], T + 10);
+  assert.deepStrictEqual(out.people.map((x) => x.name), ['Ana', 'Bo', 'Old']);
+  assert.deepStrictEqual(out.offers.map((x) => x.id), ['o2']);
+  assert.deepStrictEqual(out.items.map((x) => x.text), ['eggs']); // what they added stays
+  // an old copy that still has them doesn't bring them back
+  assert.deepStrictEqual(f.famMerge(out, doc, T + 10).people.map((x) => x.name), ['Ana', 'Bo', 'Old']);
+  assert.strictEqual(f.famGone(out, [A, B]).length, 0);
+});
+
+test('the shared Groceries list goes on the next grocery order, once', () => {
+  const same = (a, b) => String(a).toLowerCase().trim() === String(b).toLowerCase().trim();
+  const doc = f.famNorm({ lists: [list('h', 'House', T), list('g', ' groceries ', T)],
+    items: [item('1', 'g', 'Eggs', T), item('2', 'g', 'Milk', T), item('3', 'g', 'Bread', T, { done: true }), item('4', 'h', 'Bulbs', T)] });
+  assert.strictEqual(f.famGroceryList(doc).id, 'g');
+  const open = f.famOpenGroceries(doc);
+  assert.deepStrictEqual(open.map((x) => x.text), ['Eggs', 'Milk']);
+  const mine = [{ name: 'eggs', every: 1, last: null, out: false }];
+  const next = f.famFeedList(mine, open, same);
+  assert.deepStrictEqual(next, [{ name: 'eggs', every: 1, last: null, out: true }, { name: 'Milk', every: 1, last: null, out: true }]);
+  assert.strictEqual(mine[0].out, false); // his list isn't changed in place
+  assert.strictEqual(f.famFeedList(next, open, same), null); // nothing new: no write
+  // bought after the shared line was last edited: not flagged again before the tick-off arrives
+  const bought = [{ name: 'Eggs', every: 1, last: new Date(T + 864e5).toISOString().slice(0, 10), out: false }, { name: 'Milk', every: 1, last: null, out: true }];
+  assert.strictEqual(f.famFeedList(bought, open, same), null);
+  assert.strictEqual(f.famFeedList(mine, [], same), null);
+});

@@ -14,7 +14,7 @@ const HOSTED_SIDE_ROWS={personal:[':ideas',':hours',':devices'],agent:[':prefs',
 function hostedServer(){ const p=typeof window!=='undefined'&&window.ROMULUS_PAIR; return p&&p.url&&p.key?p:null; }
 function hostedTrim(u){ return String(u||'').trim().replace(/\/+$/,''); }
 // a build from an app store (window.ROMULUS_STORE, set per Android flavor): the stores want their own billing for
-// a subscription bought inside the app, so the $5 plan isn't offered there. Paying on a computer still covers it.
+// a subscription bought inside the app, so the paid plans aren't offered there. Paying on a computer still covers it.
 function hostedInStore(){ const s=typeof window!=='undefined'&&window.ROMULUS_STORE; return !!(s&&s!=='github'); }
 function hostedCanPay(h){ return !!(h&&h.pay&&!hostedInStore()); }
 function hostedIs(url){ const h=hostedServer(); return !!(h&&url&&hostedTrim(h.url)===hostedTrim(url)); }
@@ -64,21 +64,31 @@ async function hostedAutoStart(){
 
 function hostedMb(b){ b=Number(b)||0; return b>=1024*1024*1024?(b/1024/1024/1024).toFixed(b%(1024*1024*1024)?1:0)+' GB':b>=1024*1024?(b/1024/1024).toFixed(1).replace(/\.0$/,'')+' MB':Math.max(1,Math.round(b/1024))+' KB'; }
 // what the box says (pure, for tests): u = sync_usage's row
-/* How the plan is offered (pure, for tests): family and history first, storage last, since people can picture
-   sharing lists with a partner or undoing a bad day, not 600 MB. h.trialDays (repository variable PAY_TRIAL_DAYS)
-   says the Stripe links start with that many free days; only then does it say so. */
+/* How the plans are offered (pure, for tests): the Group plan first, sharing before storage, since people can
+   picture sharing lists with a partner, not 600 MB. With Personal links set (repository variables
+   PAY_PERSONAL_URL / PAY_PERSONAL_YEAR_URL) there are two plans, Group $6 and Personal $4, close enough that
+   Group is the plain pick; without them only Group is offered, at the $5 the existing links charge.
+   h.trialDays (PAY_TRIAL_DAYS) says the Stripe links start with that many free days; only then does it say so.
+   Nothing the app does needs a plan: grocery runs, the Agent, sync and the free group of two all stay free. */
+function hostedPrices(h){
+  return h&&h.payPersonal?{group:6,groupYear:60,personal:4,personalYear:40}:{group:5,groupYear:50,personal:null,personalYear:null};
+}
 function hostedPlanPitch(h){
-  const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0));
-  const pitch='The family/group plan: share Romulus with up to 4 more people, each with their own private lists, and undo a bad day with 30 days of history. You also get new versions early, and 600 MB of storage instead of 5 MB.';
-  return days?{
-    button:'Try the family/group plan free for '+days+' days',
+  const days=Math.max(0,Math.floor(Number(h&&h.trialDays)||0)), pr=hostedPrices(h);
+  let pitch='The Group plan: share lists and send each other to-dos with up to 4 more people, and each of them gets the paid space too. Everyone keeps their own private lists. You also get 30 days of history, new versions early, and 600 MB of storage instead of 5 MB.';
+  if(pr.personal)pitch+=' Just you? The Personal plan is $'+pr.personal+' a month, with the same space and history.';
+  const out=days?{
+    button:'Try the Group plan free for '+days+' days',
     year:'Pay yearly: 2 months free',
-    pitch:pitch+' Free for '+days+' days, then $5 a month. Cancel before the trial ends and you pay nothing.'
+    pitch:pitch+' Free for '+days+' days, then $'+pr.group+' a month. Cancel before the trial ends and you pay nothing.'
   }:{
-    button:'Family/Group plan: $5 a month for up to 5 people',
+    button:'Group plan: $'+pr.group+' a month for up to 5 people',
     year:'Pay yearly: 2 months free',
     pitch:pitch
   };
+  out.personal=pr.personal?'Personal: $'+pr.personal+' a month':null;
+  out.personalYear=pr.personal&&h.payPersonalYear?'Personal yearly: $'+pr.personalYear:null;
+  return out;
 }
 function hostedPlanText(u,hasPay){
   if(!u)return {line:'',full:false};
@@ -86,7 +96,7 @@ function hostedPlanText(u,hasPay){
   const paid=!!u.paid_until;
   const full=u.refused==='full'||(quota>0&&used>=quota*0.9);
   let line='Using '+hostedMb(used)+' of '+hostedMb(quota)+(paid?', paid until '+new Date(u.paid_until).toLocaleDateString(undefined,{month:'short',day:'numeric'})+'.':' free.');
-  if(full&&!paid)line+=' Your lists have nearly outgrown the free space. '+(hasPay?'Keep syncing here for $5 a month ('+hostedMb(u.paid_quota_bytes)+'), or move':'Move')+' to a Supabase project of your own: free up to 500 MB, or Pro at $25 a month.';
+  if(full&&!paid)line+=' Your lists have nearly outgrown the free space. '+(hasPay?'Keep syncing here with a plan ('+hostedMb(u.paid_quota_bytes)+'), or move':'Move')+' to a Supabase project of your own: free up to 500 MB, or Pro at $25 a month.';
   return {line:line,full:full&&!paid};
 }
 
@@ -100,8 +110,10 @@ function hostedJustPaid(seen,paid){ return !!paid&&seen==='free'; }
    row, for the sizes. */
 function hostedMyPlanText(status,u){
   const freeMb=hostedMb(u&&!u.paid_until&&u.quota_bytes||5*1024*1024), paidMb=hostedMb(u&&u.paid_quota_bytes||600*1024*1024);
-  if(status==='member')return {title:'Family/Group plan',text:'Shared with you by someone in your family/group: '+paidMb+', 30 days of history.'};
-  if(status==='payer')return {title:'Family/Group plan',text:paidMb+', 30 days of history, up to 4 more people. Thank you.'};
+  if(status==='member')return {title:'Group plan',text:'Covered by the person who runs your group: '+paidMb+', 30 days of history.'};
+  if(status==='member-free')return {title:'Free group',text:'You share lists and send to-dos with your group. Your own space: '+freeMb+'.'};
+  if(status==='payer')return {title:'Group plan',text:paidMb+', 30 days of history, up to 4 more people. Thank you.'};
+  if(status==='personal')return {title:'Personal plan',text:paidMb+', 30 days of history. Thank you.'};
   if(status==='own')return {title:'Your own Supabase',text:'Your lists sync through your own Supabase project.'};
   return {title:'Free plan',text:freeMb+' of space.'};
 }
@@ -155,7 +167,7 @@ function hostedFireworks(message){
   requestAnimationFrame(frame);
 }
 
-/* Restore a list as it was at the end of a day (the $5 plan's 30 days of history; the copies come from
+/* Restore a list as it was at the end of a day (the paid plans' 30 days of history; the copies come from
    sync_history_get). Pure, for tests: the tasks of that list become the day's copy, stamped now so they win on
    every device, and whatever it has now that the copy hadn't gets a tombstone, so it goes everywhere too. */
 function hostedRestorePlan(tasks,tombstones,ws,snap,now){
@@ -175,7 +187,7 @@ function hostedDayLabel(day){ // '2026-11-03' → 'Tue, Nov 3'
   const p=String(day).split('-').map(Number);
   return new Date(p[0],p[1]-1,p[2]).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
 }
-const HOSTED_FAMILY_WHY={not_paid:'only the person paying for the plan can invite',family_full:'the plan already covers 4 more people',bad:'that didn’t work',rate:'too many tries from this network; try again in an hour',no_code:'that code isn’t right, or it’s over 2 days old',no_account:'sync hasn’t started on this device yet; try again in a minute',own:'that’s your own code: give it to the person you want on your plan'};
+const HOSTED_FAMILY_WHY={not_paid:'only the person paying for the plan can invite',family_full:'the plan already covers 4 more people',free_full:'a free group is you and one other person: the Group plan makes room for 4 more',member:'you’re in someone else’s group: only the person who runs it invites',owner:'you run a group of your own, and someone can’t be in two',bad:'that didn’t work',rate:'too many tries from this network; try again in an hour',no_code:'that code isn’t right, or it’s over 2 days old',no_account:'sync hasn’t started on this device yet; try again in a minute',own:'that’s your own code: give it to the person you want on your plan'};
 
 /* Delete my synced data: everything this install's lists keep on the Romulus server goes (rows, photos and
    files, a paid plan), through supabase/functions/sync-delete. What it sends, pure for tests: every key the
@@ -202,7 +214,7 @@ async function hostedDeleteAll(){
 
 if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   const box=$('hostedBox'), info=$('hostedInfo'), payBtn=$('hostedPayBtn'), ownBtn=$('hostedOwnBtn'), backBtn=$('hostedBackBtn'), delBtn=$('hostedDeleteBtn');
-  const draw=async function(){
+  const draw=window.hostedDraw=async function(){
     const h=hostedServer(), c=syncState.cfg, p=c&&c.personal;
     if(!h){ box.hidden=true; return; }
     box.hidden=false;
@@ -217,6 +229,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     info.textContent='End-to-end encrypted on the Romulus server.';
     let u=null; try{ u=(await syncRpc(p,'sync_usage',{p_sync_key:await syncRowKey(p)}))[0]; }catch(e){}
     if(syncState.cfg!==c)return;
+    lastUsage=u;
     const t=hostedPlanText(u,hostedCanPay(h));
     if(t.line)info.textContent+=' '+t.line;
     const paid=!!(u&&u.paid_until);
@@ -228,6 +241,8 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const words=hostedPlanPitch(h);
     $('hostedPitch').textContent=words.pitch; payBtn.textContent=words.button; payYearBtn.textContent=words.year;
     payYearBtn.hidden=!(hostedCanPay(h)&&h.payYear);
+    payPersonalBtn.textContent=words.personal||''; payPersonalBtn.hidden=!(hostedCanPay(h)&&words.personal);
+    payPersonalYearBtn.textContent=words.personalYear||''; payPersonalYearBtn.hidden=!(hostedCanPay(h)&&words.personalYear);
     // at 90% of the free space the two ways on sit side by side: pay for more, or move to a project of one's own
     planOwnBtn.hidden=!t.full;
     drawFamily(p,c);
@@ -235,6 +250,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     drawEarly(paid);
     drawSupporters(p,c);
   };
+  let lastUsage=null;
   const myPlan=$('hostedMyPlan'), myPlanTitle=$('hostedMyPlanTitle'), myPlanInfo=$('hostedMyPlanInfo');
   // null: nothing known (sync off, or the server didn't answer), so the box stays out of the way
   function setMyPlan(status,u){
@@ -261,34 +277,83 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     finally{ nameBtn.disabled=false; draw(); }
   });
   nameIn.addEventListener('keydown',function(e){ if(e.key==='Enter')nameBtn.click(); });
+  const payPersonalBtn=$('hostedPayPersonalBtn'), payPersonalYearBtn=$('hostedPayPersonalYearBtn');
   const planBox=$('hostedPlan'), payYearBtn=$('hostedPayYearBtn'), joinBtn=$('hostedJoinBtn'), planOwnBtn=$('hostedPlanOwnBtn');
   const famBox=$('hostedFamily'), famInfo=$('hostedFamilyInfo'), famList=$('hostedFamilyList'), inviteBtn=$('hostedInviteBtn'), leaveBtn=$('hostedLeaveBtn');
   const histBox=$('hostedHistory'), histDay=$('hostedHistoryDay'), restoreBtn=$('hostedRestoreBtn');
   const earlyRow=$('hostedEarlyRow'), early=$('hostedEarly'), supporters=$('hostedSupporters');
   const rowKey=async function(){ const p=syncState.cfg&&syncState.cfg.personal; return validProfile(p)&&hostedIs(p.url)?{p:p,rk:await syncRowKey(p)}:null; };
+  /* Who is in the group, like the Devices list: the owner sees everyone with a Remove button; a member sees the
+     group and can leave. Names come from the Group tab (each person's own name, with their account id, in the
+     shared lists). Removing someone, or someone leaving, moves the shared lists to a new key (famRotate). */
   async function drawFamily(p,c){
-    let rows=[]; try{ rows=await syncRpc(p,'sync_family_list',{p_sync_key:await syncRowKey(p)}); }catch(e){ famBox.hidden=true; return; }
+    let rows=null;
+    try{ rows=await syncRpc(p,'sync_family_list2',{p_sync_key:await syncRowKey(p)}); }
+    catch(e){ if(!/HTTP 404/.test(e.message)){ famBox.hidden=true; return; } }
+    if(!rows){ // a server without 20261115_sync_group_plans.sql: the old list, where only someone paying starts a group
+      try{ rows=(await syncRpc(p,'sync_family_list',{p_sync_key:await syncRowKey(p)})).map(function(r){ return Object.assign({},r,{role:r.role==='payer'?'owner':r.role,room:4,plan:'group'}); }); }
+      catch(e){ famBox.hidden=true; return; }
+    }
     if(syncState.cfg!==c)return;
     const role=rows[0]&&rows[0].role;
-    famBox.hidden=!role; inviteBtn.hidden=role!=='payer'; leaveBtn.hidden=role!=='member';
+    if(typeof famNoteRoster==='function')famNoteRoster(rows);
+    famBox.hidden=!role; leaveBtn.hidden=role!=='member';
     famList.textContent='';
-    if(role==='member'){ famInfo.textContent=''; setMyPlan('member',null); return; }
-    if(role!=='payer')return;
-    const members=rows.filter(function(r){ return r.member; });
-    famInfo.textContent=members.length?members.length+' of 4 spots used.':'';
-    members.forEach(function(m,i){
-      const row=document.createElement('div'); row.className='settings-row'; row.style.alignItems='center';
-      const s=document.createElement('span'); s.className='settings-hint'; s.style.margin='0';
-      s.textContent='Person '+(i+1)+(m.since?', joined '+new Date(m.since).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'');
-      const b=document.createElement('button'); b.className='ghost mono'; b.textContent='Take off';
-      b.addEventListener('click',async function(){
-        if(!confirm('Take this person off your plan? They go back to the free space and the shared lists leave their app; nothing of their own is deleted.'))return;
-        const k=await rowKey(); if(!k)return;
-        try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:m.member}); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
-        draw();
-      });
-      row.appendChild(s); row.appendChild(b); famList.appendChild(row);
+    if(role==='member'){
+      famInfo.textContent='You’re in '+famOwnerName()+'’s group.';
+      setMyPlan(rows[0].plan==='group'?'member':'member-free',lastUsage);
+      famPeopleRows(famList,famRosterPeople(),null);
+      inviteBtn.hidden=true; return;
+    }
+    if(role!=='owner')return;
+    const members=rows.filter(function(r){ return r.member; }), room=Number(rows[0].room)||1;
+    if(rows[0].plan==='personal')setMyPlan('personal',lastUsage);
+    inviteBtn.hidden=members.length>=room;
+    famInfo.textContent=room>=4?members.length+' of 4 spots used.'
+      :members.length?'A free group is you and one other person. The Group plan makes room for 4 more, and covers their space.'
+      :'Start a group for free with one other person: shared lists, like groceries, and sending each other to-dos.';
+    famPeopleRows(famList,members,function(m){ famRemoveMember(m); });
+  }
+  function famOwnerName(){
+    const o=typeof fam!=='undefined'?fam.doc.people.find(function(x){ return x.owner; }):null;
+    return o&&o.name?o.name:'someone';
+  }
+  // the people on the Group tab's shared lists, for a member's view
+  function famRosterPeople(){
+    if(typeof fam==='undefined')return [];
+    return fam.doc.people.filter(function(x){ return x.name; }).map(function(x){ return {name:x.name,me:x.id===fam.me,owner:!!x.owner}; });
+  }
+  // rows like the Devices list: the name, a line under it, then the button
+  function famPeopleRows(list,people,onRemove){
+    people.forEach(function(m){
+      const row=document.createElement('div'); row.style.cssText='display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--hairline)';
+      const txt=document.createElement('div'); txt.style.cssText='flex:1;min-width:0';
+      const nm=document.createElement('div'); nm.style.cssText='color:var(--ink)';
+      nm.textContent=m.name||famNameOfAccount(m.member)||'Someone who hasn’t opened the Group tab yet';
+      if(m.me){ const t=document.createElement('span'); t.className='mono'; t.style.cssText='margin-left:8px;font-size:11px;color:var(--accent)'; t.textContent='you'; nm.appendChild(t); }
+      const sub=document.createElement('div'); sub.className='mono'; sub.style.cssText='font-size:11px;color:var(--muted);margin-top:2px';
+      sub.textContent=[m.owner?'runs the group':null,m.since?'joined '+new Date(m.since).toLocaleDateString(undefined,{month:'short',day:'numeric'}):null,
+        m.member&&!m.pub?'on an older version: needs a new code if you remove someone':null].filter(Boolean).join(' · ');
+      txt.append(nm,sub); row.appendChild(txt);
+      if(onRemove){ const b=document.createElement('button'); b.className='ghost mono danger'; b.textContent='Remove'; b.addEventListener('click',function(){ onRemove(m); }); row.appendChild(b); }
+      list.appendChild(row);
     });
+  }
+  function famNameOfAccount(acct){
+    if(typeof fam==='undefined'||!acct)return null;
+    const x=fam.doc.people.find(function(p){ return p.acct===acct; });
+    return x&&x.name||null;
+  }
+  async function famRemoveMember(m){
+    const who=famNameOfAccount(m.member)||'this person';
+    if(!confirm('Remove '+who+' from your group?\n\nThe shared lists move to a new key they never get, so they stop seeing them (what is already on their device stays there). Their own lists aren’t touched'+(lastUsage&&lastUsage.paid_until?', and they go back to the free space.':'.')))return;
+    const k=await rowKey(); if(!k)return;
+    try{
+      await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:m.member});
+      const r=typeof famRotate==='function'?await famRotate(k.p,{force:true}):null;
+      setSyncStatus(who+' is off your group'+(r&&r.left&&r.left.length?'. These people run an older version and need a new code to keep the shared lists: '+r.left.join(', '):''));
+    }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
+    draw();
   }
   async function drawHistory(p,c,paid){
     if(!paid){ histBox.hidden=true; return; }
@@ -316,8 +381,8 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     let seen=null; try{ seen=localStorage.getItem(HOSTED_SEEN_KEY); }catch(e){}
     try{ localStorage.setItem(HOSTED_SEEN_KEY,paid?'paid':'free'); }catch(e){}
     if(!hostedJustPaid(seen,paid))return;
-    hostedFireworks('Welcome to the family/group plan');
-    setSyncStatus('you’re on the family/group plan now. Thank you.');
+    hostedFireworks('Thank you for joining');
+    setSyncStatus('your plan is on now. Thank you.');
     // Device sync opened, drawn with the plan, and "Your plan: Family" scrolled into view
     if(typeof openSettingsAt==='function')openSettingsAt(null,'syncSection');
     Promise.resolve(draw()).then(function(){ if(!myPlan.hidden)myPlan.scrollIntoView({block:'center',behavior:'smooth'}); }).catch(function(){});
@@ -356,39 +421,18 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   };
   payBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.pay); });
   payYearBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payYear); });
+  payPersonalBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payPersonal); });
+  payPersonalYearBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payPersonalYear); });
   planOwnBtn.addEventListener('click',function(){ ownBtn.click(); });
-  joinBtn.addEventListener('click',async function(){
-    const code=prompt('The group code someone with the $5 plan gave you:');
-    if(!code||!code.trim())return;
-    const k=await rowKey(); if(!k)return;
-    try{
-      // a code with the family key in it also opens the shared lists (family.js); a server without that
-      // migration yet only knows the plain join
-      let r;
-      try{ r=await famJoin(k.p,code.trim()); }
-      catch(e){ if(!/HTTP 404/.test(e.message))throw e; r={why:await syncRpc(k.p,'sync_family_join',{p_sync_key:k.rk,p_code:famCodeSplit(code).server})||null,lists:false}; }
-      if(r.why)setSyncStatus('couldn’t join: '+(HOSTED_FAMILY_WHY[r.why]||r.why),true);
-      else setSyncStatus(r.lists?'you’re on the family/group plan now. The Group tab has the shared lists.':'you’re on the family/group plan now. For the shared lists, ask for a new code: this one is from an older version.');
-    }catch(e){ setSyncStatus('couldn’t join: '+e.message,true); }
-    draw();
-  });
+  // the same invite and join as the Group tab's buttons (family.js)
+  joinBtn.addEventListener('click',async function(){ await famJoinPrompt(); draw(); });
   inviteBtn.addEventListener('click',async function(){
-    const k=await rowKey(); if(!k)return;
-    try{
-      let r;
-      try{ r=await famInvite(k.p); }
-      catch(e){ if(!/HTTP 404/.test(e.message))throw e; r=(await syncRpc(k.p,'sync_family_invite',{p_sync_key:k.rk}))[0]||{}; r.old=true; }
-      if(r.why){ setSyncStatus('couldn’t make a code: '+(HOSTED_FAMILY_WHY[r.why]||r.why),true); return; }
-      famInfo.textContent='Code for them: '+r.code+'. They enter it under I have a group code. It adds one person and stops working after 2 days'+(r.old?'; making another code cancels this one.':'. Once they’re in, you share lists and send each other to-dos on the Group tab.');
-      setSyncStatus('group code made');
-    }catch(e){ setSyncStatus('couldn’t make a code: '+e.message,true); }
+    const r=await famInviteMake();
+    if(!r.code){ setSyncStatus(r.say,true); return; }
+    famInfo.textContent=r.say+' ';
+    famInfo.appendChild(famCopyButton(r.share));
   });
-  leaveBtn.addEventListener('click',async function(){
-    if(!confirm('Leave the family/group plan? You go back to the free space, and the group’s shared lists leave this app. Your own lists aren’t touched.'))return;
-    const k=await rowKey(); if(!k)return;
-    try{ await syncRpc(k.p,'sync_family_remove',{p_sync_key:k.rk,p_member:null}); famForget(); setSyncStatus('you left the family/group plan'); }catch(e){ setSyncStatus('couldn’t: '+e.message,true); }
-    draw();
-  });
+  leaveBtn.addEventListener('click',async function(){ if(await famLeave())draw(); });
   restoreBtn.addEventListener('click',async function(){
     const day=histDay.value; if(!day)return;
     if(!confirm('Restore your lists as they were at the end of '+hostedDayLabel(day)+'?\n\nEvery device gets that day’s tasks back, and tasks added since then are removed. The Agent list isn’t touched.'))return;
@@ -432,12 +476,12 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     finally{ backBtn.disabled=false; }
   });
   delBtn.addEventListener('click',async function(){
-    if(!confirm('Delete your synced data from the Romulus server?\n\nYour lists, photos and files there are deleted for good, and a $5 plan is cancelled. Sync turns off on this device; the lists stay on it.\n\nTurn sync off on your other devices first, or they will upload their copy again.'))return;
+    if(!confirm('Delete your synced data from the Romulus server?\n\nYour lists, photos and files there are deleted for good, and a paid plan is cancelled. Sync turns off on this device; the lists stay on it.\n\nTurn sync off on your other devices first, or they will upload their copy again.'))return;
     delBtn.disabled=true; setSyncStatus('deleting your synced data…');
     try{
       const out=await hostedDeleteAll();
       $('syncOffBtn').click(); // sync off here, and no starting on the Romulus server by itself again
-      setSyncStatus(out.cancelled?'deleted from the Romulus server. Your lists are still on this device.':'deleted from the Romulus server, but the $5 plan couldn’t be cancelled from here: cancel it from your Stripe receipt email.',!out.cancelled);
+      setSyncStatus(out.cancelled?'deleted from the Romulus server. Your lists are still on this device.':'deleted from the Romulus server, but the plan couldn’t be cancelled from here: cancel it from your Stripe receipt email.',!out.cancelled);
     }catch(e){ setSyncStatus('couldn’t delete: '+e.message,true); }
     finally{ delBtn.disabled=false; draw(); }
   });

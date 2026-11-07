@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
       # where pairing codes meet and new installs sync (renderer/js/pair-server.js, hosted-sync.js): the repository
-      # variables PAIR_URL and PAIR_KEY, and PAY_URL and PAY_YEAR_URL (the Stripe Payment Links for $5 a month and $50 a year; optional), and PAY_TRIAL_DAYS (the free trial set on those links, so the app offers it; optional).
+      # variables PAIR_URL and PAIR_KEY, and PAY_URL and PAY_YEAR_URL (the Stripe Payment Links for the Group plan, monthly and yearly; optional), PAY_PERSONAL_URL and PAY_PERSONAL_YEAR_URL (the Personal plan, whose links carry the metadata plan=personal; optional: without them only Group is offered, at $5), and PAY_TRIAL_DAYS (the free trial set on those links, so the app offers it; optional).
       # PAIR_KEY is a publishable key. Without them the build pairs through each device's own sync project.
       - name: Pairing server
         if: ${{ vars.PAIR_URL != '' && vars.PAIR_KEY != '' }}
@@ -85,9 +85,11 @@ jobs:
           PAY_URL: ${{ vars.PAY_URL }}
           PAY_YEAR_URL: ${{ vars.PAY_YEAR_URL }}
           PAY_TRIAL_DAYS: ${{ vars.PAY_TRIAL_DAYS }}
+          PAY_PERSONAL_URL: ${{ vars.PAY_PERSONAL_URL }}
+          PAY_PERSONAL_YEAR_URL: ${{ vars.PAY_PERSONAL_YEAR_URL }}
         shell: bash
         run: |
-          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify(Object.assign({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }, process.env.PAY_URL ? { pay: process.env.PAY_URL } : {}, process.env.PAY_YEAR_URL ? { payYear: process.env.PAY_YEAR_URL } : {}, Number(process.env.PAY_TRIAL_DAYS) > 0 ? { trialDays: Number(process.env.PAY_TRIAL_DAYS) } : {})) + ';\n')"
+          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify(Object.assign({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }, process.env.PAY_URL ? { pay: process.env.PAY_URL } : {}, process.env.PAY_YEAR_URL ? { payYear: process.env.PAY_YEAR_URL } : {}, process.env.PAY_PERSONAL_URL ? { payPersonal: process.env.PAY_PERSONAL_URL } : {}, process.env.PAY_PERSONAL_YEAR_URL ? { payPersonalYear: process.env.PAY_PERSONAL_YEAR_URL } : {}, Number(process.env.PAY_TRIAL_DAYS) > 0 ? { trialDays: Number(process.env.PAY_TRIAL_DAYS) } : {})) + ';\n')"
       # Signing, each part only once its secrets exist; until then that installer is built unsigned as before.
       # Mac (Apple Developer Program): MAC_CSC_LINK (the Developer ID Application certificate as a base64
       # .p12), MAC_CSC_KEY_PASSWORD, and for notarization APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
@@ -208,9 +210,11 @@ jobs:
           PAY_URL: ${{ vars.PAY_URL }}
           PAY_YEAR_URL: ${{ vars.PAY_YEAR_URL }}
           PAY_TRIAL_DAYS: ${{ vars.PAY_TRIAL_DAYS }}
+          PAY_PERSONAL_URL: ${{ vars.PAY_PERSONAL_URL }}
+          PAY_PERSONAL_YEAR_URL: ${{ vars.PAY_PERSONAL_YEAR_URL }}
         shell: bash
         run: |
-          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify(Object.assign({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }, process.env.PAY_URL ? { pay: process.env.PAY_URL } : {}, process.env.PAY_YEAR_URL ? { payYear: process.env.PAY_YEAR_URL } : {}, Number(process.env.PAY_TRIAL_DAYS) > 0 ? { trialDays: Number(process.env.PAY_TRIAL_DAYS) } : {})) + ';\n')"
+          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify(Object.assign({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }, process.env.PAY_URL ? { pay: process.env.PAY_URL } : {}, process.env.PAY_YEAR_URL ? { payYear: process.env.PAY_YEAR_URL } : {}, process.env.PAY_PERSONAL_URL ? { payPersonal: process.env.PAY_PERSONAL_URL } : {}, process.env.PAY_PERSONAL_YEAR_URL ? { payPersonalYear: process.env.PAY_PERSONAL_YEAR_URL } : {}, Number(process.env.PAY_TRIAL_DAYS) > 0 ? { trialDays: Number(process.env.PAY_TRIAL_DAYS) } : {})) + ';\n')"
       - name: Build the APK
         if: steps.keystore.outputs.present == 'true'
         env:

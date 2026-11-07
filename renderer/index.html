@@ -249,13 +249,15 @@
           <p id="hostedMyPlanInfo" class="settings-hint" style="margin:0"></p>
         </div>
         <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
-        <!-- the $5 plan, offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
+        <!-- the Group plan (and Personal, when its links are set), offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
         <div id="hostedPlan" hidden style="margin:0 0 10px">
           <!-- the words come from hostedPlanPitch (hosted-sync.js), which knows whether the links start with a free trial -->
           <p id="hostedPitch" class="settings-hint" style="margin:0 0 6px"></p>
           <div class="settings-row">
             <button id="hostedPayBtn" class="btn-accent" hidden></button>
             <button id="hostedPayYearBtn" class="ghost mono" hidden>$50 a year</button>
+            <button id="hostedPayPersonalBtn" class="ghost mono" hidden></button>
+            <button id="hostedPayPersonalYearBtn" class="ghost mono" hidden></button>
             <button id="hostedPlanOwnBtn" class="ghost mono" hidden>Or use my own Supabase</button>
             <button id="hostedJoinBtn" class="ghost mono">I have a group code</button>
           </div>
@@ -265,7 +267,7 @@
           <div id="hostedFamilyList"></div>
           <div class="settings-row">
             <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
-            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family/group plan</button>
+            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the group</button>
           </div>
         </div>
         <!-- the rarely used settings, out of the way until wanted -->
