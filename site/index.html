@@ -284,7 +284,8 @@ footer .supporters{flex-basis:100%;margin:6px 0 0;line-height:1.6}
     <a data-os="linux" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Linux<span class="you" hidden>Your device</span></span>
       <span class="file"><b data-file>Romulus-1.1.1.AppImage</b> <span data-size></span></span>
-      <span class="note">Ubuntu, Debian, Mint: open the <b>.deb</b> to install it (or <code>sudo apt install ./</code> the file). Other distributions: the <b>.AppImage</b> from the release page, made executable (<code>chmod +x</code>).</span>
+      <span class="note" data-linux-note>Make it executable (<code>chmod +x</code>) and run it. On Ubuntu 22.04 or newer, install <code>libfuse2t64</code> first.</span>
+      <span class="note" data-deb-note hidden>Ubuntu, Debian, Mint: open it to install (or <code>sudo apt install ./</code> the file). Other distributions: the <b>.AppImage</b> on the release page, made executable (<code>chmod +x</code>).</span>
     </a>
     <a data-os="android" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>Android<span class="you" hidden>Your device</span></span>
@@ -419,6 +420,12 @@ npm start</pre>
           || (k === 'linux' && found.filter(function (a) { return /\.deb$/i.test(a.name); })[0]) || found[0] || null;
         var intel = k === 'mac' ? found.filter(function (a) { return !/arm64/i.test(a.name); })[0] : null;
         if (intel && card.querySelector('[data-intel]')) card.querySelector('[data-intel]').textContent = intel.name;
+        // the Linux note says how to open the file the button links
+        if (k === 'linux' && asset) {
+          var deb = /\.deb$/i.test(asset.name);
+          card.querySelector('[data-deb-note]').hidden = !deb;
+          card.querySelector('[data-linux-note]').hidden = deb;
+        }
         at = i;
       }
       if (!asset) { card.href = RELEASES; return; }
