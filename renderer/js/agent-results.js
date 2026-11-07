@@ -141,6 +141,11 @@ if(window.desktop&&window.desktop.onAgentResults){
       // suggestions for the week start unselected: he taps the ones he wants
       if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
       if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
+      // the class sweep's finds go on his School list (wiring.js importClassItems)
+      if(Array.isArray(u.school)&&u.school.length&&typeof importClassItems==='function'){
+        const s=importClassItems(u.school);
+        agentSay(t,'sys','School list: '+s.added+' added'+(s.moved?', '+s.moved+' with a new date':'')+(s.labeled?', '+s.labeled+' given their class':'')+' (of '+u.school.length+' found)');
+      }
       // a case waiting on someone else (agent/triggers.js followUp): it watches until then. Never over one he set himself
       if(u.followUp&&u.followUp.kind&&(!t.trigger||t.trigger.auto)){ t.trigger=u.followUp; t.triggered=null; agentSay(t,'sys','Following up: starts again '+triggerText(u.followUp)); }
       (Array.isArray(u.asks)?u.asks:[]).forEach(function(q){ agentSay(t,'sys','The local model asked Claude: '+q); });

@@ -436,7 +436,60 @@ async function importCourseFeeds(){
   }).map(function(t){ return t.id; }):[];
   const tidy=tidySchool(r,vanished);
   if(added||moved||sited||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
+  ensureClassSweep(Array.from(new Set(r.items.map(function(e){ return e.source; }).filter(Boolean))));
   return {added:added,moved:moved,count:r.items.length,errors:r.errors,tidy:tidy};
+}
+/* The class sweep (agent/class-sweep.js): once a week the local model goes through every class on Blackboard /
+   D2L and brings back the work the calendar links miss (a class run from Connect or a syllabus never shows
+   up on them). Its finds come in here, the way calendar items do: each keeps its id ("bbs-…", from the class
+   and the name), a date the course moves is followed unless he set his own, one he deleted isn't brought
+   back, and one the calendar or he already has (same class or none, a day apart, same name give or take)
+   isn't added again; an untagged calendar item it matches gets the class instead. */
+const SWEEP_SEEN_KEY='tasks.sweepSeen';
+function importClassItems(items){
+  if(!Array.isArray(items)||!items.length)return {added:0,moved:0,labeled:0};
+  let seen={}; try{ seen=JSON.parse(localStorage.getItem(SWEEP_SEEN_KEY)||'{}')||{}; }catch(e){}
+  const ws=schoolConfigured()?'school':'personal';
+  const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
+  let added=0, moved=0, labeled=0;
+  items.forEach(function(e){
+    if(!e||!/^bbs-[0-9a-f]{20}$/.test(String(e.id||''))||!e.title||!e.course)return;
+    const was=seen[e.id], now=(e.due||'')+' '+(e.dueTime||'');
+    seen[e.id]=now;
+    const t=state.tasks.find(function(x){ return x.id===e.id; });
+    if(t){
+      if(was!=null&&was!==now&&!t.done&&((t.due||'')+' '+(t.dueTime||''))===was){ t.due=e.due||null; t.dueTime=e.dueTime||null; moved++; }
+      return;
+    }
+    if(tombed[e.id]||was!=null)return;
+    const twin=state.tasks.find(function(x){
+      if(taskWs(x)!=='school'&&x.ws!=='school'&&!(x.tag&&x.tag===e.course))return false;
+      if(x.tag&&x.tag!==e.course)return false;
+      if(!!x.due!==!!e.due||(x.due&&Math.abs((new Date(x.due+'T12:00')-new Date(e.due+'T12:00'))/864e5)>1))return false;
+      return sameAssignment(x.title,e.title);
+    });
+    if(twin){ if(!twin.tag){ twin.tag=e.course; labeled++; } return; }
+    const n={id:e.id,title:e.title,done:false,due:e.due||null,dueTime:e.dueTime||null,tag:e.course,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+    if(ws==='school'){ n.kind=e.kind||'regular'; n.notes=[e.notes,e.url].filter(Boolean).join('\n\n')||null; if(e.source)n.site=e.source; }
+    state.tasks.push(n); added++;
+  });
+  try{ localStorage.setItem(SWEEP_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
+  if(added||moved||labeled)touch();
+  return {added:added,moved:moved,labeled:labeled};
+}
+/* the sweep's task: one, made once on a computer with a course calendar and a local model (the same id
+   everywhere, so two computers don't make two). Every Sunday morning; delete it and it stays gone */
+function ensureClassSweep(hosts){
+  if(typeof localStat==='undefined'||!localStat||!localStat.model)return;
+  if(state.tasks.some(function(x){ return x.id==='class-sweep'; })||state.tombstones.some(function(x){ return x.id==='class-sweep'; }))return;
+  const schools=(hosts||[]).filter(function(h){ return /blackboard|d2l|brightspace/i.test(h); });
+  if(!schools.length)return;
+  const repeat={every:'week',day:0,at:'07:00'};
+  const t={id:'class-sweep',classSweep:true,title:'Check my classes for work the school calendar misses',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+    created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],lane:'local',repeat:repeat,nextRun:nextRepeatAt(repeat,Date.now()),
+    notes:'My classes are on: '+schools.map(function(h){ return 'https://'+h+(/blackboard/i.test(h)?'/ultra/course':'/d2l/home'); }).join(' and ')};
+  agentSay(t,'sys','Weekly class sweep: '+localModelName()+' goes through every class on your course sites and adds the work your school calendar link misses to your School list. Runs now, then every Sunday at 7:00 AM.');
+  state.tasks.push(t); touch();
 }
 /* Tidy the School list after each import, so each assignment is there once and labeled with its course:
    - course names and loose codes as tags ("Astronomy", "ecn322") become the code ("PHYS 1010", "ECN 322");
