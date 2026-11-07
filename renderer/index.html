@@ -239,6 +239,11 @@
       <!-- the Romulus server new installs sync through, its space, and moving off it (hosted-sync.js) -->
       <div id="hostedBox" hidden style="margin-top:14px">
         <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
+        <!-- shown once someone has the plan, so it's plain in Settings what they're on (hosted-sync.js) -->
+        <div id="hostedMyPlan" hidden style="margin:0 0 10px;padding:10px 12px;border:1px solid var(--accent);border-radius:10px">
+          <div class="settings-label" style="margin-bottom:4px;color:var(--accent)">Your plan: Family</div>
+          <p id="hostedMyPlanInfo" class="settings-hint" style="margin:0"></p>
+        </div>
         <!-- the $5 plan, offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
         <div id="hostedPlan" hidden style="margin:0 0 10px">
           <!-- the words come from hostedPlanPitch (hosted-sync.js), which knows whether the links start with a free trial -->

@@ -122,3 +122,16 @@ test('the plan is offered as a family plan, with a free trial only when the link
   assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).button, plain.button);
   assert.strictEqual(h.hostedPlanPitch(null).year, 'Pay yearly: 2 months free');
 });
+
+test('fireworks only when this device saw the free space and now sees the plan', () => {
+  assert.equal(h.hostedJustPaid('free', true), true);
+  assert.equal(h.hostedJustPaid('paid', true), false); // a restart
+  assert.equal(h.hostedJustPaid(null, true), false); // a new device of someone already paying
+  assert.equal(h.hostedJustPaid('free', false), false);
+});
+
+test('Settings says which plan someone is on', () => {
+  assert.match(h.hostedMyPlanText(false), /family plan.*4 more people/);
+  assert.match(h.hostedMyPlanText(true), /through someone in your family/);
+  assert.doesNotMatch(h.hostedMyPlanText(true), /4 more people/);
+});

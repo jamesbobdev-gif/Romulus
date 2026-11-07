@@ -91,6 +91,67 @@ function hostedPlanText(u,hasPay){
   return {line:line,full:full&&!paid};
 }
 
+/* Someone who just got the plan sees fireworks once, on the device they were on the free space with. What this
+   device last saw is kept (HOSTED_SEEN_KEY: 'free' or 'paid'); only free → paid celebrates, so a new device of
+   someone already paying, or a restart, doesn't set them off again. Pure, for tests. */
+const HOSTED_SEEN_KEY='tasks.hostedPlanSeen';
+function hostedJustPaid(seen,paid){ return !!paid&&seen==='free'; }
+// the "Your plan" lines in Settings (pure, for tests): member = on someone else's family plan
+function hostedMyPlanText(member){
+  return member
+    ?'You’re on the family plan, through someone in your family. You get 600 MB of space, 30 days of history and new versions early.'
+    :'You’re on the family plan. You get 600 MB of space, 30 days of history, room for up to 4 more people and new versions early. Thank you for keeping Romulus running.';
+}
+
+/* Fireworks over the whole window for a few seconds: a canvas that takes no clicks and removes itself.
+   Someone who asked their system for less motion gets the message without the bursts. */
+function hostedFireworks(message){
+  if(typeof document==='undefined'||!document.body)return;
+  const still=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;pointer-events:none;display:flex;align-items:center;justify-content:center';
+  const cv=document.createElement('canvas'); cv.style.cssText='position:absolute;inset:0;width:100%;height:100%';
+  const note=document.createElement('div');
+  note.style.cssText='position:relative;padding:14px 22px;border-radius:12px;background:var(--surface,#fff);color:var(--ink,#111);box-shadow:0 8px 30px rgba(0,0,0,.25);font-size:18px;font-weight:600;opacity:0;transition:opacity .4s';
+  note.textContent=message||'';
+  wrap.appendChild(cv); if(message)wrap.appendChild(note); document.body.appendChild(wrap);
+  requestAnimationFrame(function(){ note.style.opacity='1'; });
+  const end=function(){ note.style.opacity='0'; setTimeout(function(){ wrap.remove(); },450); };
+  if(still){ setTimeout(end,2600); return; }
+  const dpr=window.devicePixelRatio||1, ctx=cv.getContext('2d');
+  const W=window.innerWidth, H=window.innerHeight; cv.width=W*dpr; cv.height=H*dpr; ctx.scale(dpr,dpr);
+  const accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2742C8';
+  const colors=[accent,'#F5B82E','#E8505B','#3CC47C','#9B6CF0','#FFFFFF'];
+  const rockets=[], sparks=[], t0=performance.now(), LAUNCH_MS=3200;
+  let nextLaunch=0, last=t0;
+  // steps are in 60-per-second units, so a 144 Hz screen or a busy one plays it at the same speed
+  const frame=function(now){
+    const t=now-t0, k=Math.min(4,Math.max(0,(now-last)/16.67)); last=now;
+    if(t<LAUNCH_MS&&t>=nextLaunch){
+      rockets.push({x:W*(0.15+Math.random()*0.7),y:H,vx:(Math.random()-0.5)*1.5,vy:-Math.sqrt(2*0.18*H*(0.5+Math.random()*0.3)),c:colors[Math.floor(Math.random()*colors.length)]});
+      nextLaunch=t+220+Math.random()*260;
+    }
+    ctx.clearRect(0,0,W,H);
+    for(let i=rockets.length-1;i>=0;i--){
+      const r=rockets[i]; r.x+=r.vx*k; r.y+=r.vy*k; r.vy+=0.18*k;
+      ctx.fillStyle=r.c; ctx.fillRect(r.x-1.5,r.y-1.5,3,3);
+      if(r.vy>=-1){
+        rockets.splice(i,1);
+        const n=60+Math.floor(Math.random()*30);
+        for(let j=0;j<n;j++){ const a=Math.PI*2*j/n, s=2+Math.random()*3.5; sparks.push({x:r.x,y:r.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,c:Math.random()<0.75?r.c:colors[Math.floor(Math.random()*colors.length)]}); }
+      }
+    }
+    for(let i=sparks.length-1;i>=0;i--){
+      const s=sparks[i]; const drag=Math.pow(0.97,k); s.x+=s.vx*k; s.y+=s.vy*k; s.vx*=drag; s.vy=s.vy*drag+0.06*k; s.life-=0.014*k;
+      if(s.life<=0){ sparks.splice(i,1); continue; }
+      ctx.globalAlpha=s.life; ctx.fillStyle=s.c; ctx.beginPath(); ctx.arc(s.x,s.y,2.5,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    if(t<LAUNCH_MS||rockets.length||sparks.length)requestAnimationFrame(frame); else end();
+  };
+  requestAnimationFrame(frame);
+}
+
 /* Restore a list as it was at the end of a day (the $5 plan's 30 days of history; the copies come from
    sync_history_get). Pure, for tests: the tasks of that list become the day's copy, stamped now so they win on
    every device, and whatever it has now that the copy hadn't gets a tombstone, so it goes everywhere too. */
@@ -145,7 +206,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const on=validProfile(p)&&hostedIs(p.url);
     ownBtn.hidden=!on; backBtn.hidden=on; delBtn.hidden=!on;
     if(!on){
-      planBox.hidden=famBox.hidden=histBox.hidden=earlyRow.hidden=supporters.hidden=true;
+      planBox.hidden=myPlan.hidden=famBox.hidden=histBox.hidden=earlyRow.hidden=supporters.hidden=true;
       info.textContent=validProfile(p)?'Your lists sync through your own Supabase project.':'Sync is off on this device.';
       return;
     }
@@ -155,6 +216,8 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const t=hostedPlanText(u,hostedCanPay(h));
     if(t.line)info.textContent+=' '+t.line;
     const paid=!!(u&&u.paid_until);
+    myPlan.hidden=!paid; myPlanInfo.textContent=hostedMyPlanText(false);
+    if(u)hostedNoteSeen(paid);
     // the plan is on offer the whole time someone is on the free space, not only once it's nearly full
     planBox.hidden=!u||paid;
     payBtn.hidden=!hostedCanPay(h);
@@ -168,6 +231,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     drawEarly(paid);
     drawSupporters(p,c);
   };
+  const myPlan=$('hostedMyPlan'), myPlanInfo=$('hostedMyPlanInfo');
   const planBox=$('hostedPlan'), payYearBtn=$('hostedPayYearBtn'), joinBtn=$('hostedJoinBtn'), planOwnBtn=$('hostedPlanOwnBtn');
   const famBox=$('hostedFamily'), famInfo=$('hostedFamilyInfo'), famList=$('hostedFamilyList'), inviteBtn=$('hostedInviteBtn'), leaveBtn=$('hostedLeaveBtn');
   const histBox=$('hostedHistory'), histDay=$('hostedHistoryDay'), restoreBtn=$('hostedRestoreBtn');
@@ -179,7 +243,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const role=rows[0]&&rows[0].role;
     famBox.hidden=!role; inviteBtn.hidden=role!=='payer'; leaveBtn.hidden=role!=='member';
     famList.textContent='';
-    if(role==='member'){ famInfo.textContent='Your $5 plan comes from someone’s family plan.'; return; }
+    if(role==='member'){ famInfo.textContent='Your $5 plan comes from someone’s family plan.'; myPlanInfo.textContent=hostedMyPlanText(true); return; }
     if(role!=='payer')return;
     const members=rows.filter(function(r){ return r.member; });
     famInfo.textContent=members.length?'Your plan covers '+members.length+' more '+(members.length===1?'person':'people')+' (up to 4).':'Your plan can cover up to 4 more people. Invite someone: they type the code into their own app.';
@@ -218,12 +282,48 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     const list=names.map(function(r){ return r.name; }).join(', ');
     supporters.textContent=names.length?'Thanks to the people keeping Romulus running: '+list+(/[.!?]$/.test(list)?'':'.'):'';
   }
+  // free → paid on this device: fireworks, and Settings opened on the plan so it's plain what they have now
+  function hostedNoteSeen(paid){
+    let seen=null; try{ seen=localStorage.getItem(HOSTED_SEEN_KEY); }catch(e){}
+    try{ localStorage.setItem(HOSTED_SEEN_KEY,paid?'paid':'free'); }catch(e){}
+    if(!hostedJustPaid(seen,paid))return;
+    hostedFireworks('Welcome to the family plan');
+    setSyncStatus('you’re on the family plan now. Thank you.');
+    // Device sync opened, drawn with the plan, and "Your plan: Family" scrolled into view
+    if(typeof openSettingsAt==='function')openSettingsAt(null,'syncSection');
+    Promise.resolve(draw()).then(function(){ if(!myPlan.hidden)myPlan.scrollIntoView({block:'center',behavior:'smooth'}); }).catch(function(){});
+  }
+  // after the pay link opens, look every 20 seconds for 15 minutes for the payment to land (Stripe's webhook)
+  let watchTimer=null;
+  function watchForPlan(){
+    clearInterval(watchTimer);
+    const until=Date.now()+15*60*1000;
+    watchTimer=setInterval(async function(){
+      const p=syncState.cfg&&syncState.cfg.personal;
+      if(Date.now()>until||!validProfile(p)||!hostedIs(p.url)){ clearInterval(watchTimer); return; }
+      let u=null; try{ u=(await syncRpc(p,'sync_usage',{p_sync_key:await syncRowKey(p)}))[0]; }catch(e){ return; }
+      if(u&&u.paid_until){ clearInterval(watchTimer); draw(); }
+    },20000);
+  }
+  /* A look a little after start, for a payment made while the app was closed, then every 5 minutes while this
+     device is on the free space, for one made on another device or a pay link opened elsewhere. */
+  const lookForPlan=async function(){
+    const p=syncState.cfg&&syncState.cfg.personal;
+    if(!hostedServer()||!validProfile(p)||!hostedIs(p.url))return;
+    let seen=null; try{ seen=localStorage.getItem(HOSTED_SEEN_KEY); }catch(e){}
+    if(seen==='paid')return;
+    let u=null; try{ u=(await syncRpc(p,'sync_usage',{p_sync_key:await syncRowKey(p)}))[0]; }catch(e){ return; }
+    if(u)hostedNoteSeen(!!u.paid_until);
+  };
+  setTimeout(lookForPlan,8000);
+  setInterval(lookForPlan,5*60*1000);
   const openPay=async function(link){
     const h=hostedServer(), p=syncState.cfg&&syncState.cfg.personal; if(!hostedCanPay(h)||!link||!validProfile(p))return;
     // the link carries the account id, a hash of the key's lookup id: Stripe never sees the key
     const acct=await hostedAccountId(await syncRowKey(p));
     openOutside(link+(link.indexOf('?')===-1?'?':'&')+'client_reference_id='+acct);
     setSyncStatus('once the payment goes through, the plan turns on within a minute');
+    watchForPlan();
   };
   payBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.pay); });
   payYearBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payYear); });
@@ -313,4 +413,4 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   if(hostedServer())SYNC_REFUSED.full='sync paused: your free online space is full. Your lists are safe on this device. Settings → Device sync has the options.';
 }
 
-if(typeof module!=='undefined')module.exports={hostedMarkerKeys,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
+if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
