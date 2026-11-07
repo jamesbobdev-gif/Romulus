@@ -40,7 +40,7 @@ function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(s
 /* tabs that aren't lists (no composer, no list view) */
 function isViewTab(tab){ return tab==='ideas'||tab==='hours'||tab==='finance'||tab==='health'; }
 /* which tabs show: Settings -> Tabs hides any but To do (this device only); data-na="1" = not available here */
-const TAB_KEYS=[['tabAgent','agent','Agent'],['tabSchool','school','School'],['tabWork','work','Work'],['tabCal','calendar','Calendar'],['tabIdeas','ideas','Ideas'],['tabHours','hours','Hours'],['tabFinance','finance','Finance'],['tabHealth','health','Health']];
+const TAB_KEYS=[['tabAgent','agent','Agent'],['tabSchool','school','School'],['tabWork','work','Work'],['tabCal','calendar','Calendar'],['tabIdeas','ideas','Notes'],['tabHours','hours','Hours'],['tabFinance','finance','Finance'],['tabHealth','health','Health']];
 const TABS_OFF_KEY='tasks.tabsOff.v1';
 function tabsOff(){ try{ const v=JSON.parse(localStorage.getItem(TABS_OFF_KEY)||'[]'); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
 function tabsApply(){

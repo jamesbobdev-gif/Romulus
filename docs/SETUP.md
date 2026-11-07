@@ -123,11 +123,13 @@ Then choose, per calendar, whether its events become to-dos and whether your tas
 
 **The local model’s sites.** The list in **⚙ Settings → Routing → Sites the local model may open** fills itself: every site the local model reaches in a run is added, so it's allowed next time. When its browser refuses a site it needed, a to-do appears on your Human list (“Allow the local model on linkedin.com? …”). Check it off to allow the site and run the task again; delete it to say no.
 
-### Health goals (Android)
+### Health goals (phone)
 
-On the phone, the **Health** tab → **Connect Health Connect** lets Romulus read your steps, sleep and
-workouts (read-only) from Health Connect, which Samsung Health, Fitbit, Google Fit, Oura, Garmin and most
-other health apps write to. On Android 13 or older the button first installs Health Connect from Play.
+On the phone, the **Health** tab → **Connect** lets Romulus read your steps, sleep and workouts (read-only)
+from the phone's health store. On an iPhone that is **Apple Health**, which the phone, an Apple Watch and most
+health apps write to; if a number stays blank, allow it in the Health app under Sharing → Apps → Romulus. On
+Android it is **Health Connect**, which Samsung Health, Fitbit, Google Fit, Oura, Garmin and most other health
+apps write to; on Android 13 or older the button first installs Health Connect from Play.
 
 Then write goals as ordinary to-dos, due today or with no date, and they tick themselves off once you've
 done them: **Walk 8,000 steps** (or 10k steps), **Sleep 7 hours** (or 8h of sleep), **Work out 30 min**

@@ -107,7 +107,7 @@ Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/
 
 ### Phone app (iPhone)
 
-The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
+The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Health tab reads Apple Health there (Health Connect on Android). The other Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
 
 ### Where your data lives
 

@@ -22,7 +22,7 @@ goes only to services *you* connect, under your own accounts and keys.
 - The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.
-- Health data on Android (see below): read on the phone, never stored, synced or sent anywhere.
+- Health data on a phone (see below): read on the phone, never stored, synced or sent anywhere.
 
 ## What leaves your device, and where it goes
 
@@ -76,6 +76,25 @@ for one thing: ticking off a to-do that names a goal, such as "Walk 8,000 steps"
   including its Limited Use requirements.
 - To stop it, tap **Manage** on the Health tab, or take the permissions back in Health Connect's own
   settings.
+
+## Apple Health (iPhone)
+
+The same feature on an iPhone reads from Apple Health (HealthKit) when you tap **Connect Apple Health** on the
+Health tab and allow it: **steps**, **sleep**, **workouts** and **exercise minutes**, read-only, only while the
+app is open, and only to tick off a goal to-do such as "Walk 8,000 steps".
+
+- As on Android, the totals stay in the app's memory and are dropped when it closes: not saved, not synced, not
+  sent to any AI service, not sent to us or anyone else. Only the ticked-off to-do syncs.
+- Romulus never writes to Apple Health, never uses health data for advertising or marketing, never sells it,
+  and never gives it to a third party. That is what Apple's HealthKit rules require, and it is also simply
+  true: there is nowhere for it to go.
+- To stop it, tap **Manage** on the Health tab, which opens the Health app: Sharing → Apps → Romulus.
+
+## Permissions on iPhone
+
+- **Notifications**: reminders.
+- **Health** (read only): steps, sleep, workouts and exercise minutes, to tick off goal to-dos, when you
+  connect it.
 
 ## Permissions on Android
 

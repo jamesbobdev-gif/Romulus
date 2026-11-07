@@ -171,12 +171,27 @@ prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`).
 7. **Reviewer note** (App Review Information): the same as Play's: no accounts of ours, tasks work offline,
    AI features need the reviewer's own key, entered in Settings → AI. Apple's reviewers do ask for a demo
    path; say which free key to use (a Gemini key from aistudio.google.com).
+8. **HealthKit** (the Health tab, `HealthDataPlugin.swift`): the App ID needs the HealthKit capability. With
+   automatic signing and the Admin key the first build turns it on itself; if the archive fails on
+   "entitlement not supported", switch it on by hand at developer.apple.com → Identifiers →
+   `com.jartro.tasks` → HealthKit. Review checks three things: a privacy policy with a HealthKit section (the
+   Apple Health section of `PRIVACY.md`), the purpose string in `Info.plist`
+   (`NSHealthShareUsageDescription`), and that health data is used for the feature alone. Add to the
+   reviewer note: "The Health tab reads steps, sleep and workouts from Apple Health, read-only, to tick off
+   the user's own goal to-dos such as 'Walk 8,000 steps'. Nothing is stored, synced or shared." App Privacy:
+   Health & Fitness, not collected (it never leaves the phone).
+
+**Before paying Apple**: Actions → *iPhone build check* → Run workflow compiles the project unsigned on a GitHub
+Mac (`.github/workflows/ios-check.yml`), so a broken project shows up before the $99 and before any secret
+exists. The task-photo picker offers the camera on iPhone, so `Info.plist` carries the camera and photo
+library purpose strings; without them iOS closes the app the moment someone taps *Take Photo*.
 
 **What the iPhone app leaves out today**, each because its native plugin is Android-only and the web side
 simply does without it when the plugin is absent: home-screen widgets, the share menu, Google / Microsoft
 calendar sign-in on the phone (calendars still arrive through sync from a computer), the fingerprint-locked
 Finance vault, voice input and "Hey Romulus" (iOS wouldn't let it listen in the background anyway). Tasks,
-all the lists, sync, reminders (local notifications) and the Agent's conversation all work. There is no update
+all the lists, sync, reminders (local notifications), the Agent's conversation and the Health tab (Apple Health
+in place of Health Connect, the same goal to-dos) all work. There is no update
 banner (`ROMULUS_STORE` is `appstore`): the App Store updates the app. Porting the rest means Swift versions
 of the plugins in `mobile/android/app/src/main/java/com/jartro/tasks/` and WidgetKit widgets.
 

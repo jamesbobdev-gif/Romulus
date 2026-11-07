@@ -1,7 +1,8 @@
-/* Health goals (Android): a to-do that names a goal checks itself off once Health Connect shows it was met.
-   "Walk 8,000 steps" / "10k steps", "Sleep 7 hours" / "8h of sleep", "Work out 30 min" / "45 minutes of yoga".
-   Only to-dos due today or with no date; the Agent's tasks never. The numbers come from mobile/health-phone.js
-   and stay on the phone: nothing here saves, syncs or sends them, and only the tick reaches the other devices.
+/* Health goals (phone): a to-do that names a goal checks itself off once Apple Health (iPhone) or Health Connect
+   (Android) shows it was met. "Walk 8,000 steps" / "10k steps", "Sleep 7 hours" / "8h of sleep", "Work out 30 min"
+   / "45 minutes of yoga". Only to-dos due today or with no date; the Agent's tasks never. The numbers come from
+   mobile/health-phone.js and stay on the phone: nothing here saves, syncs or sends them, and only the tick reaches
+   the other devices.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
@@ -34,7 +35,7 @@ function healthSay(kind,v){
   const h=Math.floor(v/60), mn=v%60, dur=(h?h+'h ':'')+(mn||!h?mn+'m':'').trim();
   return kind==='sleep'?dur.trim()+' of sleep last night':dur.trim()+' of exercise today';
 }
-/* the to-dos to tick off: open, not the Agent's, due today or undated, a goal Health Connect shows as met,
+/* the to-dos to tick off: open, not the Agent's, due today or undated, a goal the phone's health data shows as met,
    and not one already ticked off by this today (unticking it by hand keeps it unticked) */
 function healthToTick(tasks,d,skip,wsOf){
   if(!d||!d.date)return [];
@@ -53,7 +54,7 @@ let healthUi=null;
 function renderHealth(){ if(healthUi)healthUi.draw(); }
 
 if(typeof window!=='undefined'&&window.phoneHealth&&typeof document!=='undefined'&&document.getElementById('healthView')){
-  const hApi=window.phoneHealth;
+  const hApi=window.phoneHealth, APP=hApi.app||'Health Connect'; // "Apple Health" on an iPhone
   const AUTO_KEY='tasks.healthAuto.v1'; // task id → the day this ticked it off
   const view=$('healthView');
   let last=null, st=null, msg='';
@@ -64,29 +65,32 @@ if(typeof window!=='undefined'&&window.phoneHealth&&typeof document!=='undefined
   const draw=function(){
     view.innerHTML='';
     const head=el('div','health-head');
-    const btn=el('button','btn-accent',st&&st.sdk==='install'?'Get Health Connect':'Connect Health Connect');
+    const btn=el('button','btn-accent',st&&st.sdk==='install'?'Get Health Connect':'Connect '+APP);
     btn.hidden=on()||!!(st&&st.sdk==='none');
     btn.addEventListener('click',async function(){
       btn.disabled=true;
-      try{ await hApi.connect(); }catch(e){ msg='Couldn’t open Health Connect.'; }
+      try{ await hApi.connect(); }catch(e){ msg='Couldn’t open '+APP+'.'; }
       await refresh();
     });
     const mng=el('button','ghost mono','Manage'); mng.hidden=!on();
-    mng.addEventListener('click',function(){ hApi.manage().catch(function(){ msg='Couldn’t open Health Connect.'; draw(); }); });
+    mng.addEventListener('click',function(){ hApi.manage().catch(function(){ msg='Couldn’t open '+APP+'.'; draw(); }); });
     head.appendChild(btn); head.appendChild(mng);
     view.appendChild(head);
-    const say=msg||(!st?'':st.sdk==='none'?'Health Connect isn’t available on this phone.':st.sdk==='install'?'Install or update Health Connect first.':!on()?'Not connected.':'');
+    const say=msg||(!st?'':st.sdk==='none'?APP+' isn’t available on this phone.':st.sdk==='install'?'Install or update Health Connect first.':!on()?'Not connected.':'');
     if(say)view.appendChild(el('p','settings-hint',say));
     if(on()){
-      const g=st.granted, tiles=el('div','hours-totals');
+      const g=st.granted, tiles=el('div','health-tiles');
       [['Steps today','steps',last&&last.steps,g.steps],['Sleep last night','sleep',last&&last.sleepMin,g.sleep],['Exercise today','exercise',last&&last.exerciseMin,g.exercise]].forEach(function(x){
-        const c=el('div','hours-total');
-        c.appendChild(el('div','hours-total-k',x[0]));
-        c.appendChild(el('div','hours-total-v',x[3]?fmt(x[1],x[2]):'–'));
-        if(!x[3])c.appendChild(el('div','hours-total-split','not allowed'));
+        const c=el('div','health-tile');
+        c.appendChild(el('div','health-tile-k',x[0]));
+        c.appendChild(el('div','health-tile-v',x[3]?fmt(x[1],x[2]):'–'));
+        if(!x[3])c.appendChild(el('div','health-tile-s','not allowed'));
         tiles.appendChild(c);
       });
       view.appendChild(tiles);
+      // Apple Health never says which reads were allowed: a type said no to simply comes back empty
+      if(hApi.ios&&last&&(last.steps==null||last.sleepMin==null||last.exerciseMin==null))
+        view.appendChild(el('p','settings-hint','A blank number means nothing logged yet, or not allowed: the Health app, Sharing, Apps, Romulus.'));
     }
     const today=last&&last.date||formatDate(new Date());
     const goals=state.tasks.filter(function(t){
@@ -124,7 +128,7 @@ if(typeof window!=='undefined'&&window.phoneHealth&&typeof document!=='undefined
     else if(state.activeTab==='health')draw();
   };
   const refresh=async function(){
-    try{ st=await hApi.status(); msg=''; }catch(e){ msg='Couldn’t reach Health Connect.'; }
+    try{ st=await hApi.status(); msg=''; }catch(e){ msg='Couldn’t reach '+APP+'.'; }
     await tick();
     if(state.activeTab==='health')draw();
   };
@@ -132,7 +136,7 @@ if(typeof window!=='undefined'&&window.phoneHealth&&typeof document!=='undefined
   $('tabHealth').dataset.na='';
   if(typeof tabsPicksDraw==='function')tabsPicksDraw();
   tabsApply();
-  document.addEventListener('visibilitychange',function(){ if(!document.hidden)refresh(); }); // back from Health Connect, or a new day
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden)refresh(); }); // back from the permission sheet, or a new day
   setTimeout(refresh,8000); // after the tasks have loaded
   setInterval(tick,10*60*1000);
 }

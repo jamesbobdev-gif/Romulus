@@ -28,6 +28,12 @@
 	<string>public.app-category.productivity</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Romulus reads your steps, sleep and workouts to tick off goal to-dos such as “Walk 8,000 steps”. The numbers stay on this phone.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Romulus uses the camera when you take a photo for a task.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Romulus opens your photo library when you attach a picture to a task.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

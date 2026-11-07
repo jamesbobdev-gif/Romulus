@@ -82,6 +82,18 @@ test('phone bridge: today keeps numbers and turns what is missing into null', as
   assert.deepStrictEqual({ ...(await h.today()) }, { date: '2026-11-04', steps: 1200, sleepMin: null, exerciseMin: 0 });
 });
 
+test('phone bridge: the tab calls it Apple Health on an iPhone, Health Connect elsewhere', () => {
+  const load = (platform) => {
+    const window = { Capacitor: { isPluginAvailable: () => true, nativePromise: async () => ({}), getPlatform: () => platform } };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'health-phone.js'), 'utf8'), { window });
+    return window.phoneHealth;
+  };
+  assert.strictEqual(load('ios').app, 'Apple Health');
+  assert.strictEqual(load('ios').ios, true);
+  assert.strictEqual(load('android').app, 'Health Connect');
+  assert.strictEqual(load('android').ios, false);
+});
+
 test('phone bridge: absent without the plugin', () => {
   const window = { Capacitor: { isPluginAvailable: () => false, nativePromise: async () => ({}) } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'health-phone.js'), 'utf8'), { window });
