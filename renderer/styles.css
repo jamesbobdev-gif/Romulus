@@ -448,15 +448,13 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 /* ── tabs ── */
-.tabs{display:flex;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px}
+.tabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px} /* nine tabs: the ones that don't fit go on a line below */
 .tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 .tab.tab-off{display:none} /* switched off in Settings > Tabs (tab-picker.js) */
-@media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}
-  /* the scrollbar is hidden, so the bar fades at the right edge until it's scrolled to the end (wiring.js tabsEdge) */
-  .tabs.more-right{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}}
-@media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* a seventh tab (Finance) on a phone: the bar scrolls sideways instead of widening the page */
+@media(max-width:520px){.tab{padding:8px 9px;flex:none}}
+@media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* a phone: tighter tabs, so fewer wrap */
 
 /* ── ideas: note cards you sort into groups ── */
 :root{

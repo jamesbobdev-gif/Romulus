@@ -803,13 +803,6 @@ $('searchBox').addEventListener('keydown',function(e){
   if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); }
   if(e.key==='Enter')this.blur();
 });
-/* phones: the tab bar scrolls sideways with its scrollbar hidden; a fade on the right edge says there's more
-   (styles.css .tabs.more-right) until it's scrolled to the end */
-(function(){
-  const bar=document.querySelector('.tabs'); if(!bar)return;
-  function edge(){ bar.classList.toggle('more-right',bar.scrollWidth-bar.clientWidth-bar.scrollLeft>4); }
-  bar.addEventListener('scroll',edge,{passive:true}); window.addEventListener('resize',edge); edge();
-})();
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
