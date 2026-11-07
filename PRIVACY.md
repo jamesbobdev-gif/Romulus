@@ -93,7 +93,7 @@ With the $5 plan it also keeps:
 ## Deleting your data
 
 - **On a device**: uninstalling the app removes everything it kept there.
-- **On the Romulus server**: Settings → Device sync → **Delete my synced data** deletes your lists, photos,
+- **On the Romulus server**: Settings → Device sync → **Delete my account** (three clicks and a number typed in) deletes your lists, photos,
   files and account record there at once, and cancels a $5 plan. Turn sync off on your other devices first,
   or they will upload their copy again. If you no longer have any device with Romulus on it, nobody can read
   what is left there, us included, and without your key we can't tell which encrypted account is yours.

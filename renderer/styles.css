@@ -410,6 +410,10 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .ghost{border:0;background:transparent;cursor:pointer;color:var(--muted);padding:6px 4px;border-radius:6px}
 .ghost:hover{color:var(--ink)}
 .ghost.danger:hover{color:var(--late)}
+.del-box{margin:8px 0 0;padding:10px 12px;border:1px solid var(--late);border-radius:8px}
+.del-code{font-size:18px;letter-spacing:.08em;margin:0 0 8px;color:var(--ink);user-select:none;-webkit-user-select:none}
+#hostedDeleteBtn.armed{color:var(--late)}
+#hostedDeleteBtn:disabled{opacity:.45;cursor:default}
 .list.donelist .row{padding:10px 4px 10px 0}
 .empty{color:var(--muted);text-align:center;margin:56px 0;font-size:14px}
 .agent-examples{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:520px;margin:-36px auto 40px}

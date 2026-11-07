@@ -309,7 +309,18 @@
           <div class="settings-row">
             <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
             <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
-            <button id="hostedDeleteBtn" class="ghost mono" hidden>Delete my synced data</button>
+            <button id="hostedDeleteBtn" class="ghost mono danger" hidden>Delete my account</button>
+          </div>
+          <!-- deleting the account: three clicks on the button above, and the number shown here typed in (hosted-sync.js) -->
+          <div id="hostedDeleteBox" class="del-box" hidden>
+            <p id="hostedDeleteStep" class="settings-hint" style="margin:0 0 8px"></p>
+            <div id="hostedDeleteCodeRow" hidden>
+              <div id="hostedDeleteCode" class="del-code mono" aria-label="Number to type"></div>
+              <input id="hostedDeleteIn" class="settings-inp" placeholder="Type the number above" inputmode="numeric" autocomplete="off" spellcheck="false" style="max-width:260px">
+            </div>
+            <div class="settings-row">
+              <button id="hostedDeleteCancel" class="ghost mono">Cancel</button>
+            </div>
           </div>
         </details>
       </div>
