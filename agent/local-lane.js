@@ -20,6 +20,7 @@ const helpers = require('./helpers');
 const legion = require('./legion');
 const coach = require('./coach');
 const classSweep = require('./class-sweep');
+const findOut = require('./find-out');
 const fileText = require('./file-text');
 const { makeDocx } = require('./docx-writer');
 const usage = require('./usage-limit');
@@ -571,6 +572,9 @@ async function runLocalTask(c, t) {
   // the weekly class sweep (agent/class-sweep.js): through every class, adding the work the calendar links miss
   const sweeping = !money && !coaching && classSweep.isSweep(t);
   const found = [];
+  // a task that only names the work ("chapter 8", agent/find-out.js): which class and what it is first, then it
+  const findingOut = !money && !coaching && !sweeping && findOut.isVague(t);
+  const pinned = {};
   if (!money && await ensureQwenBrowser()) {
     mySites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
     sites = localSites.withCommon(mySites); // his list plus ~100 common sites (agent/local-sites.js COMMON_SITES)
@@ -590,15 +594,16 @@ async function runLocalTask(c, t) {
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
       coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
-      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, fileText.READ_FILE_TOOL] : []);
+      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, fileText.READ_FILE_TOOL] : [],
+      findingOut && browser ? [findOut.PIN_TOOL, fileText.READ_FILE_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
-  const taskNotes = siteNotesFor(taskLinks(t).concat(coaching || sweeping ? coach.SCHOOL_HOSTS : []));
+  const taskNotes = siteNotesFor(taskLinks(t).concat(coaching || sweeping || findingOut ? coach.SCHOOL_HOSTS : []));
   const earlier = howtosFor(t);
   // which of his classes is on Blackboard and which on D2L (agent/course-sites.js), from the School list
   let allTasks = []; try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
   const classes = courseSites.courseSites(allTasks);
-  const classesText = !money && courseSites.relevant(t, classes, { coaching: coaching || sweeping }) ? courseSites.show(classes) : '';
+  const classesText = !money && courseSites.relevant(t, classes, { coaching: coaching || sweeping || findingOut }) ? courseSites.show(classes) : '';
   const schools = courseSites.schoolHosts(classes, prefs); // his real Blackboard / D2L, for when it strays onto the companies' sites
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
@@ -606,9 +611,10 @@ async function runLocalTask(c, t) {
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
   // the class sweep goes through every class: the most room of all
-  let maxSteps = browser ? (sweeping ? 120 : coaching ? 80 : 40) : LOCAL_MAX_STEPS;
+  // finding out first: looking through a class or two, then the work itself
+  let maxSteps = browser ? (sweeping ? 120 : coaching || findingOut ? 80 : 40) : LOCAL_MAX_STEPS;
   const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', (mySites.length ? mySites.join(', ') + ', and ' : '') + 'about 100 common sites (Google, Bing, Wikipedia, YouTube, Reddit, the big social sites, Amazon, Walmart, Target and other big stores, food delivery, travel, the big news sites, Indeed, Zillow, USPS/UPS/FedEx, .gov sites like irs.gov, WebMD, Khan Academy, Quizlet, Canva, Zoom). Banks and payment sites are not on it').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') +
-    (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + calText + classesText +
+    (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + (findingOut && browser ? findOut.RULES + findOut.cluesText(t, allTasks) : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -650,6 +656,7 @@ async function runLocalTask(c, t) {
   const formsFilled = {}; // fill_form runs per page address
   let lookedFirst = false; // sent once to the class site before asking him for what's there (agent/course-sites.js lookFirst)
   let askedMissing = false; // a coach task sent back once to look for the instructions, rubric, format or due date it hasn't noted
+  let askedPin = false; // a "chapter 8" task sent back once to find out what it is before finishing (agent/find-out.js)
   let textCalls = 0; // tool calls it wrote as text (the run log counts them)
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
@@ -724,6 +731,13 @@ async function runLocalTask(c, t) {
         show('\nStill missing ' + coach.missing(dossier).join(', ') + ': looking once more…\n', true);
         continue;
       }
+      // a "chapter 8" task finishing without having found out which class and what it is: one more look
+      if (findingOut && browser && !pinned.item && !askedPin && step < maxSteps - 4 && !signins.signedOut().length && !wall) {
+        askedPin = true; final = null;
+        messages.push({ role: 'user', content: findOut.NOT_PINNED });
+        show('\nIt hasn\'t found which class this is yet: looking once more…\n', true);
+        continue;
+      }
       break;
     }
     for (const call of calls) {
@@ -756,7 +770,8 @@ async function runLocalTask(c, t) {
         else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
         else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
         else if (sweeping && name === 'add_class_item') { result = classSweep.addItem(found, args); show('\n' + result.split('. So far')[0] + '\n', true); }
-        else if ((coaching || sweeping) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
+        else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); show('\n' + result.split('. His task')[0] + '\n', true); }
+        else if ((coaching || sweeping || findingOut) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
         else if (name === 'search_my_data') {
           show('\nSearching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed
@@ -891,7 +906,7 @@ async function runLocalTask(c, t) {
   // you can record this" is the point of it, and no cloud AI can open his courses
   if (final.status !== 'done' && !(stuck && stuck.verify) && !coaching && !sweeping && couldntDo(Object.assign({}, final, { cant: stuck ? stuck.reason : null })) && cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t)) {
     agentLog('local: couldn’t do it, passing it to the cloud AIs');
-    sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160) }]);
+    sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck ? stuck.reason : String(final.note || 'it couldn’t do it').slice(0, 160), pinned: pinned.item || undefined }]);
     return;
   }
   if (money) { final.howto = null; final.site_tips = null; final.pref = null; } // nothing from his money kept where Claude reads
@@ -932,6 +947,7 @@ async function runLocalTask(c, t) {
     email: final.status === 'done' ? null : (mailSend.cleanEmail(final.email) || null), // sent only by his Send (agent/mail-send.js)
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     school: sweeping && found.length ? found : undefined, // the class sweep's finds, for his School list (renderer/js/wiring.js importClassItems)
+    pinned: pinned.item || undefined, // what a "chapter 8" task turned out to be: his task is rewritten with it (agent-results.js applyPinned)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
 

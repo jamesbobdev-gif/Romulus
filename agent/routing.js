@@ -16,6 +16,7 @@ const supabase = require('./supabase');
 const decider = require('./decider');
 const { isLegion } = require('./legion');
 const { isCoach } = require('./coach');
+const { isVague } = require('./find-out');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer, scheduleAgentRun, scheduleLocalRun }
 function init(c) { ctx = c; decider.init(c); }
@@ -122,6 +123,8 @@ function routeTask(t) {
   // only he can do it (a video, a presentation): Lupa, signed in to his courses, reads the assignment and coaches him (agent/coach.js)
   if (isCoach(t)) return { lane: 'local', reason: 'only you can do this one: your local model reads the assignment and coaches you' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
+  // "chapter 8" and nothing else: Lupa, signed in to his courses, finds out which class and what it is, then does it (agent/find-out.js)
+  if (isVague(t)) return { lane: 'local', reason: 'only names the work: your local model finds it in your classes, then does it' };
   if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
