@@ -537,6 +537,26 @@ async function syncOnce(){
       if(!firstErr)firstErr=e;
     }
   }
+  // daily health totals the phone read (health.js); only when the lists are end-to-end encrypted
+  const hlp=typeof healthProfile==='function'?healthProfile():null;
+  let healthNew=false;
+  if(hlp&&Date.now()>=healthRun.noRowUntil){
+    try{
+      for(let attempt=0;attempt<4;attempt++){
+        const row=await syncPullRow(hlp);
+        const r=mergeHealth(row.doc);
+        if(r.changedLocal){ anyLocal=true; healthNew=true; }
+        if(!(r.changedRemote||(!row.doc&&Object.keys(state.health.days).length)))break;
+        if(await syncPushCas(hlp,healthDoc(),row.updatedAt))break;
+        // making the row was refused: a database without the :health key yet
+        // (supabase/migrations/20261116_sync_health_key.sql). The lists sync as before; try again in an hour
+        if(!row.updatedAt){ healthRun.noRowUntil=Date.now()+3600000; break; }
+        if(attempt===3)throw new Error('the health totals kept changing; will retry');
+      }
+    }catch(e){
+      if(!firstErr)firstErr=e;
+    }
+  }
   // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
@@ -548,6 +568,7 @@ async function syncOnce(){
     if(typeof refreshSwipe==='function')refreshSwipe(); // the morning deck, if it's open (swipe.js)
     if(spawnMissedRecurs())touch(); // ticked off on a device or by a tool that doesn't make the next one
   }
+  if((anyLocal||healthNew)&&typeof healthAutoCheck==='function')healthAutoCheck(); // a task's goal reached on the phone, or just synced
   if(firstErr){
     // back off: a minute, then doubling, up to 15 minutes. Hammering a project that answers 402 (over its plan's limit) helps nobody
     syncState.errStreak=Math.min(syncState.errStreak+1,5);
@@ -603,6 +624,7 @@ function liveTargets(){
   profileList().forEach(function(ws){ add(syncState.cfg[ws]); });
   if(typeof ideasProfile==='function')add(ideasProfile());
   if(typeof hoursProfile==='function')add(hoursProfile());
+  if(typeof healthProfile==='function')add(healthProfile());
   if(typeof familyProfile==='function')add(familyProfile());
   Object.keys(out).forEach(function(id){ if(!out[id].topics.length)delete out[id]; });
   return out;

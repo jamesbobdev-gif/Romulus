@@ -1,6 +1,6 @@
 # Romulus privacy policy
 
-Last updated: 6 November 2026
+Last updated: 7 November 2026
 
 Romulus is a task list with an AI agent, for Windows, macOS, Linux and Android. It is open source, and this
 policy covers every build of it: the installers on the releases page, the Android app on Google Play, and
@@ -22,6 +22,26 @@ goes only to services *you* connect, under your own accounts and keys.
 - The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.
+- Health (Android, when you turn it on): see "Health" below.
+
+## Health
+
+When you turn on Settings → Health on Android, Romulus reads three things from Health Connect: your **steps**,
+your **exercise sessions** and your **sleep sessions**. It reads only; it never writes to Health Connect. From
+them it keeps one line per day (total steps, minutes of exercise, minutes of sleep) for the last 60 days,
+and uses them for one thing: ticking off tasks you gave a health goal, such as "Walk #steps 8000".
+
+- The individual samples (each walk, each night's stages) are not kept or sent anywhere.
+- The daily totals are never sent to any AI service, cloud or local, and are not used for ads or sold.
+- When your lists are end-to-end encrypted, the daily totals sync to your other devices the same way, so a
+  computer can tick those tasks off too. The sync server can't read them. Without end-to-end encryption they
+  stay on the phone.
+- Turning Health off stops the reading; Health Connect's own settings take the permission back, and
+  uninstalling removes what was kept on the phone.
+
+Romulus's use of Health Connect data follows the
+[Health Connect Permissions policy](https://support.google.com/googleplay/android-developer/answer/12991134),
+including its limited use requirements.
 
 ## What leaves your device, and where it goes
 
@@ -67,6 +87,8 @@ With the $5 plan it also keeps:
 - **Notifications**: reminders, and the notice that shows while "Hey Romulus" is listening.
 - **Biometrics**: to unlock Finance.
 - **Camera** (through Google's code scanner): to scan the pairing code from your computer.
+- **Health Connect** (steps, exercise, sleep; read only): for tasks that tick themselves off, when you turn
+  on Settings → Health. See "Health" above.
 
 ## Deleting your data
 

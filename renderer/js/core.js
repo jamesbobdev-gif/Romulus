@@ -3,7 +3,7 @@
 'use strict';
 
 /* ── state ── */
-const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',order:-1,updatedAt:0},groups:[],cards:[],tombstones:[]}, hours:{entries:[],tombstones:[]}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
+const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',order:-1,updatedAt:0},groups:[],cards:[],tombstones:[]}, hours:{entries:[],tombstones:[]}, health:{days:{}}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
 let navOrder=[]; // ids of open tasks in rendered order, for arrow-key navigation
 // unsent answers to Claude, by task id — kept on disk so a restart or a lost task never eats them
 const DRAFTS_KEY='tasks.replyDrafts';
@@ -27,7 +27,7 @@ function stampChanges(){
   });
   Object.keys(lastSnap).forEach(function(id){ if(!seen[id])delete lastSnap[id]; });
 }
-function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas,hours:state.hours}; }
+function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas,hours:state.hours,health:state.health}; }
 function persist(){
   if(state.loadFailed){ voiceToast('Not saved: your tasks file couldn’t be read at start-up. Restart Romulus.',true); return; }
   clearTimeout(saveTimer);
