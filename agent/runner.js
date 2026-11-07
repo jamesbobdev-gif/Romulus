@@ -14,7 +14,7 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog } = require('./helpers');
 const agentFiles = require('./agent-files');
 const supabase = require('./supabase');
@@ -285,7 +285,7 @@ async function startAgentRun() {
   const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
-  let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
+  let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer', tries = 0;
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   // an answer saying it couldn't do the task waits here while the next AI tries; it's what he gets if none can
   const held = {}, gaveUp = {};
@@ -315,18 +315,25 @@ async function startAgentRun() {
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id, limitMs: runTimeoutMs });
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const prompt = promptFor(pending, id);
+      // live steps: Claude's come from its own stream; the others' from what the browser launcher writes down
+      // (agent/run-live.js tail). A line says who is on it whenever that isn't plainly Claude alone
+      if (id !== 'claude' || tries) live.note('-- ' + providers.NAMES[id] + (tries ? ' takes over' : ' is on it'));
+      tries++;
+      const untail = id !== 'claude' && browserCfg ? live.tail(stepsFile()) : null;
+      const steps = { steps: true };
       const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, browserOpts) }).finally(() => live.close())
-        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED,
+        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, steps), browserDenied: BROWSER_DENIED,
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, steps), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
         // the ones answering one request at a time get the browser through the app's tool loop (agent/tool-loop.js);
         // the free ones only when he turned it on for that one (<id>Browser)
         : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs,
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, steps), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs,
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } });
+          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, steps), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } });
+      if (untail) untail();
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
       if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
       // the last run overall, and each AI's own last run (agent-last-run-gemini.log…), so one AI's try isn't lost to the next
@@ -343,7 +350,7 @@ async function startAgentRun() {
       if (Array.isArray(updates)) {
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
-        got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; if (id === 'claude') { u.heard = live.heard(u.id); u.thoughts = live.thoughts(u.id); } });
+        got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; u.thoughts = live.thoughts(u.id); if (id === 'claude') u.heard = live.heard(u.id); });
         const cant = isLast ? [] : got.filter(couldntDo);
         cant.forEach((u) => { held[u.id] = u; (gaveUp[u.id] = gaveUp[u.id] || []).push(providers.NAMES[id]); });
         const ok = got.filter((u) => !cant.includes(u));

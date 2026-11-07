@@ -109,6 +109,8 @@ const mailSeen = () => fs.existsSync(mailSeenFile());
    one JSON line each in <userData>/agent-actions.log, written by the browser launcher as it lets the
    action through, and shown in Settings → What the Agent did. */
 const actionsLogFile = () => path.join(ctx.userData(), 'agent-actions.log');
+// every browser call of the try going on now, for its live steps (browser-proxy.js noteStep); emptied before each try
+const stepsFile = () => path.join(ctx.userData(), 'agent-run', 'browser-steps.jsonl');
 function readActions(max = 200) {
   let text = ''; try { text = fs.readFileSync(actionsLogFile(), 'utf8'); } catch (e) { return []; }
   return text.split('\n').filter(Boolean).slice(-max).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean).reverse();
@@ -134,6 +136,7 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
   if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
+  if (opts.steps) j.mcpServers.browser.env.TASKS_BROWSER_STEPS = stepsFile(); // live steps for the AIs that aren't Claude (agent/run-live.js tail)
   // Claude's runs (taint mode) also get the store checkers' connections: same launcher, same guards, but
   // never a yes (they only look) and never a file
   if (mode === 'taint') for (const s of SHOPS) j.mcpServers[s] = Object.assign({}, j.mcpServers.browser, { env: Object.assign({}, j.mcpServers.browser.env, { TASKS_BROWSER_APPROVED: '0', TASKS_BROWSER_SHOP: '1', TASKS_BROWSER_FILES: '[]' }) });
@@ -214,4 +217,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
