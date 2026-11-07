@@ -18,25 +18,25 @@ struct RomulusWidgets: WidgetBundle {
 
 /* ---------- timeline ---------- */
 
-struct Entry: TimelineEntry {
+struct DayEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot?
     let pending: Set<String>
 }
 
 struct Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Entry { Entry(date: Date(), snapshot: nil, pending: []) }
+    func placeholder(in context: Context) -> DayEntry { DayEntry(date: Date(), snapshot: nil, pending: []) }
 
-    func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) { completion(current()) }
+    func getSnapshot(in context: Context, completion: @escaping (DayEntry) -> Void) { completion(current()) }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DayEntry>) -> Void) {
         // "today", "tomorrow" and "overdue" change at midnight even when nothing else does
         let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(86400))
         completion(Timeline(entries: [current()], policy: .after(midnight)))
     }
 
-    private func current() -> Entry {
-        Entry(date: Date(), snapshot: WidgetShared.snapshot(), pending: Set(WidgetShared.pendingDone()))
+    private func current() -> DayEntry {
+        DayEntry(date: Date(), snapshot: WidgetShared.snapshot(), pending: Set(WidgetShared.pendingDone()))
     }
 }
 
@@ -125,7 +125,7 @@ enum Dates {
 
 /// The lists, worked out from the snapshot the way ListWidgetService.java does it.
 enum Lists {
-    static func open(_ e: Entry) -> [WidgetTask] {
+    static func open(_ e: DayEntry) -> [WidgetTask] {
         (e.snapshot?.open ?? []).filter { !e.pending.contains($0.id) }
     }
 
@@ -137,7 +137,7 @@ enum Lists {
                    tone: diff < 0 ? "late" : diff <= 1 ? "accent" : "muted", checkable: true)
     }
 
-    static func today(_ e: Entry) -> (String, String, [Row]) {
+    static func today(_ e: DayEntry) -> (String, String, [Row]) {
         var overdue = 0, today = 0
         let items = open(e).filter { t in
             guard let due = t.due, let diff = Dates.diff(due), diff <= 0 else { return false }
@@ -153,7 +153,7 @@ enum Lists {
     }
 
     /// every open personal task: dated ones by when they're due, then the rest in list order
-    static func personal(_ e: Entry) -> (String, String, [Row]) {
+    static func personal(_ e: DayEntry) -> (String, String, [Row]) {
         let items = open(e).filter { $0.ch == "personal" }.sorted {
             let a = Dates.sortKey($0), b = Dates.sortKey($1)
             return a != b ? a < b : ($0.ord ?? 0) < ($1.ord ?? 0)
@@ -165,7 +165,7 @@ enum Lists {
         return (header, overdue > 0 ? "late" : "muted", items.map { dated($0, sub: $0.tag ?? "") })
     }
 
-    static func school(_ e: Entry) -> (String, String, [Row]) {
+    static func school(_ e: DayEntry) -> (String, String, [Row]) {
         let items = open(e).filter { $0.ch == "school" }.sorted { Dates.sortKey($0) < Dates.sortKey($1) }
         var next: (String, Int)?
         for t in items where t.kind == "exam" {
@@ -184,7 +184,7 @@ enum Lists {
         return ("\(rows.count) upcoming", "muted", rows)
     }
 
-    static func worded(_ list: WidgetList?, _ e: Entry) -> (String, String, [Row]) {
+    static func worded(_ list: WidgetList?, _ e: DayEntry) -> (String, String, [Row]) {
         guard let list else { return ("", "muted", []) }
         let rows = list.rows.filter { !e.pending.contains($0.id) }.map {
             Row(id: $0.id, title: $0.title, sub: $0.sub ?? "", label: $0.label ?? "", tone: $0.tone ?? "muted", checkable: $0.checkable ?? false, openId: $0.openId)
@@ -312,13 +312,13 @@ struct ListPickIntent: WidgetConfigurationIntent {
 
 struct ListEntry: TimelineEntry {
     let date: Date
-    let base: Entry
+    let base: DayEntry
     let choice: ListChoice
 }
 
 struct ListProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ListEntry {
-        ListEntry(date: Date(), base: Entry(date: Date(), snapshot: nil, pending: []), choice: .personal)
+        ListEntry(date: Date(), base: DayEntry(date: Date(), snapshot: nil, pending: []), choice: .personal)
     }
     func snapshot(for configuration: ListPickIntent, in context: Context) async -> ListEntry { entry(configuration) }
     func timeline(for configuration: ListPickIntent, in context: Context) async -> Timeline<ListEntry> {
@@ -326,7 +326,7 @@ struct ListProvider: AppIntentTimelineProvider {
         return Timeline(entries: [entry(configuration)], policy: .after(midnight))
     }
     private func entry(_ c: ListPickIntent) -> ListEntry {
-        let e = Entry(date: Date(), snapshot: WidgetShared.snapshot(), pending: Set(WidgetShared.pendingDone()))
+        let e = DayEntry(date: Date(), snapshot: WidgetShared.snapshot(), pending: Set(WidgetShared.pendingDone()))
         return ListEntry(date: e.date, base: e, choice: c.list)
     }
 }
