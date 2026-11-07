@@ -88,6 +88,11 @@ async function addTask(){
   if(ws!=='agent'&&!photoUrls.length&&!recur&&typeof famSendTyped==='function'&&famSendTyped(title,due)){ titleEl.value=''; $('newDue').value=''; buzz('send'); titleEl.focus(); return; }
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
   if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
+  // "legion I need to…" / "Deep research: …" typed as the first words: the same as the Legion button (agent/legion.js LEAD_IN)
+  if(ws==='agent'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
+    const lead=/^\s*(deep research|legion|research legion)(\s*[:\-–]\s*|\s+(?=\S))/i;
+    if(lead.test(t.title)){ t.title='#legion '+t.title.replace(lead,''); legionOn=true; }
+  }
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
   if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;

@@ -37,6 +37,11 @@ test('#legion and "Deep research:" titles are legion tasks, and the tag comes of
   assert.ok(legion.isLegion({ title: 'Deep research: e-bikes' }));
   assert.ok(legion.isLegion({ title: 'compare phones #research' }));
   assert.ok(!legion.isLegion({ title: 'research the history of Rome' }));
+  // the first word without a colon counts too
+  assert.ok(legion.isLegion({ title: 'legion I need to travel from Cleveland to Pottstown' }));
+  assert.equal(legion.topicOf({ title: 'Legion I need to travel' }), 'I need to travel');
+  assert.ok(!legion.isLegion({ title: 'legion' }));
+  assert.ok(!legion.isLegion({ title: 'legionnaires disease symptoms' }));
   assert.equal(legion.topicOf({ title: '#legion best tents under $200' }), 'best tents under $200');
   assert.equal(legion.topicOf({ title: 'Deep research: e-bikes #claude' }), 'e-bikes');
 });

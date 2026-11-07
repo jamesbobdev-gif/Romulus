@@ -15,7 +15,7 @@ const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
-const { trimRunLog } = require('./helpers');
+const { trimRunLog, offline } = require('./helpers');
 const agentFiles = require('./agent-files');
 const supabase = require('./supabase');
 const runLive = require('./run-live');
@@ -333,6 +333,7 @@ async function startAgentRun() {
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer', tries = 0;
+  let wasOnline = false; // some AI this run got through to: a later network error is that AI's, not the Wi-Fi
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   // an answer saying it couldn't do the task waits here while the next AI tries; it's what he gets if none can
   const held = {}, gaveUp = {};
@@ -399,6 +400,7 @@ async function startAgentRun() {
       if (Array.isArray(updates)) sendToRenderer('agent:reconnected', { id, prefix: 'Reconnect ' + providers.NAMES[id] + ':' });
       else if (r.auth && !r.limit) sendToRenderer('agent:reconnect', { id, title: reconnectTitle(id, r.why) });
       if (Array.isArray(updates)) {
+        wasOnline = true;
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
         got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; u.thoughts = live.thoughts(u.id); if (id === 'claude') u.heard = live.heard(u.id); });
@@ -419,7 +421,11 @@ async function startAgentRun() {
       if (id === 'claude' && r.resetAt) claudeResetAt = r.resetAt;
       lastWhy = r.limit && id === 'gemini' ? 'Gemini’s free daily limit is used up; it resets at ' +
           new Date(meter.nextPacificMidnight()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Switch this to Claude to do it now'
-        : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again') : (r.why || 'no usable answer');
+        : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again')
+        // the connection, not the AI: says so instead of "no usable answer"
+        : offline(r) ? (wasOnline ? providers.NAMES[id] + ' couldn’t be reached' : 'no internet connection: this computer couldn’t reach ' + (tries > 1 ? 'any of the AIs' : providers.NAMES[id]) + '. Check the Wi-Fi')
+        : (r.why || 'no usable answer');
+      if (!offline(r)) wasOnline = true;
       if (runRetried) { agentLog(providers.NAMES[id] + ' stopped: he pressed Retry'); break; }
       agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
