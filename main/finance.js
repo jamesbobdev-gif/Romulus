@@ -462,16 +462,18 @@ function forAgent(args) {
     const s = stmt.incomeStatement(accounts, vault.kinds);
     const line = (name, vals) => name + ': ' + vals.map(money).join(' | ');
     return 'Income statement, columns: ' + s.cols.map((c) => c.label + (c.partial ? ' (so far)' : '')).join(' | ') + '\n' +
-      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Contribution margin', s.contribution),
-        line('Fixed costs', s.fixedTotal), line('Net income', s.net)].join('\n') +
+      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Fixed costs', s.fixedTotal),
+        line('Net income', s.net)].join('\n') +
       '\nBiggest variable costs: ' + s.variable.slice(0, 6).map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ') +
       '\nFixed costs: ' + s.fixed.map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ');
   }
   const c = costs.costsOf([].concat(...accounts.map((x) => x.transactions || [])), vault.kinds);
   const net = accounts.reduce((sum, x) => sum + x.balance, 0);
   const held = stocks.holdingsOf(accounts);
+  const b = stmt.balanceSheet(accounts);
   return 'Accounts:\n' + accounts.map((x) => '- ' + (x.org ? x.org + ' ' : '') + x.name + ': ' + money(x.balance)).join('\n') +
     '\nNet (all accounts, cards and loans negative): ' + money(net) +
+    '\nWorking capital (cash minus cards and other short-term debt; not long-term loans or investments): ' + money(b.workingCapital[0]) +
     '\nMonthly bills (fixed costs), about ' + money(c.fixedTotal) + ' a month: ' + c.fixed.map((f) => f.name + ' ' + money(f.monthly)).join('; ') +
     '\nEverything else bought (variable), by month: ' + c.months.map((m) => m.label + (m.partial ? ' so far' : '') + ' ' + money(m.total)).join('; ') +
     (held.length ? '\nStocks (brokerage values): ' + held.map((h) => (h.symbol || h.name) + ' ' + h.shares + ' sh ' + money(h.value)).join('; ') : '') +

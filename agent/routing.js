@@ -104,7 +104,7 @@ const MY_MONEY = new RegExp([
   '\\b(i|we) (spent|paid|earned|saved|owe)\\b',
   '\\bwhat did (i|we) (spend|buy|pay)\\b',
   '\\b(spent|spending|spend) on\\b',
-  '\\b(income statement|balance sheet|net worth|contribution margin)\\b',
+  '\\b(income statement|balance sheet|net worth|working capital)\\b',
 ].join('|'), 'i');
 function moneyQuestion(t) {
   const text = [t.title, t.notes, t.reply].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-2).map((h) => h.text))

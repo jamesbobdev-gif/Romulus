@@ -874,16 +874,14 @@ function finIncomeTable(host,s,cur,d,onMark){
   const rows=[['head','Income']];
   s.income.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   if(!s.income.length)rows.push(['line','No income in these months',null]);
-  // contribution format: variable costs first, the margin they leave, then the fixed costs it has to cover
   rows.push(['sub','Total income',s.incomeTotal],['gap'],['head','Variable costs']);
   s.variable.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
-  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],
-    ['margin','Contribution margin',s.contribution],['pct','Contribution margin ratio',s.contributionRatio],['gap'],['head','Fixed costs']);
+  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],['head','Fixed costs']);
   s.fixed.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   rows.push(['sub','Total fixed costs',s.fixedTotal],['gap'],
     ['total','Net income',s.net],['pct','Savings rate',s.savingsRate]);
   finStmtTable(host,s.cols,rows,cur,'Income statement',
-    'Contribution margin is what your income leaves after variable costs, to pay the fixed ones; its ratio is that as a share of income. Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
+    'Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
     // money in: a "not income" button on each, so a transfer counted as income can be taken out
     function(r){ return s.income.indexOf(s.income.find(function(x){ return x.items===r[3]; }))===-1?null:function(x){ return finIncomeTag(x.t,'income',onMark); }; });
 }
@@ -894,9 +892,10 @@ function finBalanceTable(host,b,cur){
   rows.push(['sub','Total assets',b.assetTotal],['gap'],['head','Liabilities']);
   b.liabilities.forEach(function(r){ rows.push(['line',r.name,r.vals]); });
   if(!b.liabilities.length)rows.push(['line','Nothing owed',null]);
-  rows.push(['sub','Total liabilities',b.liabilityTotal],['gap'],['total','Net worth',b.netWorth]);
+  rows.push(['sub','Total liabilities',b.liabilityTotal],['gap'],
+    ['margin','Working capital',b.workingCapital],['gap'],['total','Net worth',b.netWorth]);
   finStmtTable(host,b.cols,rows,cur,'Balance sheet',
-    'Earlier balances are worked back from today’s using the transactions in between. Investment accounts also move with the market, so their earlier values are rougher.');
+    'Working capital is your cash minus what you owe soon (cards and other short-term debt; mortgages and loans paid over years aren’t counted, and neither are investments). Earlier balances are worked back from today’s using the transactions in between. Investment accounts also move with the market, so their earlier values are rougher.');
 }
 
 /* ── the cost charts ── */

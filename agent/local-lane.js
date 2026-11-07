@@ -62,7 +62,7 @@ const LOCAL_MAX_STEPS = 8;
    read can be sent anywhere), and nothing from it is kept where Claude reads later (how-tos, site tips,
    preferences). The task is marked financeSeen, so it's never handed to Claude or the other cloud AIs. */
 const FINANCE_TOOL = { type: 'function', function: { name: 'my_finances',
-  description: 'His bank accounts and spending from the Finance tab (read-only). what: "overview" (accounts, net worth, monthly bills, spending by month, stocks), "transactions" (newest first, matching query and/or dates), or "statement" (income statement by month: income, variable costs, contribution margin, fixed costs, net income). query: words in the payee (optional). from / to: YYYY-MM-DD (optional).',
+  description: 'His bank accounts and spending from the Finance tab (read-only). what: "overview" (accounts, net worth, monthly bills, spending by month, stocks), "transactions" (newest first, matching query and/or dates), or "statement" (income statement by month: income, variable costs, fixed costs, net income; working capital is in "overview"). query: words in the payee (optional). from / to: YYYY-MM-DD (optional).',
   parameters: { type: 'object', properties: { what: { type: 'string', enum: ['overview', 'transactions', 'statement'] }, query: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' } }, required: ['what'] } } };
 const LOCAL_FINANCE_RULES = `
 
