@@ -45,3 +45,4 @@ oauth-clients.json
 *.keystore
 *.jks
 signing/
+mobile/ios/App/App/oauth_clients.json

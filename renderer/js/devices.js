@@ -133,7 +133,7 @@ if(typeof module!=='undefined'&&module.exports){
       let info={};
       if(window.desktop&&window.desktop.syncDeviceInfo){ try{ info=await window.desktop.syncDeviceInfo(); }catch(e){} }
       const phone=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
-      devState.info={name:info.name||(phone?'Phone':'Browser'),kind:info.os?'computer':phone?'phone':'browser',os:info.os||(phone?'Android':''),version:info.version||null};
+      devState.info={name:info.name||(phone?'Phone':'Browser'),kind:info.os?'computer':phone?'phone':'browser',os:info.os||(phone?(window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='ios'?'iOS':'Android'):''),version:info.version||null};
     }
     let name=null; try{ name=localStorage.getItem(DEV_NAME_KEY); }catch(e){}
     const k=await deviceKeys();

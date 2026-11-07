@@ -11,7 +11,7 @@ switches on once its secrets or variables are set, and does nothing until then.
 | Microsoft Store | `.appx`, a run artifact | builds once the three `MS_STORE_*` variables are set |
 | Mac, signed and notarized | the normal `.dmg` / `.zip` (Apple chip and Intel) | signs once the Apple secrets are set |
 | Windows, signed | the normal installer | signs once the Azure secrets and variables are set |
-| iPhone App Store | not started | needs the Apple account, a Mac with Xcode, and an iOS port of the Android-only parts |
+| iPhone App Store | `mobile/ios`, built by `.github/workflows/ios.yml` | compiles on every change; signs and uploads to TestFlight once the App Store Connect secrets are set |
 
 ## Google Play
 
@@ -136,10 +136,98 @@ The Mac App Store is not planned: its sandbox would block the Agent's browser an
 
 ## iPhone (App Store)
 
-Not started. It needs the Apple Developer account above, a Mac with Xcode (or a cloud Mac), and a test
-iPhone. The work: add Capacitor's iOS project, then rebuild what is Android-only today (widgets in
-WidgetKit, the share menu, calendar sign-in, the Finance fingerprint vault, the update banner left out).
-iOS won't let "Hey Romulus" listen in the background, so there it would work only with Romulus open.
+The iPhone app is the Capacitor project in `mobile/ios`, built on GitHub's Mac runners by
+`.github/workflows/ios.yml`, so no Mac is needed. Until the secrets below exist, that workflow only checks that
+the app and its widgets compile; after that, every version tag signs it and uploads it to App Store Connect,
+and it shows up in TestFlight.
+
+What the iPhone build has (Swift, in `mobile/ios/App`), each the counterpart of an Android file:
+
+| iPhone | Android | Notes |
+|---|---|---|
+| `VoicePlugin.swift` | `VoicePlugin.java` | Apple's speech recognition, on the phone when the iPhone supports it |
+| `WakeWordPlugin.swift` | `WakeWordPlugin.java` / `WakeWordService.java` | "Hey Romulus" only while Romulus is open (iOS allows no background listening), on-device only, so no speech model download |
+| `FinanceVaultPlugin.swift` | `FinanceVaultPlugin.java` | key in the Keychain behind Face ID / Touch ID; adding a face or finger means pairing again. iOS can't block screenshots, so `secure` only hides Finance in the app switcher and while the screen is recorded |
+| `CalAccountsPlugin.swift` | `CalAccountsPlugin.java` | Apple's sign-in sheet; tokens in the Keychain |
+| `ShareLinkPlugin.swift` | `ShareLinkPlugin.java` | |
+| `RomulusWidgets/` + `WidgetDataPlugin.swift` | the `*WidgetProvider.java` files | Today, Tasks, School, Claude needs you, Agent status, Quick add. The page feeds them (`mobile/widgets-phone.js`), since only it can read the encrypted lists. Checking off on a widget needs iOS 17; the app itself runs on iOS 15 and up |
+| `MainViewController.swift` | `MainActivity.java` | sets `ROMULUS_STORE = 'appstore'` (no update banner, no Stripe buttons) and turns widget taps (`romulus://hook?...`) into `window.__tasksHook` |
+
+Not on the iPhone yet: sharing into Romulus from other apps (Android's Share menu target). That needs a Share
+extension of its own.
+
+### What you do, once
+
+1. **Join the Apple Developer Program** ($99 a year, developer.apple.com/programs). An individual account is
+   fine; the store then shows your own name as the seller.
+2. **Register the IDs** at developer.apple.com → Certificates, Identifiers & Profiles:
+   - App Group `group.com.jartro.tasks` (the widgets read the app's rows through it).
+   - App ID `com.jartro.tasks` with the App Groups capability, set to that group.
+   - App ID `com.jartro.tasks.widgets`, also with App Groups set to that group.
+   (Automatic signing in CI can make the App IDs itself, but registering them yourself avoids a failed
+   first run over the App Group.)
+3. **Create the app** in App Store Connect → Apps → +: platform iOS, name Romulus, bundle ID
+   `com.jartro.tasks`, SKU `romulus`, full access.
+4. **API key for CI**: App Store Connect → Users and Access → Integrations → App Store Connect API → +,
+   role **Admin** (it has to be allowed to make signing certificates). Download the `.p8` (only possible once)
+   and set repository secrets:
+   - `APPLE_TEAM_ID` (Membership details; already there if the Mac signing is set up)
+   - `ASC_KEY_ID` and `ASC_ISSUER_ID` (both on that page)
+   - `ASC_KEY_P8_BASE64`: the `.p8` file base64-encoded, e.g. in PowerShell
+     `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`
+5. **Calendar sign-in on the iPhone** (optional; without it the iPhone has calendar links only):
+   - Google Cloud console, same project as the desktop client: a new OAuth client of type **iOS**, bundle ID
+     `com.jartro.tasks`. Put its client ID in `oauth-clients.json` (and the `OAUTH_CLIENTS_JSON` secret) as
+     `"googleIos": {"clientId": "..."}`.
+   - Entra app registration → Authentication → Add a platform → iOS / macOS, bundle ID `com.jartro.tasks`.
+     That adds the redirect `msauth.com.jartro.tasks://auth`; the existing client ID is reused.
+6. **First build**: Actions → iOS → Run workflow (or push the next tag). When it's green, the build appears
+   under TestFlight within about half an hour. Install TestFlight on your iPhone, add yourself as an internal
+   tester, and try it before submitting (below).
+
+### App Review answers
+
+- **Sign-in required?** No. Review notes: "Romulus has no accounts. Tasks work offline and sync is optional.
+  AI features need the reviewer's own AI key or sign-in, entered in Settings > AI (a free Gemini key from
+  aistudio.google.com works). Hey Romulus is off by default (Settings > Hey Romulus) and listens only while
+  the app is open."
+- **Payments (guideline 3.1.1)**: the App Store build never shows the Stripe buttons, the same as Play
+  (`hostedInStore`). Someone who pays on a computer gets the space on the iPhone too, which Apple allows for
+  a purchase made outside the app. If review objects to the plan prices being *mentioned* in the app, hide
+  that text for `ROMULUS_STORE === 'appstore'` as well.
+- **Agent buying things**: say in the notes that every order, booking, form and email waits for the user's
+  yes, and that the Agent runs on the user's own computer or AI account.
+- **Encryption**: `ITSAppUsesNonExemptEncryption` is false in Info.plist (only standard encryption to protect
+  the user's own data), so no export paperwork; answer the same if App Store Connect asks.
+- **Privacy policy URL**: the same as Play.
+- **App Privacy ("nutrition label")**, matching the Play data-safety answers:
+  - Data linked to the user, collected by the developer: **Photos or Videos** and **Other User Content**
+    (photos on Agent tasks and files the Agent downloads, kept on the Romulus server for sync; App
+    Functionality), **Identifiers → Device ID** (the hashed key id, for abuse limits; App Functionality).
+    End-to-end encrypted lists don't count as collected.
+  - Not collected: everything sent to AI services, calendars or banks the user connects themselves.
+  - **Tracking: no.** `PrivacyInfo.xcprivacy` says the same.
+- **Age rating**: answer the questionnaire as a productivity app (no violence, gambling, user chat); it
+  should come out at 4+ or 9+. "Unrestricted web access": no (the Agent browses on the user's computer, not in the iPhone app).
+- **Data deletion (5.1.1(v))**: Settings → Device sync → Delete my synced data, as for Play.
+
+### Store listing
+
+Reuse the Play text above, with these changes for the iPhone: "Finance, locked by Face ID" instead of
+fingerprint, and "Hey Romulus: a wake word that listens only while Romulus is open, on the phone itself".
+- **Subtitle** (30 characters): `Tasks and an agent, your yes`
+- **Keywords** (100 characters): `to-do,planner,tasks,AI assistant,agent,calendar,reminders,school,widgets,shopping list`
+- **Category**: Productivity.
+- **Screenshots**: at least the 6.9" iPhone size (1320×2868) and, because the app runs on iPad too, 13" iPad
+  (2064×2752). Take them from TestFlight on a fresh install so no personal tasks show.
+- **Support URL**: the GitHub repository page.
+
+### Things to check on a real iPhone (couldn't be tested from Windows)
+
+Voice and Hey Romulus (that the chime plays and Voice starts after it), Face ID unlock and the Finance
+pairing scan, Google/Microsoft sign-in coming back to the app, the widgets filling in after the app is opened
+once, and checking a task off on a widget (it should be gone from the list the next time the app opens).
+The wording in Finance still says "fingerprint" in places.
 
 ## Before any store goes public
 

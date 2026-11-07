@@ -1,0 +1,115 @@
+# The iPhone app (mobile/ios), built on a Mac runner because Xcode only runs on macOS.
+#
+# Without the App Store secrets below it only checks that the app and its widgets compile (unsigned), on every
+# change to the iPhone code and on every version tag. Once they are set, a version tag (or a run started by hand
+# from the Actions tab) signs the app and uploads it to App Store Connect, where it shows up in TestFlight after
+# Apple's processing; from there it is submitted for review by hand. docs/store-release.md (iPhone App Store)
+# says how to make each one.
+#
+#   APPLE_TEAM_ID          the 10-character Team ID (Membership details in the developer account); the Mac
+#                          signing in release.yml uses the same secret
+#   ASC_KEY_ID             an App Store Connect API key with the Admin role (Users and Access → Integrations),
+#   ASC_ISSUER_ID          its issuer ID,
+#   ASC_KEY_P8_BASE64      and the .p8 file it downloads once, base64-encoded
+#
+# Xcode signs with that key itself (automatic signing, -allowProvisioningUpdates), so there is no certificate
+# or provisioning profile to keep here. Supply chain: actions pinned to a commit SHA as in release.yml.
+name: iOS
+
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+    paths: ['mobile/ios/**', 'mobile/widgets-phone.js', 'mobile/prepare-www.js', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    env:
+      OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      # the newest Xcode on the runner: App Store uploads must be built with a recent SDK
+      - name: Xcode
+        run: |
+          xc=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$xc" ]; then sudo xcode-select -s "$xc"; fi
+          xcodebuild -version
+      - name: OAuth clients
+        if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
+        run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
+      - name: Pairing server
+        if: ${{ vars.PAIR_URL != '' && vars.PAIR_KEY != '' }}
+        env:
+          PAIR_URL: ${{ vars.PAIR_URL }}
+          PAIR_KEY: ${{ vars.PAIR_KEY }}
+        # the App Store build never shows the Stripe buttons (hosted-sync.js: hostedInStore), so no PAY_* here
+        run: |
+          node -e "require('fs').writeFileSync('renderer/js/pair-server.js', 'window.ROMULUS_PAIR=' + JSON.stringify({ url: process.env.PAIR_URL, key: process.env.PAIR_KEY }) + ';\n')"
+      - name: Web assets
+        run: |
+          cd mobile
+          npm ci
+          node prepare-www.js   # no sync-config.json here: the public build bakes in no keys
+          npx cap sync ios
+      # Signing turns on when the key is there and this is a release (a tag, or started by hand)
+      - name: Mode
+        id: mode
+        run: |
+          if [ -n "$ASC_KEY_P8_BASE64" ] && { [ "$GITHUB_REF_TYPE" = tag ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; }; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            [ -z "$ASC_KEY_P8_BASE64" ] && echo "no ASC_KEY_P8_BASE64 secret: compile check only, nothing is signed or uploaded"
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Compile check (unsigned)
+        if: steps.mode.outputs.upload != 'true'
+        working-directory: mobile/ios/App
+        run: |
+          xcodebuild build -project App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > "$RUNNER_TEMP/build.log" 2>&1             || { grep -E ' error: ' "$RUNNER_TEMP/build.log" | sort -u | head -n 80; tail -n 40 "$RUNNER_TEMP/build.log"; exit 1; }
+          grep -E ' warning: ' "$RUNNER_TEMP/build.log" | grep -v 'Pods\|SourcePackages' | sort -u | head -n 40 || true
+          tail -n 5 "$RUNNER_TEMP/build.log"
+      - name: Archive and upload to App Store Connect
+        if: steps.mode.outputs.upload == 'true'
+        working-directory: mobile/ios/App
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey_$KEY_ID.p8"
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$key"
+          version=$(node -p "require('../../../package.json').version")
+          # every upload needs a higher build number than the last; the run number only grows
+          build=$((1000 + GITHUB_RUN_NUMBER))
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID")
+          xcodebuild archive -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Romulus.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build" \
+            "${auth[@]}" > "$RUNNER_TEMP/archive.log" 2>&1             || { grep -E ' error: |error:' "$RUNNER_TEMP/archive.log" | sort -u | head -n 80; tail -n 40 "$RUNNER_TEMP/archive.log"; exit 1; }
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Romulus.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          echo "uploaded Romulus $version ($build): it appears in App Store Connect → TestFlight once Apple has processed it"
+          rm -f "$key"

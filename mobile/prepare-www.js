@@ -36,12 +36,14 @@ const calPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'cal-phone.
 const financePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'finance-phone.js'), 'utf8') + '</script>';
 // "Update" banner when a newer release is on GitHub (update-phone.js)
 const updatePhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'update-phone.js'), 'utf8') + '</script>';
+// the iPhone's home-screen widgets: the page hands them their rows (widgets-phone.js; does nothing on Android)
+const widgetsPhone = '<script>\n' + fs.readFileSync(path.join(__dirname, 'widgets-phone.js'), 'utf8') + '</script>';
 // store.js says which Android build this is (GitHub APK or Google Play); each build flavor brings its own
 // copy from android/app/src/<flavor>/assets/public, so it isn't in www/
 const store = '<script src="store.js"></script>';
 // the desktop page's Content-Security-Policy bans inline scripts, and the phone page is built from them, so it stays desktop-only
 html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\r?\n?/, '');
-html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
+html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone + '\n' + widgetsPhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 // everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is
@@ -69,4 +71,20 @@ if (fs.existsSync(path.join(__dirname, 'android'))) {
   fs.writeFileSync(path.join(rawDir, 'oauth_clients.json'), JSON.stringify(phoneClients));
   console.log('res/raw/oauth_clients.json written (Google: ' + (phoneClients.google.clientId ? 'set' : 'not set up') +
     ', Microsoft: ' + (phoneClients.microsoft.clientId ? 'set' : 'not set up') + ')');
+}
+
+// the iPhone app's own sign-in clients for calendar accounts (CalAccountsPlugin.swift), from oauth-clients.json:
+// Google needs an iOS-type client of its own (googleIos); Microsoft is the desktop's Entra app with an iOS platform
+// added (bundle id com.jartro.tasks). Always written, even empty, because the Xcode project bundles the file.
+const iosAppDir = path.join(__dirname, 'ios', 'App', 'App');
+if (fs.existsSync(iosAppDir)) {
+  const oauthFile = path.join(__dirname, '..', 'oauth-clients.json');
+  const oauth = fs.existsSync(oauthFile) ? JSON.parse(fs.readFileSync(oauthFile, 'utf8')) : {};
+  const iosClients = {
+    google: { clientId: (oauth.googleIos && oauth.googleIos.clientId) || '' },
+    microsoft: { clientId: (oauth.microsoft && oauth.microsoft.clientId) || '' }
+  };
+  fs.writeFileSync(path.join(iosAppDir, 'oauth_clients.json'), JSON.stringify(iosClients));
+  console.log('ios/App/App/oauth_clients.json written (Google: ' + (iosClients.google.clientId ? 'set' : 'not set up') +
+    ', Microsoft: ' + (iosClients.microsoft.clientId ? 'set' : 'not set up') + ')');
 }
