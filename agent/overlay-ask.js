@@ -170,4 +170,4 @@ function claudeCliRunner({ spawn, exe, env, dir, model }) {
   });
 }
 
-module.exports = { ask, plan, promptText, claudeCliRunner, CLAUDE_API_MODELS };
+module.exports = { ask, plan, callOne, promptText, claudeCliRunner, CLAUDE_API_MODELS }; // callOne: also "Do it" (agent/pc-control.js)
