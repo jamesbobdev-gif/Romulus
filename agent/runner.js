@@ -201,7 +201,7 @@ async function startAgentRun() {
   try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
   // his EBT wallet for grocery runs (agent/grocery.js ebtBrief): about what's left, from Finance's sealed copy
   let ebt;
-  if (tasks.some((t) => isGroceryRun(t, allTasks)) && ctx.finance && ctx.finance.ebtNow) {
+  if (tasks.some((t) => isGroceryRun(t, allTasks)) && ctx.finance && ctx.finance.ebtNow && !readConfig().ebtOff) { // Settings → EBT off: none
     try { ebt = ebtBrief(await ctx.finance.ebtNow(), allTasks); } catch (e) {}
     if (ebt) agentLog('ebt: balance handed over');
   }

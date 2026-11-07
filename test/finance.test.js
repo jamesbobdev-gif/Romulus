@@ -240,3 +240,12 @@ test('another computer connects with the shared link and the same passphrase', a
   assert.deepStrictEqual((await h['finance:shareBox']()).box, box, 'it shares the same copy on from here');
   await h['finance:forget']();
 });
+
+test('Settings → EBT off: kept in the config so grocery runs get no balance', async () => {
+  let cfg = { other: 1 };
+  finance.init({ userData: () => dir, agentLog: () => {}, sendToRenderer: () => {}, readConfig: () => JSON.parse(JSON.stringify(cfg)), writeConfig: async (c) => { cfg = c; } });
+  await h['finance:setEbtOn'](null, false);
+  assert.deepStrictEqual(cfg, { other: 1, ebtOff: true });
+  await h['finance:setEbtOn'](null, true);
+  assert.deepStrictEqual(cfg, { other: 1 });
+});

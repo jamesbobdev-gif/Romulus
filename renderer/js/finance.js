@@ -1264,7 +1264,7 @@ function drawFinMain(v){
   v.appendChild(finFoldable(accts,'accounts','Accounts',d.accounts.length+(d.accounts.length===1?' account':' accounts')));
   v.appendChild(finWorthChart(d.accounts,cur));
   const debts=finDebtsCard(d,cur); if(debts)v.appendChild(debts);
-  v.appendChild(finEbtCard(d));
+  if(ebtOn())v.appendChild(finEbtCard(d)); // Settings → EBT (grocery-list.js)
   if(!d.csv)v.appendChild(finStocksCard(cur)); // a CSV has no holdings
 
   // fixed and variable costs (finance-costs.js): drawn again when he corrects a payee below

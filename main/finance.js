@@ -604,6 +604,15 @@ const handlers = {
   },
   // the grocery list, locked or not: the sealed copy above
   'finance:ebtNow': () => ebtNow(),
+  // Settings → EBT switched off: grocery runs get no balance (agent/runner.js reads config.ebtOff)
+  'finance:setEbtOn': async (_e, on) => {
+    if (!ctx.readConfig || !ctx.writeConfig) return { ok: false };
+    const cfg = ctx.readConfig();
+    if (!on === !!cfg.ebtOff) return { ok: true };
+    if (on) delete cfg.ebtOff; else cfg.ebtOff = true;
+    await ctx.writeConfig(cfg);
+    return { ok: true };
+  },
   // the tab's minute-by-minute check doesn't count as using it (it still locks after 10 idle minutes)
   'finance:stocks': async (_e, force) => {
     if (!key) return { locked: true };

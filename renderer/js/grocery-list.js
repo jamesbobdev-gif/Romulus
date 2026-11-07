@@ -122,9 +122,35 @@ async function loadGroceryEbt(){
 // once every page script has run (finance-ebt.js loads after this one)
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadGroceryEbt); else setTimeout(loadGroceryEbt,0);
 if(window.desktop&&window.desktop.onFinanceUpdated)window.desktop.onFinanceUpdated(function(what){ if(what==='ebt')loadGroceryEbt(); });
-// → the wallet (finance-ebt.js ebtWallet) when he's set one up, else null
+/* Settings → EBT: most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
+   Never set: on when there's a sign he uses it (a wallet, an order paid partly with EBT, a grocery task
+   that talks about EBT), else off. Off hides the Finance card and the grocery list's EBT lines, and on the
+   computer grocery runs get no balance (main/finance.js finance:setEbtOn → config.ebtOff) */
+function ebtOn(){
+  let v=null; try{ v=localStorage.getItem('ebt.on'); }catch(e){}
+  if(v==='1')return true; if(v==='0')return false;
+  if(groceryEbt.balance!=null||groceryEbt.day)return true;
+  return state.tasks.some(function(t){
+    return taskWs(t)==='agent'&&((Array.isArray(t.orders)&&t.orders.some(function(o){ return o&&o.ebt>0; }))||/\bEBT\b/i.test(String(t.title||'')+' '+String(t.note||'')));
+  });
+}
+// only his own flip reaches the computer's Agent side: until then grocery runs get the balance when there is one
+function setEbtOn(on){
+  try{ localStorage.setItem('ebt.on',on?'1':'0'); }catch(e){}
+  if(window.desktop&&window.desktop.financeSetEbtOn)window.desktop.financeSetEbtOn(on).catch(function(){});
+  if(typeof render==='function')render();
+}
+function wireEbtSetting(){
+  const box=$('ebtOn'); if(!box)return;
+  const sec=$('ebtSection');
+  const show=function(){ box.checked=ebtOn(); };
+  show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
+  box.addEventListener('change',function(){ setEbtOn(box.checked); });
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireEbtSetting); else setTimeout(wireEbtSetting,0);
+// → the wallet (finance-ebt.js ebtWallet) when he's set one up and EBT is on, else null
 function groceryWallet(){
-  if(typeof ebtWallet!=='function')return null;
+  if(typeof ebtWallet!=='function'||!ebtOn())return null;
   const w=ebtWallet(groceryEbt,agentOrders(state.tasks));
   return w.known?w:null;
 }
