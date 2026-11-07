@@ -97,6 +97,37 @@ function famTidy(doc,now){
 function famName(doc,id){ const p=(doc.people||[]).find(function(x){ return x.id===id; }); return p&&p.name?p.name:'Someone'; }
 function famForMe(doc,me){ return (doc.offers||[]).filter(function(o){ return o.to===me&&!o.answer; }); }
 function famSentByMe(doc,me){ return (doc.offers||[]).filter(function(o){ return o.from===me; }); }
+// "Pick up milk @Sam" → {to:<Sam's id>, name:'Sam', title:'Pick up milk'}, or null when no @ names someone else in the group.
+// The longest name wins ("@Mary Ann" over "@Mary"), any case; "@sam" also finds "Sam Lee" by first name.
+function famMention(text,people,me){
+  const s=String(text||''); const who=(people||[]).filter(function(p){ return p&&p.id!==me&&p.name; });
+  const re=/(^|\s)@(\S[^@]*)/g; let m;
+  while((m=re.exec(s))){
+    const after=m[2].toLowerCase(); let best=null;
+    who.forEach(function(p){
+      [p.name,p.name.split(/\s+/)[0]].forEach(function(n){
+        const k=n.toLowerCase();
+        if(after.slice(0,k.length)===k&&!/[\p{L}\p{N}]/u.test(after.charAt(k.length)||' ')&&(!best||k.length>best.len))best={p:p,len:k.length};
+      });
+    });
+    if(best){
+      const start=m.index+m[1].length, end=start+1+best.len;
+      const title=(s.slice(0,start)+' '+s.slice(end)).replace(/\s+/g,' ').replace(/\s+([,.!?])/g,'$1').trim();
+      return {to:best.p.id,name:best.p.name,title:title};
+    }
+  }
+  return null;
+}
+// the things to do in an Agent reply: its bullet and numbered lines, markdown taken off; none → []
+function famTodoLines(md){
+  const out=[];
+  String(md||'').split(/\r?\n/).forEach(function(line){
+    const m=/^\s*(?:[-*+•]|\d{1,2}[.)])\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line); if(!m)return;
+    const t=m[1].replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
+    if(t.length>=3&&out.indexOf(t)===-1)out.push(t.slice(0,200));
+  });
+  return out.slice(0,15);
+}
 
 // people the server no longer lists (taken off, or left): their account isn't the owner's or a member's.
 // People without an account id (older builds) can't be told apart, so they never count.
@@ -348,7 +379,7 @@ async function familySync(){
     if(await syncPushCas(p,merged,row.updatedAt))break;
     if(attempt===3)throw new Error('the family lists kept changing; will retry');
   }
-  if(famCanon(fam.doc)!==before){ famSaveCache(); famNoticeNew(); famShowTab(); if(state.activeTab==='family')renderFamily(); }
+  if(famCanon(fam.doc)!==before){ famSaveCache(); famNoticeNew(); famShowTab(); famRedraw(); }
   famKeepMine();
   famFeedGroceries();
 }
@@ -383,13 +414,36 @@ function famNoticeNew(){
   const fresh=famForMe(fam.doc,fam.me).filter(function(o){ return seen.indexOf(o.id)===-1; });
   if(!fresh.length)return;
   const o=fresh[fresh.length-1];
-  if(typeof voiceToast==='function')voiceToast(famName(fam.doc,o.from)+' sent you a to-do: '+o.title+(fresh.length>1?' (and '+(fresh.length-1)+' more)':'')+'. It’s on the Group tab.');
+  if(typeof voiceToast==='function')voiceToast(famName(fam.doc,o.from)+' sent you a to-do: '+o.title+(fresh.length>1?' (and '+(fresh.length-1)+' more)':'')+'. It’s on your To do tab.');
   if(typeof buzz==='function')buzz('answer');
   try{ localStorage.setItem(FAM_SEEN_KEY,JSON.stringify(seen.concat(fresh.map(function(x){ return x.id; })).slice(-300))); }catch(e){}
 }
 
+// on the To do tab: one card per to-do someone sent me, with Add to my list / No thanks
+function famDrawIncoming(show){
+  const box=$('famIncoming'); if(!box)return;
+  box.innerHTML='';
+  const forMe=show&&famOn()&&fam.me?famForMe(fam.doc,fam.me):[];
+  box.hidden=!forMe.length;
+  forMe.forEach(function(o){
+    const card=el('div','fam-offer');
+    const top=el('div','fam-offer-top');
+    top.appendChild(el('span','fam-offer-title',o.title));
+    if(o.due)top.appendChild(el('span','chip',famDueText(o.due)));
+    card.appendChild(top);
+    card.appendChild(el('div','fam-hint',famName(fam.doc,o.from)+' sent you this'));
+    if(o.note)card.appendChild(el('div','fam-note',o.note));
+    const acts=el('div','fam-row');
+    acts.appendChild(famBtn('Add to my list','btn-accent',function(){ famAnswer(o,'added'); }));
+    acts.appendChild(famBtn('No thanks','ghost mono',function(){ famAnswer(o,'no'); }));
+    card.appendChild(acts); box.appendChild(card);
+  });
+}
+// whichever tab shows group things: the Group tab, or To do for the to-dos sent to me
+function famRedraw(){ if(state.activeTab==='family')renderFamily(); else if(state.activeTab==='list')render(); }
+
 /* ── changes made here ── */
-function famChanged(){ famSaveCache(); famShowTab(); if(state.activeTab==='family')renderFamily(); schedulePush(); }
+function famChanged(){ famSaveCache(); famShowTab(); famRedraw(); schedulePush(); }
 function famPut(coll,rec){
   const now=Date.now();
   const r=Object.assign({created:now},rec,{updatedAt:Math.max(now,(Number(rec.updatedAt)||0)+1)});
@@ -417,6 +471,55 @@ function famSendTask(t){
   fam.ui.title=t.title||''; fam.ui.due=t.due||''; fam.ui.note=t.notes||'';
   switchTab('family');
   setTimeout(function(){ const s=$('famTo'); if(s)s.focus(); },0);
+}
+// send one to-do from here: it waits on their To do tab for Add / No thanks
+function famOffer(to,title,due,note){
+  famPut('offers',{id:uid(),from:fam.me,to:to,title:famStr(title,300),due:due||null,note:note?famStr(note,1000):null});
+}
+// typed "Pick up milk @Sam" in Add a task: it goes to Sam instead of my list. → true when it was sent
+function famSendTyped(title,due){
+  if(!famCanSend())return false;
+  const m=famMention(title,fam.doc.people,fam.me); if(!m||!m.title)return false;
+  famOffer(m.to,m.title,due,null);
+  if(typeof voiceToast==='function')voiceToast('Sent to '+m.name+'. It waits on their To do tab.');
+  return true;
+}
+// under an Agent reply: send the things in it for people to do, each as a to-do, to someone in the group
+function famChatSendBox(t,h){
+  const wrap=el('div','fam-chat-send');
+  const open=famBtn('Send to someone in the group','btn-ghost doc-dl',function(e){
+    e.stopPropagation(); open.hidden=true;
+    const lines=famTodoLines(h.text);
+    const box=el('div','fam-send fam-chat-box');
+    box.addEventListener('click',function(e){ e.stopPropagation(); });
+    const picks=[];
+    if(lines.length){
+      lines.forEach(function(line){
+        const lab=el('label','fam-chat-line'); const cb=el('input'); cb.type='checkbox'; cb.checked=lines.length<=5;
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+line)); box.appendChild(lab);
+        picks.push({cb:cb,text:line});
+      });
+    } else {
+      const one=famInput(null,'What needs doing',t.title.replace(/(^|\s)#\S+/g,' ').trim(),'fam-grow');
+      box.appendChild(one); picks.push({input:one});
+    }
+    const row=el('div','fam-row');
+    const to=el('select','sm'); to.setAttribute('aria-label','Send to');
+    famOthers().forEach(function(x){ const o=el('option',null,x.name); o.value=x.id; to.appendChild(o); });
+    const note='From the Agent task “'+famStr(t.title,120)+'”.';
+    row.appendChild(to);
+    row.appendChild(famBtn('Send','btn-accent',function(){
+      const chosen=picks.map(function(p){ return p.input?p.input.value.trim():p.cb.checked?p.text:''; }).filter(Boolean);
+      if(!chosen.length)return;
+      chosen.forEach(function(x){ famOffer(to.value,x,null,note); });
+      if(typeof voiceToast==='function')voiceToast('Sent '+(chosen.length===1?'it':chosen.length+' to-dos')+' to '+famName(fam.doc,to.value)+'.');
+      box.remove(); open.hidden=false;
+    }));
+    row.appendChild(famBtn('Cancel','ghost mono',function(){ box.remove(); open.hidden=false; }));
+    box.appendChild(row); wrap.appendChild(box);
+  });
+  wrap.appendChild(open);
+  return wrap;
 }
 function famOthers(){ return fam.doc.people.filter(function(x){ return x.id!==fam.me&&x.name; }); }
 function famCanSend(){ return famOn()&&!!fam.me&&famOthers().length>0; }
@@ -521,23 +624,11 @@ function renderFamily(){
     row.appendChild(inp); row.appendChild(famBtn('Save','btn-accent',save)); s.appendChild(row);
   }
 
-  // sent to me, waiting for an answer
+  // to-dos sent to me wait on the To do tab (famDrawIncoming); here, just say how many
   const forMe=me?famForMe(d,me):[];
   if(forMe.length){
-    const s=famSection(view,'For you');
-    forMe.forEach(function(o){
-      const card=el('div','fam-offer');
-      const top=el('div','fam-offer-top');
-      top.appendChild(el('span','fam-offer-title',o.title));
-      if(o.due)top.appendChild(el('span','chip',famDueText(o.due)));
-      card.appendChild(top);
-      card.appendChild(el('div','fam-hint','From '+famName(d,o.from)));
-      if(o.note)card.appendChild(el('div','fam-note',o.note));
-      const acts=el('div','fam-row');
-      acts.appendChild(famBtn('Add to my list','btn-accent',function(){ famAnswer(o,'added'); }));
-      acts.appendChild(famBtn('No thanks','ghost mono',function(){ famAnswer(o,'no'); }));
-      card.appendChild(acts); s.appendChild(card);
-    });
+    const s=famSection(view,'For you',forMe.length===1?'One to-do is waiting for your answer on the To do tab.':forMe.length+' to-dos are waiting for your answer on the To do tab.');
+    s.appendChild(famBtn('Open To do','ghost mono',function(){ switchTab('list'); }));
   }
 
   // lists
@@ -552,7 +643,7 @@ function renderFamily(){
 
   // send a to-do
   const others=famOthers();
-  const ss=famSection(view,'Send a to-do',others.length?'It shows up in their Group tab. They choose whether it goes on their list.':'Nobody else is here yet. Invite someone under People below; once they open this tab, you can send them to-dos.');
+  const ss=famSection(view,'Send a to-do',others.length?'It shows up on their To do tab. They choose whether it goes on their list. You can also type @'+others[0].name.split(/\s+/)[0]+' in Add a task, or send what an Agent reply says to do.':'Nobody else is here yet. Invite someone under People below; once they open this tab, you can send them to-dos.');
   if(others.length&&me){
     const form=el('div','fam-send');
     const to=el('select','sm'); to.id='famTo'; to.setAttribute('aria-label','Send to');
@@ -696,4 +787,4 @@ if(typeof document!=='undefined'&&document.getElementById('tabFamily')){
   Promise.resolve(syncState.ready).then(function(){ setTimeout(function(){ famLoadKey().then(function(){ if(fam.key)syncNow(); }); },3000); });
 }
 
-if(typeof module!=='undefined')module.exports={famEmpty,famNorm,famMerge,famTidy,famCanon,famStable,famForMe,famSentByMe,famName,famCodeShow,famCodeSplit,famNewSecret,famGone,famWithout,famGroceryList,famOpenGroceries,famFeedList};
+if(typeof module!=='undefined')module.exports={famEmpty,famNorm,famMerge,famTidy,famCanon,famStable,famForMe,famSentByMe,famMention,famTodoLines,famName,famCodeShow,famCodeSplit,famNewSecret,famGone,famWithout,famGroceryList,famOpenGroceries,famFeedList};

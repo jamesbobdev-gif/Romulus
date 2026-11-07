@@ -1196,6 +1196,10 @@ body.review-open .top-right{display:none!important}
 .fam-item-text{flex:1;min-width:0;overflow-wrap:anywhere}
 .fam-item.done .fam-item-text{color:var(--muted);text-decoration:line-through}
 .fam-by{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:none}
+.fam-chat-send{white-space:normal}
+.fam-chat-box{flex-direction:column;align-items:stretch;margin:8px 0 0}
+.fam-chat-line{display:flex;gap:8px;align-items:baseline;font-size:13px;cursor:pointer}
+.fam-chat-line input{flex:none}
 .fam-list .fam-row{margin-top:6px}
 .fam-sent{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13.5px;border-bottom:1px solid var(--hairline)}
 .fam-sent-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

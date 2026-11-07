@@ -115,3 +115,20 @@ test('the shared Groceries list goes on the next grocery order, once', () => {
   assert.strictEqual(f.famFeedList(bought, open, same), null);
   assert.strictEqual(f.famFeedList(mine, [], same), null);
 });
+
+test('@name in a typed task picks the person and comes out of the title', () => {
+  const people = [{ id: 'me', name: 'James' }, { id: 's', name: 'Sam Lee' }, { id: 'm', name: 'Mary' }, { id: 'ma', name: 'Mary Ann' }];
+  assert.deepStrictEqual(f.famMention('Pick up milk @Sam', people, 'me'), { to: 's', name: 'Sam Lee', title: 'Pick up milk' });
+  assert.deepStrictEqual(f.famMention('@sam lee take out the trash', people, 'me'), { to: 's', name: 'Sam Lee', title: 'take out the trash' });
+  assert.strictEqual(f.famMention('call @Mary Ann, please', people, 'me').to, 'ma');
+  assert.strictEqual(f.famMention('call @Mary today', people, 'me').to, 'm');
+  assert.strictEqual(f.famMention('email bob@samco.com', people, 'me'), null);
+  assert.strictEqual(f.famMention('remind @James', people, 'me'), null); // not to myself
+  assert.strictEqual(f.famMention('ask @Samantha', people, 'me'), null);
+});
+
+test('the to-do lines in an Agent reply', () => {
+  const md = 'Here is the plan:\n\n- **Call** the [landlord](https://x.y)\n2. Pay the water bill\n* [ ] Buy filters\nThat is all.\n- ok';
+  assert.deepStrictEqual(f.famTodoLines(md), ['Call the landlord', 'Pay the water bill', 'Buy filters']);
+  assert.deepStrictEqual(f.famTodoLines('No list here.'), []);
+});

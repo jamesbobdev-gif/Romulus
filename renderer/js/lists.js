@@ -176,6 +176,7 @@ function buildPanel(t){
         if(h.allow&&typeof allowBox==='function')b.appendChild(allowBox(t,h)); // standing.js: Allow / Keep asking
         if(Array.isArray(h.plan)&&h.plan.length&&typeof planBox==='function')b.appendChild(planBox(t,h)); // goals.js: Start these steps
         if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
+        if(who==='claude'&&h.text&&typeof famCanSend==='function'&&famCanSend())b.appendChild(famChatSendBox(t,h)); // family.js: its to-dos, to someone in the group
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
         if(who==='claude'&&h.text&&typeof aiReportControl==='function')b.appendChild(aiReportControl(t,h)); // ai-report.js: flag an offensive reply
         th.appendChild(b);
@@ -849,6 +850,7 @@ function render(){
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
   drawLupaStuck(onAgent||tab==='list',tab==='list'); // agent-live-view.js: the local model's browser, when it stopped on a task (Human tab too, his verification steps first)
   drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
+  if(typeof famDrawIncoming==='function')famDrawIncoming(tab==='list'); // family.js: to-dos sent to me, Add / No thanks
   drawYesPrompts(tab==='list'?needing:[]);
   drawSuggestions(tab==='list');
   const ol=$('openList'); ol.innerHTML='';
