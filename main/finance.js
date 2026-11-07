@@ -324,7 +324,34 @@ async function afterUnlock() {
   }
   lookAtMail(false);
   await keepBills();
+  await keepEbt();
   return warning;
+}
+
+/* ── the EBT wallet's settings, outside the vault (renderer/js/finance-ebt.js) ──
+   His EBT balance, deposit day and monthly amount, sealed by Windows, so the grocery list and the Agent's
+   grocery runs can use them while Finance is locked. He chose this (2026-11-06): the balance isn't
+   something to keep from them. Nothing else from Finance goes in it. */
+const EBT_FILE = 'finance-ebt.json';
+const ebtFile = () => path.join(ctx.userData(), EBT_FILE);
+let ebtWrites = Promise.resolve();
+function keepEbt() {
+  if (!key) return ebtWrites;
+  const e = ebtClean(vault.ebt);
+  ebtWrites = ebtWrites.then(async () => {
+    const sealed = ctx.seal ? await ctx.seal(JSON.stringify(e)) : JSON.stringify(e);
+    const tmp = ebtFile() + '.tmp';
+    fs.writeFileSync(tmp, sealed, { mode: 0o600 });
+    fs.renameSync(tmp, ebtFile());
+  }).catch((err) => log('ebt: couldn’t keep it (' + txt(err.message, 80) + ')'));
+  return ebtWrites;
+}
+// locked or not → {balance, at, day, monthly} (any missing), {} when there's none
+async function ebtNow() {
+  try {
+    const text = fs.readFileSync(ebtFile(), 'utf8');
+    return ebtClean(JSON.parse(ctx.unseal ? await ctx.unseal(text) : text));
+  } catch (e) { return {}; }
 }
 
 /* ── bill reminders (renderer/js/finance-bills.js) ──
@@ -571,8 +598,12 @@ const handlers = {
     stillHere();
     vault.ebt = ebtClean(ebt);
     await writeVault();
+    await keepEbt();
+    if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');
     return { ok: true, ebt: vault.ebt };
   },
+  // the grocery list, locked or not: the sealed copy above
+  'finance:ebtNow': () => ebtNow(),
   // the tab's minute-by-minute check doesn't count as using it (it still locks after 10 idle minutes)
   'finance:stocks': async (_e, force) => {
     if (!key) return { locked: true };
@@ -600,13 +631,14 @@ const handlers = {
   'finance:forget': async () => {
     lock('forgotten');
     // a write still on its way would bring the files back after they're deleted
-    await vaultWrites; await billsTurn;
+    await vaultWrites; await billsTurn; await ebtWrites;
     try { fs.unlinkSync(file()); } catch (e) {}
     forgetHello();
     try { fs.unlinkSync(billsFile()); } catch (e) {}
+    try { fs.unlinkSync(ebtFile()); } catch (e) {}
     log('forgotten');
     return { ok: true };
   },
 };
 
-module.exports = { init, handlers, lock, forAgent, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };
+module.exports = { init, handlers, lock, forAgent, ebtNow, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };

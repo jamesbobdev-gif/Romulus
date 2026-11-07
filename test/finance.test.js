@@ -67,8 +67,13 @@ test('corrections on the cost charts are kept in the vault', async () => {
   assert.strictEqual((await h['finance:setEbt'](null, { balance: 1 })).ok, false);
   await h['finance:unlock'](null, 'correct horse battery');
   assert.deepStrictEqual(h['finance:data']().ebt, { balance: 143.2, at: 1000, day: 3, monthly: 291 });
-  assert.ok(!fs.readdirSync(d2).some((f) => /143\.2/.test(fs.readFileSync(path.join(d2, f), 'latin1'))));
+  // the vault never has it in the clear; the grocery list's copy is its own file (sealed by Windows in the app)
+  assert.ok(!fs.readdirSync(d2).filter((f) => f !== 'finance-ebt.json').some((f) => /143\.2/.test(fs.readFileSync(path.join(d2, f), 'latin1'))));
+  h['finance:lock']();
+  assert.deepStrictEqual(await h['finance:ebtNow'](), { balance: 143.2, at: 1000, day: 3, monthly: 291 }); // locked, still there
   await h['finance:forget']();
+  assert.deepStrictEqual(await h['finance:ebtNow'](), {});
+  assert.ok(!fs.existsSync(path.join(d2, 'finance-ebt.json')));
 });
 
 test('purchase emails are read after setup and kept in the vault, not in the clear', async () => {

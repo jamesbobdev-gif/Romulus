@@ -185,7 +185,7 @@
       return C.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning, sectorsKnown);
     },
     // this phone only: the computer and SimpleFIN keep working
-    financeForget: async function () { lock('forgotten'); await call('forget'); return { ok: true }; },
+    financeForget: async function () { lock('forgotten'); await call('forget'); try { localStorage.removeItem('finance.ebtCopy'); } catch (e) {} return { ok: true }; },
     onFinanceLocked: function (cb) { lockedCbs.push(cb); },
     onFinanceUpdated: function (cb) { updatedCbs.push(cb); },
     _readPairing: readPairing,

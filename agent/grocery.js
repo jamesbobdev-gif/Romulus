@@ -61,4 +61,17 @@ function lastOrderFor(tasks) {
   return kept.length ? { notPlacedYet: true, items: items(kept) } : undefined;
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, lastOrderFor };
+/* his EBT wallet (renderer/js/finance-ebt.js) as a grocery run sees it, or undefined when he hasn't set one
+   up: about what's left, as of when, and the next deposit. Only these; never anything else from Finance.
+   He chose to let grocery runs have it (2026-11-06), so the cart fits from the start */
+function ebtBrief(settings, tasks, now = Date.now()) {
+  const { ebtWallet, ebtYmd } = require('../renderer/js/finance-ebt');
+  const { agentOrders } = require('../renderer/js/order-match');
+  const w = ebtWallet(settings, agentOrders(tasks), now);
+  if (!w.known) return undefined;
+  return { aboutLeft: w.balance, asOf: ebtYmd(w.asOf), nextDeposit: w.nextDeposit ? ebtYmd(w.nextDeposit) : undefined,
+    note: 'Worked out by the app from his last known balance minus your EBT orders since; checkout shows the real one.' };
+}
+const isGroceryRun = (t, tasks) => !!groceryListFor(t, tasks) || (t && t.ws === 'agent' && GROCERY_WORDS.test(String(t.title || '')));
+
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun };

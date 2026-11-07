@@ -104,6 +104,39 @@ function groceryNextLine(){
   return d;
 }
 
+/* ── his EBT wallet (finance-ebt.js), on grocery tasks ──
+   The settings (balance, deposit day, monthly) come from Finance's sealed copy on the computer
+   (main/finance.js finance:ebtNow), or the copy Finance keeps on this device on the phone and with CSV
+   files (finance.js finKeepEbtCopy), so they show while Finance is locked. He chose this (2026-11-06). */
+let groceryEbt={};
+async function loadGroceryEbt(){
+  let e={};
+  try{
+    if(window.desktop&&window.desktop.financeEbtNow)e=await window.desktop.financeEbtNow()||{};
+    else e=JSON.parse(localStorage.getItem('finance.ebtCopy')||'{}')||{};
+  }catch(err){ e={}; }
+  const was=JSON.stringify(groceryEbt);
+  groceryEbt=typeof ebtClean==='function'?ebtClean(e):{};
+  if(JSON.stringify(groceryEbt)!==was&&typeof render==='function')render();
+}
+// once every page script has run (finance-ebt.js loads after this one)
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadGroceryEbt); else setTimeout(loadGroceryEbt,0);
+if(window.desktop&&window.desktop.onFinanceUpdated)window.desktop.onFinanceUpdated(function(what){ if(what==='ebt')loadGroceryEbt(); });
+// → the wallet (finance-ebt.js ebtWallet) when he's set one up, else null
+function groceryWallet(){
+  if(typeof ebtWallet!=='function')return null;
+  const w=ebtWallet(groceryEbt,agentOrders(state.tasks));
+  return w.known?w:null;
+}
+// one line in a grocery task's panel: about what's left on EBT, and the next deposit
+function groceryEbtLine(){
+  const w=groceryWallet(); if(!w)return null;
+  const d=el('div','panel-meta grocery-ebt');
+  d.appendChild(el('span','lbl','EBT left'));
+  d.appendChild(el('span','next','about $'+w.balance.toFixed(2)+(w.nextDeposit!=null?' · next deposit '+new Date(w.nextDeposit).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')));
+  return d;
+}
+
 // the agent asked for a yes ("Reply yes to place this order"): one tap answers it. An order it's waiting
 // on (even for something else first, like "add your EBT card, then reply done") always shows its items
 function asksYes(t){
@@ -203,6 +236,12 @@ function cartStrip(t){
     const total=kept.reduce(function(s,it){ return s+cartPrice(shown(it).price); },0);
     const base=items.filter(function(it){ return !it.suggested; }).length, ideas=items.length-base, picked=kept.filter(function(it){ return it.suggested; }).length;
     head.textContent='Your order · '+kept.length+' items'+(ideas?' ('+picked+' of '+ideas+' ideas added)':'')+(total?' · about $'+total.toFixed(2):'');
+    // against his EBT wallet: what's left after it, or how far over (checkout has the real balance)
+    const w=total?groceryWallet():null;
+    if(w){
+      const left=Math.round((w.balance-total)*100)/100;
+      head.appendChild(el('span','cart-ebt'+(left<0?' over':''),left<0?' · about $'+(-left).toFixed(2)+' over EBT':' · about $'+left.toFixed(2)+' left on EBT after'));
+    }
     all.hidden=o.slice().sort().join('|')===startOff().sort().join('|')&&!Object.keys(picks()).length; // as the Agent set it: nothing to reset
     go.disabled=!kept.length;
     go.textContent=!kept.length?'Nothing selected':!asksYes(t)?'Done, use these '+kept.length+' items':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';

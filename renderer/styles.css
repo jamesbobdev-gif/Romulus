@@ -727,6 +727,7 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 /* the order carousel: every item selected; tap to leave one out */
 .cart-box{margin:0 0 12px}
 .cart-head{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+.cart-ebt.over{color:var(--late)}
 .cart-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;max-height:70vh;overflow-y:auto;padding-bottom:4px}
 .cart-card{position:relative;flex:0 0 150px;scroll-snap-align:start;display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:6px;cursor:pointer;font:inherit;color:var(--ink);transition:opacity .15s,border-color .15s,transform .1s}
 .cart-card:active{transform:scale(.97)}

@@ -120,9 +120,13 @@ The EBT rules below are for when he pays with EBT/SNAP.
 - **EBT-eligible only (when he pays with EBT):** with EBT as his only grocery payment, keep the cart to SNAP-eligible food (Walmart
   marks it "EBT eligible"). Leave out non-eligible items (hot food, household, paper goods) and tell
   him which ones you left out.
-- **EBT balance:** checkout shows his EBT balance. If the cart is over it, take off the least
-  essential items until it fits (snacks before staples; items that just came due before items he ran
-  out of) and say what you took off. Put the balance left after this order in the note.
+- **EBT balance:** the task's `ebtBalance` (when there is one) is about what's left on his EBT card,
+  worked out by the app, and when the next deposit lands. Build the cart to fit `aboutLeft` from the
+  start, and if the next deposit is only a day or two away and money is tight, say so in the note (he
+  may want to wait). Checkout shows the real balance: that one wins. If the cart is over it, take off
+  the least essential items until it fits (snacks before staples; items that just came due before
+  items he ran out of) and say what you took off. In the note, write the EBT part of the total as
+  "$X.XX EBT" and the balance left after this order as "EBT left: $Y.YY": the app reads both.
 - **Swaps:** out of stock → pick the closest match (same size, similar price) and list every swap in
   the note. Allow the store's own substitutions only if he said so.
 - **Delivery:** to his door, unless his preferences say pickup. EBT usually can't pay the delivery fee or tip:

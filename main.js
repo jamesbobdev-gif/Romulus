@@ -71,7 +71,8 @@ const ctx = {
   windowHandle: win.windowHandle, // Windows Hello's prompt opens on the Tasks window
   protectWindow: win.protect, // no screen capture while Finance is showing
   // The local model’s money questions (agent/local-lane.js): read-only, only while Finance is unlocked here
-  finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked() },
+  finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked(),
+    ebtNow: () => finance.ebtNow() }, // the EBT wallet's settings, for grocery runs (agent/grocery.js ebtBrief), locked or not
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdate: (u) => trayMod.setUpdate(u),

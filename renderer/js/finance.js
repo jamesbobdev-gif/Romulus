@@ -1009,7 +1009,15 @@ function finDebtsCard(d,cur){
 /* EBT wallet (finance-ebt.js): about what's left on his EBT card, when the next deposit lands, and what the
    Agent's grocery orders put on it since the last one. He types the balance in now and then; the Agent's
    checkout notes keep it current in between */
+// the phone and CSV files: a copy of the EBT settings on this device, for the grocery list while Finance is
+// locked (grocery-list.js loadGroceryEbt). The computer keeps a sealed one in main/finance.js instead
+function finKeepEbtCopy(e){
+  if(window.desktop&&window.desktop.financeEbtNow)return;
+  try{ localStorage.setItem('finance.ebtCopy',JSON.stringify(ebtClean(e))); }catch(err){}
+  if(typeof loadGroceryEbt==='function')loadGroceryEbt();
+}
 function finEbtCard(d){
+  if(JSON.stringify(ebtClean(d.ebt))!==JSON.stringify(groceryEbt))finKeepEbtCopy(d.ebt); // an older copy, or none yet
   const box=el('div','fin-card fin-chart fin-ebt');
   box.appendChild(el('h3',null,'EBT'));
   const w=ebtWallet(d.ebt,agentOrders(state.tasks));
@@ -1057,7 +1065,7 @@ function finEbtCard(d){
       const r=await finApi.financeSetEbt(next).catch(function(err){ return {ok:false,error:err.message}; });
       save.disabled=false;
       if(!r.ok){ msg.textContent=r.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'; msg.hidden=false; return; }
-      fin.data.ebt=r.ebt; box.replaceWith(finEbtCard(fin.data));
+      fin.data.ebt=r.ebt; finKeepEbtCopy(r.ebt); box.replaceWith(finEbtCard(fin.data));
     });
     row.appendChild(save);
     box.appendChild(row); box.appendChild(msg);

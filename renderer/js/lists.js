@@ -485,7 +485,7 @@ function buildPanel(t){
     panel.appendChild(hl); panel.appendChild(ht);
   }
   // grocery tasks: when the next 2-week order opens (grocery-list.js); the order itself shows as picture cards
-  if(isGroceryTask(t)&&!t.done)panel.appendChild(groceryNextLine());
+  if(isGroceryTask(t)&&!t.done){ panel.appendChild(groceryNextLine()); const eb=groceryEbtLine(); if(eb)panel.appendChild(eb); }
   // repeat: Claude re-runs this task on a schedule (desktop app does the timing)
   if(taskWs(t)==='agent'){
     const rr=el('div','panel-meta repeat-row');

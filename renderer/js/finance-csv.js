@@ -268,7 +268,7 @@
       return { ok: true, ebt: vault.ebt };
     },
     financeStocks: async function () { return key ? { held: 0, rows: [] } : { locked: true }; },
-    financeForget: async function () { lock('forgotten'); try { localStorage.removeItem(STORE); } catch (e) {} return { ok: true }; },
+    financeForget: async function () { lock('forgotten'); try { localStorage.removeItem(STORE); localStorage.removeItem('finance.ebtCopy'); } catch (e) {} return { ok: true }; },
     onFinanceLocked: function (cb) { lockedCbs.push(cb); },
   };
 })();

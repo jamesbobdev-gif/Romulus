@@ -116,6 +116,7 @@ contextBridge.exposeInMainWorld('desktop', {
   financeForget: () => ipcRenderer.invoke('finance:forget'),
   financeSetKind: (payee, kind) => ipcRenderer.invoke('finance:setKind', payee, kind),
   financeSetEbt: (ebt) => ipcRenderer.invoke('finance:setEbt', ebt),
+  financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),

@@ -61,3 +61,15 @@ test('what he types is cleaned', () => {
   assert.deepStrictEqual(ebtClean({ balance: '12.345', at: 5, day: 40, monthly: -3, pin: '1234' }), { balance: 12.35, at: 5 });
   assert.deepStrictEqual(ebtClean(null), {});
 });
+
+test('a grocery run gets about what is left on EBT, and nothing when there is no wallet', () => {
+  const { ebtBrief, isGroceryRun } = require('../agent/grocery');
+  const tasks = [{ id: 't1', ws: 'agent', title: 'Groceries', orders: [{ at: at(10, 4), items: [{ name: 'Eggs' }], ebt: 30 }] }];
+  assert.deepStrictEqual(Object.keys(ebtBrief({ balance: 100, at: at(10, 1), day: 3, monthly: 291 }, tasks, NOW)).sort(), ['aboutLeft', 'asOf', 'nextDeposit', 'note']);
+  const b = ebtBrief({ balance: 100, at: at(10, 1), day: 3, monthly: 291 }, tasks, NOW);
+  assert.strictEqual(b.aboutLeft, 100 + 291 - 30);
+  assert.strictEqual(b.nextDeposit, '2026-12-03');
+  assert.strictEqual(ebtBrief({}, tasks, NOW), undefined);
+  assert.strictEqual(isGroceryRun(tasks[0], tasks), true);
+  assert.strictEqual(isGroceryRun({ ws: 'agent', title: 'Book a haircut' }, tasks), false);
+});
