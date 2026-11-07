@@ -27,13 +27,11 @@ function buildRow(t,canDrag){
   }
   let dueDiff=null;
   const today=formatDate(new Date());
-  // swiped to tomorrow's deck; with a due date it rides on the date chip instead of a second chip
-  const movedLater=!t.done&&t.plan&&t.plan>today;
   if(t.due){
     const info=dateInfo(t.due,t.dueTime);
     dueDiff=info.diff;
-    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text+(movedLater?' ↪ tmrw':''));
-    dateBtn.title=movedLater?'You swiped this to tomorrow — it comes back in tomorrow’s deck. Click to view in calendar':'View in calendar';
+    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text);
+    dateBtn.title='View in calendar';
     dateBtn.addEventListener('click',function(e){
       e.stopPropagation();
       const p=t.due.split('-').map(Number);
@@ -49,13 +47,6 @@ function buildRow(t,canDrag){
   }
   if(workConfigured()&&taskWs(t)==='work'&&state.wsFilter!=='work'&&state.activeTab!=='work'){
     chips.appendChild(el('span','chip ws','work'));
-  }
-  // what the morning swipe decided: picked for today, or pushed to tomorrow's deck
-  if(!t.done&&t.plan){
-    // worded as a decision, not a date, so it can't read as a second due date; and nothing when
-    // it would just repeat the due chip ("today · today")
-    if(t.plan===today&&t.planSet===today&&t.due!==today){ const c=el('span','chip plan','doing today'); c.title='You picked this for today'; chips.appendChild(c); }
-    else if(movedLater&&!t.due){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; chips.appendChild(c); }
   }
   if(taskWs(t)==='school'){
     if(state.activeTab!=='school')chips.appendChild(el('span','chip school','school'));
@@ -333,12 +324,7 @@ function buildPanel(t){
       const btns=el('div','opt-btns');
       const store=buyStoreOf(o), kind=store?'order':isTicketSite(o.url)?'tickets':optionKind(o.url);
       if(o.url){ const ob=el('button','opt-open',siteName(o.url)+' ↗'); ob.addEventListener('click',function(){ openExternal(String(o.url)); }); btns.appendChild(ob);
-        const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb);
-        // email the link to yourself (the desktop sends it; nothing is picked or bought);
-        // not when "Send me link" below already does exactly that
-        if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
-        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); buzz('send'); touch(); });
-        btns.appendChild(mb); } }
+        const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb); }
       if(canPick&&isLegionTask(t)){
         const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
         const bb=el('button','opt-pick',booked?'Booking…':'Book this'); bb.disabled=booked;
@@ -347,14 +333,12 @@ function buildPanel(t){
         btns.appendChild(bb);
       }
       else if(canPick){
-        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':(kind==='order'||kind==='tickets')?'Buy this':'Choose this');
-        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='order'?'The Agent gets the '+store+' order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
+        const pb=el('button','opt-pick',(kind==='order'||kind==='tickets')?'Buy this':'Choose this');
+        pb.title=kind==='order'?'The Agent gets the '+store+' order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
         pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='order'?'. Buy it on '+store+'.':kind==='tickets'?'. Book it.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
           // stores it orders from, and ticket sites: The Agent builds the order and asks for a yes before placing it
           if(kind==='order')agentSay(t,'sys','Getting the '+store+' order ready. You’ll see it before anything is bought.');
           else if(kind==='tickets')agentSay(t,'sys','Getting the booking ready. You’ll see the total before anything is bought.');
-          // other links: stage an email with it — the desktop sends it (never orders anything)
-          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); }
           touch(); });
         btns.appendChild(pb);
       }
@@ -747,7 +731,6 @@ function buildPanel(t){
 /* ── render ── */
 let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
-  updatePlanBtn();
   if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts

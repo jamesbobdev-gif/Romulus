@@ -134,3 +134,23 @@ function makeDraggable(li,t){
     const id=dragId; dragId=null; clearDropMarks(); dragTask(id,t.id,before);
   });
 }
+
+// a background sync swaps task objects, so always act on the live copy
+function liveTask(t){ return state.tasks.find(function(x){ return x.id===t.id; })||t; }
+// a short buzz on the phone for the few moments that matter (nothing on a computer)
+function buzz(kind){
+  // no JS bundler in the phone app, so call the native plugin through the bridge directly
+  const cap=window.Capacitor;
+  if(!cap||typeof cap.nativePromise!=='function')return;
+  const call=function(method,opts){ try{ const p=cap.nativePromise('Haptics',method,opts||{}); if(p&&p.catch)p.catch(function(){}); }catch(e){} };
+  const H={ impact:function(o){ call('impact',o); }, notification:function(o){ call('notification',o); } };
+  const later=function(ms,f){ setTimeout(function(){ try{ f(); }catch(e){} },ms); };
+  try{
+    if(kind==='check')H.notification({type:'SUCCESS'});                            // ticked a task off
+    else if(kind==='add')H.impact({style:'MEDIUM'});                              // new task
+    else if(kind==='tap'||kind==='tick')H.impact({style:'LIGHT'});                // a small pick, mic on
+    else if(kind==='delete')H.notification({type:'WARNING'});
+    else if(kind==='send'){ H.impact({style:'MEDIUM'}); later(90,function(){ H.impact({style:'LIGHT'}); }); } // to the Agent
+    else if(kind==='answer'){ H.impact({style:'LIGHT'}); later(140,function(){ H.impact({style:'LIGHT'}); }); } // the Agent replied
+  }catch(e){}
+}

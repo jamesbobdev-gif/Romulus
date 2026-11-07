@@ -435,7 +435,7 @@ async function importCourseFeeds(){
   const live={}; r.items.forEach(function(e){ live[e.id]=1; });
   const vanished=r.complete?state.tasks.filter(function(t){
     return /^ics-/.test(t.id)&&!live[t.id]&&seen[t.id]&&!t.done&&t.due&&t.due>=today&&
-      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
+      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length);
   }).map(function(t){ return t.id; }):[];
   const tidy=tidySchool(r,vanished);
   if(added||moved||sited||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
@@ -571,7 +571,6 @@ function tidySchool(r,vanished){
       if(!f.tag&&h.tag)f.tag=h.tag;
       if(schoolKind(f)==='regular'&&schoolKind(h)!=='regular')f.kind=h.kind;
       if(h.notes&&String(f.notes||'').indexOf(h.notes)<0)f.notes=h.notes+(f.notes?'\n\n'+f.notes:'');
-      if(!f.plan&&h.plan){ f.plan=h.plan; f.planSet=h.planSet; }
       if(h.subs&&h.subs.length)f.subs=(f.subs||[]).concat(h.subs);
     });
     // one match: keep whichever name says more ("Homework: Gas Giants, Rings, and Moons" over "Homework: Gas Giants")

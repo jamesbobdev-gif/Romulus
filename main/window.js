@@ -122,7 +122,7 @@ function titleBarFollowsPage() {
   const wc = mainWindow.webContents, run = ++titleRun;
   // the strip can't be clicked through, and the window buttons sit on its right: pop-ups that reach the top start below it
   wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}
-    .lb-close{top:${TITLE_H + 14}px} .live-view{top:${TITLE_H + 8}px} .swipe{padding-top:${TITLE_H + 10}px}`).catch(() => {});
+    .lb-close{top:${TITLE_H + 14}px} .live-view{top:${TITLE_H + 8}px}`).catch(() => {});
   const follow = () => wc.executeJavaScript(TITLE_COLORS).then((c) => {
     if (run !== titleRun || !mainWindow || mainWindow.isDestroyed()) return;
     if (c && c.color && c.symbolColor) { try { mainWindow.setTitleBarOverlay({ ...c, height: TITLE_H }); } catch (e) {} }

@@ -17,7 +17,7 @@ function configFile() {
    the file is useless if copied off this account. Everything else stays plain so it can still be
    hand-edited; a secret typed in by hand is picked up as-is and encrypted on the next save. */
 const SECRET_KEYS = new Set(['access_token', 'refresh_token', 'id_token', 'clientSecret', 'appPassword', 'key', 'syncKey',
-  'geminiKey', 'openaiKey', 'anthropicKey', 'openrouterKey', 'xaiKey', 'groqKey', 'cloudflareKey', 'nvidiaKey', 'buyEmailUrl', 'calendarFeeds']);
+  'geminiKey', 'openaiKey', 'anthropicKey', 'openrouterKey', 'xaiKey', 'groqKey', 'cloudflareKey', 'nvidiaKey', 'calendarFeeds']);
 const ENC = 'enc:v1:';
 
 /* Electron 45 deprecates safeStorage's synchronous calls and 46 removes them, so encrypting and decrypting

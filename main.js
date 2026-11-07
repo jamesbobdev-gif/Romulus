@@ -14,7 +14,6 @@ const speak = require('./main/speak');
 const feeds = require('./main/feeds');
 const persistence = require('./main/persistence');
 const gcalSync = require('./main/gcal-sync');
-const buyEmails = require('./main/buy-emails');
 const deviceSync = require('./main/device-sync');
 const calendarAccounts = require('./main/calendar-accounts');
 const gmailDates = require('./main/gmail-dates');
@@ -81,7 +80,7 @@ const ctx = {
   sendToWindow: win.sendToRenderer,
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
-const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
+const modules = [trayMod, speak, feeds, persistence, gcalSync, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
   usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {

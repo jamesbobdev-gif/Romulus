@@ -735,7 +735,7 @@ async function syncUseOneKey(){
    device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
    (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
    Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
-   (buy emails, school feeds, the work calendar) can't read sealed rows yet (docs/phone-only-plan.md). */
+   (school feeds, the work calendar) can't read sealed rows yet. */
 const SYNC_MOVED={moved:'v2'};
 function syncV2Moves(c){
   const out=[];

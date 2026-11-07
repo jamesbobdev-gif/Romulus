@@ -371,20 +371,20 @@ async function voiceAdd(smart){
 }
 // the site a link goes to, for its button: "Amazon", "Fresha", "Yelp"… (not always Amazon)
 // 3D-model sites: an option there is something to print, not to buy
-// what the card's button does for an option's link: buy (a shop), print (a 3D-model site), or just send
-// him the link (jobs, bookings, articles, forms… anything that isn't a purchase)
+// what an option's link is: buy (a shop), print (a 3D-model site), or just a link (jobs, bookings, articles,
+// forms… anything that isn't a purchase); it words his pick ("I'll print option 2")
 function optionKind(url){
   if(!url)return 'pick';
   if(isModelSite(url))return 'print';
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return 'link'; }
   return /(^|\.)(amazon\.[a-z.]+|amzn\.(to|com)|bestbuy\.com|walmart\.com|target\.com|newegg\.com|ebay\.com|etsy\.com|homedepot\.com|lowes\.com|costco\.com|bhphotovideo\.com|microcenter\.com|bambulab\.com|aliexpress\.com|temu\.com|adorama\.com|rei\.com|ikea\.com)$/.test(h)?'buy':'link';
 }
-// an Amazon product page: The Agent orders it (after a yes) instead of emailing the link
+// an Amazon product page: The Agent orders it (after a yes)
 function isAmazon(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
 }
-// a store the Agent orders from itself (after a yes) instead of emailing the link: the big stores where his
+// a store the Agent orders from itself (after a yes): the big stores where his
 // card is saved in his account, and Shopify stores (Shop Pay). → the store's name, or '' (shopping skill)
 function buyStoreOf(o){
   const url=o&&o.url; let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return ''; }
@@ -422,7 +422,6 @@ function openExternal(url){
 }
 const SHARE_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
 // send just the link to people: the phone's Share sheet (Messages, WhatsApp…), else copy it
-const MAIL_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';
 function shareLink(url,btn){
   url=String(url||''); if(!/^https?:\/\//i.test(url))return;
   const cap=window.Capacitor;

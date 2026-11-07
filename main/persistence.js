@@ -1,9 +1,8 @@
 /* The tasks file: loading it, and saving it, which also wakes everything that follows an edit
-   (tray counts, the Agent lanes, "Buy this" emails, calendar sync). */
+   (tray counts, the Agent lanes, calendar sync). */
 const fs = require('fs');
 const path = require('path');
 const { askForRoutes } = require('../agent/routing');
-const { processBuyEmails } = require('./buy-emails');
 const { performSync } = require('./gcal-sync');
 
 let ctx = null; // { dataFile, refreshTrayStatus, scheduleAgentRun, scheduleLocalRun }
@@ -99,7 +98,6 @@ handle('tasks:save', async (_event, raw) => {
     ctx.scheduleAgentRun(raw);
     ctx.scheduleLocalRun(raw);
     askForRoutes(raw);
-    processBuyEmails(raw).catch((e) => console.error('buy email error:', e.message));
     clearTimeout(syncDebounce);
     syncDebounce = setTimeout(() => { performSync().catch((e) => console.error('gcal sync failed:', e.message)); }, 3000);
     return true;

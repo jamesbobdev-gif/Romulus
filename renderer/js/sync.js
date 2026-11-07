@@ -565,7 +565,6 @@ async function syncOnce(){
     rebuildSnap();
     store.save(currentDoc());
     renderActive();
-    if(typeof refreshSwipe==='function')refreshSwipe(); // the morning deck, if it's open (swipe.js)
     if(spawnMissedRecurs())touch(); // ticked off on a device or by a tool that doesn't make the next one
   }
   if((anyLocal||healthNew)&&typeof healthAutoCheck==='function')healthAutoCheck(); // a task's goal reached on the phone, or just synced
