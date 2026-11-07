@@ -1,0 +1,25 @@
+# Romulus
+
+> Romulus is a free, open-source (MIT) to-do list app with an AI agent built in, for Windows, macOS, Linux and Android. You write a task in plain words and hand it to the Agent; it searches, fills forms, compares prices and builds the cart, and it never buys, sends, submits, books or deletes anything until you say yes to the exact thing it described. That rule is enforced in code.
+
+Key facts:
+
+- Platforms: Windows 10/11, macOS (Apple silicon and Intel), Linux (.deb and AppImage), Android (APK). iPhone runs from Xcode only, not on the App Store yet.
+- Price: the app is free. Device sync is free up to 5 MB on the Romulus server, $5 a month for more, or bring your own Supabase project.
+- AI models: Claude, ChatGPT, Gemini, OpenRouter, free tiers like Grok and Groq, or a local model through Ollama. Several can be connected and are tried in the user's order.
+- Privacy: no telemetry. Banking, medical records, passwords and the Locked form-filling profile go only to the local model. Sync can be end-to-end encrypted. API keys never sync. The AI never sees a card number.
+- Shopping: Amazon, Walmart, Target, Best Buy and Shopify stores, plus any other store through a one-time Link card for the approved amount. Grocery orders wait at checkout for the user's yes.
+- Tabs: Human (your own to-dos), Agent (tasks the AI does, with a live view and its questions), School (Blackboard and D2L assignments), Work, Calendar (Google and Microsoft), Notes, Hours, Finance.
+- Finance tab: an alternative to Rocket Money. Accounts, bills and subscriptions found automatically (Cancel hands one to the Agent), net worth over time, live stock prices. Bank access costs about $15 a year. No cloud AI sees Finance.
+- Agent abilities: research and writing, shopping and groceries, flights and bookings, forms and job applications, email, a morning look-ahead, tasks triggered by an email or a page change, deep research split across models so no single cloud AI sees the whole question, a Coach me brief for things only the user can do, and a browser the user can watch and take over.
+- Built with Electron, Node 22 and Capacitor.
+
+## Links
+
+- [Website and downloads](https://jamesbobdev-gif.github.io/Romulus/)
+- [Latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest)
+- [Source code](https://github.com/jamesbobdev-gif/Romulus)
+- [README](https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/README.md)
+- [Setup guide](https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/docs/SETUP.md)
+- [Privacy](https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/PRIVACY.md)
+- [Security](https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/SECURITY.md)
