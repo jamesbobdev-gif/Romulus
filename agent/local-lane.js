@@ -560,7 +560,7 @@ async function runLocalTask(c, t) {
     'For anything about his time (free slots, when he can fit something in), work it out from these events, not the web.\n' +
     cal.events.slice(0, 60).map((e) => '- ' + String(e.start).replace('T', ' ').slice(0, 16) + ' ' + e.title + (e.where ? ' @ ' + e.where : '') + (e.invitedBy ? ' (invited by ' + e.invitedBy + ')' : '')).join('\n') : '';
   // Qwen's browser, when the mini PC's is reachable: locked to the task's links + his allowed sites
-  let browser = null, sites = [];
+  let browser = null, sites = [], mySites = [];
   const money = isMoneyTask(t);
   if (money) t.financeSeen = true; // from here on, this task stays on the mini PC (routing.privateMatch)
   // a coach task (agent/coach.js) goes through his courses, noting what it finds, then a brief is written from the notes
@@ -572,7 +572,8 @@ async function runLocalTask(c, t) {
   const sweeping = !money && !coaching && classSweep.isSweep(t);
   const found = [];
   if (!money && await ensureQwenBrowser()) {
-    sites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
+    mySites = (Array.isArray(routing.getRouting().sites) ? routing.getRouting().sites : String(routing.getRouting().sites || '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean);
+    sites = localSites.withCommon(mySites); // his list plus ~100 common sites (agent/local-sites.js COMMON_SITES)
     const links = (JSON.stringify([t.title, t.notes, t.reply, t.history, t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
     const lockFile = path.join(ctx.userData(), 'qwen-browser-lock.json');
     const allow = links.concat(sites.map((x) => /^https?:\/\//i.test(x) ? x : 'https://' + x.replace(/^\*\./, '')));
@@ -606,7 +607,7 @@ async function runLocalTask(c, t) {
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
   // the class sweep goes through every class: the most room of all
   let maxSteps = browser ? (sweeping ? 120 : coaching ? 80 : 40) : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', sites.join(', ') || '(none set in Settings yet)').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') +
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', (mySites.length ? mySites.join(', ') + ', and ' : '') + 'about 100 common sites (Google, Bing, Wikipedia, YouTube, Reddit, the big social sites, Amazon, Walmart, Target and other big stores, food delivery, travel, the big news sites, Indeed, Zillow, USPS/UPS/FedEx, .gov sites like irs.gov, WebMD, Khan Academy, Quizlet, Canva, Zoom). Banks and payment sites are not on it').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') +
     (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +

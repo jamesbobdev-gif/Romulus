@@ -77,7 +77,7 @@
           </select>
         </div>
         <p class="settings-hint" style="margin-top:6px">Auto: if the local machine has a small decider model, it picks first. Otherwise inbox, web, shopping → cloud. Writing, forms → the local model. Anything else → cloud, or the local model if Claude is near its limit. If a side is offline, the other takes it.</p>
-        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line.</p>
+        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line. About 100 common sites (Google, Wikipedia, YouTube, the big stores and news sites, .gov sites) are always allowed on top of these. Banks and payment sites are not: add them here if you want them.</p>
         <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="routingSaveBtn" class="btn-accent">Save</button>
