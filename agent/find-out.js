@@ -46,9 +46,14 @@ function isVague(t) {
 
 /* his School list, as clues to which class it is: per class, the items with the same unit word ("Chapter 7
    Homework", due last week), the likeliest class first (the one whose numbers come closest to this one) */
-function clues(t, tasks) {
+function clues(t, tasks, log) {
   const want = refs(clean(t && t.title));
   const school = (Array.isArray(tasks) ? tasks : []).filter((x) => x && x.id !== (t && t.id) && x.tag && (x.ws === 'school' || x.fromWs === 'school'));
+  // what earlier runs found ("Lesson 9" was WGS 1010): kept after the task itself is done and deleted
+  const have = new Set(school.map((x) => x.tag + '|' + String(x.title).toLowerCase()));
+  for (const e of Array.isArray(log) ? log : []) {
+    if (e && e.course && e.title && !have.has(e.course + '|' + String(e.title).toLowerCase())) school.push({ tag: e.course, title: e.title, due: e.due || e.at || null, found: true });
+  }
   const byClass = {};
   for (const x of school) {
     const theirs = refs(x.title);
@@ -57,18 +62,21 @@ function clues(t, tasks) {
     c.near = Math.min(c.near, near);
     if (near < 999 || !want.length) c.items.push(x);
   }
-  const list = Object.values(byClass).sort((a, b) => a.near - b.near || a.course.localeCompare(b.course));
-  list.forEach((c) => c.items.sort((a, b) => String(b.due || '').localeCompare(String(a.due || ''))));
-  return list;
+  Object.values(byClass).forEach((c) => {
+    c.items.sort((a, b) => String(b.due || '').localeCompare(String(a.due || '')));
+    c.latest = c.items.length ? String(c.items[0].due || '') : '';
+  });
+  // equally close: the class that had one most recently (last week's lesson 9 beats last term's)
+  return Object.values(byClass).sort((a, b) => a.near - b.near || b.latest.localeCompare(a.latest) || a.course.localeCompare(b.course));
 }
-function cluesText(t, tasks) {
-  const list = clues(t, tasks);
+function cluesText(t, tasks, log) {
+  const list = clues(t, tasks, log);
   const head = '\n\n## Clues from his School list';
   if (!list.length) return head + '\n(nothing on it yet: use search_my_data and his classes on the course sites)';
   const best = list[0].near < 999 && (list.length < 2 || list[1].near > list[0].near) ? list[0].course : null;
   return head + (t && t.tag ? '\nThe task is labeled ' + t.tag + ': that is the class, unless the course shows otherwise.' : '') +
     (best && !(t && t.tag) ? '\nLikeliest class: ' + best + ' (its numbering comes closest). Check it first.' : '') + '\n' +
-    list.slice(0, 8).map((c) => '- ' + c.course + (c.items.length ? ': ' + c.items.slice(0, 5).map((x) => x.title + (x.due ? ' (due ' + x.due + ')' : '') + (x.done ? ' [done]' : '')).join('; ') : ': nothing numbered like this')).join('\n');
+    list.slice(0, 8).map((c) => '- ' + c.course + (c.items.length ? ': ' + c.items.slice(0, 5).map((x) => x.title + (x.due ? ' (due ' + x.due + ')' : '') + (x.done ? ' [done]' : '') + (x.found ? ' [found earlier]' : '')).join('; ') : ': nothing numbered like this')).join('\n');
 }
 
 const PIN_TOOL = { type: 'function', function: { name: 'pin_down_task', description: 'Say what this task really is, once you have found it on the course site: his task is rewritten with it. Call it as soon as you are sure, before you start the work itself.', parameters: { type: 'object', properties: {
@@ -97,14 +105,35 @@ function pin(pinned, args) {
     '. His task now says so. Now do it, as your usual rules say (anything final, like Submit or Post, waits for his yes).';
 }
 
+/* the class log: every item a run pinned down, newest last, so the next number in the series goes
+   straight to the same class. A plain JSON file next to the app's data; 300 entries is years of school */
+const LOG_MAX = 300;
+function readLog(file) {
+  try { const a = JSON.parse(require('fs').readFileSync(file, 'utf8')); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function remember(file, item, today) {
+  if (!item || !item.course || !item.title) return false;
+  const at = today || new Date().toLocaleDateString('en-CA');
+  const key = (e) => e.course + '|' + String(e.title).toLowerCase();
+  const entry = { course: item.course, title: item.title, due: item.due || null, at };
+  const log = readLog(file).filter((e) => e && key(e) !== key(entry)).concat(entry).slice(-LOG_MAX);
+  try {
+    const fs = require('fs'), path = require('path');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(log, null, 1));
+    return true;
+  } catch (e) { return false; }
+}
+
 // what Lupa is told on top of its usual rules (agent/local-prompt.md)
 const RULES = `
 
 ## This task only names the work: find out what it is first, then do it
 The title only says something like "chapter 8": no class, or no instructions. Don't ask him which class
 or what exactly. Find out yourself:
-1. Which class: the clues from his School list below (a class whose numbering is near this one, or the
-   label on the task), and search_my_data for anything else he wrote about it.
+1. Which class: the clues below (a class whose numbering is near this one, or the label on the task;
+   "[found earlier]" items are ones earlier runs pinned down, so lesson 10 after last week's lesson 9 is
+   most likely the same class), and search_my_data for anything else he wrote about it.
 2. Open that class on the site "Where each of his classes is" names (his school's own address, never
    blackboard.com or d2l.com) and find the item: the content / modules, the assignments, the gradebook,
    a McGraw Hill Connect (or other publisher) link from the course, the syllabus schedule (read_file it).
@@ -121,4 +150,4 @@ Signed out? Answer needs-you: he signs in on the mini PC's browser, then replies
 const NOT_PINNED = 'Before you finish: you haven\'t pinned down what this task is (pin_down_task). Open the class on its site, ' +
   'find the item, and call pin_down_task, then do it. If you really couldn\'t find it, answer again and say per class where you looked.';
 
-module.exports = { isVague, refs, clues, cluesText, PIN_TOOL, pin, RULES, NOT_PINNED };
+module.exports = { isVague, refs, clues, cluesText, PIN_TOOL, pin, RULES, NOT_PINNED, readLog, remember };

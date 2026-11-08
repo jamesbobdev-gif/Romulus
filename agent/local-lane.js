@@ -45,6 +45,8 @@ const courseSites = require('./course-sites');
 const runLog = require('./run-log');
 const APP_VERSION = (() => { try { return require('../package.json').version; } catch (e) { return null; } })();
 const runLogFile = () => path.join(ctx.userData(), 'local-runs.jsonl');
+// which class each "chapter 9" turned out to be, so "chapter 10" next week starts from there (agent/find-out.js)
+const classLogFile = () => path.join(ctx.userData(), 'class-log.json');
 const { enrichOption } = require('./previews');
 const worker = require('./worker');
 
@@ -614,7 +616,7 @@ async function runLocalTask(c, t) {
   // finding out first: looking through a class or two, then the work itself
   let maxSteps = browser ? (sweeping ? 120 : coaching || findingOut ? 80 : 40) : LOCAL_MAX_STEPS;
   const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', (mySites.length ? mySites.join(', ') + ', and ' : '') + 'about 100 common sites (Google, Bing, Wikipedia, YouTube, Reddit, the big social sites, Amazon, Walmart, Target and other big stores, food delivery, travel, the big news sites, Indeed, Zillow, USPS/UPS/FedEx, .gov sites like irs.gov, WebMD, Khan Academy, Quizlet, Canva, Zoom). Banks and payment sites are not on it').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') +
-    (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + (findingOut && browser ? findOut.RULES + findOut.cluesText(t, allTasks) : '') + calText + classesText +
+    (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + (findingOut && browser ? findOut.RULES + findOut.cluesText(t, allTasks, findOut.readLog(classLogFile())) : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
     (earlier.length ? '\n\n## How earlier, similar tasks went (may be out of date: if the page doesn\'t match, ignore it)\n' + earlier.map(howtos.show).join('\n') : '') +
@@ -661,8 +663,9 @@ async function runLocalTask(c, t) {
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
   show('Reading the task…\n', true);
-  try {
+  // outside the try: the run log after it reads this, and a let inside the block crashed every finished run
   let stepsUsed = 0;
+  try {
   for (let step = 0; step < maxSteps && !final; step++) {
     stepsUsed = step + 1;
     if (activity && activity.id === t.id) Object.assign(activity, { step: stepsUsed, of: maxSteps, stepAt: Date.now(), on: 'thinking' });
@@ -770,7 +773,7 @@ async function runLocalTask(c, t) {
         else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
         else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
         else if (sweeping && name === 'add_class_item') { result = classSweep.addItem(found, args); show('\n' + result.split('. So far')[0] + '\n', true); }
-        else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); show('\n' + result.split('. His task')[0] + '\n', true); }
+        else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); if (pinned.item) findOut.remember(classLogFile(), pinned.item); show('\n' + result.split('. His task')[0] + '\n', true); }
         else if ((coaching || sweeping || findingOut) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
         else if (name === 'search_my_data') {
           show('\nSearching your Tasks data: ' + args.query + '\n', true);

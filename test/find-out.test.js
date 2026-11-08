@@ -62,3 +62,21 @@ test('pin_down_task turns back what it can\'t use', () => {
   assert.match(fo.pin(p, { course: 'ECN 201', title: 'Chapter 8', due: '11/10', details: 'twenty questions' }), /YYYY-MM-DD/);
   assert.strictEqual(p.item, undefined);
 });
+
+test('the class log: last week\'s lesson 9 points lesson 10 at the same class', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'classlog-')), 'class-log.json');
+  assert.deepStrictEqual(fo.readLog(file), []);
+  assert.ok(fo.remember(file, { course: 'WGS 1010', title: 'Lesson 9 Reflection', due: '2026-11-01' }, '2026-11-01'));
+  assert.ok(fo.remember(file, { course: 'WGS 1010', title: 'Lesson 9 Reflection', due: '2026-11-01' }, '2026-11-02'), 'same item again: kept once');
+  assert.strictEqual(fo.readLog(file).length, 1);
+  const tasks = [{ id: 'a', ws: 'school', tag: 'MKT 1100', title: 'Chapter 4 Quiz', due: '2026-11-05' }];
+  const text = fo.cluesText({ id: 'x', title: 'lesson 10' }, tasks, fo.readLog(file));
+  assert.match(text, /Likeliest class: WGS 1010/);
+  assert.match(text, /Lesson 9 Reflection \(due 2026-11-01\) \[found earlier\]/);
+});
+
+test('equally close: the class with the most recent one wins', () => {
+  const log = [{ course: 'ENG 1010', title: 'Lesson 9', due: '2026-03-01' }, { course: 'WGS 1010', title: 'Lesson 9', due: '2026-11-01' }];
+  assert.strictEqual(fo.clues({ title: 'lesson 10' }, [], log)[0].course, 'WGS 1010');
+});
