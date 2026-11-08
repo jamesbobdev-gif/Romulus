@@ -557,6 +557,8 @@ async function syncOnce(){
       if(!firstErr)firstErr=e;
     }
   }
+  // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
+  if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
   // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
@@ -624,6 +626,7 @@ function liveTargets(){
   if(typeof ideasProfile==='function')add(ideasProfile());
   if(typeof hoursProfile==='function')add(hoursProfile());
   if(typeof healthProfile==='function')add(healthProfile());
+  if(typeof kitchenProfile==='function')add(kitchenProfile());
   if(typeof familyProfile==='function')add(familyProfile());
   Object.keys(out).forEach(function(id){ if(!out[id].topics.length)delete out[id]; });
   return out;

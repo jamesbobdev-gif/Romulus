@@ -10,7 +10,7 @@
 'use strict';
 
 const HOSTED_OFF_KEY='tasks.syncHostedOff'; // he turned sync off or chose his own project: no auto start again
-const HOSTED_SIDE_ROWS={personal:[':ideas',':hours',':devices'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+const HOSTED_SIDE_ROWS={personal:[':ideas',':hours',':kitchen',':devices'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
 function hostedServer(){ const p=typeof window!=='undefined'&&window.ROMULUS_PAIR; return p&&p.url&&p.key?p:null; }
 function hostedTrim(u){ return String(u||'').trim().replace(/\/+$/,''); }
 // a build from an app store (window.ROMULUS_STORE, set per Android flavor): the stores want their own billing for

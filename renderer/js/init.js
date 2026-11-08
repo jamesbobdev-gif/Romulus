@@ -71,6 +71,7 @@ store.load().then(async function(data){
   state.ideas=normIdeas(data&&data.ideas);
   state.hours=normHours(data&&data.hours);
   state.health=normHealth(data&&data.health); // daily health totals (health.js)
+  state.kitchen=normKitchen(data&&data.kitchen); // the Kitchen tab (kitchen.js)
   rebuildSnap();
   if(spawnMissedRecurs())persist();
   if(sweepSchool())persist(); // assignments two days past their deadline come off (school-overdue.js)
