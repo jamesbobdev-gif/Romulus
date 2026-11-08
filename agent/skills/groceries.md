@@ -68,10 +68,31 @@ The EBT rules below are for when he pays with EBT/SNAP.
   5. "Allergies or foods you avoid?" pick many: None, Dairy, Gluten, Nuts, Pork, Shellfish [None]
   6. "Brands?" Store brand to save money, Name brands, Mix [Store brand]
   7. "If something's out of stock?" Closest match, Ask me, Skip it [Closest match]
+  The food questions (they set his Food plan on the Health tab). Leave all three out when the task
+  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age:
+  8. "Shop for a food goal? It sets your Food plan on the Health tab." one of: "Lose fat", "Keep my
+     weight", "Build muscle", "Just eat better", "No plan, just groceries" [Just eat better]
+  9. "Your height, weight and age? (and sex, for the numbers)" `choices: []`, one line, any units.
+     He may skip it.
+  10. "How active are you?" one of: "Mostly sitting", "On my feet a lot", "Train 3+ times a week"
+     [On my feet a lot]
   Then one more message only if his list is empty: "What do you usually buy?" (`choices: []`).
 - His answers come back as the reply. Save each as a `pref` line under section "Groceries" (send
   `pref` as a list), e.g. {"section":"Groceries","text":"Brands: store brand"}. His usual items go on
   his list with `list.add`, not in prefs. Then go straight on to building the first order.
+- **The Food plan from his answers.** Save the goal under Groceries ("Food goal: build muscle", or
+  "Food goal: none" for "No plan, just groceries", so it isn't asked again) and his body numbers and
+  activity under "About him". Unless he picked "No plan", work out his per-day targets:
+  - Calories: Mifflin-St Jeor from height, weight, age and sex, times activity (sitting 1.2, on his
+    feet 1.45, training 1.6). Lose fat: minus 500 (never under 1,500 for a man, 1,200 for a woman).
+    Build muscle: plus 300. Otherwise as is. No body numbers: 2,000 (1,800 to lose, 2,300 to build).
+  - Protein: 0.8 g per pound of body weight to lose fat or build muscle, 0.7 g otherwise; without a
+    weight, 130 g. Fat: 30% of calories ÷ 9. Carbs: the calories left ÷ 4. Round to tens.
+  - Send them in the same answer as the prefs: `macros` {"kcal":…,"protein":…,"carbs":…,"fat":…,
+    "span":"open"}. The app sets his Food plan to them. Build this first order to them as if they were
+    the task's `macroPlan` (below), and put one line in the note: "Food plan set on the Health tab:
+    2,100 kcal, 160 g protein, 200 g carbs, 65 g fat a day (general numbers)". Leave out "(general
+    numbers)" when he gave his body numbers. He changes it on the Health tab or by telling you.
 - After that, follow the Groceries section of his preferences every time, and never re-ask it. If he
   changes one later ("switch to pickup"), save the new line under Groceries.
 

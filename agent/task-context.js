@@ -121,7 +121,7 @@ function prefLine(p) {
 function cleanAsk(a) {
   if (!Array.isArray(a)) return undefined;
   const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
-  const out = a.slice(0, 10).map((x) => {
+  const out = a.slice(0, 12).map((x) => { // 12: the first grocery order's setup asks 11 (agent/skills/groceries.md)
     if (!x || typeof x !== 'object') return null;
     const q = txt(x.q || x.question, 200);
     const choices = (Array.isArray(x.choices) ? x.choices : []).map((c) => txt(c && typeof c === 'object' ? c.label : c, 80)).filter(Boolean).slice(0, 8);

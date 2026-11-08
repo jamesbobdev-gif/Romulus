@@ -69,6 +69,12 @@ test('cleanAsk: questions with choices; a default must be one of them; empty one
   assert.strictEqual(ctx.cleanAsk('x'), undefined);
 });
 
+test('cleanAsk: keeps all 11 first-grocery-order questions (store to activity), up to 12', () => {
+  const qs = Array.from({ length: 14 }, (_, i) => ({ q: 'Question ' + (i + 1) + '?', choices: ['Yes', 'No'] }));
+  assert.strictEqual(ctx.cleanAsk(qs.slice(0, 11)).length, 11);
+  assert.strictEqual(ctx.cleanAsk(qs).length, 12);
+});
+
 test('cleanCart: names kept, https pictures only, quantity over 1 only', () => {
   const c = ctx.cleanCart([{ name: 'Milk', qty: 2, price: '$3.48', image: 'https://i5.walmartimages.com/a.jpg' },
     { name: 'Eggs', qty: 1, image: 'http://x/y.jpg' }, { name: '' }]);
