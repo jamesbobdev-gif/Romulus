@@ -461,6 +461,7 @@
   </div>
 
   <!-- List view -->
+    <button id="tabKitchen" class="tab"     role="tab" aria-selected="false">Kitchen</button>
   <div id="listView">
     <!-- first launch only (welcome.js): what to set up -->
     <div id="welcomeCard" class="connect-card welcome" hidden>
@@ -604,6 +605,8 @@
 <script src="js/finance-statements.js"></script>
 <script src="js/year-review.js"></script>
 <script src="js/finance-bills.js"></script>
+  <!-- Pantry, recipes, meals and the shopping list (hidden by default; js/kitchen.js draws it) -->
+  <div id="kitchenView" class="kit-view" hidden></div>
 <script src="js/finance-insights.js"></script>
 <script src="js/finance-ebt.js"></script>
 <script src="js/ebt-alerts.js"></script>
@@ -633,6 +636,7 @@
 <script src="js/local-sites.js"></script>
 <script src="js/swipe.js"></script>
 <script src="js/update-sync.js"></script>
+<script src="js/kitchen.js"></script>
 <script src="js/update-desktop.js"></script>
 <script src="js/init.js"></script>
 </body>

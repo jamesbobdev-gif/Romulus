@@ -772,6 +772,7 @@ $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
+$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('doneToggle').addEventListener('click',function(){ state.showDone=!state.showDone; render(); });
 let clearTimer=null;
 $('clearDone').addEventListener('click',function(){
@@ -788,7 +789,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='kitchen'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -800,7 +801,7 @@ $('searchBox').addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')switchTab('list');
+    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='kitchen'||state.activeTab==='finance')switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -811,7 +812,7 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
+  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='kitchen'||state.activeTab==='finance')return;
   const a=document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){

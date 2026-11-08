@@ -7,13 +7,13 @@ const h = require('../renderer/js/hosted-sync');
 test('every plain key a list or its side rows could be looked for under gets the encrypted-list marker', () => {
   const keys = h.hostedMarkerKeys('tk_abc');
   assert.deepStrictEqual(keys, [
-    'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:devices',
+    'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:kitchen', 'tk_abc:devices',
     'tk_work_abc',
     'tk_agent_abc', 'tk_agent_abc:prefs', 'tk_agent_abc:locked', 'tk_agent_abc:routing', 'tk_agent_abc:standing',
     'tk_school_abc',
   ]);
   // each one is a key the database's sync_set takes (supabase/setup.sql)
-  const shape = /^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$/;
+  const shape = /^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|kitchen))?$/;
   for (const k of h.hostedMarkerKeys('tk_26dbc739-a57d-4d40-900d-984640e0415d')) assert.ok(shape.test(k), k);
 });
 
