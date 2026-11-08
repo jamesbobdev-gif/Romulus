@@ -55,10 +55,11 @@ Only when you turn the feature on:
 | Device sync | Your lists, end-to-end encrypted on your device before they are sent | The Romulus server (a Supabase project run by the Romulus developer), or your own Supabase project if you choose one in Settings → Device sync. Only devices with your sync key can read your lists; the Romulus server can't. See "The Romulus server" below. |
 | Photos and files you add to a task | The photo or file, encrypted on your device before it is sent | The sync server, under a random name in a folder named by a hash of your key. Only devices that can read the task hold the key to open it. Kept until you remove it or the task, and counted toward your space. |
 | Photos sent to the Agent, and files the Agent downloads | The photo or file | The sync server, in a folder named by a hash of your key. These are not end-to-end encrypted, because the AI has to see them: anyone with a file's exact web address can open it. The Agent's photos are deleted after 30 days. |
+| Email me links (Settings → Device sync) | Your email address, and for each link you choose on an Agent task its name, web address, price and picture | The Romulus server keeps the address with your account, readable by the Romulus developer, and sends the code and your links through Resend, which delivers them under its own privacy policy. Mail only goes to an address you confirmed with a code. "Stop emailing me" or deleting your account removes the address. |
 | The paid plans (computers only) | Payment details, entered on Stripe's own page | Stripe, which handles the payment under its own privacy policy. The Romulus server learns only that your account paid, and Stripe's customer and subscription ids. |
 | AI chat and the Agent | The text of a task, its conversation, and the pages the Agent reads for it | The AI service you connected and chose for that task (Anthropic Claude, Google Gemini, OpenAI ChatGPT, OpenRouter, xAI Grok, Groq or NVIDIA), or a model on your own computer. Tasks containing words you mark private go only to your own model. Each service handles that data under its own privacy policy. |
 | Calendars | Read-only access to your calendar list and events | Google or Microsoft, after you sign in. Events are shown in Romulus and are not sent anywhere else. |
-| Gmail (receipts and dates) | Read-only access to messages | Google, after you sign in. Receipt emails are read by Claude to match purchases. Romulus never sends mail without your yes. |
+| Gmail and Outlook (receipts, dates, Agent inbox tasks) | Reading messages; for Agent inbox tasks also drafts, labels, archive and read/unread, and, after your yes, sending and moving to the trash | Google or Microsoft, after you sign in. Receipt emails are read by the first AI in your order (Settings → AI connections) to match purchases. Romulus never sends or trashes mail without your yes. |
 | Talking to add a task (Android) | Your speech | Your phone's built-in speech recognition service (usually Google), which may process it online. |
 | Stock prices, maps, place search | The ticker or place name | Yahoo Finance, OpenStreetMap Nominatim, Esri. |
 | Bank connections | What SimpleFIN needs to fetch your transactions | SimpleFIN Bridge, with the access you grant there. |
@@ -126,7 +127,7 @@ for one thing: ticking off a to-do that names a goal, such as "Walk 8,000 steps"
 ## Deleting your data
 
 - **On a device**: uninstalling the app removes everything it kept there.
-- **On the Romulus server**: Settings → Device sync → **Delete my synced data** deletes your lists, photos,
+- **On the Romulus server**: Settings → Device sync → **Delete my account** (three clicks and a number typed in) deletes your lists, photos,
   files and account record there at once, and cancels a paid plan. Turn sync off on your other devices first,
   or they will upload their copy again. If you no longer have any device with Romulus on it, nobody can read
   what is left there, us included, and without your key we can't tell which encrypted account is yours.

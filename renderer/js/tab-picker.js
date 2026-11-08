@@ -42,7 +42,8 @@ function drawTabPicker(){
       applyTabsOff(); drawTabPicker();
     });
     const track=el('span','track'); track.setAttribute('aria-hidden','true');
-    const name=document.createElement('span'); name.textContent=p[2];
+    // the tab bar's own label, so a renamed tab reads the same here
+    const name=document.createElement('span'); name.textContent=($(p[0]).textContent||'').trim()||p[2];
     lab.appendChild(inp); lab.appendChild(track); lab.appendChild(name);
     box.appendChild(lab);
   });

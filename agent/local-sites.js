@@ -9,6 +9,41 @@
 
 const ASK_PREFIX = 'Allow the local model on ';
 
+/* Always allowed, on top of his list: 100 of the most-visited sites in the US (search, reference, video,
+   social, stores, food delivery, travel, news, jobs, housing, shipping, government, health, school, work
+   tools). Left out on purpose: banks, payment and money apps, and adult sites. They stay ask-first.
+   A site covers its subdomains (google.com takes in maps.google.com, mail.google.com…). */
+const COMMON_SITES = [
+  // search and reference
+  'google.com', 'bing.com', 'duckduckgo.com', 'yahoo.com', 'wikipedia.org', 'wikihow.com', 'britannica.com',
+  'merriam-webster.com', 'dictionary.com', 'archive.org', 'quora.com', 'stackoverflow.com', 'github.com',
+  'weather.com', 'accuweather.com', 'weather.gov',
+  // video, music, social
+  'youtube.com', 'reddit.com', 'facebook.com', 'instagram.com', 'x.com', 'tiktok.com',
+  'pinterest.com', 'linkedin.com', 'twitch.tv', 'discord.com', 'spotify.com', 'netflix.com', 'imdb.com',
+  // stores
+  'amazon.com', 'ebay.com', 'walmart.com', 'target.com', 'bestbuy.com', 'costco.com', 'samsclub.com',
+  'homedepot.com', 'lowes.com', 'etsy.com', 'kroger.com', 'aldi.us', 'wayfair.com', 'ikea.com', 'macys.com',
+  'kohls.com', 'cvs.com', 'walgreens.com', 'apple.com', 'microsoft.com',
+  // food and getting around
+  'instacart.com', 'doordash.com', 'ubereats.com', 'grubhub.com', 'yelp.com', 'tripadvisor.com', 'booking.com',
+  'airbnb.com', 'expedia.com', 'kayak.com', 'uber.com', 'lyft.com',
+  // news and sports
+  'cnn.com', 'nytimes.com', 'foxnews.com', 'bbc.com', 'nbcnews.com', 'apnews.com', 'reuters.com',
+  'washingtonpost.com', 'npr.org', 'usatoday.com', 'espn.com', 'cnbc.com',
+  // jobs, housing, shipping
+  'indeed.com', 'glassdoor.com', 'ziprecruiter.com', 'craigslist.org', 'zillow.com', 'apartments.com',
+  'usps.com', 'ups.com', 'fedex.com',
+  // government and health
+  'usa.gov', 'irs.gov', 'ssa.gov', 'studentaid.gov', 'healthcare.gov', 'cdc.gov', 'nih.gov', 'webmd.com',
+  'mayoclinic.org',
+  // school and work tools
+  'khanacademy.org', 'coursera.org', 'quizlet.com', 'chegg.com', 'canva.com', 'zoom.us', 'office.com',
+  'dropbox.com', 'adobe.com',
+];
+// his sites plus the common ones, no repeats (a common site he also listed is kept once)
+const withCommon = (sites) => merge(sites, COMMON_SITES);
+
 // "https://www.linkedin.com/jobs/x" → "linkedin.com"
 const hostOf = (u) => { try { return new URL(/^https?:\/\//i.test(String(u)) ? String(u) : 'https://' + String(u)).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } };
 const cleanSite = (s) => String(s || '').trim().replace(/^https?:\/\//i, '').replace(/^\*\./, '').replace(/\/.*$/, '').replace(/^www\./, '').toLowerCase();
@@ -41,4 +76,4 @@ function askHost(title) {
   return cleanSite(t.slice(ASK_PREFIX.length).split('?')[0]) || null;
 }
 
-module.exports = { ASK_PREFIX, hostOf, cleanSite, covered, newHosts, merge, refusedHost, askTitle, askHost };
+module.exports = { ASK_PREFIX, COMMON_SITES, withCommon, hostOf, cleanSite, covered, newHosts, merge, refusedHost, askTitle, askHost };

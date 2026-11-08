@@ -27,7 +27,8 @@ function cleanSchema(schema) {
    denied: tool names to hide (mcp__browser__x or x) */
 async function startBrowser(cfgFile, denied, { startMs = 60000 } = {}) {
   let b;
-  try { b = JSON.parse(fs.readFileSync(cfgFile, 'utf8')).mcpServers.browser; } catch (e) { return null; }
+  // the agent browser, or the one server the file has (his mail in an inbox run: agent/mail-mcp.js)
+  try { const all = JSON.parse(fs.readFileSync(cfgFile, 'utf8')).mcpServers; b = all.browser || all[Object.keys(all)[0]]; } catch (e) { return null; }
   if (!b || !b.command) return null;
   let p;
   try { p = spawn(b.command, b.args || [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'], env: Object.assign({}, process.env, b.env || {}) }); }

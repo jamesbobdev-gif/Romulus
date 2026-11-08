@@ -92,6 +92,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       // an answer only counts from the lane that holds the task (he may have switched it meanwhile)
       if((t.lane==='local')!==(u.lane==='local'))return;
       // the mini PC failed (not reachable, crashed): the cloud AIs take it from here, with his reply still on it
+      if(u.pinned)applyPinned(t,u.pinned); // what "chapter 8" turned out to be, before anything else reads the task
       if(u.handoff){
         t.lane='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
         t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
@@ -178,6 +179,26 @@ if(window.desktop&&window.desktop.onAgentResults){
     });
     touch();
   });
+}
+/* "chapter 8" turned out to be ECN 201's Chapter 8 Homework (agent/find-out.js pin_down_task): his task says so
+   now, with its class, name, instructions and link, so this run's answer and every later one start from it.
+   His own #tags stay on the title; a due date he set himself stays, the course's goes on one with none */
+function applyPinned(t,p){
+  if(!p||typeof p!=='object')return;
+  const course=String(p.course||'').trim(), title=String(p.title||'').replace(/\s+/g,' ').trim().slice(0,160);
+  if(!/^[A-Z]{2,5} \d{3,4}[A-Z]?$/.test(course)||title.length<3)return;
+  const due=/^\d{4}-\d{2}-\d{2}$/.test(String(p.due||''))?p.due:null, time=due&&/^([01]\d|2[0-3]):[0-5]\d$/.test(String(p.dueTime||''))?p.dueTime:null;
+  const url=/^https:\/\//i.test(String(p.url||''))?String(p.url).slice(0,500):null;
+  const details=String(p.details||'').replace(/\s+/g,' ').trim().slice(0,600);
+  const was=t.title;
+  const tags=(String(was||'').match(/(^|\s)#[a-z]+\b/gi)||[]).map(function(s){ return s.trim(); });
+  t.title=[title].concat(tags).join(' ');
+  t.tag=course;
+  if(!t.due&&due){ t.due=due; t.dueTime=time; }
+  const add=[details,url].filter(function(x){ return x&&String(t.notes||'').indexOf(x)===-1; });
+  if(add.length)t.notes=add.concat(t.notes?[t.notes]:[]).join('\n\n');
+  if(url){ try{ t.site=new URL(url).hostname.toLowerCase(); }catch(e){} }
+  agentSay(t,'sys','Found it: “'+String(was||'').trim()+'” is '+course+', '+title+(due?' (due '+due+(time?' '+time:'')+')':'')+'. Your task says so now.');
 }
 function fmtWhen(ms){
   if(!ms)return '';

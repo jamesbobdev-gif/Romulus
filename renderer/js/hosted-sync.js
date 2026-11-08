@@ -195,7 +195,7 @@ function hostedDayLabel(day){ // '2026-11-03' → 'Tue, Nov 3'
 }
 const HOSTED_FAMILY_WHY={not_paid:'only the person paying for the plan can invite',family_full:'the plan already covers 4 more people',free_full:'a free group is you and one other person: the Group plan makes room for 4 more',member:'you’re in someone else’s group: only the person who runs it invites',owner:'you run a group of your own, and someone can’t be in two',bad:'that didn’t work',rate:'too many tries from this network; try again in an hour',no_code:'that code isn’t right, or it’s over 2 days old',no_account:'sync hasn’t started on this device yet; try again in a minute',own:'that’s your own code: give it to the person you want on your plan'};
 
-/* Delete my synced data: everything this install's lists keep on the Romulus server goes (rows, photos and
+/* Delete my account: everything this install's lists keep on the Romulus server goes (rows, photos and
    files, a paid plan), through supabase/functions/sync-delete. What it sends, pure for tests: every key the
    server could hold a row of these lists under (the plain keys, where the moved markers are, and the encrypted
    lookup ids) and the agent keys, whose hash names the storage folders. Only lists on the Romulus server. */
@@ -207,6 +207,23 @@ async function hostedDeleteBody(cfg,rowKeyOf){
     if(ws==='agent'&&agentKeys.indexOf(p.syncKey)===-1)agentKeys.push(p.syncKey);
   }
   return {keys:keys,agentKeys:agentKeys};
+}
+/* Deleting the account takes three clicks on its button and a long number shown on screen typed back in, so it
+   can't happen by a slip. A fresh 16-digit number each time; typed with or without spaces. */
+function hostedDeleteCode(rand){
+  const b=new Uint32Array(16);
+  if(rand)rand(b); else (globalThis.crypto||require('crypto').webcrypto).getRandomValues(b);
+  let s=''; for(let i=0;i<16;i++)s+=String(b[i]%10);
+  if(s[0]==='0')s='7'+s.slice(1); // reads as a number, not a code with a leading zero someone drops
+  return s;
+}
+function hostedDeleteCodeShown(code){ return String(code).replace(/(\d{4})(?=\d)/g,'$1 '); }
+function hostedDeleteCodeMatches(code,typed){ return !!code&&String(typed||'').replace(/\D/g,'')===String(code); }
+// what the box says at each click: 1 = first click done, 2 = second click done (number up)
+function hostedDeleteStepText(step){
+  if(step===1)return {text:'Step 1 of 3. This deletes your account on the Romulus server: your lists, photos and files there, your group (people on it lose the plan you pay for), and a paid plan is cancelled. It can’t be undone. Your lists stay on this device. Turn sync off on your other devices first, or they will upload their copy again.',button:'Delete my account (2 of 3)'};
+  if(step===2)return {text:'Step 2 of 3. Type the number below, then click the button a last time.',button:'Delete my account forever (3 of 3)'};
+  return {text:'',button:'Delete my account'};
 }
 async function hostedDeleteAll(){
   const h=hostedServer(); if(!h)throw new Error('this build has no Romulus server');
@@ -226,6 +243,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     box.hidden=false;
     const on=validProfile(p)&&hostedIs(p.url);
     ownBtn.hidden=!on; backBtn.hidden=on; delBtn.hidden=!on;
+    if(!on&&window.hostedDeleteReset)window.hostedDeleteReset();
     if(!on){
       planBox.hidden=famBox.hidden=histBox.hidden=earlyRow.hidden=supporters.hidden=true;
       setMyPlan(validProfile(p)?'own':null,null);
@@ -431,7 +449,7 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   payPersonalYearBtn.addEventListener('click',function(){ const h=hostedServer(); openPay(h&&h.payPersonalYear); });
   planOwnBtn.addEventListener('click',function(){ ownBtn.click(); });
   // the same invite and join as the Group tab's buttons (family.js)
-  joinBtn.addEventListener('click',async function(){ await famJoinPrompt(); draw(); });
+  joinBtn.addEventListener('click',function(){ famJoinPrompt(joinBtn,draw); });
   inviteBtn.addEventListener('click',async function(){
     const r=await famInviteMake();
     if(!r.code){ setSyncStatus(r.say,true); return; }
@@ -481,22 +499,40 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
     }catch(e){ setSyncStatus('couldn’t move: '+e.message,true); }
     finally{ backBtn.disabled=false; }
   });
+  const delBox=$('hostedDeleteBox'), delStep=$('hostedDeleteStep'), delCodeRow=$('hostedDeleteCodeRow'), delCode=$('hostedDeleteCode'), delIn=$('hostedDeleteIn');
+  let delAt=0, delNum='', delTimer=null;
+  function delSet(step){
+    delAt=step; clearTimeout(delTimer);
+    const w=hostedDeleteStepText(step);
+    delBtn.textContent=w.button; delBtn.classList.toggle('armed',step>0);
+    delBox.hidden=step===0; delStep.textContent=w.text;
+    delCodeRow.hidden=step!==2;
+    if(step===2){ delNum=hostedDeleteCode(); delCode.textContent=hostedDeleteCodeShown(delNum); delIn.value=''; delIn.focus(); }
+    else delNum='';
+    delBtn.disabled=step===2;
+    if(step)delTimer=setTimeout(function(){ delSet(0); },5*60*1000); // left half done: back to the start
+  }
+  window.hostedDeleteReset=function(){ if(delAt)delSet(0); };
+  delIn.addEventListener('input',function(){ if(delAt===2)delBtn.disabled=!hostedDeleteCodeMatches(delNum,delIn.value); });
+  delIn.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!delBtn.disabled)delBtn.click(); });
+  $('hostedDeleteCancel').addEventListener('click',function(){ delSet(0); });
   delBtn.addEventListener('click',async function(){
-    if(!confirm('Delete your synced data from the Romulus server?\n\nYour lists, photos and files there are deleted for good, and a paid plan is cancelled. Sync turns off on this device; the lists stay on it.\n\nTurn sync off on your other devices first, or they will upload their copy again.'))return;
-    delBtn.disabled=true; setSyncStatus('deleting your synced data…');
+    if(delAt<2){ delSet(delAt+1); return; }
+    if(!hostedDeleteCodeMatches(delNum,delIn.value)){ delBtn.disabled=true; return; }
+    delBtn.disabled=true; delIn.disabled=true; setSyncStatus('deleting your account…');
     try{
       const out=await hostedDeleteAll();
       $('syncOffBtn').click(); // sync off here, and no starting on the Romulus server by itself again
-      setSyncStatus(out.cancelled?'deleted from the Romulus server. Your lists are still on this device.':'deleted from the Romulus server, but the plan couldn’t be cancelled from here: cancel it from your Stripe receipt email.',!out.cancelled);
+      setSyncStatus(out.cancelled?'account deleted from the Romulus server. Your lists are still on this device.':'account deleted from the Romulus server, but the plan couldn’t be cancelled from here: cancel it from your Stripe receipt email.',!out.cancelled);
     }catch(e){ setSyncStatus('couldn’t delete: '+e.message,true); }
-    finally{ delBtn.disabled=false; draw(); }
+    finally{ delIn.disabled=false; delSet(0); draw(); }
   });
   // Turn off, or Save & sync on another project: no starting on the Romulus server by itself again
   $('syncOffBtn').addEventListener('click',function(){ hostedSetOptOut(true); setTimeout(draw,0); });
   $('syncSaveBtn').addEventListener('click',function(){ setTimeout(draw,0); }); // the opt-out is set by Save & sync itself, once the switch happened (settings.js)
-  $('syncSection').addEventListener('toggle',function(){ if(this.open)draw(); });
+  $('syncSection').addEventListener('toggle',function(){ if(this.open)draw(); else window.hostedDeleteReset(); });
   window.hostedDraw=draw; // Save & sync redraws this once its switch is done (settings.js)
   if(hostedServer())SYNC_REFUSED.full='sync paused: your free online space is full. Your lists are safe on this device. Settings → Device sync has the options.';
 }
 
-if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedSealMarkers,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody};
+if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedSealMarkers,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody,hostedDeleteCode,hostedDeleteCodeShown,hostedDeleteCodeMatches,hostedDeleteStepText};

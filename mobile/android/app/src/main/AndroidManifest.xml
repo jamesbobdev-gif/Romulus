@@ -100,19 +100,12 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
         </receiver>
-        <receiver android:name=".AgentWidgetProvider" android:label="Romulus: Claude needs you" android:exported="false">
+        <receiver android:name=".AgentWidgetProvider" android:label="Romulus: Agent" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_agent_info" />
-        </receiver>
-        <receiver android:name=".AgentStatusWidgetProvider" android:label="Romulus: Agent status" android:exported="false">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
-            </intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_status_info" />
         </receiver>
         <receiver android:name=".SchoolWidgetProvider" android:label="Romulus: School" android:exported="false">
             <intent-filter>
@@ -133,23 +126,30 @@
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
 
+        <!-- List: Personal or Groceries, picked per widget (kept the old Personal list's name so placed ones stay) -->
         <receiver
             android:name=".TasksWidgetProvider"
-            android:label="Romulus: Personal list"
+            android:label="Romulus: List"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.jartro.tasks.WIDGET_REFRESH" />
+                <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/tasks_widget_info" />
         </receiver>
 
-        <service
-            android:name=".TasksWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
-            android:exported="false" />
+        <activity
+            android:name=".WidgetListPickerActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <!-- "Hey Romulus": listens for the wake word while the screen is on -->
         <service

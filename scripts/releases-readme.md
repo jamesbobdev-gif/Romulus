@@ -29,7 +29,7 @@ What it can do today, with the right AI connected:
 - **Shopping**: Amazon, Walmart groceries (including a fortnightly groceries task it opens on its own), price comparison. It builds the order and asks before placing it.
 - **Flights, tickets, bookings**: searches, picks seats on a seat map you can override, books after your yes.
 - **Forms and applications**: job portals, questionnaires, sign-ups, filled from a **Locked** profile (resume, address, IDs) that only your local model is allowed to read.
-- **Email** (Claude only): reads your Gmail for context and drafts replies; nothing is sent without a yes.
+- **Email** (any AI you connect, Gmail or Outlook): reads your mail, drafts replies, labels and archives; nothing is sent or trashed without a yes.
 - **Morning look-ahead**: each morning it reads the next two weeks of your calendar and last week's email and suggests what needs doing. It only suggests.
 - **Memory**: it keeps notes of what you've told it and what worked on which site, and tidies them weekly.
 - **Its own browser**: a headless Chrome you can watch and take over in a live view.
@@ -87,7 +87,7 @@ Nothing to do. Add a task above the list. Due date and time are optional; a tag 
 ### 2. Connect an AI
 Open **Settings → Agent & AI → AI connections**, or press **Connect an AI** on the Agent tab. Each AI is a card with a switch. Switch one on and follow the button on the card. When several are on, the app tries them top to bottom; the ↑ arrows change the order.
 
-**Claude** (best if you have a Claude Pro or Max plan; the only one that can read your Gmail and your photos)
+**Claude** (best if you have a Claude Pro or Max plan; the only one that can open your photos)
 1. **Install Claude Code**: one button, runs Anthropic's installer, a minute or two.
 2. **Sign in to Claude**: a terminal window opens and your browser asks you to sign in to claude.ai. Come back when it's done; the card updates by itself.
 3. **Check**: Claude answers one word to prove it works.

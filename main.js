@@ -11,6 +11,7 @@ const store = require('./main/store');
 const win = require('./main/window');
 const trayMod = require('./main/tray');
 const speak = require('./main/speak');
+const buyEmails = require('./main/buy-emails');
 const feeds = require('./main/feeds');
 const persistence = require('./main/persistence');
 const gcalSync = require('./main/gcal-sync');
@@ -33,6 +34,7 @@ const runner = require('./agent/runner');
 const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
+const ollamaSetup = require('./agent/ollama-setup'); // Settings → Local model → Set it up for me
 const liveView = require('./agent/live-view');
 const finance = require('./main/finance');
 const downloads = require('./main/downloads');
@@ -80,8 +82,8 @@ const ctx = {
   sendToWindow: win.sendToRenderer,
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
-const modules = [trayMod, speak, feeds, persistence, gcalSync, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
+const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
+  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);

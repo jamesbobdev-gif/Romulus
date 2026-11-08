@@ -19,7 +19,7 @@
      the passphrase to open it; finance:setupShared opens it on the other computer.
    - It only ever talks to simplefin.org over HTTPS, never follows redirects, and the log never gets amounts,
      names or the link.
-   - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to Claude to be read,
+   - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to his AIs (in his order, no tools) to be read,
      and what they bought is kept in the vault too. Nothing from the bank goes with them.
    - Live stock prices (main/finance-stocks.js) come from Yahoo Finance's public chart data: only ticker
      symbols are sent, never shares, amounts or account names.
@@ -195,7 +195,7 @@ function lookAtMail(force) {
   if (mailBusy || !key) return;
   const was = vault.mail || {};
   if (!force && Date.now() - (was.last || 0) < MAIL_EVERY_MS) return;
-  const gd = ctx.mail || require('./gmail-dates'); // {gmail, claudeJson, mailAllowed}
+  const gd = ctx.mail || require('./gmail-dates'); // {gmail, aiJson, mailAllowed}
   // every Gmail account in Settings → Calendars with "Read receipts for Finance" on, each with its own seen ids
   let accts = [];
   try { accts = gd.receiptAccounts ? gd.receiptAccounts() : (gd.mailAllowed() ? [{ id: null }] : []); } catch (e) {}
@@ -211,7 +211,7 @@ function lookAtMail(force) {
     let checked = 0;
     for (const a of accts) {
       try {
-        const r = await financeMail.lookForReceipts({ gmail: (sub) => gd.gmail(sub, a.id), ask: gd.claudeJson, seen: seenBy[a.id] });
+        const r = await financeMail.lookForReceipts({ gmail: (sub) => gd.gmail(sub, a.id), ask: gd.aiJson, seen: seenBy[a.id] });
         seenBy[a.id] = r.seen; got.push(...r.receipts); checked += r.checked;
       } catch (e) { errors.push((accts.length > 1 && a.email ? a.email + ': ' : '') + e.message); }
     }
@@ -308,6 +308,7 @@ async function startVault(accessUrl, s, k, shared) {
   vault = { accessUrl, cache: { fetchedAt: 0, accounts: [], errors: [] } };
   if (shared) vault.shared = shared;
   await writeVault();
+  await takeLockedEbt(); await keepEbt(); // an EBT balance he saved before Finance was connected
   watchPower(); stillHere();
   rememberForHello().catch(() => false);
   lookAtMail(true);
@@ -319,6 +320,7 @@ async function startVault(accessUrl, s, k, shared) {
 // after either unlock: an old download refreshed, purchase emails looked at → a warning or undefined
 async function afterUnlock() {
   let warning;
+  await takeLockedEbt(); // before anything reads the vault's EBT settings
   if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) {
     try { await refresh(false); } catch (e) { warning = e.message; }
   }
@@ -335,23 +337,38 @@ async function afterUnlock() {
 const EBT_FILE = 'finance-ebt.json';
 const ebtFile = () => path.join(ctx.userData(), EBT_FILE);
 let ebtWrites = Promise.resolve();
-function keepEbt() {
-  if (!key) return ebtWrites;
-  const e = ebtClean(vault.ebt);
+// rec: the cleaned settings, plus pending: true when saved while Finance was locked (Settings → EBT)
+function writeEbtFile(rec) {
   ebtWrites = ebtWrites.then(async () => {
-    const sealed = ctx.seal ? await ctx.seal(JSON.stringify(e)) : JSON.stringify(e);
+    const sealed = ctx.seal ? await ctx.seal(JSON.stringify(rec)) : JSON.stringify(rec);
     const tmp = ebtFile() + '.tmp';
     fs.writeFileSync(tmp, sealed, { mode: 0o600 });
     fs.renameSync(tmp, ebtFile());
   }).catch((err) => log('ebt: couldn’t keep it (' + txt(err.message, 80) + ')'));
   return ebtWrites;
 }
-// locked or not → {balance, at, day, monthly} (any missing), {} when there's none
-async function ebtNow() {
+function keepEbt() {
+  if (!key) return ebtWrites;
+  return writeEbtFile(ebtClean(vault.ebt));
+}
+async function readEbtFile() {
   try {
     const text = fs.readFileSync(ebtFile(), 'utf8');
-    return ebtClean(JSON.parse(ctx.unseal ? await ctx.unseal(text) : text));
+    const rec = JSON.parse(ctx.unseal ? await ctx.unseal(text) : text);
+    return rec && typeof rec === 'object' ? rec : {};
   } catch (e) { return {}; }
+}
+// locked or not → {balance, at, day, monthly} (any missing), {} when there's none
+async function ebtNow() { return ebtClean(await readEbtFile()); }
+// unlocking (or connecting): what he saved while Finance was locked replaces the vault's, then the file is
+// written again without the mark
+async function takeLockedEbt() {
+  await ebtWrites;
+  const rec = await readEbtFile();
+  if (!key || !rec.pending) return;
+  vault.ebt = ebtClean(rec);
+  await writeVault();
+  log('ebt: took the settings saved while locked');
 }
 
 /* ── bill reminders (renderer/js/finance-bills.js) ──
@@ -462,16 +479,18 @@ function forAgent(args) {
     const s = stmt.incomeStatement(accounts, vault.kinds);
     const line = (name, vals) => name + ': ' + vals.map(money).join(' | ');
     return 'Income statement, columns: ' + s.cols.map((c) => c.label + (c.partial ? ' (so far)' : '')).join(' | ') + '\n' +
-      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Contribution margin', s.contribution),
-        line('Fixed costs', s.fixedTotal), line('Net income', s.net)].join('\n') +
+      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Fixed costs', s.fixedTotal),
+        line('Net income', s.net)].join('\n') +
       '\nBiggest variable costs: ' + s.variable.slice(0, 6).map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ') +
       '\nFixed costs: ' + s.fixed.map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ');
   }
   const c = costs.costsOf([].concat(...accounts.map((x) => x.transactions || [])), vault.kinds);
   const net = accounts.reduce((sum, x) => sum + x.balance, 0);
   const held = stocks.holdingsOf(accounts);
+  const b = stmt.balanceSheet(accounts);
   return 'Accounts:\n' + accounts.map((x) => '- ' + (x.org ? x.org + ' ' : '') + x.name + ': ' + money(x.balance)).join('\n') +
     '\nNet (all accounts, cards and loans negative): ' + money(net) +
+    '\nWorking capital (cash minus cards and other short-term debt; not long-term loans or investments): ' + money(b.workingCapital[0]) +
     '\nMonthly bills (fixed costs), about ' + money(c.fixedTotal) + ' a month: ' + c.fixed.map((f) => f.name + ' ' + money(f.monthly)).join('; ') +
     '\nEverything else bought (variable), by month: ' + c.months.map((m) => m.label + (m.partial ? ' so far' : '') + ' ' + money(m.total)).join('; ') +
     (held.length ? '\nStocks (brokerage values): ' + held.map((h) => (h.symbol || h.name) + ' ' + h.shares + ' sh ' + money(h.value)).join('; ') : '') +
@@ -595,7 +614,13 @@ const handlers = {
   },
   // the EBT wallet (renderer/js/finance-ebt.js): his balance, deposit day and monthly amount, kept in the vault
   'finance:setEbt': async (_e, ebt) => {
-    if (!key) return { ok: false, error: 'locked' };
+    // locked (Settings → EBT): into the sealed copy only, marked so the next unlock moves it into the vault
+    if (!key) {
+      const e = ebtClean(ebt);
+      await writeEbtFile(Object.assign({}, e, { pending: true }));
+      if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');
+      return { ok: true, ebt: e, locked: true };
+    }
     stillHere();
     vault.ebt = ebtClean(ebt);
     await writeVault();

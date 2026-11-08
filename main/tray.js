@@ -37,6 +37,12 @@ function buildMenu() {
   ]));
 }
 
+// Settings' setup list: whether the app starts at login (the tray checkbox shows the same thing)
+const handlers = {
+  'app:login-get': () => { const { app } = require('electron'); return { can: app.isPackaged && process.platform !== 'linux', on: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false }; },
+  'app:login-set': (_e, on) => { const { app } = require('electron'); if (!app.isPackaged || process.platform === 'linux') return { ok: false }; app.setLoginItemSettings({ openAtLogin: !!on }); if (tray) buildMenu(); return { ok: true }; }
+};
+
 function setUpdate(u) {
   update = u;
   if (tray) buildMenu();
@@ -91,4 +97,4 @@ function hiddenToTray() {
   } catch (e) {}
 }
 
-module.exports = { init, createTray, refreshTrayStatus, trayTip, setUpdate, hintDue, hiddenToTray };
+module.exports = { init, handlers, createTray, refreshTrayStatus, trayTip, setUpdate, hintDue, hiddenToTray };

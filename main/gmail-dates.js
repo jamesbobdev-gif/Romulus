@@ -1,7 +1,8 @@
 /* Dates from Gmail (agent/mail-events.js).
    The renderer asks every 15 minutes; an unchanged mailbox costs one tiny Gmail call and no model.
-   New mail that mentions a date goes to Claude in one short call: the same signed-in claude CLI the
-   agent uses, with no tools, no connectors and a bare system prompt, so a call is ~1-2k tokens. */
+   New mail that mentions a date goes to his AIs, in his order (Settings → AI connections), in one short
+   call with no tools and no web (agent/ai-json.js). Claude, when it's the one asked, runs as the same
+   signed-in claude CLI the agent uses, with no connectors and a bare system prompt, ~1-2k tokens a call. */
 const path = require('path');
 const os = require('os');
 const { claudeExe, claudeEnv } = require('../agent/platform');
@@ -10,6 +11,8 @@ const calendars = require('../agent/calendars');
 const mailEvents = require('../agent/mail-events');
 const mailSend = require('../agent/mail-send');
 const agentBrowser = require('../agent/agent-browser');
+const aiJsonAsk = require('../agent/ai-json');
+const aiConnections = require('../agent/ai-connections');
 
 let ctx = null; // { readConfig, writeConfig, agentLog }
 function init(c) { ctx = c; }
@@ -20,8 +23,12 @@ const handlers = {};
 const handle = (ch, fn) => { handlers[ch] = fn; };
 let mailChecking = false;
 const mailAllowed = () => !!calendars.gmailAccount();
-// one structured answer from Claude: messages = [system, user], schema = what the answer must look like
-// (opts: {model, effort} — the look-ahead thinks a bit harder than the date check)
+// one structured answer from the first of his AIs that gives one: messages = [system, user], schema = what
+// the answer must look like (opts: {model, effort} for Claude — the look-ahead thinks a bit harder than the date check)
+function aiJson(messages, schema, opts = {}) {
+  return aiJsonAsk.askJson(readConfig(), messages, schema, { fetch, order: aiConnections.cloudOrder(), claudeJson }, opts);
+}
+// Claude's turn at it: the claude CLI with --json-schema
 function claudeJson(messages, schema, opts = {}) {
   const cfg = readConfig();
   const exe = claudeExe(cfg);
@@ -72,8 +79,8 @@ handle('mail:check', async () => {
   mailChecking = true;
   const state = Object.assign({ seen: [] }, cfg.mailEvents && cfg.mailEvents.state);
   try {
-    const r = await mailEvents.check({ gmail, ask: claudeJson, state });
-    if (r.asked) agentLog('mail: ' + r.checked + ' new, ' + r.asked + ' to Claude, ' + r.items.length + ' date(s) found');
+    const r = await mailEvents.check({ gmail, ask: aiJson, state });
+    if (r.asked) agentLog('mail: ' + r.checked + ' new, ' + r.asked + ' to the AI, ' + r.items.length + ' date(s) found');
     const fresh = readConfig();
     fresh.mailEvents = Object.assign({}, fresh.mailEvents, { state, last: Date.now() });
     writeConfig(fresh);
@@ -113,4 +120,4 @@ handle('mail:send', async (_e, req) => {
   }
 });
 
-module.exports = { init, handlers, gmail, claudeJson, mailAllowed, receiptAccounts: () => calendars.receiptAccounts() };
+module.exports = { init, handlers, gmail, aiJson, mailAllowed, receiptAccounts: () => calendars.receiptAccounts() };
