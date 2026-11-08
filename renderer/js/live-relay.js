@@ -85,24 +85,30 @@ const liveRelay=(function(){
 
   /* ── the mini PC: stream while watched ── */
   // last: the latest picture, sent again to a viewer who just opened it (a page sitting still sends no new ones)
-  const pub={until:0, want:null, cdp:null, page:null, lastFrame:0, last:null, pagesAt:0, nextId:1};
+  const pub={until:0, want:null, cdp:null, page:null, lastFrame:0, last:null, trail:null, size:0, pagesAt:0, nextId:1};
+  // picture sizes, best first: a busy page (a course page full of text) can come out over Realtime's
+  // message size, and a picture that's dropped and never followed by another leaves the viewer on "Connecting…"
+  const SIZES=[{q:45,w:1100},{q:35,w:900},{q:25,w:720},{q:20,w:560}];
   function cdpSend(method,params){ if(pub.cdp&&pub.cdp.readyState===1)pub.cdp.send(JSON.stringify({id:pub.nextId++,method:method,params:params||{}})); }
-  function stopCast(){ pub.last=null; if(pub.cdp){ const c=pub.cdp; pub.cdp=null; pub.page=null; try{ c.close(); }catch(e){} } }
+  function startCast(){ const s=SIZES[pub.size]; cdpSend('Page.startScreencast',{format:'jpeg',quality:s.q,maxWidth:s.w,maxHeight:s.w,everyNthFrame:1}); }
+  function stopCast(){ pub.last=null; clearTimeout(pub.trail); pub.trail=null; if(pub.cdp){ const c=pub.cdp; pub.cdp=null; pub.page=null; try{ c.close(); }catch(e){} } }
   function cast(page){
     stopCast();
+    pub.size=0; pub.lastFrame=0; // a new tab's first picture always goes, whatever the last tab just sent
     const c=new WebSocket(page.ws); pub.cdp=c; pub.page=page;
-    c.onopen=function(){
-      cdpSend('Page.bringToFront'); cdpSend('Page.enable');
-      cdpSend('Page.startScreencast',{format:'jpeg',quality:45,maxWidth:1100,maxHeight:1100,everyNthFrame:1});
-    };
+    c.onopen=function(){ cdpSend('Page.bringToFront'); cdpSend('Page.enable'); startCast(); };
     c.onmessage=function(ev){
       let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
       if(m.method!=='Page.screencastFrame')return;
       cdpSend('Page.screencastFrameAck',{sessionId:m.params.sessionId});
-      const now=Date.now();
-      if(now-pub.lastFrame<FRAME_GAP_MS)return; // a few a second is plenty, and Realtime counts messages
-      pub.lastFrame=now;
+      // sealed, a picture grows by about a third: too big to send → the same page smaller
+      if(m.params.data.length>MAX_MSG*0.72&&pub.size<SIZES.length-1){ pub.size++; cdpSend('Page.stopScreencast'); startCast(); return; }
       pub.last={t:'frame',id:page.id,data:m.params.data,meta:m.params.metadata};
+      // a few a second is plenty, and Realtime counts messages; the latest one still goes once the gap is up,
+      // so a page that stops changing right after a burst isn't left showing nothing
+      const wait=FRAME_GAP_MS-(Date.now()-pub.lastFrame);
+      if(wait>0){ if(!pub.trail)pub.trail=setTimeout(function(){ pub.trail=null; if(pub.cdp===c&&pub.last){ pub.lastFrame=Date.now(); send(pub.last); } },wait); return; }
+      pub.lastFrame=Date.now();
       send(pub.last);
     };
     c.onclose=function(){ if(pub.cdp===c){ pub.cdp=null; pub.page=null; } };
@@ -129,7 +135,7 @@ const liveRelay=(function(){
         if(!was||switched){ pub.pagesAt=0; pubTick(); } // a tab he picked: switch now, not at the next tick
         if(msg.fresh&&pub.last&&pub.last.id===msg.id)send(pub.last);
         else if(msg.fresh&&pub.page&&pub.page.id===msg.id){ // nothing kept yet: starting again draws one
-          cdpSend('Page.stopScreencast'); cdpSend('Page.startScreencast',{format:'jpeg',quality:45,maxWidth:1100,maxHeight:1100,everyNthFrame:1});
+          cdpSend('Page.stopScreencast'); startCast();
         }
       }
       else if(msg.t==='input'&&INPUT.indexOf(msg.method)>=0&&pub.page&&msg.id===pub.page.id)cdpSend(msg.method,msg.params);
@@ -173,6 +179,7 @@ const liveRelay=(function(){
         let m; try{ m=JSON.parse(s); }catch(e){ return; }
         if(INPUT.indexOf(m.method)>=0)send({t:'input',id:page.id,method:m.method,params:m.params});
       };
+      w.again=function(){ send({t:'watch',id:page.id,fresh:true}); }; // no picture yet: ask for one again
       w.close=function(){ w.readyState=3; view.watchers=view.watchers.filter(function(x){ return x!==w; }); };
       view.watchers.push(w); view.wantId=page.id; view.pingAt=Date.now();
       send({t:'watch',id:page.id,fresh:true}); // fresh: send me the picture you have
