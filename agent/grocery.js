@@ -137,14 +137,16 @@ function macroBrief(text, now = Date.now()) {
 }
 
 // a run's `macros` (the meal-plan skill: the plan's per-day targets) → what the app sets as his Food plan, or
-// undefined. {kcal, protein, carbs, fat} per day (at least one), span = how long it runs
+// undefined. {kcal, protein, carbs, fat} per day (at least one), span = how long it runs.
+// keep: true = only these numbers change ("1 g of protein per pound"); the rest of his plan, and its dates, stay
 const MACRO_SPANS = ['week', '2weeks', 'month', 'open'];
 function macroChanges(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return undefined;
   const out = {};
   MACRO_KEYS.forEach((k) => { const n = Math.round(Number(m[k])); if (n > 0 && n < 20000) out[k] = n; });
   if (!Object.keys(out).length) return undefined;
-  out.span = MACRO_SPANS.includes(m.span) ? m.span : 'week';
+  if (m.keep === true) { out.keep = true; if (MACRO_SPANS.includes(m.span)) out.span = m.span; }
+  else out.span = MACRO_SPANS.includes(m.span) ? m.span : 'week';
   return out;
 }
 

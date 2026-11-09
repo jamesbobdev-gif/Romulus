@@ -215,7 +215,8 @@ step in this run.
 - macros (optional): a meal plan's per-day targets, {"kcal":2100,"protein":160,"carbs":200,"fat":65,
   "span":"week"|"2weeks"|"month"|"open"}: the app sets his Food plan (Health tab) to them, and grocery
   orders are then built to add up to them. Only with a meal plan in the note (the meal-plan skill says
-  how); leave it null otherwise.
+  how), or "keep":true with just the numbers he changed ("1 g of protein per pound" → {"protein":180,
+  "keep":true}), which changes those and leaves the rest of his plan; leave it null otherwise.
 - howto (optional): when you got somewhere, 2–3 short lines on what worked, so the next similar task
   goes straight there: which site, which menus or pages, what to skip ("Blackboard: Courses → HIS 110 →
   Calendar lists everything due; the Assignments page misses quizzes"). The way, never the results or his

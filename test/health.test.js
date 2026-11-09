@@ -168,3 +168,23 @@ test('a day keeps the apps behind each number, tidied, and they sync with it', (
   assert.ok(r.changedLocal);
   assert.deepStrictEqual(r.merged.days['2026-11-09'].from, { steps: ['Fitbit'] });
 });
+
+test('a one-number change ("1 g of protein per pound") keeps the rest of the plan and its dates', () => {
+  const { macroPlanMerge } = require('../renderer/js/health');
+  const old = { kcal: 2100, protein: 140, carbs: 200, fat: 65, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 1 };
+  const k = macroPlanMerge(old, { protein: 180, keep: true, source: 'protein per pound' }, '2026-11-09', 5);
+  assert.deepStrictEqual(k, { kcal: 2100, protein: 180, carbs: 200, fat: 65, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 5, source: 'protein per pound' });
+  // a new length with it: from today
+  const m = macroPlanMerge(old, { protein: 180, keep: true, span: 'month' }, '2026-11-09', 5);
+  assert.deepStrictEqual([m.kcal, m.protein, m.span, m.from, m.until], [2100, 180, 'month', '2026-11-09', '2026-12-08']);
+  // no plan, or one that ran out: just that number, until he changes it
+  const n = macroPlanMerge(null, { protein: 180, keep: true }, '2026-11-09', 5);
+  assert.deepStrictEqual([n.protein, n.kcal, n.span, n.from, n.until], [180, undefined, 'open', '2026-11-09', null]);
+  const ended = macroPlanMerge(Object.assign({}, old, { until: '2026-11-08' }), { protein: 180, keep: true }, '2026-11-09', 5);
+  assert.deepStrictEqual([ended.protein, ended.kcal, ended.span], [180, undefined, 'open']);
+  // a whole meal plan replaces it, from today
+  const w = macroPlanMerge(old, { kcal: 2300, protein: 170, span: '2weeks' }, '2026-11-09', 5);
+  assert.deepStrictEqual([w.kcal, w.protein, w.carbs, w.from, w.until], [2300, 170, undefined, '2026-11-09', '2026-11-22']);
+  assert.strictEqual(macroPlanMerge(old, { keep: true }, '2026-11-09', 5).protein, 140); // nothing new: the plan as it was
+  assert.strictEqual(macroPlanMerge(null, { keep: true }, '2026-11-09', 5), null);
+});

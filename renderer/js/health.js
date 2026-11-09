@@ -167,6 +167,28 @@ function macroPlanDaysLeft(p,todayYmd){
   if(!p||!p.until)return null;
   return Math.round((new Date(p.until+'T12:00:00')-new Date(todayYmd+'T12:00:00'))/864e5)+1;
 }
+// an Agent answer's `macros` on top of the plan he has → the plan to save (cleaned), or null.
+// keep: only the numbers it gives change, and a plan still running keeps its span and dates; without a running
+// plan it starts today, until he changes it. Otherwise it's a whole new plan from today.
+function macroPlanMerge(old,m,todayYmd,now){
+  if(!m||typeof m!=='object')return null;
+  const live=old&&(macroPlanDaysLeft(old,todayYmd)==null||macroPlanDaysLeft(old,todayYmd)>0)?old:null;
+  const next={at:now||Date.now(),source:m.source||''};
+  if(m.keep&&live){
+    MACRO_KEYS.forEach(function(k){ next[k]=m[k]>0?m[k]:live[k]; });
+    const sameSpan=!m.span||m.span===live.span;
+    next.span=sameSpan?live.span:m.span;
+    const c=macroPlanClean(next); if(!c)return null;
+    const keepDates=sameSpan&&!!live.from;
+    c.from=keepDates?live.from:todayYmd; c.until=keepDates?live.until:macroPlanUntil(c.span,c.from);
+    return c;
+  }
+  MACRO_KEYS.forEach(function(k){ next[k]=m[k]; });
+  next.span=m.span||(m.keep?'open':'week');
+  const c=macroPlanClean(next); if(!c)return null;
+  c.from=todayYmd; c.until=macroPlanUntil(c.span,c.from);
+  return c;
+}
 // one quiet line: "2,100 kcal · 160 g protein · 200 g carbs · 65 g fat a day · 13 days left (ends Nov 20)"
 function macroPlanSay(p,todayYmd){
   if(!p)return '';
@@ -188,7 +210,7 @@ function macroPlanSay(p,todayYmd){
 if(typeof module!=='undefined'&&module.exports){
   module.exports={healthProfileOf:healthProfileOf,healthGoal:healthGoal,healthFrom:healthFrom,healthFromAll:healthFromAll,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
     healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
-    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay};
+    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay,macroPlanMerge:macroPlanMerge};
 }
 
 /* ── the page: sync row, the phone's reads, ticking tasks off, Settings → Health, the Health tab ── */
@@ -484,15 +506,15 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     view.appendChild(drawPlan());
     view.appendChild(drawGoals());
   };
-  // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today
+  // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today;
+  // with keep ("1 g of protein per pound") only those numbers change and the rest of the plan stays
   healthSetPlan=function(m,source){
-    const c=macroPlanClean(Object.assign({},m,{at:Date.now(),source:source||''}));
+    const c=macroPlanMerge(plan,Object.assign({},m,{source:source||''}),today());
     if(!c)return '';
-    c.from=today(); c.until=macroPlanUntil(c.span,c.from);
     plan=c; planEdit=false; keepLocal();
     pushPlan().then(function(){ if(state.activeTab==='health')draw(); });
     if(state.activeTab==='health')draw();
-    return macroPlanSay(c,c.from);
+    return macroPlanSay(c,today());
   };
   healthUi={draw:draw};
   // the synced copy, once sync has started; and again each time the tab opens

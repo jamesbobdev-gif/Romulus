@@ -228,13 +228,16 @@ async function startAgentRun() {
     if (ebt) agentLog('ebt: balance handed over');
   }
   // his macro plan (the Health tab's Food plan) for grocery runs: the order is built to add up to it
+  // and for meal-plan tasks, so "1 g of protein per pound" changes that number and keeps the rest
+  const allSkills = loadSkills();
+  const mealSkill = allSkills.find((s) => s.name === 'meal-plan');
+  const isMealRun = (t) => !!(mealSkill && mealSkill.match && t && t.ws === 'agent' && mealSkill.match.test(String(t.title || '')));
   let macros;
-  if (tasks.some((t) => isGroceryRun(t, allTasks))) {
+  if (tasks.some((t) => isGroceryRun(t, allTasks) || isMealRun(t))) {
     try { macros = macroBrief(await agentRow(':macros')); } catch (e) {}
     if (macros) agentLog('macros: plan handed over');
   }
   // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
-  const allSkills = loadSkills();
   const nearMe = tasks.filter((t) => wantsNearby(t, allSkills)).map((t) => t.id);
   const here = nearMe.length ? await where.hereNow().catch(() => null) : null;
   if (nearMe.length) agentLog(here ? 'location: handed over (±' + (here.accuracyM || '?') + ' m)' : 'location: unavailable (Windows location off?)');
@@ -256,7 +259,7 @@ async function startAgentRun() {
     knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook || asksPantryFill(t) ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
-    macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
+    macroPlan: isGroceryRun(t, allTasks) || isMealRun(t) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them; a meal-plan change starts from them
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
