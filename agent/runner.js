@@ -48,7 +48,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, foodBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -197,8 +197,8 @@ async function startAgentRun() {
   if (Object.keys(photos).length) agentLog('photos for Claude: ' + Object.values(photos).reduce((n, f) => n + f.length, 0));
   const calendar = tasks.some(wantsCalendar) ? await calendarForAgent() : null;
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
-  let allTasks = [];
-  try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  let allTasks = [], kitchen;
+  try { const doc = JSON.parse(fs.readFileSync(dataFile(), 'utf8')); allTasks = doc.tasks || []; kitchen = doc.kitchen; } catch (e) {}
   // his EBT wallet for grocery runs (agent/grocery.js ebtBrief): about what's left, from Finance's sealed copy
   let ebt;
   if (tasks.some((t) => isGroceryRun(t, allTasks)) && ctx.finance && ctx.finance.ebtNow && !readConfig().ebtOff) { // Settings → EBT off: none
@@ -217,6 +217,7 @@ async function startAgentRun() {
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
+    whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who, text: String(h.text || '').slice(0, 600),
