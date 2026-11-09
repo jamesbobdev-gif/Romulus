@@ -133,6 +133,8 @@ contextBridge.exposeInMainWorld('desktop', {
   financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
   financeSetEbtOn: (on) => ipcRenderer.invoke('finance:setEbtOn', !!on),
   financeEbtReceipt: (pic) => ipcRenderer.invoke('finance:ebtReceipt', pic),
+  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why}
+  kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),

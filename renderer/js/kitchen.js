@@ -244,7 +244,7 @@ if(typeof module!=='undefined'&&module.exports){
 /* ══ the page ══ */
 if(typeof document!=='undefined'){
 
-const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null};
+const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideas:null,ideasBusy:false,ideasWhy:'',ideasVia:'',aim:''};
 function kSave(){ persist(); renderKitchen(); }
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
 
@@ -335,7 +335,7 @@ function kBuild(view){
       '<button type="button" class="kit-tab" data-v="shop" role="tab">Shopping list</button>'+
     '</div>'+
     '<div id="kitSyncNote" class="kit-note" hidden></div>'+
-    '<section id="kit-meals"><div id="kitAfter"></div><div id="kitMeals"></div></section>'+
+    '<section id="kit-meals"><div id="kitAfter"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
     '<section id="kit-pantry" hidden>'+
       '<div class="kit-form"><input id="kitAddItem" class="sm kit-grow" placeholder="Add food you have: 2 lb chicken, eggs, 1 bag rice" aria-label="Add food">'+
       '<button id="kitAddItemBtn" class="btn-accent">Add</button></div>'+
@@ -437,6 +437,7 @@ function kDrawAfter(){
 }
 function kDrawMeals(){
   kDrawAfter();
+  kDrawIdeas();
   const box=$('kitMeals'); box.innerHTML='';
   if(!state.kitchen.recipes.length){ box.appendChild(kEmpty('No recipes yet. Add the meals you make under Recipes, and what food you have under Pantry: this shows what you can make.')); return; }
   const all=suggestMeals(state.kitchen);
@@ -454,6 +455,63 @@ function kDrawMeals(){
   };
   sec('You can make now',now,'Nothing yet with what’s in the pantry.');
   if(close.length)sec('A few things short',close,'');
+}
+/* ── Ideas from your pantry: his AIs suggest meals from what he has (main/kitchen-ai.js, agent/meal-ideas.js).
+   Desktop only (the phone has no AI of its own). What each idea is missing is worked out here against the pantry. */
+async function kAskIdeas(){
+  if(kitchenUI.ideasBusy)return;
+  kitchenUI.ideasBusy=true; kitchenUI.ideasWhy=''; renderKitchen();
+  try{
+    const k=state.kitchen;
+    const r=await window.desktop.kitchenIdeas({
+      pantry:k.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
+      recipes:k.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),
+      aim:kitchenUI.aim});
+    if(r&&r.meals&&r.meals.length){ kitchenUI.ideas=r.meals; kitchenUI.ideasVia=r.via||''; }
+    else kitchenUI.ideasWhy=(r&&r.why)||'No ideas came back. Try again.';
+  }catch(e){ kitchenUI.ideasWhy='Couldn’t ask your AIs: '+(e&&e.message||e); }
+  kitchenUI.ideasBusy=false; renderKitchen();
+}
+function kIdeaSaved(m){ return state.kitchen.recipes.some(function(r){ return r.name.toLowerCase()===m.name.toLowerCase(); }); }
+function kDrawIdeas(){
+  const box=$('kitIdeas'); if(!box)return; box.innerHTML='';
+  if(!(window.desktop&&window.desktop.kitchenIdeas))return;
+  box.appendChild(el('div','kit-k kit-sec','Ideas from your pantry'));
+  const form=el('div','kit-form');
+  const aim=document.createElement('input'); aim.className='sm kit-grow'; aim.id='kitAim'; aim.value=kitchenUI.aim;
+  aim.placeholder='Anything to aim for? High protein, under 600 calories, quick'; aim.setAttribute('aria-label','What to aim for');
+  aim.addEventListener('input',function(){ kitchenUI.aim=aim.value.slice(0,300); });
+  aim.addEventListener('keydown',function(e){ if(e.key==='Enter')kAskIdeas(); });
+  const go=el('button','btn-accent',kitchenUI.ideasBusy?'Thinking…':kitchenUI.ideas?'New ideas':'Suggest meals');
+  go.disabled=kitchenUI.ideasBusy||!state.kitchen.items.length;
+  go.addEventListener('click',kAskIdeas);
+  form.appendChild(aim); form.appendChild(go); box.appendChild(form);
+  if(!state.kitchen.items.length){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
+  box.appendChild(el('div','kit-hint','Uses your pantry and what you’ve told the Agent (foods you avoid, goals).'+(kitchenUI.ideasVia?' Last ideas from '+kitchenUI.ideasVia+'.':'')));
+  if(kitchenUI.ideasWhy)box.appendChild(kEmpty(kitchenUI.ideasWhy));
+  (kitchenUI.ideas||[]).forEach(function(m){
+    const ings=m.ingredients.map(parseIngredient).filter(Boolean);
+    const missing=ings.filter(function(i){ return !ingredientStatus(state.kitchen.items,i).have; });
+    const card=el('div','kit-card');
+    const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',m.name)); card.appendChild(top);
+    if(m.why)card.appendChild(el('div','kit-card-sub',m.why));
+    card.appendChild(el('div','kit-card-sub',missing.length?'Need: '+missing.map(function(i){ return i.name; }).join(', '):'You have everything for this.'));
+    const more=document.createElement('details'); more.className='kit-idea-more';
+    const sum=document.createElement('summary'); sum.textContent='Ingredients and steps'; more.appendChild(sum);
+    more.appendChild(el('div','kit-card-sub',m.ingredients.join(', ')));
+    if(m.steps.length){ const ol=document.createElement('ol'); ol.className='kit-idea-steps'; m.steps.forEach(function(st){ ol.appendChild(el('li','',st)); }); more.appendChild(ol); }
+    card.appendChild(more);
+    const btns=el('div','kit-card-btns');
+    const saved=kIdeaSaved(m), save=el('button',saved?'ghost':'btn-accent',saved?'Saved to recipes':'Save recipe');
+    save.disabled=saved;
+    save.addEventListener('click',function(){
+      if(kIdeaSaved(m))return;
+      state.kitchen.recipes.push({id:uid(),name:m.name.slice(0,100),ingredients:ings.slice(0,60),liked:false,planned:false,made:[],updatedAt:Date.now()});
+      kSave(); voiceToast(m.name+' saved to your recipes');
+    });
+    btns.appendChild(save); card.appendChild(btns);
+    box.appendChild(card);
+  });
 }
 function kOut(p){
   state.kitchen.items=state.kitchen.items.filter(function(x){ return x.id!==p.id; }); kTomb(p.id);

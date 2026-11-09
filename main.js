@@ -90,6 +90,10 @@ for (const m of modules) {
   Object.assign(allHandlers, m.handlers || {});
 }
 for (const [channel, fn] of Object.entries(allHandlers)) ipcMain.handle(channel, fn);
+// the Kitchen tab's Suggest meals (main/kitchen-ai.js)
+const kitchenAi = require('./main/kitchen-ai');
+kitchenAi.init(ctx);
+for (const [channel, fn] of Object.entries(kitchenAi.handlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
 const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;

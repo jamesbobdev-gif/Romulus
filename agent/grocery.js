@@ -39,6 +39,9 @@ const GROCERY_WORDS = /\b(grocer(y|ies)|ebt|food stamps)\b/i;
 function groceryListFor(t, tasks) {
   if (Array.isArray(t.list) && t.list.length) return t.list;
   if (t.ws !== 'agent' || !GROCERY_WORDS.test(String(t.title || ''))) return undefined;
+  return newestGroceryList(tasks);
+}
+function newestGroceryList(tasks) {
   const keep = (Array.isArray(tasks) ? tasks : []).filter((x) => x && x.ws === 'agent' && Array.isArray(x.list) && x.list.length)
     .sort((a, b) => (b.created || 0) - (a.created || 0))[0];
   return keep ? keep.list : undefined;
@@ -110,4 +113,25 @@ function macroChanges(m) {
   return out;
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges };
+/* A food task that isn't an order ("1 g of protein per pound", "plan my meals", "what can I cook"): it
+   sees what he eats so it doesn't ask. His usual groceries (names only: this run doesn't change the
+   list) and the Kitchen tab (renderer/js/kitchen.js): what's in the pantry and his recipes, liked first. */
+const FOOD_WORDS = /\b(food|foods|meals?|eat|eating|diet|protein|macros?|calories|nutrition|recipes?|cook|cooking|breakfast|lunch|dinner|snacks?|pantry|kitchen|meal ?prep|grocer(y|ies))\b/i;
+const isFoodTask = (t) => !!t && FOOD_WORDS.test(String(t.title || '') + ' ' + String(t.note || '').slice(0, 300));
+function foodBrief(t, tasks, kitchen) {
+  if (!isFoodTask(t)) return undefined;
+  const list = groceryListFor(t, tasks) ? undefined : newestGroceryList(tasks); // an order already has it as groceryList
+  const usual = (Array.isArray(list) ? list : []).map((x) => clean(x && typeof x === 'object' ? x.name : x)).filter(Boolean).slice(0, 200);
+  const k = kitchen && typeof kitchen === 'object' ? kitchen : {};
+  const amount = (x) => (x.qty != null ? x.qty + (x.unit ? ' ' + x.unit : '') : undefined);
+  const pantry = (Array.isArray(k.items) ? k.items : []).filter((x) => x && clean(x.name)).slice(0, 300)
+    .map((x) => ({ name: clean(x.name), amount: amount(x) }));
+  const recipes = (Array.isArray(k.recipes) ? k.recipes : []).filter((r) => r && clean(r.name))
+    .sort((a, b) => (!!b.liked - !!a.liked) || ((b.made || []).length - (a.made || []).length)).slice(0, 60)
+    .map((r) => ({ name: clean(r.name), liked: r.liked ? true : undefined, timesMade: (r.made || []).length || undefined,
+      ingredients: (Array.isArray(r.ingredients) ? r.ingredients : []).map((i) => clean(i && typeof i === 'object' ? i.name : i)).filter(Boolean).slice(0, 40) }));
+  if (!usual.length && !pantry.length && !recipes.length) return undefined;
+  return { usualGroceries: usual.length ? usual : undefined, pantry: pantry.length ? pantry : undefined, recipes: recipes.length ? recipes : undefined };
+}
+
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, isFoodTask, foodBrief };

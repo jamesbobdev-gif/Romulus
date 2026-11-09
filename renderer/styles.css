@@ -1301,3 +1301,7 @@ body.review-open .top-right{display:none!important}
 .kit-after-head{display:flex;align-items:center;justify-content:space-between}
 .kit-after-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
 @media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
+.kit-idea-more{margin-top:6px}
+.kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
+.kit-idea-steps{margin:6px 0 0 18px;padding:0;font-size:13px;color:var(--ink)}
+.kit-idea-steps li{margin:2px 0}
