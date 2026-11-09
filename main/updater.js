@@ -48,7 +48,7 @@ function versionNewer(candidate, current) {
 // another device), offer it, or nothing (he said Not now to it)
 function onAvailable(version, cfg) {
   if (mode(cfg) === 'auto') return 'download';
-  if (cfg && cfg.updateYes && !versionNewer(version, cfg.updateYes)) return 'download';
+  if (cfg && cfg.updateYes && cfg.updateYes === version) return 'download'; // the version he said yes to, exactly: a "yes" row naming 999 approves nothing
   return cfg && cfg.updateSkip === version ? 'skip' : 'offer';
 }
 
@@ -111,7 +111,7 @@ function start() {
 }
 
 let started = false;
-// early access (the $5 plan, Settings → Device sync): versions published as pre-releases are offered too
+// early access (a paid plan, Settings → Device sync): versions published as pre-releases are offered too
 function earlyAccess(cfg) { return !!(cfg && cfg.earlyAccess); }
 function checkNow() {
   if (!started) return;

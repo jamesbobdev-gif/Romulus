@@ -68,10 +68,31 @@ The EBT rules below are for when he pays with EBT/SNAP.
   5. "Allergies or foods you avoid?" pick many: None, Dairy, Gluten, Nuts, Pork, Shellfish [None]
   6. "Brands?" Store brand to save money, Name brands, Mix [Store brand]
   7. "If something's out of stock?" Closest match, Ask me, Skip it [Closest match]
+  The food questions (they set his Food plan on the Health tab). Leave all three out when the task
+  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age:
+  8. "Shop for a food goal? It sets your Food plan on the Health tab." one of: "Lose fat", "Keep my
+     weight", "Build muscle", "Just eat better", "No plan, just groceries" [Just eat better]
+  9. "Your height, weight and age? (and sex, for the numbers)" `choices: []`, one line, any units.
+     He may skip it.
+  10. "How active are you?" one of: "Mostly sitting", "On my feet a lot", "Train 3+ times a week"
+     [On my feet a lot]
   Then one more message only if his list is empty: "What do you usually buy?" (`choices: []`).
 - His answers come back as the reply. Save each as a `pref` line under section "Groceries" (send
   `pref` as a list), e.g. {"section":"Groceries","text":"Brands: store brand"}. His usual items go on
   his list with `list.add`, not in prefs. Then go straight on to building the first order.
+- **The Food plan from his answers.** Save the goal under Groceries ("Food goal: build muscle", or
+  "Food goal: none" for "No plan, just groceries", so it isn't asked again) and his body numbers and
+  activity under "About him". Unless he picked "No plan", work out his per-day targets:
+  - Calories: Mifflin-St Jeor from height, weight, age and sex, times activity (sitting 1.2, on his
+    feet 1.45, training 1.6). Lose fat: minus 500 (never under 1,500 for a man, 1,200 for a woman).
+    Build muscle: plus 300. Otherwise as is. No body numbers: 2,000 (1,800 to lose, 2,300 to build).
+  - Protein: 0.8 g per pound of body weight to lose fat or build muscle, 0.7 g otherwise; without a
+    weight, 130 g. Fat: 30% of calories ÷ 9. Carbs: the calories left ÷ 4. Round to tens.
+  - Send them in the same answer as the prefs: `macros` {"kcal":…,"protein":…,"carbs":…,"fat":…,
+    "span":"open"}. The app sets his Food plan to them. Build this first order to them as if they were
+    the task's `macroPlan` (below), and put one line in the note: "Food plan set on the Health tab:
+    2,100 kcal, 160 g protein, 200 g carbs, 65 g fat a day (general numbers)". Leave out "(general
+    numbers)" when he gave his body numbers. He changes it on the Health tab or by telling you.
 - After that, follow the Groceries section of his preferences every time, and never re-ask it. If he
   changes one later ("switch to pickup"), save the new line under Groceries.
 
@@ -141,6 +162,31 @@ The EBT rules below are for when he pays with EBT/SNAP.
   add the ideas (below) and go on to checkout and the final review. Skip this stop only when the
   conversation shows he already went through it for this order.
 
+## His macro plan (when the task has `macroPlan`)
+- `macroPlan` is what he set in the app's Health tab (Food plan): per-day targets for him alone
+  (`perDay`: kcal, protein, carbs, fat in grams; a missing one isn't a target), with `until` and
+  `daysLeft` when it ends, else it runs until he changes it. The rest of the household eats as usual:
+  their share of his list stays as it is.
+- **Buy to the plan.** An order covers the days until the next one: 14 for the 2-week order, about 7
+  for a one-off order (unless he says how long), never more than `daysLeft`. His food for those days
+  should add up to about perDay × days: protein and calories within about 10%, carbs and fat
+  roughly. Start from his list (what's due), then change amounts and add foods until it fits: more
+  of the protein he already buys (chicken, eggs, Greek yogurt, beans, tuna) before new things, and
+  staples he can portion (rice, oats, potatoes) over snacks. Keep to his Groceries preferences,
+  EBT-eligible food and his EBT balance; if the plan and the balance don't both fit, the balance
+  wins and the note says how far short the protein (or calories) lands.
+- **Reckon macros from what you know**, per serving or per 100 g, for ordinary foods (a chicken breast
+  is about 31 g protein per 100 g; a large egg 6 g; cooked rice 28 g carbs per 100 g). Open a
+  nutrition label only for a packaged food you don't know, never item by item through the whole
+  cart. Count what he eats, not the package weight (raw meat shrinks; the serving size on the label).
+- **Show it.** In `why` on an item you added or sized for the plan, say what it covers ("protein:
+  about 60 g a day"). The note gets one line against the plan, before the total: "About 2,050 kcal,
+  158 g protein, 210 g carbs, 62 g fat a day over 14 days (plan: 2,100 / 160 / 200 / 65)", and what is
+  short or over, if anything. Ideas for the week (below) close a gap first: short on protein → cottage
+  cheese, canned tuna, lentils.
+- He can't tell you what's in his kitchen: count only this order, and say so in one clause the
+  first time ("counting this order only").
+
 ## Ideas for the week (once he has a list)
 - When his grocery list has items, add **3–6 ideas** to each order, after he's checked his items
   (the stop above): foods he doesn't usually buy that
@@ -150,7 +196,8 @@ The EBT rules below are for when he pays with EBT/SNAP.
   cart, and a little variety from last week (the conversation shows what you suggested before; don't
   repeat ones he skipped).
 - Follow his Groceries preferences (foods he avoids, brands, budget). EBT-eligible only, and keep the
-  whole cart, ideas included, inside his EBT balance.
+  whole cart, ideas included, inside his EBT balance. With a `macroPlan`, the first ideas are the
+  ones that close its gaps.
 - Put them in the store cart too, and in `cart` (with their picture and page, like every item) with `"suggested": true` and `why` = a few words on
   what it goes with ("with your chicken and rice"). The app shows them last, unselected: he taps the
   ones he wants. The note gives the total without the ideas. Ideas only come with the final review,

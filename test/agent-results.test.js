@@ -168,3 +168,20 @@ test('words it will post come with the answer, and go with the next one', () => 
   cb.results([{ id: 'p', lane: 'local', status: 'done', note: 'Posted.' }]);
   assert.strictEqual(t.draft, null);
 });
+
+test('a meal plan’s macros set his Food plan, and the conversation says so', () => {
+  const t = { id: 'm', ws: 'agent', title: 'Plan my meals', status: 'working', history: [] };
+  const { cb, ctx } = load([t]);
+  let got = null; ctx.healthSetPlan = (m, source) => { got = { m, source }; return '2,100 kcal · 160 g protein a day'; };
+  cb.results([{ id: 'm', status: 'done', note: 'The plan…', macros: { kcal: 2100, protein: 160, span: 'week' } }]);
+  assert.deepStrictEqual(got, { m: { kcal: 2100, protein: 160, span: 'week' }, source: 'Plan my meals' });
+  assert.ok(t.history.some((h) => h.who === 'sys' && /Food plan \(Health tab\): 2,100 kcal/.test(h.text)));
+});
+
+test('an answer without macros leaves the Food plan alone', () => {
+  const t = { id: 'n', ws: 'agent', status: 'working', history: [] };
+  const { cb, ctx } = load([t]);
+  let called = 0; ctx.healthSetPlan = () => { called++; return ''; };
+  cb.results([{ id: 'n', status: 'done', note: 'Done.' }]);
+  assert.strictEqual(called, 0);
+});

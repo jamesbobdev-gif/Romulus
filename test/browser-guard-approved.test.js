@@ -46,6 +46,21 @@ test('what went through is in the actions log; ordinary clicks are not', () => {
   assert.ok(lines.every((l) => typeof l.at === 'number'));
 });
 
+test('a yes that named no site unlocks nothing: the run must stop on the page and ask again', () => {
+  const mod = require.resolve('../agent/browser-proxy');
+  const saved = process.env.TASKS_BROWSER_APPROVED_HOSTS;
+  delete process.env.TASKS_BROWSER_APPROVED_HOSTS;
+  delete require.cache[mod];
+  const bare = require('../agent/browser-proxy');
+  bare.learnRefs('- button "Place order" [ref=e6]\n- button "Post" [ref=p1]');
+  const r = bare.buyRefusal(call('browser_click', { target: 'e6' }), 'https://www.walmart.com/checkout');
+  assert.match(r, /Not without a yes/); assert.match(r, /named no site/);
+  assert.match(bare.buyRefusal(call('browser_click', { target: 'p1' }), 'https://twitter.com/compose'), /named no site/);
+  assert.match(bare.buyRefusal(call('browser_press_key', { key: 'Enter' }), 'https://www.walmart.com/checkout'), /named no site/);
+  process.env.TASKS_BROWSER_APPROVED_HOSTS = saved;
+  delete require.cache[mod];
+});
+
 test('his yes is spent by the step it was for: a second order waits for a fresh one', () => {
   // the test above logged the Place order click as gone through
   assert.match(proxy.buyRefusal(call('browser_click', { target: 'e6' }), 'https://www.walmart.com/checkout'), /fresh yes/);

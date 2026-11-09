@@ -180,7 +180,8 @@ const ics = {
   name: 'Calendar link',
   async calendars(_token, acct) { return [{ id: 'feed', name: acct.name || acct.email || 'Calendar link', primary: true, canWrite: false }]; },
   async events(_token, _cal, from, to, acct) {
-    const r = await fetch(acct.url, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
+    // a subscribe link he pasted: public, and so must be every redirect it answers with (agent/helpers.js)
+    const r = await require('./helpers').fetchPublic(acct.url, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
     const text = await r.text();
     if (!r.ok || !/BEGIN:VCALENDAR/.test(text)) throw new Error(r.ok ? 'not a calendar' : 'HTTP ' + r.status);
     return parseIcs(text).filter((e) => {
@@ -378,7 +379,7 @@ async function addCaldav(opts) {
   const server = caldav.normServer(o.server) || caldav.guessServer(username);
   if (!server) return { ok: false, needsServer: true, error: 'Enter your calendar server’s address.' };
   const host = new URL(server).hostname;
-  const name = String(o.name || '').trim().slice(0, 40) || (CALDAV_NAMES.find(([re]) => re.test(host)) || [, host.replace(/^(www|caldav|dav|cal|calendar)\./, '')])[1];
+  const name = String(o.name || '').trim().slice(0, 40) || (CALDAV_NAMES.find(([re]) => re.test(host)) || [null, host.replace(/^(www|caldav|dav|cal|calendar)\./, '')])[1];
   const acct = { id: 'd-' + crypto.randomBytes(4).toString('hex'), provider: 'caldav', server, username, appPassword, email: username, name };
   let found;
   try { found = await caldav.calendars(acct); } catch (e) { return { ok: false, error: e.message }; }

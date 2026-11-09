@@ -140,6 +140,7 @@ async function startBrowserTools(lockFile, taskTitle, tab) {
   const p = require('child_process').spawn(node, [path.join(dir, 'browser-proxy.js'), cli, 'remote', 'unused', String(QWEN_BROWSER_LOCAL_PORT)], {
     windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'],
     env: Object.assign({}, process.env, { TASKS_BROWSER_LOCK: lockFile, TASKS_BROWSER_ARGS: JSON.stringify(['--snapshot-mode', 'none', '--image-responses', 'omit']),
+      TASKS_BROWSER_DOWNLOADS: require('./worker-files').downloadsDir(), // its own folder: that is what the worker publishes, not ~/Downloads
       TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // his resume and the like: the only uploads allowed (sent from this computer over CDP)
       TASKS_BROWSER_ACTIONS: require('./agent-browser').actionsLogFile(), TASKS_BROWSER_TASK: String(taskTitle || '').slice(0, 120), TASKS_BROWSER_TAB: String(tab || '') }) }); // what it did, for Settings → What the Agent did
   let buf = '', id = 0; const pending = {};

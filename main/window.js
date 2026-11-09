@@ -6,6 +6,7 @@ const path = require('path');
 
 let mainWindow = null;
 let isQuitting = false;
+let onHidden = null; // runs once the window has hidden to the tray (main.js hands in the tray's first-time notice)
 
 const ROOT = path.join(__dirname, '..');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
@@ -92,6 +93,7 @@ function createWindow() {
     if (QUIT_ON_CLOSE) { quit(); return; }
     e.preventDefault();
     mainWindow.hide();
+    if (onHidden) onHidden();
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -120,7 +122,7 @@ function titleBarFollowsPage() {
   const wc = mainWindow.webContents, run = ++titleRun;
   // the strip can't be clicked through, and the window buttons sit on its right: pop-ups that reach the top start below it
   wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}
-    .lb-close{top:${TITLE_H + 14}px} .live-view{top:${TITLE_H + 8}px} .swipe{padding-top:${TITLE_H + 10}px}`).catch(() => {});
+    .lb-close{top:${TITLE_H + 14}px} .live-view{top:${TITLE_H + 8}px}`).catch(() => {});
   const follow = () => wc.executeJavaScript(TITLE_COLORS).then((c) => {
     if (run !== titleRun || !mainWindow || mainWindow.isDestroyed()) return;
     if (c && c.color && c.symbolColor) { try { mainWindow.setTitleBarOverlay({ ...c, height: TITLE_H }); } catch (e) {} }
@@ -146,6 +148,9 @@ function newHiddenWindow(opts) { return new BrowserWindow(opts); }
 // the page loads again (settings arrived from elsewhere)
 function reloadWindow() { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload(); }
 
+// what to do once the window has hidden to the tray
+function onHiddenToTray(fn) { onHidden = fn; }
+
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
@@ -167,4 +172,4 @@ function windowHandle() {
   return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
 }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle, protect, financeShowing };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, onHiddenToTray, quit, setQuitting, windowHandle, protect, financeShowing };

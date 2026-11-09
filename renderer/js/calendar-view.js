@@ -18,8 +18,13 @@ function fitNeedsBar(){
   for(let i=chips.length-1;i>=0&&over();i--){ chips[i].remove(); hidden++; more.textContent='+'+hidden; }
   more.title=hidden+' more need you — open the Agent tab';
 }
-let fitNeedsTimer=null;
-window.addEventListener('resize',function(){ clearTimeout(fitNeedsTimer); fitNeedsTimer=setTimeout(function(){ if(!$('needsBar').hidden)renderActive(); },150); });
+let fitNeedsTimer=null, fitNeedsWidth=window.innerWidth;
+// the bar is one line, so only a change of width can change what fits. On a phone the keyboard opening and closing
+// is a resize too (height only): redrawing the list then would rebuild the box being typed in and close the keyboard
+window.addEventListener('resize',function(){
+  clearTimeout(fitNeedsTimer);
+  fitNeedsTimer=setTimeout(function(){ if(window.innerWidth===fitNeedsWidth)return; fitNeedsWidth=window.innerWidth; if(!$('needsBar').hidden)renderActive(); },150);
+});
 // a couple of words that say which task it is: "Look for motherboard that will allow…" → "motherboard"
 const SHORT_SKIP=('a an the my me i you your our some any for of on in at from up out into onto through about please under over near around by like '+
   'look find search get check see go use apply make do help try want need can could should would').split(' ');
@@ -54,21 +59,26 @@ function uniqueShortNames(titles){
 function switchTab(tab){
   closeDayPop();
   if(tab!==state.activeTab)state.selectedId=null;
+  if(tab==='hours'&&state.activeTab!=='hours'&&typeof hoursEnter==='function')hoursEnter(); // the Hours tab opens on today
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
   if(tab!=='finance')financeLeave();
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabFinance','finance'],['tabFamily','family']].forEach(function(p){
+  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabKitchen','kitchen'],['tabFinance','finance'],['tabHealth','health'],['tabFamily','family']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
-  $('listView').hidden=tab==='calendar'||tab==='ideas'||tab==='hours'||tab==='finance'||tab==='family';
+  const act=document.querySelector('.tab.active'); // the bar scrolls sideways: bring the tab picked into view
+  if(act&&act.scrollIntoView)act.scrollIntoView({inline:'center',block:'nearest'}); // centred, so it isn't under an edge fade
+  $('listView').hidden=tab==='calendar'||isViewTab(tab);
   $('calView').hidden=tab!=='calendar';
   $('ideasView').hidden=tab!=='ideas';
   $('hoursView').hidden=tab!=='hours';
   $('financeView').hidden=tab!=='finance';
+  $('healthView').hidden=tab!=='health';
+  $('kitchenView').hidden=tab!=='kitchen';
   $('familyView').hidden=tab!=='family';
-  document.querySelector('.composer').hidden=tab==='ideas'||tab==='hours'||tab==='finance'||tab==='family';
+  document.querySelector('.composer').hidden=isViewTab(tab);
   document.body.classList.toggle('ideas-mode',tab==='ideas');
   if(tab==='calendar')$('newTitle').placeholder='Add a task…'; // render() sets it on the list tabs; don't keep the last one's
-  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else if(tab==='hours') renderHours(); else if(tab==='finance') renderFinance(); else if(tab==='family') renderFamily(); else render();
+  if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else if(tab==='hours') renderHours(); else if(tab==='finance') renderFinance(); else if(tab==='health') renderHealth(); else if(tab==='kitchen') renderKitchen(); else if(tab==='family') renderFamily(); else render();
 }

@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const ctx = require('../agent/task-context');
-const { saidYes } = require('../agent/agent-browser');
+const { saidYes, approvedHostsFor } = require('../agent/agent-browser');
+
+test('approvedHostsFor: the page, the cart, and links he wrote; never links in the AI\'s own ask', () => {
+  const t = { title: 'Apply at https://jobs.example.com/x', page: 'https://www.walmart.com/checkout', cart: [{ url: 'https://www.walmart.com/ip/1' }],
+    history: [{ who: 'you', text: 'use https://shop.example.org please' }, { who: 'claude', text: 'Ready. Also see https://evil.example/pay — reply yes' }] };
+  assert.deepStrictEqual(approvedHostsFor(t).sort(), ['jobs.example.com', 'shop.example.org', 'www.walmart.com']);
+  assert.deepStrictEqual(approvedHostsFor({ history: [{ who: 'claude', text: 'https://evil.example/ reply yes' }] }), []);
+});
 
 ctx.init({ userData: () => require('os').tmpdir(), readConfig: () => ({}), agentLog: () => {} });
 
@@ -65,6 +72,12 @@ test('cleanAsk: questions with choices; a default must be one of them; empty one
   assert.strictEqual(a[2].other, true);
   assert.strictEqual(ctx.cleanAsk([]), undefined);
   assert.strictEqual(ctx.cleanAsk('x'), undefined);
+});
+
+test('cleanAsk: keeps all 11 first-grocery-order questions (store to activity), up to 12', () => {
+  const qs = Array.from({ length: 14 }, (_, i) => ({ q: 'Question ' + (i + 1) + '?', choices: ['Yes', 'No'] }));
+  assert.strictEqual(ctx.cleanAsk(qs.slice(0, 11)).length, 11);
+  assert.strictEqual(ctx.cleanAsk(qs).length, 12);
 });
 
 test('cleanCart: names kept, https pictures only, quantity over 1 only', () => {

@@ -39,12 +39,24 @@ function remember(sealed, plain, reuse) {
   if (reuse) sealedOf.set(plain, sealed);
 }
 const ss = () => io && io.safeStorage;
+/* Linux with no keyring: Chromium falls back to its "basic_text" backend, which says encryption is available but uses a
+   fixed key, so a sealed value would only look sealed. Treat that as no encryption (the file stays plain, as SECURITY.md
+   says for a headless hub) and say so once in the log. */
+let saidPlain = false;
+function basicText() {
+  const s = ss();
+  try {
+    if (!s || typeof s.getSelectedStorageBackend !== 'function' || s.getSelectedStorageBackend() !== 'basic_text') return false;
+  } catch (e) { return false; }
+  if (!saidPlain) { saidPlain = true; agentLog('config: no OS keyring on this computer, so keys and tokens in config.json are kept as plain text (readable by this user only)'); }
+  return true;
+}
 const hasAsync = () => { const s = ss(); return !!(s && typeof s.encryptStringAsync === 'function' && typeof s.decryptStringAsync === 'function'); };
 let asyncOk = null;
 async function canEncryptAsync() {
   if (asyncOk !== null) return asyncOk;
   const s = ss();
-  try { asyncOk = hasAsync() ? !!(await s.isAsyncEncryptionAvailable()) : !!(s && s.isEncryptionAvailable && s.isEncryptionAvailable()); }
+  try { asyncOk = basicText() ? false : hasAsync() ? !!(await s.isAsyncEncryptionAvailable()) : !!(s && s.isEncryptionAvailable && s.isEncryptionAvailable()); }
   catch (e) { asyncOk = false; }
   return asyncOk;
 }
@@ -87,7 +99,7 @@ function sealValue(v) {
   if (sealedOf.has(v)) return sealedOf.get(v);
   const s = ss();
   try {
-    if (s && typeof s.encryptString === 'function' && s.isEncryptionAvailable()) {
+    if (s && typeof s.encryptString === 'function' && s.isEncryptionAvailable() && !basicText()) {
       const out = ENC + Buffer.from(s.encryptString(v)).toString('base64');
       remember(out, v, true);
       return out;

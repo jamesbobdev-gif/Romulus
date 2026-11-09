@@ -39,9 +39,10 @@ import java.util.zip.ZipInputStream;
         @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "mic")})
 public class WakeWordPlugin extends Plugin {
     private static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
-    // SHA-256 of that zip (41,205,931 bytes), from two downloads on 2026-11-07. A download that doesn't match is thrown
-    // away before it replaces the model, so a changed or tampered file never gets listened through.
-    static final String MODEL_SHA256 = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498";
+    // SHA-256 of that zip (41,205,931 bytes), so a changed download (a swapped file on the server, a proxy in the way)
+    // is never handed to Vosk's native parser. Update together with MODEL_URL.
+    private static final String MODEL_SHA256 = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498";
+    private static final long MODEL_MAX_BYTES = 80L * 1024 * 1024;
     private volatile boolean downloading = false;
 
     @PluginMethod
@@ -114,21 +115,41 @@ public class WakeWordPlugin extends Plugin {
         return o;
     }
 
-    /** zip → filesDir/vosk-model-tmp → (swap in) filesDir/vosk-model, so a half download never counts as ready */
+    /** zip → filesDir/vosk-model.zip (its SHA-256 checked) → filesDir/vosk-model-tmp → (swap in) filesDir/vosk-model,
+     *  so a half or altered download never counts as ready */
     private void download(Context c) throws Exception {
         File tmp = new File(c.getFilesDir(), "vosk-model-tmp");
+        File zipFile = new File(c.getFilesDir(), "vosk-model.zip");
         deleteAll(tmp);
+        zipFile.delete();
         HttpURLConnection http = (HttpURLConnection) new URL(MODEL_URL).openConnection();
         http.setInstanceFollowRedirects(true);
         http.setConnectTimeout(15_000);
         http.setReadTimeout(30_000);
         if (http.getResponseCode() != 200) throw new Exception("HTTP " + http.getResponseCode());
         long total = http.getContentLengthLong();
-        String root = tmp.getCanonicalPath() + File.separator;
         int lastPct = -1;
-        MessageDigest sha = MessageDigest.getInstance("SHA-256");
-        CountingStream counted = new CountingStream(new DigestInputStream(new BufferedInputStream(http.getInputStream()), sha));
-        try (ZipInputStream zip = new ZipInputStream(counted)) {
+        // 1. the whole file first, hashed as it arrives: nothing is unzipped until the hash is the known one
+        java.security.MessageDigest sha = java.security.MessageDigest.getInstance("SHA-256");
+        CountingStream counted = new CountingStream(new BufferedInputStream(http.getInputStream()));
+        try (InputStream in = new java.security.DigestInputStream(counted, sha); OutputStream os = new FileOutputStream(zipFile)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                os.write(buf, 0, n);
+                if (counted.count > MODEL_MAX_BYTES) throw new Exception("the download is larger than the model");
+                if (total > 0) {
+                    int pct = (int) (counted.count * 90 / total); // the last 10% is unzipping
+                    if (pct != lastPct) { lastPct = pct; JSObject p = new JSObject(); p.put("pct", pct); notifyListeners("progress", p); }
+                }
+            }
+        } finally { http.disconnect(); }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : sha.digest()) hex.append(String.format("%02x", b));
+        if (!MODEL_SHA256.equals(hex.toString())) { zipFile.delete(); throw new Exception("the download isn't the expected model file (checksum differs); try again later"); }
+        // 2. unzip the checked file
+        String root = tmp.getCanonicalPath() + File.separator;
+        try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new java.io.FileInputStream(zipFile)))) {
             ZipEntry e;
             byte[] buf = new byte[65536];
             while ((e = zip.getNextEntry()) != null) {
@@ -144,24 +165,11 @@ public class WakeWordPlugin extends Plugin {
                 if (parent != null) parent.mkdirs();
                 try (OutputStream os = new FileOutputStream(out)) {
                     int n;
-                    while ((n = zip.read(buf)) > 0) {
-                        os.write(buf, 0, n);
-                        if (total > 0) {
-                            int pct = (int) (counted.count * 100 / total);
-                            if (pct != lastPct) { lastPct = pct; JSObject p = new JSObject(); p.put("pct", pct); notifyListeners("progress", p); }
-                        }
-                    }
+                    while ((n = zip.read(buf)) > 0) os.write(buf, 0, n);
                 }
             }
-            // the zip's directory at the end isn't read by ZipInputStream: read it too, so the hash covers the whole file
-            byte[] rest = new byte[65536];
-            while (counted.read(rest, 0, rest.length) > 0) { /* hashed as it goes */ }
-        } finally { http.disconnect(); }
-        String got = hex(sha.digest());
-        if (!MODEL_SHA256.equals(got)) {
-            deleteAll(tmp);
-            throw new Exception("the speech model download didn't match the expected file, so it wasn't used");
-        }
+        } finally { zipFile.delete(); }
+        JSObject done = new JSObject(); done.put("pct", 100); notifyListeners("progress", done);
         if (!new File(tmp, "conf/model.conf").exists()) throw new Exception("the download didn't contain a model");
         File dir = WakeWordService.modelDir(c);
         deleteAll(dir);

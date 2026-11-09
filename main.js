@@ -11,10 +11,10 @@ const store = require('./main/store');
 const win = require('./main/window');
 const trayMod = require('./main/tray');
 const speak = require('./main/speak');
+const buyEmails = require('./main/buy-emails');
 const feeds = require('./main/feeds');
 const persistence = require('./main/persistence');
 const gcalSync = require('./main/gcal-sync');
-const buyEmails = require('./main/buy-emails');
 const deviceSync = require('./main/device-sync');
 const calendarAccounts = require('./main/calendar-accounts');
 const gmailDates = require('./main/gmail-dates');
@@ -26,6 +26,7 @@ const routingMod = require('./agent/routing');
 const ai = require('./agent/ai-connections');
 const usageMeter = require('./agent/usage-meter');
 const agentBrowser = require('./agent/agent-browser');
+const linkWallet = require('./agent/link-wallet');
 const taskContext = require('./agent/task-context');
 const qwenBrowser = require('./agent/qwen-browser');
 const previews = require('./agent/previews');
@@ -82,13 +83,17 @@ const ctx = {
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
+  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);
   Object.assign(allHandlers, m.handlers || {});
 }
 for (const [channel, fn] of Object.entries(allHandlers)) ipcMain.handle(channel, fn);
+// the Kitchen tab's Suggest meals (main/kitchen-ai.js)
+const kitchenAi = require('./main/kitchen-ai');
+kitchenAi.init(ctx);
+for (const [channel, fn] of Object.entries(kitchenAi.handlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
 const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
@@ -159,6 +164,7 @@ if (!gotLock) {
 
     win.createWindow();
     trayMod.createTray();
+    win.onHiddenToTray(trayMod.hiddenToTray); // Windows: the first time, a notice says the icon is under the ^ by the clock
     updater.start();
     overlay.start(); // the screen helper's shortcut (Ctrl+Shift+Space, or the next free one)
     refreshTrayStatus();

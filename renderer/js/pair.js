@@ -119,6 +119,11 @@ if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
       const text=r&&r.sealed?await pairOpen(d.key,r.sealed):null;
       if(!text||text.indexOf(SYNC_CODE_PREFIX)!==0){ setSyncStatus('that code didn’t work: it may be mistyped, used or run out. Make a new one on the other device.',true); return; }
       input.value='';
+      // say whose project this is before adopting it: a code someone else talked him into typing would otherwise
+      // move his lists into their project without a word
+      let host=''; try{ host=new URL(JSON.parse(atob(text.slice(SYNC_CODE_PREFIX.length))).url).host; }catch(e){}
+      if(!host){ setSyncStatus('that code didn’t hold a sync project address',true); return; }
+      if(!confirm('Use the sync project at '+host+'?\n\nYour lists will be kept there from now on. Only continue if this is your own project (or one you were given on purpose).')){ setSyncStatus('not paired'); return; }
       if(fillFromSyncCode(text)){ setSyncStatus('paired: saving…'); $('syncSaveBtn').click(); }
     }catch(e){ setSyncStatus('couldn’t pair: '+e.message,true); }
     finally{ useBtn.disabled=false; }

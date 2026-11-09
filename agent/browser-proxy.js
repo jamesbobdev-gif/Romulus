@@ -13,6 +13,17 @@ const http = require('http');
 const [cli, chrome, profile, port, flagsJson] = process.argv.slice(2);
 const endpoint = 'http://127.0.0.1:' + port;
 
+/* The environment a child gets. This launcher runs inside the AI's command (Claude Code, the Gemini CLI), whose
+   environment carries that AI's API key, and Chrome outlives the run: any program of this user can read a running
+   program's environment. So nothing that looks like a key, token or password is handed down; the browser, Playwright
+   and Link's tool never need one. */
+const SECRET_ENV = /API_KEY|_TOKEN$|^TOKEN$|SECRET|PASSWORD|PASSWD|CREDENTIAL|^ANTHROPIC_|^GEMINI_|^OPENAI_|^OPENROUTER_|^CLAUDE_CODE_OAUTH/i;
+function childEnv(base = process.env) {
+  const out = {};
+  for (const [k, v] of Object.entries(base)) if (!SECRET_ENV.test(k)) out[k] = v;
+  return out;
+}
+
 function browserUp() {
   return new Promise((resolve) => {
     const req = http.get(endpoint + '/json/version', { timeout: 1000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
@@ -27,9 +38,31 @@ async function ensureBrowser() {
   let flags = null; try { flags = flagsJson ? JSON.parse(flagsJson) : null; } catch (e) {}
   const p = spawn(chrome, flags || ['--user-data-dir=' + profile, '--remote-debugging-port=' + port, '--remote-debugging-address=127.0.0.1',
     '--no-first-run', '--no-default-browser-check',
-    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore' });
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore', env: childEnv() });
   p.unref(); // outlives this run
   for (let i = 0; i < 40 && !(await browserUp()); i++) await new Promise((r) => setTimeout(r, 250));
+}
+
+/* TASKS_BROWSER_DOWNLOADS: where this browser saves downloads, set over CDP once it is up. The worker publishes
+   that folder to its other computers (agent/worker-files.js), so it must be the browser's own, never ~/Downloads. */
+async function setDownloadsDir() {
+  const dir = process.env.TASKS_BROWSER_DOWNLOADS;
+  if (!dir || typeof WebSocket === 'undefined') return;
+  try {
+    const info = await new Promise((resolve, reject) => {
+      const req = http.get(endpoint + '/json/version', { timeout: 2000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } }); });
+      req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+    if (!info.webSocketDebuggerUrl) return;
+    await new Promise((resolve) => {
+      const ws = new WebSocket(info.webSocketDebuggerUrl);
+      const done = () => { try { ws.close(); } catch (e) {} resolve(); };
+      const t = setTimeout(done, 3000);
+      ws.onopen = () => ws.send(JSON.stringify({ id: 1, method: 'Browser.setDownloadBehavior', params: { behavior: 'allow', downloadPath: dir, eventsEnabled: false } }));
+      ws.onmessage = () => { clearTimeout(t); done(); };
+      ws.onerror = () => { clearTimeout(t); done(); };
+    });
+  } catch (e) {} // an older browser without it keeps its own folder
 }
 
 // TASKS_BROWSER_ARGS (JSON list) replaces the defaults, e.g. a small model gets no automatic page
@@ -45,12 +78,12 @@ const ACTIONS = new Set(['browser_click', 'browser_type', 'browser_fill_form', '
   'browser_drag', 'browser_press_key', 'browser_take_screenshot', 'browser_wait_for', 'browser_handle_dialog']);
 let own = 0;
 const pending = {};
-function ownCall(name, args) {
+function ownCall(name, args, ms = 10000) {
   return new Promise((resolve) => {
     const id = 'proxy-' + (++own);
     pending[id] = resolve;
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }) + '\n');
-    setTimeout(() => { if (pending[id]) { delete pending[id]; resolve(null); } }, 10000);
+    setTimeout(() => { if (pending[id]) { delete pending[id]; resolve(null); } }, ms);
   });
 }
 const resultText = (m) => (m && m.result && Array.isArray(m.result.content) ? m.result.content.map((c) => c.text || '').join('\n') : '');
@@ -154,7 +187,8 @@ function logAction(what, extra) {
 // pressing Enter, in any spelling Playwright accepts ("Enter", "NumpadEnter", "Control+Enter"), or Space (which
 // presses a focused button just the same), or typing with submit, or typing key by key with a line break in it
 // (Playwright presses Enter for the line break)
-const pressesEnter = (name, a) => (name === 'browser_press_key' && /(^|\+)\s*((numpad)?enter|space| )\s*$/i.test(String(a.key || '')))
+// Playwright also takes a bare line break ("\n", "\r") or "Return" as the Enter key
+const pressesEnter = (name, a) => (name === 'browser_press_key' && (/[\r\n]/.test(String(a.key || '')) || /(^|\+)\s*((numpad)?enter|return|space| )\s*$/i.test(String(a.key || ''))))
   || (name === 'browser_type' && (!!a.submit || (!!a.slowly && /[\r\n]/.test(String(a.text || '')))));
 
 /* Mail guard, for Claude's runs on the desktop (TASKS_BROWSER_MAIL). The user is logged in to his mail
@@ -169,17 +203,29 @@ const pressesEnter = (name, a) => (name === 'browser_press_key' && /(^|\+)\s*((n
 const MAIL_MODE = process.env.TASKS_BROWSER_MAIL || '';
 const TAINT_FILE = process.env.TASKS_BROWSER_TAINT || '';
 const MAIL_APPROVED = process.env.TASKS_BROWSER_APPROVED === '1';
-// his private pages: mail, and the account pages that hold the same kind of thing
-const PRIVATE = ['mail.google.com', 'calendar.google.com', 'contacts.google.com', 'drive.google.com', 'myaccount.google.com',
-  'outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'outlook.cloud.microsoft', 'onedrive.live.com',
+// his mail itself: the one private place a tainted run may still type in (a search, a draft)
+const MAIL = ['mail.google.com', 'outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'outlook.cloud.microsoft',
   'mail.yahoo.com', 'mail.proton.me', 'www.icloud.com'];
+// his private pages: mail, and the account, file and document pages that hold the same kind of thing (logged in)
+const PRIVATE = MAIL.concat(['calendar.google.com', 'contacts.google.com', 'drive.google.com', 'docs.google.com', 'sheets.google.com',
+  'slides.google.com', 'keep.google.com', 'photos.google.com', 'pay.google.com', 'passwords.google.com', 'myaccount.google.com',
+  'myactivity.google.com', 'takeout.google.com', 'onedrive.live.com', 'teams.microsoft.com', 'sharepoint.com', 'office.com', 'microsoft365.com']);
 const LOGIN = ['accounts.google.com', 'login.microsoftonline.com', 'login.live.com', 'login.yahoo.com', 'account.proton.me'];
 const isPrivate = (url) => hostAllowed(url, PRIVATE);
+const isMail = (url) => hostAllowed(url, MAIL);
 const mailSide = (url) => /^(about:blank|chrome-error:)/.test(String(url)) || hostAllowed(url, PRIVATE.concat(LOGIN));
+// on a private page without a yes: nothing that hands his things to someone else or changes how his mail is handled
+const PRIVATE_FINAL = /\b(share|forward|archive|block|mute|report|spam|trash|invite|grant|allow|create (a )?(filter|rule)|apply (a )?(filter|rule)|move to|label|mark (as|all)|export|download|make (a )?copy|publish|get (shareable )?link|copy link|add (people|member|user)|change (owner|permission)|remove access)\b/i;
+/* Tainted = this run has seen his mail. Kept in this process and in TASKS_BROWSER_TAINT: the store checkers
+   (shop1..3) are separate launcher processes on the same browser, so they read the file too, or a run could
+   open mail in one and carry it off through another. The app deletes the file before each run. */
 let tainted = false;
+const fileTainted = () => { try { return !!TAINT_FILE && require('fs').existsSync(TAINT_FILE); } catch (e) { return false; } };
+const isTainted = () => tainted || fileTainted();
 function taint(url) {
   if (tainted) return;
   tainted = true;
+  if (fileTainted()) return; // another launcher of this run already marked it
   logAction('opened mail', { url: String(url).slice(0, 200) });
   try { if (TAINT_FILE) require('fs').writeFileSync(TAINT_FILE, JSON.stringify({ url: String(url).slice(0, 200), at: Date.now() })); } catch (e) {}
 }
@@ -197,7 +243,7 @@ function mailRefusal(msg, here) {
   }
   if (here && isPrivate(here)) taint(here); // e.g. a tab left on his inbox
   if (to && isPrivate(to)) { taint(to); return null; }
-  if (!tainted) return null;
+  if (!isTainted()) return null;
   const why = 'This run has opened the user\'s mail, so it can no longer use other sites (a page could have asked for his mail to be sent somewhere). ';
   if (to && !mailSide(to)) return why + 'Finish the mail part and say in your note what is left; the rest runs next time.';
   if (TYPING.has(name) && here && !mailSide(here)) return why + 'This page (' + here.slice(0, 80) + ') is outside his mail.';
@@ -206,6 +252,16 @@ function mailRefusal(msg, here) {
     if (FINAL.test(label)) return 'Not without a yes: "' + label.trim() + '" looks like Send or another final step. List exactly what you will send in your note and ask the user to reply yes.';
     if (pressesEnter(name, a))
       return 'Not without a yes: Enter can send. Ask the user to reply yes first.';
+    // his files, contacts, calendar and account pages: a run may read them, but sharing a file, forwarding, making a
+    // mail filter or inviting someone is as final as Send, and typing there (a new address to share with) has no
+    // place without a yes. Mail itself still takes a search or a draft.
+    if (here && isPrivate(here) && !isMail(here)) {
+      if (name === 'browser_click' && PRIVATE_FINAL.test(label)) return 'Not without a yes: "' + label.trim() + '" on ' + here.slice(0, 60) + ' shares, moves or hands over his things. Say in your note exactly what it would do and ask the user to reply yes.';
+      if (name === 'browser_type' || name === 'browser_fill_form' || name === 'browser_select_option' || name === 'browser_drag')
+        return 'Not without a yes: nothing is typed or changed on his files, contacts or account pages (' + here.slice(0, 60) + ') in a run that has seen his mail. Read what you need and ask the user to reply yes for any change.';
+    } else if (name === 'browser_click' && PRIVATE_FINAL.test(label) && /\b(forward|filter|rule|block|report|spam|share|invite)\b/i.test(label)) {
+      return 'Not without a yes: "' + label.trim() + '" forwards, shares or changes how his mail is handled. Say in your note exactly what it would do and ask the user to reply yes.';
+    }
   }
   return null;
 }
@@ -230,7 +286,8 @@ function mailFilter(line) {
      until "approved" is true, which the dispatcher sets only when the user's latest reply is a yes */
 const LOCK_FILE = process.env.TASKS_BROWSER_LOCK || '';
 // "Apply" / "Easy Apply" on a job posting only opens the application form; what sends it is "Submit"
-const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate)\b/i;
+// (and the same buttons in German, Spanish and French: a store in another language is no way round the lock)
+const FINAL = /\b(submit|send|place (your )?order|buy|purchase|pay|check ?out|confirm|book|reserve|sign ?up|register|enroll|delete|remove|unsubscribe|cancel|post|publish|transfer|donate|(end|stop|terminate|close|discontinue|turn off|pause)\b[^.\n]{0,24}\b(membership|subscription|plan|account|service|auto-?renew(al)?|billing)|absenden|senden|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|kaufen|bezahlen|buchen|löschen|bestätigen|veröffentlichen|enviar|realizar (el )?pedido|comprar|pagar|reservar|eliminar|borrar|confirmar|publicar|envoyer|commander|acheter|payer|réserver|supprimer|confirmer|publier|valider)\b/i;
 // signing out is never part of a task, even after a yes: it ends the logins the user made on the mini PC
 // (Blackboard, D2L…), and only he can sign back in
 const SIGN_OUT = /\b(sign|log) ?(out|off)\b|logout|signout|logoff/i;
@@ -304,11 +361,11 @@ function lockedOut(msg) {
    placed by the agent once the user's latest reply is a yes (TASKS_BROWSER_APPROVED, or "approved" in
    the local lane's lock file), so the order button itself is held back until then, whatever a page
    says. Card numbers, PINs and security codes are his to type, even after a yes. */
-const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order|booking)|buy now|buy tickets?|pay now|purchase|book (now|flight|trip|it)|confirm (and |& )?(pay|purchase|booking))\b/i;
-const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
+const BUY = /\b(place (your |my )?order|submit order|complete (purchase|order|booking)|buy now|buy tickets?|pay now|purchase|book (now|flight|trip|it)|confirm (and |& )?(pay|purchase|booking)|(zahlungspflichtig |jetzt )?bestellen|jetzt kaufen|jetzt bezahlen|realizar (el )?pedido|comprar ahora|pagar ahora|confirmar (el )?pedido|commander|acheter maintenant|payer maintenant|valider (la |ma )?commande)\b/i;
+const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation)|pass(word|code|phrase)|one.?time (code|password|passcode)|verification code|authenticat(or|ion) code|2fa|mfa|otp)\b/i;
 // other steps that can't be taken back, on every lane (the lock's FINAL list covers the mini PC lane; Claude's
 // and the other cloud runs have no lock file): sending, deleting, paying, booking, posting, moving money
-const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|cancel (my |the |this |your )?(order|subscription|membership|account|booking|reservation|plan|flight|trip))\b/i;
+const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|yes,? cancel|confirm (the |my )?cancel+ation|finish cancel+ing|cancel\b[^.\n]{0,28}\b(order|subscription|membership|account|booking|reservation|plan|flight|trip|service)|(end|stop|terminate|close|discontinue|turn off|pause)\b[^.\n]{0,24}\b(membership|subscription|plan|account|service|auto-?renew(al)?|billing)|senden|absenden|löschen|bezahlen|buchen|veröffentlichen|überweisen|enviar|eliminar|borrar|pagar|reservar|publicar|transferir|envoyer|supprimer|payer|réserver|publier|virer)\b/i;
 /* His yes is spent by the first final click (or Enter on the checkout) that goes through: a second order, a
    second application or a "send" after it waits for a fresh yes, whatever a page says next. */
 let spent = false;
@@ -324,9 +381,12 @@ function buyRefusal(msg, here) {
   // Amazon's "Buy Now" can order in one tap, skipping the review page he said yes to: never, yes or not
   if (name === 'browser_click' && /\bbuy now\b/i.test(labelOf(a.target || a.ref, a.element)) && /amazon\./i.test(here || ''))
     return 'Not "Buy Now": it skips the review page. Tap Add to Cart, then go through checkout.';
-  // his yes was about particular sites (TASKS_BROWSER_APPROVED_HOSTS): the order button is unlocked there only
-  const approved = !spent && ((MAIL_APPROVED && (!APPROVED_HOSTS.length || hostAllowed(String(here || ''), APPROVED_HOSTS))) || (lockState() || {}).approved === true);
-  const again = spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.' : '';
+  // his yes was about particular sites (TASKS_BROWSER_APPROVED_HOSTS): the order button is unlocked there only. No
+  // sites known = the yes unlocks nothing: a page could otherwise send the run anywhere and spend the yes there.
+  const approved = !spent && ((MAIL_APPROVED && APPROVED_HOSTS.length > 0 && hostAllowed(String(here || ''), APPROVED_HOSTS)) || (lockState() || {}).approved === true);
+  const again = spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.'
+    : MAIL_APPROVED && !APPROVED_HOSTS.length ? ' His yes named no site: stop on the page where the final step is, say its address in your note, and ask again.'
+    : MAIL_APPROVED && here && !hostAllowed(String(here), APPROVED_HOSTS) ? ' His yes was about ' + APPROVED_HOSTS.slice(0, 3).join(', ') + ', not this site.' : '';
   if (name === 'browser_click' && !approved && BUY.test(labelOf(a.target || a.ref, a.element)))
     return 'Not without a yes: this places the order. List the items, total and time slot in your note and ask the user to reply yes.' + again;
   // a job application (or any other form): "Submit" sends it, and waits for his yes the same way
@@ -403,6 +463,155 @@ function fileRefusal(msg) {
     + 'Not ' + bad.join(', ') + '. To close the file box without uploading, call browser_file_upload with no paths, then say in your note what the site asked for.';
 }
 
+/* His Link wallet (TASKS_LINK_CLI and friends, set by agent/agent-browser.js once he has connected Link in
+   Settings; agent/link-wallet.js is copied next to this file). Four tools this launcher adds to the browser's
+   own, for a store where he has no saved card: link_pay_request asks Link for a one-time card for this
+   checkout (he approves the exact amount in the Link app), link_wait waits for that approval,
+   link_enter_card types the card into the fields the AI points at, link_cancel withdraws a request. The first
+   three work only once his yes has unlocked the order button on this store (the same gate as buyRefusal),
+   and the AI never sees the number: the launcher keeps it in memory, types it, blanks it out of every page it
+   passes on afterwards, and refuses screenshots once a card is on the page. */
+const LINK = process.env.TASKS_LINK_CLI ? { node: process.execPath, cli: process.env.TASKS_LINK_CLI, auth: process.env.TASKS_LINK_AUTH || '', env: childEnv(),
+  test: process.env.TASKS_LINK_TEST === '1', pending: process.env.TASKS_LINK_PENDING || '', task: TASK_TITLE } : null;
+const LINK_NAMES = new Set(['link_pay_request', 'link_wait', 'link_enter_card', 'link_cancel']);
+const LINK_TOOLS = [
+  { name: 'link_pay_request', description: 'Pay at this store with a one-time card from the user\'s Link wallet (only after his yes to this order, on the store he said yes to). ' +
+    'Give the order exactly as the checkout shows it; he approves that amount in the Link app. Answers approved (then call link_enter_card) or waiting (then call link_wait).',
+    inputSchema: { type: 'object', properties: {
+      merchant_name: { type: 'string', description: 'The store, as its site names it' },
+      merchant_url: { type: 'string', description: 'The checkout page\'s address (https://…)' },
+      total: { type: 'string', description: 'The order total exactly as the checkout shows it, tax and shipping included, e.g. "$131.00"' },
+      items: { type: 'array', description: 'What is in the order', items: { type: 'object', properties: { name: { type: 'string' }, qty: { type: 'integer' }, price: { type: 'string', description: 'that line\'s price as shown' } }, required: ['name'] } },
+      subtotal: { type: 'string' }, shipping: { type: 'string' }, tax: { type: 'string' },
+      why: { type: 'string', description: 'One line on what it is for; he reads it in the Link app' } }, required: ['merchant_name', 'merchant_url', 'total'] } },
+  { name: 'link_wait', description: 'Wait (up to 90 seconds) for the user to approve the Link payment in the Link app. Call it a few times if needed.',
+    inputSchema: { type: 'object', properties: { seconds: { type: 'integer', description: 'How long to wait, up to 90' } } } },
+  { name: 'link_enter_card', description: 'Type the approved Link card into the checkout\'s card fields. Take a browser_snapshot first and pass the refs of the card number field, ' +
+    'the expiry field (a text field like MM/YY; dropdowns you pick yourself) and the CVC field. You never see the number.',
+    inputSchema: { type: 'object', properties: { number_ref: { type: 'string', description: 'ref of the card number field' }, expiry_ref: { type: 'string', description: 'ref of the expiry text field, if there is one' },
+      cvc_ref: { type: 'string', description: 'ref of the CVC / security code field' } }, required: ['number_ref'] } },
+  { name: 'link_cancel', description: 'Withdraw the Link payment request for this task (nothing is charged), e.g. when the store turned out not to take cards.', inputSchema: { type: 'object', properties: {} } },
+];
+let linkWallet = null; // made on first use (or handed in by the tests)
+function wallet() {
+  if (!linkWallet && LINK) linkWallet = require(require('path').join(__dirname, 'link-wallet.js')).wallet(LINK);
+  return linkWallet;
+}
+// the tools/list answer → the same, plus Link's tools (listIds: the ids of tools/list calls still waiting)
+const listIds = new Set();
+function withLinkTools(line) {
+  if (!LINK || !listIds.size || !line.includes('"tools"')) return line;
+  let m = null; try { m = JSON.parse(line); } catch (e) { return line; }
+  if (!m || !listIds.has(m.id) || !m.result || !Array.isArray(m.result.tools)) return line;
+  listIds.delete(m.id);
+  m.result.tools = m.result.tools.filter((t) => !LINK_NAMES.has(t.name)).concat(LINK_TOOLS);
+  return JSON.stringify(m) + '\n';
+}
+// the fields a card may go into, by the label the page gives them (learned from its snapshots)
+const CARD_NUMBER = /\b(card|credit|debit)\b[^\n]{0,20}\b(number|no\.?|#)|\bnumber on (the |your )?card|card ?number|\bpan\b/i;
+const NOT_CARD_NUMBER = /cvc|cvv|security|expir|\bexp\b|phone|zip|postal|gift|routing|account|coupon|promo|\bname\b|loyalty|rewards|member/i;
+const EXPIRY = /expir|\bexp\b|mm\s*\/?\s*yy|valid (thru|through|until)|\bdate\b/i;
+const CVC = /cvc|cvv|security code|security number|\bcsc\b|\bcid\b|card code|verification value|3.?digit|4.?digit/i;
+const NOT_CVC = /zip|postal|promo|coupon|discount|gift|verification code|one.?time|2fa|\bsms\b|\btexted\b|text message|phone|email/i; // (labels start with the role, e.g. "textbox CVC")
+let fillFields = (fields, ms) => ownCall('browser_fill_form', { fields }, ms);
+let typeField = (ref, text, ms) => ownCall('browser_type', { element: 'card field', ref, text, slowly: true }, ms);
+let cardOnPage = false; // a card has been typed into a page this run: no screenshots from here on
+const held = []; // the numbers typed this run, blanked out of everything Playwright sends back
+const yesNote = () => spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.'
+  : MAIL_APPROVED && !APPROVED_HOSTS.length ? ' His yes named no site: stop on the page where the final step is, say its address in your note, and ask again.' : '';
+// → a reason to refuse a Link tool call, or null
+function linkRefusal(name, a, here) {
+  if (!LINK_NAMES.has(name)) return null;
+  if (!LINK) return 'His Link wallet isn’t connected (Settings → Agent & AI → Link wallet), so the agent can’t pay here. Stop at checkout and say so in the note.';
+  if (name === 'link_cancel') return null;
+  const approved = !spent && MAIL_APPROVED && APPROVED_HOSTS.length > 0 && here != null && hostAllowed(String(here), APPROVED_HOSTS);
+  if (!approved) return 'Not without a yes: Link pays only once the user has said yes to this exact order in the task, and only on the store he said yes to. ' +
+    'List the items, total and arrival in your note and ask him to reply yes.' + yesNote() +
+    (MAIL_APPROVED && APPROVED_HOSTS.length && here != null && !hostAllowed(String(here), APPROVED_HOSTS) ? ' His yes was about ' + APPROVED_HOSTS.slice(0, 3).join(', ') + ', not this page.' : '');
+  if (name === 'link_pay_request' && !hostAllowed(String(a.merchant_url || ''), APPROVED_HOSTS))
+    return 'His yes was about ' + APPROVED_HOSTS.slice(0, 3).join(', ') + ', not ' + String(a.merchant_url || '').slice(0, 80) + '. merchant_url must be the checkout page of the store he said yes to.';
+  return null;
+}
+const mmyy = (c) => String(c.expMonth).padStart(2, '0') + '/' + String(c.expYear).slice(-2);
+const addressLine = (b) => b ? [b.name, b.line1, b.line2, [b.city, b.state].filter(Boolean).join(', '), b.postal_code, b.country].filter(Boolean).join(', ') : '';
+// what the AI is told about a request's state (never the number)
+function linkSay(r) {
+  const amt = r.amount != null ? '$' + (Number(r.amount) / 100).toFixed(2) + (r.currency && r.currency !== 'usd' ? ' ' + String(r.currency).toUpperCase() : '') : 'the amount';
+  const at = r.merchant ? ' at ' + r.merchant : '';
+  if (r.ok === false) return 'Link could not do that: ' + (r.error || 'unknown error') + (r.status === 'approved' ? '' : '. If this keeps failing, stop at checkout and say so in the note.');
+  switch (r.status) {
+    case 'approved': return 'Approved in Link: a one-time ' + r.card.brand + ' card ending ' + r.card.last4 + ' (expires ' + r.card.expiry + ') for ' + amt + at + '.' +
+      (r.card.billing ? ' Name on the card and billing address: ' + addressLine(r.card.billing) + '.' : '') +
+      ' Now take a browser_snapshot of the payment form and call link_enter_card with the refs of the card number, expiry (if it is a text field; expiry dropdowns you pick yourself) and CVC fields. ' +
+      'Fill the name on the card and the billing address yourself. Then place the order.';
+    case 'pending': return 'Waiting for his approval in the Link app: ' + amt + at + '. He can also open ' + r.approvalUrl + ' . Write one line for him now ("Approve ' + amt + at + ' in the Link app, or open that link"), then call link_wait, up to three times. ' +
+      'Still waiting after that: set the task to needs-you with "Approve ' + amt + at + ' in the Link app (or open ' + r.approvalUrl + '), then reply **yes** to place the order."';
+    case 'denied': return 'He declined this payment in Link. Don’t ask again: set the task to needs-you and ask what he wants to do.';
+    case 'expired': return 'The Link request expired before he approved it. Call link_pay_request again when he is ready, and ask him in the note to watch for Link’s approval.';
+    case 'action': return 'Link needs something from him first: ' + r.message + (r.actionUrl ? ' (' + r.actionUrl + ')' : '') + '. Put that in the note and set the task to needs-you.';
+    case 'used': return 'That Link request has already been paid with. If the order went through, report it; if not, call link_pay_request again for a new card.';
+    case 'canceled': return 'The Link request was withdrawn. Call link_pay_request again if he still wants the order.';
+    case 'failed': return 'The payment on that Link request failed. Call link_pay_request again for a new card, or stop and say so in the note.';
+    default: return 'Link request status: ' + String(r.status || 'unknown') + '. Try link_wait, or link_pay_request again.';
+  }
+}
+// link_enter_card: the card into the fields the AI named, checked against their labels first
+async function enterCard(a, here) {
+  const w = wallet(); const c = w && w.card();
+  if (!c) return { text: 'No card to enter yet: call link_pay_request (and link_wait until it says approved) first.', isError: true };
+  const want = [['number_ref', CARD_NUMBER, NOT_CARD_NUMBER, 'the card number', c.number], ['expiry_ref', EXPIRY, null, 'the expiry date (MM/YY)', mmyy(c)], ['cvc_ref', CVC, NOT_CVC, 'the security code (CVC)', c.cvc]];
+  const fields = [];
+  for (const [key, ok, not, what, value] of want) {
+    const ref = String(a[key] || '').trim(); if (!ref) continue;
+    const label = refLabels[ref];
+    if (!label) return { text: 'I don’t know the field ' + ref.slice(0, 20) + ': take a browser_snapshot and pass the refs of the card number, expiry and CVC fields as it lists them.', isError: true };
+    if (!ok.test(label) || (not && not.test(label))) return { text: '"' + label.trim().slice(0, 60) + '" (' + ref.slice(0, 20) + ') doesn’t look like ' + what + ' field. Pass the right ref from the snapshot.', isError: true };
+    if (value) fields.push({ ref, name: what, value });
+  }
+  if (!fields.some((f) => f.name === 'the card number')) return { text: 'number_ref is needed: the ref of the card number field.', isError: true };
+  const did = [], not = [];
+  for (const f of fields) { // one at a time, so a field that refuses doesn't stop the others
+    let r = await fillFields([{ name: f.name, type: 'textbox', ref: f.ref, value: f.value }], 20000);
+    if (!r || (r.result && r.result.isError)) r = await typeField(f.ref, f.value, 20000); // a masked field that wants key presses
+    (!r || (r.result && r.result.isError) ? not : did).push(f.name);
+  }
+  cardOnPage = true; held.push(c.number, c.cvc);
+  logAction('entered a Link card', { card: c.brand + ' ending ' + c.last4, url: String(here || '').slice(0, 200) });
+  return { text: (did.length ? 'Entered his Link card (' + c.brand + ' ending ' + c.last4 + ', expires ' + mmyy(c) + ') into ' + did.join(', ') + '.' : 'Could not enter the card.') +
+    (not.length ? ' Could not enter ' + not.join(', ') + ': take a snapshot and call link_enter_card again with that field’s ref.' : '') +
+    ' The number shows blanked out from here on and screenshots are off. Check the page (name on the card, billing address), then place the order.', isError: !did.length };
+}
+async function linkCall(msg, here) { // → {text, isError} for a Link tool
+  const name = msg.params.name, a = msg.params.arguments || {};
+  const refused = linkRefusal(name, a, here);
+  if (refused) return { text: refused, isError: true };
+  const w = wallet();
+  if (!w) return { text: 'His Link wallet isn’t available in this run.', isError: true };
+  if (name === 'link_enter_card') return enterCard(a, here);
+  if (name === 'link_cancel') { const r = await w.cancel(); return { text: r.ok ? 'The Link request was withdrawn; nothing was charged.' : 'Nothing to withdraw: ' + r.error, isError: !r.ok }; }
+  let r;
+  if (name === 'link_wait') r = await w.wait(Number(a.seconds) || 60);
+  else {
+    r = await w.request({ merchantName: a.merchant_name, merchantUrl: a.merchant_url, total: a.total, items: Array.isArray(a.items) ? a.items : [],
+      subtotal: a.subtotal, shipping: a.shipping, tax: a.tax, why: a.why, currency: a.currency });
+    if (r.ok !== false && r.id) logAction('asked Link to pay', { amount: r.amount, merchant: String(a.merchant_name || '').slice(0, 80), url: String(here || '').slice(0, 200) });
+  }
+  return { text: linkSay(r), isError: r.ok === false };
+}
+// no screenshots once a card is on the page: a picture would show the number
+const screenshotRefusal = (msg) => cardOnPage && msg.params && msg.params.name === 'browser_take_screenshot'
+  ? 'No screenshots while a card is on the page: use browser_snapshot (the number is blanked out there).' : null;
+// Playwright's answers with the card's number (and its code, next to its label) blanked out
+function blank(line) {
+  if (!held.length) return line;
+  for (let i = 0; i < held.length; i += 2) {
+    const number = held[i], cvc = held[i + 1];
+    if (number) line = line.replace(new RegExp(number.split('').join('[\\s-]?'), 'g'), '•••• •••• •••• ' + number.slice(-4));
+    if (cvc) line = line.replace(new RegExp('((?:cvc|cvv|security code|security number|csc|cid|card code)[^0-9]{0,80}?)' + cvc + '\\b', 'gi'), '$1•••');
+  }
+  return line;
+}
+
 /* Store checkers (TASKS_BROWSER_SHOP, set for "shop1".."shop3" in agent/agent-browser.js) share this
    browser with the main run and each other, so tab numbers shift under them. A checker may only close
    its own tab: whatever number it gives, "close" closes the tab this connection is on. It can't switch
@@ -421,7 +630,7 @@ async function shopTabs(msg) { // → a refusal, or null (msg may be changed to 
 }
 
 function main() {
-  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'] });
+  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'], env: childEnv() });
   child.on('exit', (code) => process.exit(code || 0));
   process.on('exit', () => { try { child.kill(); } catch (e) {} });
 
@@ -440,7 +649,7 @@ function main() {
           continue; // ours (or a late answer to one of ours)
         }
       }
-      process.stdout.write(mailFilter(line));
+      process.stdout.write(mailFilter(blank(withLinkTools(line))));
     }
   });
 
@@ -453,11 +662,17 @@ function main() {
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i + 1); buf = buf.slice(i + 1);
       chain = chain.then(async () => {
+        if (LINK && /"method"\s*:\s*"tools\/list"/.test(line)) { try { const m = JSON.parse(line); if (m && m.id != null) listIds.add(m.id); } catch (e) {} } // its answer gets Link's tools added
         if (/"method"\s*:\s*"tools\/call"/.test(line)) {
-          if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
+          if (!started) { started = true; await ensureBrowser(); await setDownloadsDir(); if (!SHOP) await selectStartTab(); }
           let msg = null; try { msg = JSON.parse(line); } catch (e) {}
-          const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
-          const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || await shopTabs(msg));
+          const here = msg && msg.params && (ACTIONS.has(msg.params.name) || LINK_NAMES.has(msg.params.name)) ? await frontCurrentTab() : null;
+          if (msg && msg.params && LINK_NAMES.has(msg.params.name)) { // the launcher's own tools: Playwright never sees them
+            const r = await linkCall(msg, here);
+            process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: r.text }], isError: !!r.isError } }) + '\n');
+            return;
+          }
+          const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || screenshotRefusal(msg) || await shopTabs(msg));
           if (msg) noteStep(msg, refused);
           if (refused) { // answer it ourselves; Playwright never sees the call
             process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
@@ -474,4 +689,7 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { stepLine, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests
+else module.exports = { stepLine, childEnv, SECRET_ENV, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
+  // his Link wallet
+  LINK_TOOLS, LINK_NAMES, withLinkTools, linkRefusal, linkCall, linkSay, blank, screenshotRefusal,
+  _link: { listIds, setWallet: (w) => { linkWallet = w; }, setFill: (f) => { fillFields = f; }, setType: (f) => { typeField = f; }, cardOnPage: () => cardOnPage } }; // tests

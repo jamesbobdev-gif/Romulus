@@ -397,16 +397,17 @@ if(window.desktop&&window.desktop.aiStatus){
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
    config). Each item keeps its id (from the feed's own UID), so a re-import never adds copies. What the
    feed last said per item is remembered here, so: a deadline the teacher moves is followed unless he set
-   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off. */
-const FEED_SEEN_KEY='tasks.feedSeen';
+   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off;
+   one gone two days past its deadline (school-overdue.js) comes back if the school puts it on a day to come. */
 async function importCourseFeeds(){
   if(!window.desktop||!window.desktop.feedsFetch)return null;
   const r=await window.desktop.feedsFetch();
-  let seen={}; try{ seen=JSON.parse(localStorage.getItem(FEED_SEEN_KEY)||'{}')||{}; }catch(e){}
+  const seen=feedSeenRead(); // what the feed last said per item (school-overdue.js, which reads it too)
   const ws=schoolConfigured()?'school':'personal';
   const byId={}; state.tasks.forEach(function(t){ byId[t.id]=t; });
   const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
   const norm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
+  const today=formatDate(new Date());
   let added=0, moved=0, sited=0;
   r.items.forEach(function(e){
     const was=seen[e.id], now=e.due+' '+(e.dueTime||'');
@@ -417,7 +418,10 @@ async function importCourseFeeds(){
       if(was&&was!==now&&!t.done&&(t.due+' '+(t.dueTime||''))===was){ t.due=e.due; t.dueTime=e.dueTime; moved++; }
       return;
     }
-    if(was||tombed[e.id])return;
+    // taken off once its deadline was two days gone (the sweep in school-overdue.js, or by hand), and the school has
+    // since put it on a day to come (a quiz reopened): it's back on
+    if(tombed[e.id]&&was&&was!==now&&e.due>=today&&pastSaving(schoolDeadline(null,was),new Date()))state.tombstones=state.tombstones.filter(function(x){ return x.id!==e.id; });
+    else if(was||tombed[e.id])return;
     // he already put it on a list himself: same day, same name
     if(state.tasks.some(function(x){ return x.due===e.due&&norm(x.title)===norm(e.title); }))return;
     const n={id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime,tag:e.course||null,ws:ws,subs:[],googleEventId:null,created:Date.now()};
@@ -429,10 +433,9 @@ async function importCourseFeeds(){
      he hasn't touched (no date of his own, no steps, no plan) comes off. Only when every link answered in full,
      so a feed that hiccups never empties the list */
   const live={}; r.items.forEach(function(e){ live[e.id]=1; });
-  const today=formatDate(new Date());
   const vanished=r.complete?state.tasks.filter(function(t){
     return /^ics-/.test(t.id)&&!live[t.id]&&seen[t.id]&&!t.done&&t.due&&t.due>=today&&
-      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
+      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length);
   }).map(function(t){ return t.id; }):[];
   const tidy=tidySchool(r,vanished);
   if(added||moved||sited||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
@@ -568,7 +571,6 @@ function tidySchool(r,vanished){
       if(!f.tag&&h.tag)f.tag=h.tag;
       if(schoolKind(f)==='regular'&&schoolKind(h)!=='regular')f.kind=h.kind;
       if(h.notes&&String(f.notes||'').indexOf(h.notes)<0)f.notes=h.notes+(f.notes?'\n\n'+f.notes:'');
-      if(!f.plan&&h.plan){ f.plan=h.plan; f.planSet=h.planSet; }
       if(h.subs&&h.subs.length)f.subs=(f.subs||[]).concat(h.subs);
     });
     // one match: keep whichever name says more ("Homework: Gas Giants, Rings, and Moons" over "Homework: Gas Giants")
@@ -771,6 +773,8 @@ $('tabFamily').addEventListener('click',function(){ switchTab('family'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
+$('tabHealth').addEventListener('click',function(){ switchTab('health'); });
+$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
@@ -790,7 +794,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||isViewTab(state.activeTab))return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -799,10 +803,27 @@ $('searchBox').addEventListener('keydown',function(e){
   if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); }
   if(e.key==='Enter')this.blur();
 });
+/* the tab bar scrolls sideways with its scrollbar hidden: a fade at an edge says there's more that way
+   (styles.css .tabs.more-left / .more-right), and on a computer the mouse wheel scrolls it along */
+(function(){
+  const bar=document.querySelector('.tabs'); if(!bar)return;
+  function edge(){
+    bar.classList.toggle('more-left',bar.scrollLeft>4);
+    bar.classList.toggle('more-right',bar.scrollWidth-bar.clientWidth-bar.scrollLeft>4);
+  }
+  bar.addEventListener('scroll',edge,{passive:true}); window.addEventListener('resize',edge);
+  bar.addEventListener('wheel',function(e){
+    if(bar.scrollWidth<=bar.clientWidth||Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;
+    bar.scrollLeft+=e.deltaY; e.preventDefault();
+  },{passive:false});
+  new MutationObserver(edge).observe(bar,{attributes:true,subtree:true,attributeFilter:['class','hidden']}); // a tab switched off or on
+  edge();
+})();
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')switchTab('list');
+    if(state.activeTab==='ideas'){ $('ideaSearch').focus(); $('ideaSearch').select(); return; } // Notes has its own search box
+    if(state.activeTab==='calendar'||isViewTab(state.activeTab))switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -813,8 +834,10 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
-  const a=document.activeElement;
+  if(state.activeTab==='calendar'||isViewTab(state.activeTab))return;
+  // the key's own target, not what has focus now: a field's handler (Enter adds a subtask and re-renders, or blurs)
+  // runs first, so by the time this fires the focus is on the body and Enter would collapse the open task
+  const a=e.target&&e.target.tagName?e.target:document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     e.preventDefault();

@@ -31,6 +31,7 @@ function applyListUpdate(t,ch){
   (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const it=listItem(a); if(it&&!list.some(function(x){ return sameItem(x.name,it.name); }))list.push(it); });
   (Array.isArray(ch.bought)?ch.bought:[]).forEach(function(n){ list.forEach(function(x){ if(sameItem(x.name,n)){ x.last=today; x.out=false; } }); });
   t.list=list.length?list:null;
+  if(typeof kitchenBought==='function')kitchenBought(ch.bought); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
   if(typeof famCheckOff==='function')famCheckOff(ch.bought); // and off the group's shared Groceries list (family.js)
 }
 
@@ -232,7 +233,7 @@ function cardsStrip(t){
     if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
     const ph=el('div','mini-pic');
-    if(it.image){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+    if(it.image&&/^https:\/\//i.test(String(it.image))){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
       im.onerror=function(){ ph.textContent=it.name.charAt(0); im.remove(); }; ph.appendChild(im); }
     else ph.textContent=it.name.charAt(0);
     c.appendChild(ph);

@@ -14,7 +14,7 @@ const SYNC_V2_SALT='romulus-sync-v2';
 const syncV2Cache=new Map(); // base sync key → Promise<{lookup, key}>
 function syncCryptoOk(){ return !!(window.crypto&&crypto.subtle&&crypto.subtle.deriveKey); }
 // 'tk_agent_abc:prefs' → {base:'tk_agent_abc', sfx:':prefs'}
-function syncSplitKey(k){ const m=/^(.*?)(:[a-z]+)?$/.exec(String(k||'')); return {base:m[1],sfx:m[2]||''}; }
+function syncSplitKey(k){ const m=/^(.*?)(:[a-z-]+)?$/.exec(String(k||'')); return {base:m[1],sfx:m[2]||''}; }
 function syncKeyPrefix(base){ const m=/^tk_(?:(?:work|agent|school)_)?/.exec(base); return m?m[0]:'tk_'; }
 function syncB64(bytes){ let s=''; bytes.forEach(function(b){ s+=String.fromCharCode(b); }); return btoa(s); }
 function syncUnB64(s){ return Uint8Array.from(atob(String(s)),function(c){ return c.charCodeAt(0); }); }

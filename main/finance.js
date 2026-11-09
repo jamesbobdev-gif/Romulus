@@ -252,14 +252,14 @@ async function stocksNow(force) {
   let error = null;
   if (force || !lastQuotes || Date.now() - lastQuotes.at >= QUOTE_MS) {
     try {
-      const got = await stocks.fetchQuotes(symbols, doFetch, '1d');
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1d', lastQuotes && lastQuotes.quotes);
       if (key !== k) return { locked: true };
       lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning };
     } catch (e) { if (key !== k) return { locked: true }; error = e.message; }
   }
   if (!lastDaily || Date.now() - lastDaily.at >= DAILY_MS) {
     try {
-      const got = await stocks.fetchQuotes(symbols, doFetch, '1y');
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1y', lastDaily && lastDaily.quotes);
       if (key !== k) return { locked: true };
       lastDaily = { at: Date.now(), quotes: got.quotes };
     } catch (e) { if (key !== k) return { locked: true }; }
@@ -533,7 +533,8 @@ const handlers = {
     if (!x || !x.username || !x.password) { k.fill(0); return { ok: false, error: 'The shared connection isn’t a SimpleFIN link. Connect with a setup token instead.' }; }
     wrong = 0; waitUntil = 0;
     log('connected with the link from another computer');
-    return startVault(inside.u, s, k, box);
+    const clean = { v: 1, kdf: 'scrypt', N: box.N, r: box.r, p: box.p, salt: box.salt, iv: box.iv, tag: box.tag, data: box.data }; // nothing else the row carried
+    return startVault(inside.u, s, k, clean);
   },
   'finance:unlock': async (_e, passphrase) => {
     if (key) { stillHere(); return { ok: true }; }

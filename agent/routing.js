@@ -144,7 +144,7 @@ function routeTask(t) {
 // a #legion task is Lupa's even if it was on Claude before (its title was edited): only Lupa may see the whole request
 // a private word that arrives later (in a reply, or typed into a task already on Claude) moves the task to the mini PC
 // before the next run, whatever lane it had: only a #claude tag in the title keeps it on the cloud (same as routeTask)
-const laneOf = (t) => t.financeSeen || isLegion(t) ? 'local'
+const laneOf = (t) => t.financeSeen || isLegion(t) || isCoach(t) ? 'local'
   : t.lane === 'claude' && !/(^|\s)#claude\b/i.test(String(t.title || '')) && privateMatch(t) ? 'local'
   : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }

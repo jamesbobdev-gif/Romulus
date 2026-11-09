@@ -1,7 +1,8 @@
-/* The tray icon: its menu, and a tooltip with overdue / due-today counts. */
+/* The tray icon: its menu, a tooltip with overdue / due-today counts, and on Windows a one-time notice
+   saying where the icon went. */
 const fs = require('fs');
 
-let ctx = null; // { dataFile, showWindow, quit, agentLog, icon }
+let ctx = null; // { dataFile, readConfig, writeConfig, showWindow, quit, agentLog, icon }
 function init(c) { ctx = c; }
 
 let tray = null;
@@ -15,6 +16,7 @@ function createTray() {
   tray.setToolTip('Romulus');
   buildMenu();
   tray.on('click', ctx.showWindow);
+  tray.on('balloon-click', ctx.showWindow); // the first-time notice (hiddenToTray) opens the window when clicked
 }
 
 function buildMenu() {
@@ -72,4 +74,27 @@ function refreshTrayStatus(raw) {
   tray.setToolTip(trayTip(Array.isArray(data.tasks) ? data.tasks : []));
 }
 
-module.exports = { init, handlers, createTray, refreshTrayStatus, trayTip, setUpdate };
+// Windows keeps a new app's tray icon out of sight, in the overflow behind the ^ by the clock, until its owner
+// drags it onto the taskbar. So the first time the window hides there, a notice says where it went and how to
+// keep it in sight: once per computer (config.json). macOS shows every menu-bar icon and on Linux the desktop
+// decides, so it is Windows only.
+function hintDue(cfg, platform = process.platform) {
+  return platform === 'win32' && !(cfg && cfg.trayHintShown);
+}
+function hiddenToTray() {
+  if (!tray) return;
+  const cfg = ctx.readConfig();
+  if (!hintDue(cfg)) return;
+  cfg.trayHintShown = true;
+  ctx.writeConfig(cfg);
+  const { nativeImage } = require('electron');
+  try {
+    tray.displayBalloon({
+      iconType: 'custom', icon: nativeImage.createFromPath(ctx.icon),
+      title: 'Romulus is still running',
+      content: 'It is under the ^ by the clock. Drag the coin onto the taskbar to keep it in sight; right-click it to quit.'
+    });
+  } catch (e) {}
+}
+
+module.exports = { init, handlers, createTray, refreshTrayStatus, trayTip, setUpdate, hintDue, hiddenToTray };

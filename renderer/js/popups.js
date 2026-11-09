@@ -88,6 +88,7 @@ function openLightbox(opts,startIdx){
     box.innerHTML='';
     const o=pics[pos].o, label=String(o.label||('Option '+(pics[pos].i+1)));
     const big=document.createElement('img');
+    if(!/^https:\/\//i.test(String(o.image)))return; // the AI's or a synced card's picture: web pictures only
     big.src=String(o.image).replace(/\._AC_SL\d+_\./,'._AC_SL1500_.'); // sharper copy of the same Amazon photo
     big.alt=label; big.referrerPolicy='no-referrer'; big.draggable=false;
     big.addEventListener('error',function(){ if(big.src!==o.image)big.src=o.image; }); // fall back to the card-size photo
@@ -198,9 +199,10 @@ function buildDayCell(date,otherMonth,todayStr){
   dayTasks.slice(0,MAX).forEach(function(t){
     const isLate=!t.done&&dateInfo(ds).diff<0;
     const cls='cal-chip'+(t.done?' done':isLate?' late':isToday?' accent':'');
-    const label=t.dueTime?fmtTime(t.dueTime)+' '+t.title:t.title;
-    const chip=el('div',cls,label);
-    chip.title=t.title;
+    // title first: a narrow cell cuts the end, and '3:00pm …' said nothing about what it was
+    const chip=el('div',cls,t.title);
+    if(t.dueTime){ const tm=el('span','cal-chip-time',' '+fmtTime(t.dueTime)); chip.appendChild(tm); }
+    chip.title=t.dueTime?t.title+' · '+fmtTime(t.dueTime):t.title;
     chip.addEventListener('click',function(e){
       // phones: chips are thin bars, so a tap anywhere in the day opens that day's list (the cell's handler)
       if(window.matchMedia('(max-width:520px)').matches)return;

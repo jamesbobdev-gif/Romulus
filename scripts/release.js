@@ -24,6 +24,8 @@ try { run(`gh repo view ${owner}/${repo}`, { stdio: 'ignore' }); } catch (e) {
 
 const bump = (v) => v.split('.').map(Number).map((n, i) => (i === 2 ? n + 1 : n)).join('.');
 pkg.version = process.argv[2] || bump(pkg.version);
+// the version goes into shell commands below: digits and dots only
+if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) { console.error('Not a version: ' + JSON.stringify(pkg.version) + ' (use 1.2.3)'); process.exit(1); }
 fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
 console.log('Releasing ' + pkg.version);
 

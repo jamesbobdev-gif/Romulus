@@ -252,9 +252,8 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .lane-slider .lane-word.on .spin{color:var(--accent)}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
-.tab.busy{position:relative;padding-right:13px}
-.tab.busy{padding-right:13px} /* room for the dot, so it never sits on the last letter */
-.tab.busy::after{content:'';position:absolute;top:50%;right:3px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
+.tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */
+.tab.busy::after{content:'';position:absolute;top:50%;right:5px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
 @keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tab.busy::after{animation:none}}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
@@ -449,6 +448,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
   .cal-grid .cal-chip.accent{background:var(--accent)}
   .cal-grid .cal-chip.late{background:var(--late)}
   .cal-grid .cal-chip.done{background:var(--hairline)}
+  .cal-grid .cal-chip .cal-chip-time{display:none} /* the time keeps its 10px font otherwise and a sliver of it shows under the bar */
   .cal-grid .cal-more{font-size:8.5px;padding:0 1px;white-space:nowrap}
   .day-pop .day-pop-row{padding:11px 0} /* bigger touch targets in the day list */
 }
@@ -456,14 +456,18 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 
 /* ── tabs ── */
 /* a rubber band: however many tabs are on, they share the bar in equal widths (two fill it in halves, three in thirds);
-   a label never shrinks below its own width, so when too many are on for the space the bar scrolls sideways instead */
-.tabs{display:flex;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px;overflow-x:auto;scrollbar-width:none}
+   a label never shrinks below its own width, so when too many are on for the space the bar scrolls sideways instead,
+   fading at whichever edge has more (wiring.js tabsEdge); the tab you pick is scrolled into view (calendar-view.js switchTab) */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .tabs::-webkit-scrollbar{display:none}
+.tabs.more-right{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+.tabs.more-left{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px);mask-image:linear-gradient(90deg,transparent,#000 36px)}
+.tabs.more-left.more-right{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 .tab{flex:1 1 0;min-width:max-content;text-align:center;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 5px;border:0;border-radius:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 .tab.tab-off{display:none} /* switched off in Settings > Tabs (tab-picker.js) */
-@media(max-width:520px){.tab{padding:8px 9px}.tabs{-webkit-overflow-scrolling:touch}}
+@media(max-width:520px){.tab{padding:8px 9px}}
 @media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* many tabs on a phone: tighter labels, then the bar scrolls sideways instead of widening the page */
 
 /* ── ideas: note cards you sort into groups ── */
@@ -473,6 +477,8 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 }
 .ideas-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .ideas-bar .btn-accent{margin-left:0}
+.ideas-bar .idea-search{flex:1;min-width:160px;max-width:360px;margin:0}
+.idea-card .idea-pinned{font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;margin-bottom:2px}
 
 .idea-gsize{position:absolute;top:10px;bottom:10px;right:-8px;width:12px;cursor:ew-resize;touch-action:none;z-index:2}
 .idea-gsize::after{content:'';position:absolute;top:50%;left:5px;width:3px;height:36px;margin-top:-18px;border-radius:2px;background:var(--faint);opacity:0;transition:opacity .15s}
@@ -562,6 +568,7 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .cal-cell.today{border-color:#B9C2F2;box-shadow:0 0 0 1px #B9C2F2}
 .cal-num{font-family:var(--mono);font-size:10.5px;margin-bottom:4px;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%}
 .cal-cell.today .cal-num{background:var(--ink);color:var(--surface);font-weight:600;padding:0 3px}
+.cal-chip .cal-chip-time{color:var(--muted);font-family:var(--mono);font-size:10px}
 .cal-chip{font-size:11px;padding:2px 5px;border-radius:4px;margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;background:var(--chip);color:var(--ink);display:block;transition:opacity .12s}
 .cal-chip:hover{opacity:.75}
 .cal-chip.done{color:var(--muted);text-decoration:line-through}
@@ -669,65 +676,9 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .cal-opts label.chk{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer}
 .cal-opts .settings-inp{margin:0}
 
-/* ── daily swipe deck: right = today, left = tomorrow ── */
-.chip.plan{background:var(--accent);color:#fff;border:0}
-.chip.plan.later{background:transparent;color:var(--muted);border:1px dashed var(--hairline);text-transform:none;letter-spacing:.02em}
-.plan-btn{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
-/* a narrow phone: the header stays one line; the button says "Plan · 1" and the date keeps its words */
+/* a narrow phone: the header stays one line */
 .stamp{white-space:nowrap}
-@media(max-width:430px){.plan-day{display:none}.top-right{gap:8px}}
-.plan-btn:hover{background:var(--accent);color:#fff}
-.swipe{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:max(18px,env(safe-area-inset-top)) 16px max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}
-.swipe[hidden]{display:none}
-.swipe-top{width:100%;max-width:440px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.swipe-top h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
-.swipe-sub{width:100%;max-width:440px;color:var(--muted);margin-top:6px}
-.swipe-close{border:0;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;padding:6px}
-.swipe-close:hover{color:var(--ink)}
-.swipe-stage{position:relative;flex:none;width:100%;max-width:440px;height:min(52vh,420px);min-height:240px;margin:auto 0}
-.swipe-card{position:absolute;inset:0;background:var(--surface);border:1px solid var(--hairline);border-radius:18px;box-shadow:0 10px 30px rgba(20,20,20,.08);padding:26px 22px;display:flex;flex-direction:column;gap:12px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;will-change:transform}
-.swipe-card.back{transform:scale(.95) translateY(12px);opacity:.6;pointer-events:none}
-.swipe-card.anim{transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s}
-.swipe-card:active{cursor:grabbing}
-.swipe-card .sc-title{font-size:24px;font-weight:650;line-height:1.25;letter-spacing:-.01em;overflow-wrap:anywhere}
-.swipe-card .sc-meta{display:flex;flex-wrap:wrap;gap:6px}
-.swipe-card .sc-subs{color:var(--muted);font-size:13.5px;line-height:1.5}
-.swipe-card .sc-why{margin-top:auto;color:var(--muted)}
-.swipe-stamp{position:absolute;top:22px;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:8px;border:2px solid;opacity:0;pointer-events:none}
-.swipe-stamp.today{right:20px;color:var(--accent);border-color:var(--accent);transform:rotate(8deg)}
-.swipe-stamp.tmrw{left:20px;color:#8A5A00;border-color:#D9A93F;transform:rotate(-8deg)}
-.swipe-stamp.done{left:50%;color:#1E7A46;border-color:#5DB585;transform:translateX(-50%) rotate(-4deg)}
-/* swiped up: a quick shake where you let go, then it flies off the top */
-.swipe-card.shake{animation:swipeShake .34s ease-in-out}
-@keyframes swipeShake{
-  0%,100%{transform:translate(var(--sx,0px),var(--sy,0px))}
-  20%{transform:translate(calc(var(--sx,0px) - 11px),var(--sy,0px)) rotate(-3deg)}
-  40%{transform:translate(calc(var(--sx,0px) + 11px),var(--sy,0px)) rotate(3deg)}
-  60%{transform:translate(calc(var(--sx,0px) - 7px),var(--sy,0px)) rotate(-2deg)}
-  80%{transform:translate(calc(var(--sx,0px) + 5px),var(--sy,0px)) rotate(1deg)}
-}
-.swipe-actions{width:100%;max-width:440px;display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center}
-.swipe-actions button{font-family:var(--display);font-size:15px;font-weight:600;border-radius:12px;padding:14px 10px;cursor:pointer;border:1px solid var(--hairline);background:var(--surface);color:var(--ink)}
-.swipe-actions .go-tmrw{color:#8A5A00;border-color:#EBD3A0;background:#FFF8E8}
-.swipe-actions .go-today{color:#fff;border-color:var(--accent);background:var(--accent)}
-.swipe-actions .undo{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:14px 12px}
-.swipe-actions button:disabled{opacity:.35;cursor:default}
-.swipe-done{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px}
-.swipe-done .big{font-size:22px;font-weight:700}
-.swipe-done .btn-accent{margin:8px auto 0;align-self:center;padding:12px 22px;font-size:15px}
-.swipe-hint{color:var(--faint);margin-top:10px;text-align:center}
-/* swiped down: to the Agent */
-.swipe-stamp.agent{top:auto;bottom:22px;left:50%;color:var(--accent);border-color:var(--accent);transform:translateX(-50%) rotate(3deg)}
-.swipe .go-agent{width:100%;max-width:440px;margin-top:10px;font-family:var(--display);font-size:14px;font-weight:600;border-radius:12px;padding:11px 10px;cursor:pointer;border:1px dashed var(--accent);background:transparent;color:var(--accent)}
-.swipe .go-agent:disabled{opacity:.35;cursor:default}
-.agent-flash{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;animation:agentFlashIn .32s cubic-bezier(.2,1.4,.4,1) both}
-.agent-flash.out{animation:agentFlashOut .35s ease-in both}
-.agent-flash-badge{width:112px;height:112px;border-radius:30px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 14px 40px rgba(39,66,200,.35)}
-.agent-flash-badge svg{width:64px;height:64px}
-.agent-flash-label{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:6px 12px}
-@keyframes agentFlashIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
-@keyframes agentFlashOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.85) translateY(-14px)}}
-@media (prefers-reduced-motion:reduce){.agent-flash,.agent-flash.out{animation-duration:.01s}}
+@media(max-width:430px){.top-right{gap:8px}}
 /* what the mini PC did on the way to an answer, folded shut (agent-chat.js thoughtsBox) */
 .conv-thoughts{margin-top:8px}
 .conv-thoughts summary{cursor:pointer;font-size:12px;color:var(--muted);user-select:none}
@@ -925,6 +876,7 @@ textarea.ask-other{min-height:70px}
 .fin-hbar-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fin-hbar-track{height:12px}
 .fin-hbar-fill{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0}
+.fin-hbar.has-cancel{grid-template-columns:minmax(0,9em) 1fr auto auto} /* a cancel button after the amount */
 .fin-cols{display:flex;align-items:stretch;gap:6px;height:150px;border-bottom:1px solid var(--hairline);margin-bottom:20px}
 .fin-col{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;position:relative}
 .fin-col-plot{flex:1;width:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px}
@@ -1013,16 +965,18 @@ textarea.ask-other{min-height:70px}
 .fin-views .on{color:var(--ink);background:var(--chip)}
 .fin-views{align-items:baseline;flex-wrap:wrap}
 .fin-range{font-size:12px;margin-left:auto}
-.fin-holdings{margin:6px 0 10px}
+.fin-holdings{margin:6px 0 10px;display:grid;column-gap:6px;grid-template-columns:minmax(0,1fr) minmax(52px,max-content) minmax(73px,max-content) minmax(57px,max-content) minmax(57px,max-content) minmax(83px,max-content) minmax(83px,max-content)} /* one grid for every holding (each row is a subgrid of it), so the columns line up down the list; the minimums are in px because the rows' 13px font isn't this box's */
+.fin-holdings>.fin-note{grid-column:1/-1}
 .fin-holdings-fold>.fin-row{margin-top:6px}
 /* each number column is as wide as a usual figure and grows for a wider one, so Value and Gain never run together; the name takes what is left */
-.fin-hold{display:grid;grid-template-columns:minmax(0,1fr) minmax(4em,max-content) minmax(5.6em,max-content) minmax(4.4em,max-content) minmax(4.4em,max-content) minmax(6.4em,max-content) minmax(6.4em,max-content);gap:6px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13px}
+.fin-hold{display:grid;grid-column:1/-1;grid-template-columns:subgrid;gap:6px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13px}
 .fin-hold:last-child{border-bottom:0}
 .fin-hold>.fin-amt,.fin-hold.head>span:not(:first-child){text-align:right}
 .fin-hold.head{padding-top:0}
 .fin-sort{justify-self:end;border:0;background:none;padding:0;font-family:var(--mono);cursor:pointer;white-space:nowrap}
 .fin-sort:hover,.fin-sort.on{color:var(--ink)}
-@media(max-width:520px){.fin-tiles,.fin-charts,.fin-worth-cols{grid-template-columns:1fr}.fin-hold{grid-template-columns:repeat(5,auto);gap:4px 8px;font-size:12px}.fin-hold.head{display:flex;gap:6px;padding-bottom:8px}.fin-hold.head>span{display:none}.fin-hold.head>.fin-sort{padding:5px 10px;border-radius:999px;background:var(--chip)}.fin-hold.head>.fin-sort.on{background:var(--ink);color:var(--surface)}.fin-hold>.fin-desc{grid-column:1/4;font-size:13px}.fin-hold>.fin-hold-value{order:-1;grid-column:4/-1;grid-row:1;font-size:14px;font-weight:600}.fin-hold>.fin-amt:not(.fin-hold-value){text-align:left}.fin-hold>.fin-amt:not(.fin-hold-value)::before{content:attr(data-label);display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fin-row{flex-wrap:wrap}.fin-select{flex:1 1 100%!important}}
+@media(max-width:520px){.fin-tiles,.fin-charts,.fin-worth-cols{grid-template-columns:1fr}.fin-holdings{grid-template-columns:repeat(5,auto)}.fin-hold{gap:4px 8px;font-size:12px}.fin-hold.head{display:flex;gap:6px;padding-bottom:8px}.fin-hold.head>span{display:none}.fin-hold.head>.fin-sort{padding:5px 10px;border-radius:999px;background:var(--chip)}.fin-hold.head>.fin-sort.on{background:var(--ink);color:var(--surface)}.fin-hold>.fin-desc{grid-column:1/4;font-size:13px}.fin-hold>.fin-hold-value{order:-1;grid-column:4/-1;grid-row:1;font-size:14px;font-weight:600}.fin-hold>.fin-amt:not(.fin-hold-value){text-align:left}.fin-hold>.fin-amt:not(.fin-hold-value)::before{content:attr(data-label);display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fin-row{flex-wrap:wrap}.fin-select{flex:1 1 100%!important}}
+@media(max-width:360px){.fin-hold{font-size:10.5px;column-gap:4px}.fin-hold>.fin-amt:not(.fin-hold-value)::before{font-size:9px}} /* the narrowest phones: five figures in a row fit the card */
 .th-days{font-size:12px;color:var(--muted);margin-bottom:8px}
 .th-map-wrap{border-radius:8px;overflow:hidden;border:1px solid var(--hairline);margin-bottom:8px;background:var(--bg)}
 .th-map{display:block;width:100%;height:auto}
@@ -1056,43 +1010,72 @@ textarea.ask-other{min-height:70px}
 @keyframes settingsFlash{0%,40%{box-shadow:0 0 0 3px var(--late)}100%{box-shadow:0 0 0 3px transparent}}
 .settings-flash{animation:settingsFlash 1.8s ease-out;border-radius:10px}
 
-/* ── Hours tab ── */
-.hours-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px}
-.hours-form .btn-accent{margin-left:auto}
+/* ── Hours tab: one card for the week (its total, a bar per day, the add line), then the week's entries ── */
+.hours-week{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px 10px}
+.hours-week-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.hours-week-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.hours-week-v{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:2px 0 3px}
+.hours-week-split{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.hours-legend{display:inline-flex;align-items:center;gap:5px}
+.hours-dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.hours-dot.work{background:var(--accent)}
+.hours-week-nav{display:flex;align-items:center;gap:2px;flex:none}
+/* a bar per day, Monday to Sunday; the pressed one is the day the add line logs to */
+.hours-bars{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:12px}
+.hours-day-btn{display:flex;flex-direction:column;align-items:center;gap:6px;border:0;background:none;padding:4px 2px;border-radius:8px;cursor:pointer;color:var(--muted);transition:background .12s}
+.hours-day-btn:hover{background:var(--chip)}
+.hours-day-btn.on{background:var(--chip);color:var(--ink)}
+.hours-day-btn.today .hours-day-k{color:var(--accent);font-weight:500}
+.hours-bar{width:100%;max-width:32px;height:44px;display:flex;flex-direction:column;justify-content:flex-end;border-bottom:1px solid var(--hairline)}
+.hours-stack{display:flex;flex-direction:column;min-height:3px;border-radius:3px 3px 0 0;overflow:hidden}
+.hours-seg{display:block;background:var(--faint)}
+.hours-seg.work{background:var(--accent)}
+.hours-day-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+/* the add line: school or work, how long, a note */
+.hours-add{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--hairline)}
+.hours-add .btn-accent{margin-left:auto}
 .hours-kinds{display:inline-flex;background:var(--chip);border-radius:999px;padding:3px}
 .hours-kind-btn{border:0;background:none;padding:5px 12px;border-radius:999px;font-family:var(--display);font-weight:500;font-size:12.5px;color:var(--muted);cursor:pointer}
 .hours-kind-btn.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.hours-amt-inp{width:150px}
+.hours-amt-inp{width:110px}
 .hours-note-inp{flex:1;min-width:120px}
-.hours-form .bad,.hours-row .bad{outline:2px solid var(--late);outline-offset:1px}
-.hours-totals{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
-.hours-total{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px}
-.hours-total-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.hours-total-v{font-size:22px;font-weight:600;margin:4px 0 2px}
-.hours-total-split{font-size:11.5px;color:var(--muted)}
-/* the next time sheet (renderer/js/hours.js hoursSheetDraw) */
-.hours-sheet{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:12px;padding:10px 12px;margin:14px 0 0}
-.hours-sheet[hidden]{display:none}
-.hours-sheet-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.hours-sheet-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.hours-sheet-v{font-size:17px;font-weight:600}
-.hours-sheet-sub{font-size:13px;margin-top:3px}
-.hours-sheet-rest{font-size:11.5px;color:var(--muted);margin-top:3px}
-.hours-day{margin-bottom:12px}
-.hours-day-head{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px;border-bottom:1px solid var(--hairline);margin-bottom:4px}
+.hours-add .bad,.hours-edit .bad{outline:2px solid var(--late);outline-offset:1px}
+/* quiet lines under the card: hours not turned in yet (hoursDueDraw), the next time sheet (hoursSheetDraw) */
+.hours-due{margin-top:10px}
+.hours-due[hidden],.hours-sheet[hidden]{display:none}
+.hours-due-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 4px;font-size:13px}
+.hours-due-row+.hours-due-row,.hours-due:not([hidden])+.hours-sheet{border-top:1px solid var(--hairline)}
+.hours-due-t{flex:1;min-width:120px;color:var(--muted)}
+.hours-due-t.hours-due-thru{flex:none;min-width:0}
+.hours-due-t b{color:var(--ink);font-weight:600}
+.hours-due-row .btn-accent{margin-left:0}
+.hours-due-row .btn-accent:disabled{opacity:.4;cursor:default}
+.hours-act{color:var(--accent);font-family:var(--display);font-weight:600;font-size:12.5px;padding:5px 8px}
+.hours-act:hover{color:var(--accent-dim);background:var(--chip)}
+.hours-sheet{margin-top:10px;padding:7px 4px;font-size:13px;color:var(--muted)}
+.hours-sheet b{color:var(--ink);font-weight:600}
+.hours-due:not([hidden])+.hours-sheet{margin-top:0}
+/* the week's entries by day; a row is a button: tap it to change or delete the entry */
+.hours-list{margin-top:16px}
+.hours-day{margin-bottom:10px}
+.hours-day-head{display:flex;justify-content:space-between;align-items:baseline;padding:4px 6px;border-bottom:1px solid var(--hairline);margin-bottom:2px}
 .hours-day-name{font-weight:600;font-size:13px}
 .hours-day-sum{font-size:12px;color:var(--muted)}
-.hours-row{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13.5px}
-.hours-row.editing{flex-wrap:wrap;gap:6px}
-.hours-row.editing .btn-accent{margin-left:0}
+.hours-row{display:flex;align-items:center;gap:10px;width:100%;padding:6px;border:0;background:none;border-radius:8px;text-align:left;font-family:var(--display);font-size:13.5px;color:var(--ink);cursor:pointer;transition:background .12s}
+.hours-row:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
 .hours-kind{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--muted);flex:none}
-.hours-kind.work{background:#E8ECFB;color:var(--accent)}
+.hours-kind.work{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
 .hours-amt{min-width:58px;flex:none}
-.hours-note{flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hours-row .icon{opacity:.55}
-.hours-row:hover .icon{opacity:1}
+.hours-note{flex:1;min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hours-row.turned-in .hours-amt,.hours-row.turned-in .hours-note{opacity:.55}
+.hours-done{color:var(--accent);display:inline-flex;flex:none}
+.hours-edit{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px}
+.hours-edit .btn-accent{margin-left:0}
+.hours-edit .hours-amt-inp{width:70px}
+.hours-edit .hours-note-inp{min-width:90px}
+.hours-edit .danger{margin-left:auto} /* Delete sits apart from Save */
 .hours-empty{color:var(--muted);font-size:13px;text-align:center;padding:24px 0}
-@media(max-width:520px){.hours-totals{gap:6px}.hours-total-v{font-size:18px}.hours-amt-inp{width:100%}.hours-form .btn-accent{margin-left:0;width:100%}}
+@media(max-width:520px){.hours-week{padding:12px 12px 10px}.hours-week-v{font-size:22px}.hours-amt-inp{flex:1;width:auto}.hours-note-inp{flex:1 1 100%}.hours-add .btn-accent{margin-left:0;width:100%}}
 /* documents from the Agent tab: an answer as a Word file, files on the mini PC (agent-chat.js) */
 .doc-dl{display:inline-block;margin-top:8px;background:none;border:1px solid var(--hairline);border-radius:8px;padding:5px 12px;font-family:var(--display);font-weight:600;font-size:12px;color:var(--ink);cursor:pointer;white-space:nowrap}
 .doc-dl:hover{border-color:var(--ink)}
@@ -1104,21 +1087,9 @@ textarea.ask-other{min-height:70px}
 .lupa-file-name{flex:1 1 180px;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
 .lupa-file-meta{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .lupa-file .doc-dl{margin-top:0}
-
-/* Hours: since you last turned in */
-.hours-due{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px;margin:14px 0 0}
-.hours-due-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0 2px}
-.hours-due-row+.hours-due-row{border-top:1px solid var(--hairline);margin-top:5px}
-.hours-due-v{font-size:20px;font-weight:600;min-width:72px}
-.hours-due-sub{flex:1;min-width:140px;font-size:12px;color:var(--muted)}
-.hours-due-row .btn-accent{margin-left:0}
-.hours-due-row .btn-accent:disabled{opacity:.4;cursor:default}
-.hours-row.turned-in .hours-amt,.hours-row.turned-in .hours-note{opacity:.55}
-.hours-done{color:var(--accent);display:inline-flex;flex:none}
 .lupa-file-x{background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer;padding:4px 6px;border-radius:6px}
 .lupa-file-x:hover{color:var(--ink);background:var(--hairline)}
 .lupa-file-x:disabled{opacity:.4;cursor:default}
-.hours-due-sub.hours-thru-k{flex:none;min-width:0}
 
 /* Year in review (year-review-view.js): its own page like Settings; each card leads with one big number */
 body.review-open main>*:not(.top):not(#reviewPanel){display:none!important}
@@ -1180,6 +1151,39 @@ body.review-open .top-right{display:none!important}
 .connect-wait{margin-top:8px}
 .connect-done{margin:10px 0 0;padding:10px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--accent);font-size:13px}
 
+/* Health tab (js/health.js) */
+.health-head{display:flex;gap:8px;align-items:center;margin:4px 0 6px}
+.health-head .ghost{margin-left:auto}
+.health-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 12px}
+.health-tile{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px 10px;min-width:0}
+.health-tile-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.health-tile-v{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:2px 0 0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.health-tile-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+@media(max-width:520px){.health-tiles{gap:8px}.health-tile{padding:10px 10px 8px}.health-tile-v{font-size:19px}}
+.health-goals{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.health-goal{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:baseline;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px}
+.health-goal-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.health-goal-v{font-size:11.5px;color:var(--muted)}
+.health-goal.done .health-goal-t{color:var(--muted);text-decoration:line-through}
+.health-bar{grid-column:1/-1;height:4px;border-radius:2px;background:var(--hairline);overflow:hidden}
+.health-fill{height:100%;background:var(--accent)}
+/* the Food plan: his per-day macros, which the Agent buys groceries to */
+.health-plan{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px 10px;margin:4px 0 14px}
+.health-plan-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.health-plan-head .settings-subhead{margin:0;flex:1}
+.health-plan-span{font:inherit;font-size:12.5px;color:var(--muted);background:transparent;border:1px solid var(--hairline);border-radius:8px;padding:4px 8px}
+.health-plan-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.health-plan-field{display:flex;flex-direction:column;gap:2px;min-width:0}
+.health-plan-field input{width:100%;box-sizing:border-box;font:inherit;font-size:20px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);background:transparent;border:0;border-bottom:1px solid var(--hairline);border-radius:0;padding:2px 0;min-width:0;-moz-appearance:textfield}
+.health-plan-field input::-webkit-outer-spin-button,.health-plan-field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.health-plan-field input:focus{outline:0;border-bottom-color:var(--accent)}
+.health-plan-unit{font-size:11px;color:var(--muted)}
+.health-plan-say{margin:10px 0 6px}
+.health-plan-src{margin:0 0 8px;font-size:12px}
+.health-plan-foot{display:flex;align-items:center;gap:8px}
+.health-plan-st{margin:0;flex:1;font-size:12px}
+.health-plan-foot .btn-accent{margin-left:0}
+@media(max-width:520px){.health-plan-row{grid-template-columns:repeat(2,1fr)}.health-plan-field input{font-size:18px}}
 /* ── Settings: Get set up (renderer/js/setup-list.js) and Local model → Set it up for me ── */
 .setup-list{margin:0 0 16px;padding:12px 14px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface)}
 .setup-list[hidden]{display:none}
@@ -1253,3 +1257,52 @@ body.review-open .top-right{display:none!important}
 .ai-report-row .doc-dl{margin-top:0}
 .ai-report-reason{max-width:100%;min-width:0;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--hairline);border-radius:6px;background:var(--surface);color:var(--ink)}
 .ai-report-done{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+
+/* ── Kitchen tab (renderer/js/kitchen.js) ── */
+.kit-tabs{display:inline-flex;flex-wrap:wrap;background:var(--chip);border-radius:999px;padding:3px;margin-bottom:12px}
+.kit-tab{border:0;background:none;padding:6px 14px;border-radius:999px;font-family:var(--display);font-weight:500;font-size:13px;color:var(--muted);cursor:pointer}
+.kit-tab.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.kit-view section[hidden],.kit-note[hidden]{display:none}
+.kit-note{font-size:12.5px;color:var(--muted);background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--late);border-radius:10px;padding:8px 10px;margin-bottom:12px}
+.kit-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px}
+.kit-grow{flex:1;min-width:160px}
+.kit-recipe-form textarea{width:100%;resize:vertical;font:inherit;font-size:13.5px}
+.kit-form-btns{margin-left:auto;display:flex;gap:6px}
+.kit-check{font-size:13px;display:flex;align-items:center;gap:6px}
+.kit-form .bad{outline:2px solid var(--late);outline-offset:1px}
+.kit-hint{font-size:12px;color:var(--muted);margin:6px 2px 10px}
+.kit-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kit-sec{margin:16px 2px 6px}
+.kit-empty{color:var(--muted);font-size:13px;padding:14px 2px}
+.kit-card{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.kit-card-top{display:flex;align-items:center;gap:8px}
+.kit-card-name{font-weight:600;font-size:14.5px;flex:1}
+.kit-card-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.kit-card-meta{font-size:11.5px;color:var(--faint);margin-top:3px}
+.kit-card-btns{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.kit-like,.kit-plan{border:1px solid var(--hairline);background:none;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;font-family:var(--display)}
+.kit-like.on{border-color:var(--late);color:var(--late);background:var(--late-bg)}
+.kit-plan.on{border-color:var(--accent);color:var(--accent)}
+.kit-filter{display:flex;gap:6px;margin:12px 0 8px}
+.kit-chip{border:1px solid var(--hairline);background:none;border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--muted);cursor:pointer}
+.kit-chip.on{background:var(--chip);color:var(--ink)}
+.kit-row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid var(--hairline);font-size:13.5px}
+.kit-row-name{flex:1;min-width:0}
+.kit-row-qty{min-width:64px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.kit-row-for{font-size:11.5px;color:var(--faint);text-align:right;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kit-qty{width:90px}
+.kit-row .icon{opacity:.55}
+.kit-row:hover .icon{opacity:1}
+.kit-chips{display:flex;flex-wrap:wrap;gap:6px}
+.kit-meal{display:inline-flex;align-items:center;gap:2px;background:var(--chip);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px}
+.kit-meal.liked{background:var(--late-bg)}
+.kit-meal .icon{width:22px;height:22px}
+.kit-shop-btns{margin-top:12px}
+.kit-after{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:12px;padding:8px 12px;margin-bottom:10px}
+.kit-after-head{display:flex;align-items:center;justify-content:space-between}
+.kit-after-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
+@media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
+.kit-idea-more{margin-top:6px}
+.kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
+.kit-idea-steps{margin:6px 0 0 18px;padding:0;font-size:13px;color:var(--ink)}
+.kit-idea-steps li{margin:2px 0}

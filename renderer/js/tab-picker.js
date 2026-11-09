@@ -5,7 +5,7 @@
 
 const TABS_OFF_KEY='tabsOff';
 const TAB_PICK=[['tabList','list','To do'],['tabAgent','agent','Agent'],['tabSchool','school','School'],['tabWork','work','Work'],
-  ['tabCal','calendar','Calendar'],['tabIdeas','ideas','Notes'],['tabHours','hours','Hours'],['tabFinance','finance','Finance'],['tabFamily','family','Group']];
+  ['tabCal','calendar','Calendar'],['tabIdeas','ideas','Notes'],['tabHours','hours','Hours'],['tabKitchen','kitchen','Kitchen'],['tabFinance','finance','Finance'],['tabHealth','health','Health'],['tabFamily','family','Group']];
 
 function tabsOffLoad(){ try{ const l=JSON.parse(localStorage.getItem(TABS_OFF_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
 function tabsOffStore(list){ try{ if(list.length)localStorage.setItem(TABS_OFF_KEY,JSON.stringify(list)); else localStorage.removeItem(TABS_OFF_KEY); }catch(e){} }

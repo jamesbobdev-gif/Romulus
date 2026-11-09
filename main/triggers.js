@@ -73,10 +73,21 @@ async function checkCalendar(tasks, s) {
   const events = (await calendars.upcoming(from, to)).filter((e) => !(e.invite && e.invite.answer === 'declined'));
   return triggers.calendarHits(tasks, events, { fired: s.fired });
 }
+// redirects are followed one at a time, each hop checked: a public address may answer with a redirect to this
+// computer or the network (the agent browser's port, the hub, a router), and that hop must not be fetched
 async function fetchPage(url) {
-  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20000),
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Accept: 'text/html,*/*' } });
-  if (!triggers.safeUrl(res.url || url)) throw new Error('redirected somewhere private');
+  let at = triggers.safeUrl(url), res = null;
+  if (!at) throw new Error('not a public web address');
+  for (let hop = 0; hop < 5; hop++) {
+    res = await fetch(at, { redirect: 'manual', signal: AbortSignal.timeout(20000),
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Accept: 'text/html,*/*' } });
+    if (![301, 302, 303, 307, 308].includes(res.status)) break;
+    const next = (() => { try { return triggers.safeUrl(new URL(res.headers.get('location') || '', at).href); } catch (e) { return null; } })();
+    try { await res.body?.cancel(); } catch (e) {}
+    if (!next) throw new Error('redirected somewhere private');
+    at = next; res = null;
+  }
+  if (!res) throw new Error('too many redirects');
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const reader = res.body.getReader(); const chunks = []; let n = 0;
   for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); n += value.length; if (n > PAGE_BYTES) { reader.cancel().catch(() => {}); break; } }

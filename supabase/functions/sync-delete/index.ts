@@ -23,9 +23,15 @@ const CORS = {
 };
 
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
-// the same folder name as renderer/js/agent-chat.js attachFolder and agent/worker-files.js folderFor
+const sha256 = async (s: string) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+// the photo folder: the same name as renderer/js/agent-chat.js attachFolder
 export async function folderFor(agentKey: string): Promise<string> {
-  return "tk_agent_att_" + hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(agentKey))).slice(0, 40);
+  return "tk_agent_att_" + (await sha256(agentKey)).slice(0, 40);
+}
+// the downloads folder (agent-files): the hash of the proof the worker shows the bucket, never of the key itself
+// (agent/worker-files.js folderFor; the key's own hash named it before November 2026, so both are emptied)
+export async function filesFolder(agentKey: string): Promise<string> {
+  return "tk_agent_att_" + (await sha256(await sha256("romulus-files-v1|" + agentKey))).slice(0, 40);
 }
 
 // the account's folder in task-files, photos and files on any task (supabase/functions/task-files-remove)
@@ -86,6 +92,7 @@ Deno.serve(async (req: Request) => {
   for (const k of agentKeys) {
     const folder = await folderFor(k);
     for (const b of BUCKETS) files += await emptyFolder(b, folder);
+    files += await emptyFolder("agent-files", await filesFolder(k));
   }
   return Response.json({ ok: true, rows, files, paid: subs.size > 0, cancelled: subs.size ? cancelled : true }, { headers: CORS });
 });

@@ -80,6 +80,12 @@ contextBridge.exposeInMainWorld('desktop', {
   formFiles: () => ipcRenderer.invoke('forms:files'),
   formFileAdd: () => ipcRenderer.invoke('forms:add'),
   formFileRemove: (name) => ipcRenderer.invoke('forms:remove', name),
+  // his Link wallet (Stripe): a one-time card for stores where he has none saved (agent/link-wallet.js)
+  linkStatus: (opts) => ipcRenderer.invoke('link:status', opts),
+  linkConnect: () => ipcRenderer.invoke('link:connect'),
+  linkDisconnect: () => ipcRenderer.invoke('link:disconnect'),
+  linkSave: (change) => ipcRenderer.invoke('link:save', change),
+  linkOpen: (url) => ipcRenderer.invoke('link:open', url),
   onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
@@ -127,6 +133,8 @@ contextBridge.exposeInMainWorld('desktop', {
   financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
   financeSetEbtOn: (on) => ipcRenderer.invoke('finance:setEbtOn', !!on),
   financeEbtReceipt: (pic) => ipcRenderer.invoke('finance:ebtReceipt', pic),
+  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why}
+  kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),

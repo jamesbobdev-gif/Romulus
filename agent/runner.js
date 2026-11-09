@@ -29,6 +29,7 @@ const siteNotes = require('./site-notes');
 const { enrichOption, pagePreviewImage } = require('./previews');
 const standing = require('./standing');
 const goals = require('./goals');
+const linkWallet = require('./link-wallet');
 const calendars = require('./calendars');
 
 // Claude comes after the AI being asked: what it can't do goes to Claude, rather than back to him as needs-you
@@ -50,7 +51,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, foodBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -218,13 +219,19 @@ async function startAgentRun() {
   if (Object.keys(photos).length) agentLog('photos for Claude: ' + Object.values(photos).reduce((n, f) => n + f.length, 0));
   const calendar = tasks.some(wantsCalendar) ? await calendarForAgent() : null;
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
-  let allTasks = [];
-  try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  let allTasks = [], kitchen;
+  try { const doc = JSON.parse(fs.readFileSync(dataFile(), 'utf8')); allTasks = doc.tasks || []; kitchen = doc.kitchen; } catch (e) {}
   // his EBT wallet for grocery runs (agent/grocery.js ebtBrief): about what's left, from Finance's sealed copy
   let ebt;
   if (tasks.some((t) => isGroceryRun(t, allTasks)) && ctx.finance && ctx.finance.ebtNow && !readConfig().ebtOff) { // Settings → EBT off: none
     try { ebt = ebtBrief(await ctx.finance.ebtNow(), allTasks); } catch (e) {}
     if (ebt) agentLog('ebt: balance handed over');
+  }
+  // his macro plan (the Health tab's Food plan) for grocery runs: the order is built to add up to it
+  let macros;
+  if (tasks.some((t) => isGroceryRun(t, allTasks))) {
+    try { macros = macroBrief(await agentRow(':macros')); } catch (e) {}
+    if (macros) agentLog('macros: plan handed over');
   }
   // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
   const allSkills = loadSkills();
@@ -238,9 +245,13 @@ async function startAgentRun() {
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
+    whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
+    macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
-    conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who, text: String(h.text || '').slice(0, 600),
+    // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
+    conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
+      text: h.lane === 'local' && h.who !== 'you' ? '(the local model worked on this step; its note stays on his computer)' : String(h.text || '').slice(0, 600),
       shown: Array.isArray(h.options) ? h.options : undefined,
       sentPhotos: Array.isArray(h.images) && h.images.length ? h.images.length : undefined })) : [],
     repeats: t.repeat ? { every: t.repeat.every, at: t.repeat.at } : null,
@@ -273,7 +284,7 @@ async function startAgentRun() {
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
   const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') +
-    (browses(id) ? filesPart : '') +
+    (browses(id) ? filesPart + (id === 'claude' && link ? link.part : '') : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
     'Today is ' + new Date().toDateString() + '.\n' + // for deadlines and a followUp's day
     (id !== 'claude' && !mailRun && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
@@ -287,6 +298,9 @@ async function startAgentRun() {
   sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
+  // his Link wallet, for a store with no saved card (agent/link-wallet.js): where the launcher finds it, and what Claude is told
+  const link = browserCfg ? await linkWallet.forRun().catch((e) => { agentLog('link: ' + e.message); return null; }) : null;
+  if (link) agentLog('link wallet: on' + (link.test ? ' (test mode)' : ''));
   // ...they get his mail tools instead, whichever AI answers. Send and trash only when his yes started this run:
   // one task, and his latest reply is the yes to its ask (a yes never unlocks them for another task)
   const mailCfg = mailRun ? await prepareMailTools(tasks.length === 1 && saidYes(tasks[0])).catch((e) => { agentLog('mail tools: ' + e.message); return null; }) : null;
@@ -301,7 +315,7 @@ async function startAgentRun() {
   if (shopping) agentLog('shopping run: the browser stays on ' + runHosts.length + ' site(s)');
   // his yes unlocks the order button only on the sites the ask was about
   const yesHosts = tasks.length === 1 && saidYes(tasks[0]) ? approvedHostsFor(tasks[0]) : [];
-  const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · ') };
+  const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · '), link };
   // the cloud AIs he connected, in his order (Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
@@ -442,6 +456,7 @@ async function startAgentRun() {
     delete u.cant;
     // changes to his grocery list: short plain names only, and never from a run that saw his mail
     u.list = sawMail ? undefined : groceryChanges(u.list);
+    u.macros = sawMail ? undefined : macroChanges(u.macros); // a meal plan's per-day targets: the app sets his Food plan to them
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
@@ -463,8 +478,11 @@ async function startAgentRun() {
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
     // (and so does each other size/brand on its menu)
-    if (u.cart || u.cards) await Promise.all((u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
-      const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
+    // a few at a time: each may open a hidden window, and 80 at once is a lot for one computer (or many users of one hub)
+    if (u.cart || u.cards) {
+      const need = (u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80);
+      await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
+    }
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);

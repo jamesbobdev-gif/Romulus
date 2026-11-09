@@ -213,6 +213,9 @@ function writeGeminiWorkspace(workDir, browserMcpFile, browserDenied, model, mai
       excludeTools: browserDenied.map((n) => n.replace(/^mcp__browser__/, '')) };
   }
   fs.writeFileSync(path.join(settingsDir, 'settings.json'), JSON.stringify(ws, null, 1));
+  // the work folder is Documents/Claude Agent, which also holds the local model's Research reports (written there so
+  // that no cloud AI sees them): Gemini's file tools skip what .geminiignore names, so only attachments/ and skills/ are readable
+  fs.writeFileSync(path.join(workDir, '.geminiignore'), ['# Gemini may read only the run\'s attachments and skills', '/*', '!/attachments/', '!/skills/', ''].join('\n'));
 }
 
 // the other AIs tend to stop at 3 options and link articles about them: the prompt's ask, said again where it reads it
@@ -496,12 +499,14 @@ function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile
   const cli = codexCli();
   if (!cli) return Promise.resolve({ auth: true, why: 'the Codex CLI isn’t installed: press Install in Settings → AI connections' });
   if (!codexSignedIn()) return Promise.resolve({ auth: true, why: 'ChatGPT isn’t signed in: press Sign in with ChatGPT in Settings → AI connections' });
-  const workDir = path.join(os.tmpdir(), 'tasks-codex-run'); // empty: nothing of his to read
-  const outFile = path.join(os.tmpdir(), 'tasks-codex-last.txt');
-  try { fs.rmSync(workDir, { recursive: true, force: true }); fs.mkdirSync(workDir, { recursive: true }); fs.rmSync(outFile, { force: true }); } catch (e) {}
+  // a fresh private folder each run (empty: nothing of his to read), not a fixed name under the shared temp folder
+  // that another user of a shared hub could make first and read the answer from
+  let workDir;
+  try { workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-codex-')); } catch (e) { return Promise.resolve({ why: 'could not make a folder for Codex: ' + e.message }); }
+  const outFile = path.join(workDir, 'last.txt');
   return new Promise((resolve) => {
     let err = '', done = false, p;
-    const finish = (r) => { if (!done) { done = true; clearTimeout(killer); resolve(r); } };
+    const finish = (r) => { if (!done) { done = true; clearTimeout(killer); try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (e) {} resolve(r); } };
     const browser = codexBrowser(browserMcpFile, browserDenied);
     const run = codexLaunch(cli.script, codexArgs(cli.script, outFile, chosen, browser, mail).slice(1), node);
     try { p = spawn(run.cmd, run.args, { cwd: workDir, env: run.env, windowsHide: true }); }

@@ -142,6 +142,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       // suggestions for the week start unselected: he taps the ones he wants
       if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
       if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
+      // a meal plan's per-day targets: his Food plan (health.js) is set to them, and grocery orders buy for it
+      if(u.macros&&typeof healthSetPlan==='function'){ const line=healthSetPlan(u.macros,t.title); if(line)agentSay(t,'sys','Food plan (Health tab): '+line); }
       // the class sweep's finds go on his School list (wiring.js importClassItems)
       if(Array.isArray(u.school)&&u.school.length&&typeof importClassItems==='function'){
         const s=importClassItems(u.school);

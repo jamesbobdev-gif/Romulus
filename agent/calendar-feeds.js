@@ -107,7 +107,8 @@ async function fetchAll(urls) {
     if (!u) { errors.push(String(raw).slice(0, 40) + '…: not an https link'); continue; }
     const host = new URL(u).hostname;
     try {
-      const r = await fetch(u, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
+      // the link and every redirect it answers with must be public (agent/helpers.js): never this computer or the network
+      const r = await require('./helpers').fetchPublic(u, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
       const text = await r.text();
       if (!r.ok || !/BEGIN:VCALENDAR/.test(text)) { errors.push(host + ': ' + (r.ok ? 'not a calendar' : 'HTTP ' + r.status)); complete = false; continue; }
       if (!/BEGIN:VEVENT/.test(text)) complete = false;

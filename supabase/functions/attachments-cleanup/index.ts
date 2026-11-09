@@ -7,20 +7,35 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // plain SQL deletes, so it goes through the Storage API with the service role. It only ever removes files
 // past their age, so anyone calling it early or often changes nothing: no auth needed.
 
+// Both public buckets: photos on tasks, and the local model's downloads (agent-files), which are worksheets nobody
+// needs a month on.
 const KEEP_DAYS = 30;
-const BUCKET = "agent-attachments";
+const BUCKETS = ["agent-attachments", "agent-files"];
 const MAX_PER_RUN = 1000;
+const MIN_GAP_MS = 10 * 60 * 1000; // listing every folder is the costly part: at most once in ten minutes per instance
+let lastRun = 0;
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
+  if (Date.now() - lastRun < MIN_GAP_MS) return Response.json({ ok: true, removed: 0, keepDays: KEEP_DAYS, throttled: true });
+  lastRun = Date.now();
   const cutoff = Date.now() - KEEP_DAYS * 24 * 60 * 60 * 1000;
+  let removed = 0;
+  for (const BUCKET of BUCKETS) {
   const old: string[] = [];
-  // the bucket holds one folder per agent key (tk_agent_att_…), the files inside it
-  const { data: folders, error } = await db.storage.from(BUCKET).list("", { limit: 1000 });
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-  for (const f of folders || []) {
+  // the bucket holds one folder per agent key (tk_agent_att_…), the files inside it. Folders are listed page by
+  // page: on a shared project there can be more than one page of them, and the ones past it would never be cleaned
+  const folders: { id: string | null; name: string }[] = [];
+  for (let off = 0; ; off += 1000) {
+    const { data, error } = await db.storage.from(BUCKET).list("", { limit: 1000, offset: off });
+    if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+    folders.push(...(data || []));
+    if (!data || data.length < 1000 || folders.length >= 20000) break;
+  }
+  for (const f of folders) {
+    if (old.length >= MAX_PER_RUN) break;
     if (f.id) continue; // a file at the top level: not one the app writes
     let offset = 0;
     while (old.length < MAX_PER_RUN) {
@@ -34,10 +49,10 @@ Deno.serve(async (req: Request) => {
     }
   }
   const batch = old.slice(0, MAX_PER_RUN);
-  let removed = 0;
   for (let i = 0; i < batch.length; i += 100) {
     const { data } = await db.storage.from(BUCKET).remove(batch.slice(i, i + 100));
     removed += (data || []).length;
+  }
   }
   return Response.json({ ok: true, removed, keepDays: KEEP_DAYS });
 });

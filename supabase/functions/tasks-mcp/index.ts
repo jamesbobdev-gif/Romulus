@@ -49,44 +49,41 @@ type Row = { doc: Doc; updated_at: string | null };
 class UserError extends Error {}
 
 // ── storage ──────────────────────────────────────────────────────────────
-async function load(list: string): Promise<Row> {
-  const r = await fetch(
-    `${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(LISTS[list])}&select=doc,updated_at`,
-    { headers: H },
-  );
-  if (!r.ok) throw new Error(`load ${list}: HTTP ${r.status}`);
+// The lists are read and written through the same sync_get / sync_put functions the app uses: the list key travels in
+// the request body, never in the address, so it stays out of the API gateway's request logs. sync_put is a
+// compare-and-swap on updated_at: false when somebody else wrote since the read (or the row is sealed, or too large).
+// deno-lint-ignore no-explicit-any
+async function getRow(key: string, what: string): Promise<{ doc: any; updated_at: string | null } | null> {
+  const r = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: key }) });
+  if (!r.ok) throw new Error(`${what}: HTTP ${r.status}`);
   const rows = await r.json();
-  const doc = rows.length ? rows[0].doc : null;
+  return rows.length && rows[0].updated_at ? { doc: rows[0].doc, updated_at: rows[0].updated_at } : null;
+}
+async function putRow(key: string, doc: unknown, prev: string | null, what: string): Promise<boolean> {
+  const r = await fetch(`${BASE}/rest/v1/rpc/sync_put`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: key, p_doc: doc, p_prev: prev }) });
+  if (!r.ok) throw new Error(`${what}: HTTP ${r.status}`);
+  return (await r.json()) === true;
+}
+async function load(list: string): Promise<Row> {
+  const row = await getRow(LISTS[list], `load ${list}`);
+  const doc = row ? row.doc : null;
+  // the app moved this list to end-to-end encryption and left a marker under the old key: writing a plain list over
+  // it would destroy the marker and never reach the real (sealed) list
+  if (doc && doc.moved === "v2") throw new UserError(`The ${list} list is end-to-end encrypted on the devices; this server can't read or change it.`);
   return {
     doc: {
       v: 1,
       tasks: doc && Array.isArray(doc.tasks) ? doc.tasks : [],
       tombstones: doc && Array.isArray(doc.tombstones) ? doc.tombstones : [],
     },
-    updated_at: rows.length ? rows[0].updated_at : null,
+    updated_at: row ? row.updated_at : null,
   };
 }
 
 // Write only if nobody else wrote since we read (compare-and-swap on
 // updated_at); returns false on a lost race so the caller can retry.
-async function save(list: string, row: Row): Promise<boolean> {
-  const body = { doc: row.doc, updated_at: new Date().toISOString() };
-  if (row.updated_at === null) {
-    const r = await fetch(`${BASE}/rest/v1/tasks_sync`, {
-      method: "POST",
-      headers: { ...H, Prefer: "return=minimal" },
-      body: JSON.stringify([{ sync_key: LISTS[list], ...body }]),
-    });
-    if (r.status === 409) return false;
-    if (!r.ok) throw new Error(`save ${list}: HTTP ${r.status}`);
-    return true;
-  }
-  const r = await fetch(
-    `${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(LISTS[list])}&updated_at=eq.${encodeURIComponent(row.updated_at)}`,
-    { method: "PATCH", headers: { ...H, Prefer: "return=representation" }, body: JSON.stringify(body) },
-  );
-  if (!r.ok) throw new Error(`save ${list}: HTTP ${r.status}`);
-  return (await r.json()).length === 1;
+function save(list: string, row: Row): Promise<boolean> {
+  return putRow(LISTS[list], row.doc, row.updated_at, `save ${list}`);
 }
 
 async function mutate<T>(list: string, fn: (doc: Doc) => T): Promise<T> {
@@ -99,10 +96,10 @@ async function mutate<T>(list: string, fn: (doc: Doc) => T): Promise<T> {
 }
 
 async function loadPrefs(): Promise<{ text: string; updated_at: string | null }> {
-  const r = await fetch(`${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(PREFS_KEY)}&select=doc,updated_at`, { headers: H });
-  if (!r.ok) throw new Error(`load preferences: HTTP ${r.status}`);
-  const rows = await r.json();
-  return { text: rows.length && rows[0].doc && typeof rows[0].doc.text === "string" ? rows[0].doc.text : "", updated_at: rows.length ? rows[0].updated_at : null };
+  const row = await getRow(PREFS_KEY, "load preferences");
+  // moved to end-to-end encryption with its list: a plain write here would destroy the marker and never reach the real row
+  if (row && row.doc && row.doc.moved === "v2") throw new UserError("The preferences are end-to-end encrypted on the devices; this server can't read or change them.");
+  return { text: row && row.doc && typeof row.doc.text === "string" ? row.doc.text : "", updated_at: row ? row.updated_at : null };
 }
 // same compare-and-swap as the lists, so a change made in the app at the same moment isn't lost
 async function mutatePrefs(fn: (text: string) => string): Promise<string> {
@@ -110,14 +107,7 @@ async function mutatePrefs(fn: (text: string) => string): Promise<string> {
     const cur = await loadPrefs();
     const next = fn(cur.text);
     if (next === cur.text) return next;
-    const body = { doc: { v: 1, text: next }, updated_at: new Date().toISOString() };
-    const r = cur.updated_at === null
-      ? await fetch(`${BASE}/rest/v1/tasks_sync`, { method: "POST", headers: { ...H, Prefer: "return=minimal" }, body: JSON.stringify([{ sync_key: PREFS_KEY, ...body }]) })
-      : await fetch(`${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(PREFS_KEY)}&updated_at=eq.${encodeURIComponent(cur.updated_at)}`,
-          { method: "PATCH", headers: { ...H, Prefer: "return=representation" }, body: JSON.stringify(body) });
-    if (r.status === 409) continue;
-    if (!r.ok) throw new Error(`save preferences: HTTP ${r.status}`);
-    if (cur.updated_at === null || (await r.json()).length === 1) return next;
+    if (await putRow(PREFS_KEY, { v: 1, text: next }, cur.updated_at, "save preferences")) return next;
   }
   throw new Error("Preferences kept changing while saving; try again.");
 }
@@ -163,10 +153,11 @@ function checkTime(v: unknown): string | null {
   return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 function checkTitle(v: unknown): string {
-  const s = String(v ?? "").trim();
+  const s = String(v ?? "").trim().slice(0, 500); // bounded: a list past sync_put's 4 MB would refuse every save from the apps
   if (!s) throw new UserError("title is required");
   return s;
 }
+const MAX_SUBS = 50;
 
 // Accept a full id or a unique prefix (list output shows 8-char ids).
 function findIn(doc: Doc, id: string): Task[] {
@@ -406,12 +397,12 @@ async function callTool(name: string, a: any): Promise<string> {
       if (dueTime && !due) throw new UserError("due_time needs a due date");
       const now = Date.now();
       const t: Task = {
-        id: uid(), title, done: false, due, dueTime, tag: a.tag ? String(a.tag).trim() : null,
-        subs: (Array.isArray(a.subtasks) ? a.subtasks : []).map((s: unknown) => String(s).trim()).filter(Boolean)
+        id: uid(), title, done: false, due, dueTime, tag: a.tag ? String(a.tag).trim().slice(0, 80) : null,
+        subs: (Array.isArray(a.subtasks) ? a.subtasks : []).slice(0, MAX_SUBS).map((s: unknown) => String(s).trim().slice(0, 500)).filter(Boolean)
           .map((s: string) => ({ id: uid(), title: s, done: false, due: null })),
         googleEventId: null, created: now, updatedAt: now,
       };
-      if (list === "agent") { t.status = "queued"; t.note = a.note ? String(a.note) : null; }
+      if (list === "agent") { t.status = "queued"; t.note = a.note ? String(a.note).slice(0, 4000) : null; }
       await mutate(list, (d) => { d.tasks.push(t); });
       return `Added:\n${fmt(t, list)}`;
     }
@@ -455,9 +446,9 @@ async function callTool(name: string, a: any): Promise<string> {
           if (m.length !== 1) throw new UserError(`subtask "${sid}" not found (or ambiguous) on this task`);
           m[0].done = true;
         }
-        for (const s of Array.isArray(a.add_subtasks) ? a.add_subtasks : []) {
-          const title = String(s).trim();
-          if (title) t.subs.push({ id: uid(), title, done: false, due: null });
+        for (const s of (Array.isArray(a.add_subtasks) ? a.add_subtasks : []).slice(0, MAX_SUBS)) {
+          const title = String(s).trim().slice(0, 500);
+          if (title && t.subs.length < MAX_SUBS * 2) t.subs.push({ id: uid(), title, done: false, due: null });
         }
         t.updatedAt = Date.now();
         return t;
@@ -631,11 +622,23 @@ async function handle(msg: any): Promise<unknown | null> {
   }
 }
 
+// the token compared in constant time, through a hash so lengths don't tell either
+async function tokenOk(given: string | null): Promise<boolean> {
+  if (!given || !TOKEN) return false;
+  const [a, b] = await Promise.all([given, TOKEN].map((s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))));
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+const MAX_BATCH = 20;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
-  const url = new URL(req.url);
   if (!TOKEN || Object.values(LISTS).some((k) => !k)) return new Response("Not configured", { status: 503 });
-  if (url.searchParams.get("token") !== TOKEN) return new Response("Not found", { status: 404 });
+  // Authorization: Bearer <token> only: a token in the address would land in request logs and proxies
+  const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
+  if (!(await tokenOk(bearer))) return new Response("Not found", { status: 404 });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: CORS });
 
   let body: unknown;
@@ -643,6 +646,7 @@ Deno.serve(async (req: Request) => {
     return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
   }
   if (Array.isArray(body)) {
+    if (body.length > MAX_BATCH) return json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `At most ${MAX_BATCH} requests per batch` } }, 400);
     const out = (await Promise.all(body.map(handle))).filter((x) => x !== null);
     return out.length ? json(out) : new Response(null, { status: 202, headers: CORS });
   }

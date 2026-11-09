@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { isYes } = require('./helpers');
+const { isYesTo } = require('./helpers');
 
 const MAX_TEXT = 6000;
 
@@ -53,6 +53,11 @@ function describe(name, input) {
     if (b === 'browser_press_key') return 'Pressing ' + short(input.key, 20);
     if (b === 'browser_snapshot' || b === 'browser_take_screenshot') return 'Looking at the page';
     if (b === 'browser_tabs') return null;
+    // his Link wallet (the launcher's own tools, agent/browser-proxy.js)
+    if (b === 'link_pay_request') return 'Asking Link for a card: ' + short(input.total, 14) + ' at ' + short(input.merchant_name, 40);
+    if (b === 'link_wait') return 'Waiting for your approval in Link';
+    if (b === 'link_enter_card') return 'Entering the Link card';
+    if (b === 'link_cancel') return 'Withdrawing the Link request';
     return short(b.replace(/^browser_/, '').replace(/_/g, ' '), 40).replace(/^./, (c) => c.toUpperCase());
   }
   return null;
@@ -154,13 +159,14 @@ function start({ dir, tasks, send, node }) {
     for (const t of Array.isArray(data.tasks) ? data.tasks : []) {
       if (!ids.includes(t.id) || t.done) continue;
       const from = Number(t.runFrom) || runStart;
+      const asked = ((Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'claude').slice(-1)[0] || {}).text || ''; // its last ask: "yes, cancel it" answers a cancel ask
       for (const h of Array.isArray(t.history) ? t.history : []) {
         if (!h || h.who !== 'you' || !(Number(h.at) > from) || h.heard) continue;
         const name = h.at + '-' + ids.indexOf(t.id) + '.json';
         if (sent.has(name)) continue;
         const photos = Array.isArray(h.images) ? h.images.length : 0;
         const text = short(h.text, 2000);
-        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYes(text) });
+        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYesTo(text, asked) });
         try {
           const tmp = path.join(dir, name + '.tmp');
           fs.writeFileSync(tmp, JSON.stringify({ id: tasks.length > 1 ? String(ids.indexOf(t.id) + 1) : t.id, title: short(t.title, 80), text, at: h.at, photos: photos || undefined }));

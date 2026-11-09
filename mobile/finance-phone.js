@@ -179,11 +179,11 @@
       if (!held.length) return { held: 0, rows: [] };
       var symbols = held.map(function (h) { return h.symbol; }).filter(Boolean), error = null;
       if (force || !lastQuotes || Date.now() - lastQuotes.at >= QUOTE_MS) {
-        try { var got = await C.fetchQuotes(symbols, doFetch, '1d'); if (key !== k) return { locked: true }; lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning }; }
+        try { var got = await C.fetchQuotes(symbols, doFetch, '1d', lastQuotes && lastQuotes.quotes); if (key !== k) return { locked: true }; lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning }; }
         catch (e) { if (key !== k) return { locked: true }; error = why(e); }
       }
       if (!lastDaily || Date.now() - lastDaily.at >= DAILY_MS) {
-        try { var d = await C.fetchQuotes(symbols, doFetch, '1y'); if (key !== k) return { locked: true }; lastDaily = { at: Date.now(), quotes: d.quotes }; }
+        try { var d = await C.fetchQuotes(symbols, doFetch, '1y', lastDaily && lastDaily.quotes); if (key !== k) return { locked: true }; lastDaily = { at: Date.now(), quotes: d.quotes }; }
         catch (e) { if (key !== k) return { locked: true }; }
       }
       // sectors hardly change: asked once per ticker while unlocked (the Portfolio mix charts)

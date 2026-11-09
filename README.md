@@ -12,7 +12,8 @@ Romulus is a free, open-source to-do list app with an AI agent built in, for Win
 
 Plus a School list that pulls due dates from course calendars, a Notes board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
 
-<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
+<p align="center"><img src="docs/images/demo.gif" width="560" alt="A 40-second walkthrough: a grocery order typed on the Agent tab, the Agent building the cart and waiting for a yes, the order placed, then the Finance tab with accounts, net worth, subscriptions and stocks"></p>
+<p align="center"><sub>Made-up demo data. <code>npm run demo</code> records this (scripts/demo).</sub></p>
 
 ## Install
 
@@ -23,6 +24,8 @@ Plus a School list that pulls due dates from course calendars, a Notes board, an
 **Linux, macOS and Android:** the `.deb` (Ubuntu, Debian, Mint) or `.AppImage` (other distributions), the `.dmg` and the `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
 **From source:** Node 22 or newer, then `npm install` and `npm start`.
+
+<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
 
 Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.
 
@@ -35,16 +38,16 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 |---|---|
 | **Human** | Your own to-dos: due dates, times, tags, subtasks, repeats, drag to reorder, search. |
 | **Agent** | Tasks the AI does. Live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI. |
-| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. |
+| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. One still open two days after its deadline comes off the list. |
 | **Work** | A second list, synced with the rest. |
 | **Calendar · Notes · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
-| **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
+| **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Cancel on a subscription or a monthly bill hands it to the Agent, which gets to the last click and waits for your yes. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
 
-What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email with any AI you connect, in Gmail or Outlook (it drafts, labels and archives on its own, and sends or trashes after your yes); a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
+What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; any other store through a Link wallet, which hands the Agent's browser a one-time card for the amount you approve in the Link app (the AI never sees the number); flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email with any AI you connect, in Gmail or Outlook (it drafts, labels and archives on its own, and sends or trashes after your yes); a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
 
 ## Privacy, in short
 
-Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
+Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key; one button in Settings encrypts every list end to end, so the project holds only ciphertext. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -54,6 +57,7 @@ Everything you connect stays on the computer where you connected it. Keys, token
 npm install
 npm start        # dev mode
 npm test         # unit tests (Node's built-in runner, files in test/)
+npm run lint     # ESLint, bug-finding rules only (eslint.config.js); CI runs both on every push
 npm run dist     # installer into dist/
 ```
 
@@ -72,7 +76,7 @@ One-click Google and Microsoft sign-in needs the app's own OAuth clients in `oau
 
 ### Releases
 
-One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule.
+One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule. Settings → Device sync lists every device with the version it runs (and **behind** when another runs a newer one), and on the phone Settings → Updates has **Check for updates**, which looks right away.
 
 **Releasing to every device:** bump the version in `package.json`, commit, and push a `v<version>` tag. That runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS installers and the signed Android APK on GitHub's runners and publishes them all to the public releases repository named in `package.json` → `build.publish`. It needs these repository secrets:
 
@@ -82,6 +86,9 @@ One version number (`package.json`) covers every device: the desktop installers 
 | `ANDROID_KEYSTORE_BASE64` | The Android signing keystore, base64-encoded (`base64 -w0 release.keystore`). Without it the phone build is skipped. |
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Its password, key alias and key password. |
 | `OAUTH_CLIENTS_JSON` | Optional: the app's own Google / Microsoft sign-in clients. |
+| `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_TEAM_ID` | Optional: an App Store Connect API key (Admin role). With them the iPhone app is built and uploaded to App Store Connect too. |
+
+The stores (Google Play, the App Store, the Microsoft Store) and the signing that removes the install warnings on Mac and Windows are covered in [docs/store-release.md](docs/store-release.md): each switches on once its secrets are set.
 
 Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The Mac and Windows installers stay unsigned until their signing secrets are set; the release workflow lists them.
 
@@ -100,13 +107,17 @@ cd android && ./gradlew assembleGithubDebug
 
 Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/github/debug/` (`assemblePlayDebug` makes the Google Play build instead, with no update banner); it updates an installed copy in place. Its version comes from the root `package.json`. Without a `mobile/sync-config.json` the build bakes in no keys, and the phone is connected by pasting the sync code into Settings → Device sync; that is how the public APK from the releases page is built (see Releases below).
 
+### Phone app (iPhone)
+
+The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Health tab reads Apple Health there (Health Connect on Android). The other Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
+
 ### Where your data lives
 
 Tasks are in `tasks.json` in the app's user-data folder (`%APPDATA%\Romulus` on Windows, `~/Library/Application Support/Romulus` on macOS, `~/.config/Romulus` on Linux; copies before 1.0.3 used a `Tasks` folder, moved on first start). Back up that one file. Config and keys are in `config.json` next to it, secrets encrypted.
 
 ### Desktop behaviour
 
-The installed app starts at login (toggle in the tray menu), hides to the tray when closed, and reappears when the screen wakes or unlocks. Windows won't let an app pin itself: Start menu → right-click **Romulus** → Pin to taskbar.
+The installed app starts at login (toggle in the tray menu), hides to the tray when closed, and reappears when the screen wakes or unlocks. Windows keeps a new tray icon under the ^ by the clock until you drag it onto the taskbar (the first time the window hides there, a notice says so), and won't let an app pin itself: Start menu → right-click **Romulus** → Pin to taskbar.
 
 ### Theme
 
@@ -127,7 +138,7 @@ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin 
 - ↑/↓ select · Space completes · Enter expands · Delete removes · Esc deselects
 - Drag the dots on a row's left edge to reorder; click a tag chip to filter
 - Hover a row for edit / expand / delete; overdue and due-today rows get a snooze button
-- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
+- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**; search box above the groups (Ctrl+F); **Pin** on an open note keeps it at the top of its group (drag it above the pinned ones or below them to pin or unpin)
 
 ## License
 

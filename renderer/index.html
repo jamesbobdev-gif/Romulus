@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: data: blob: https:; connect-src 'self' file: https: wss: http: ws:; object-src 'none'; frame-src 'none'; base-uri 'none'">
+<!-- Only the app's own scripts run here (file: as well as 'self', since the window loads the page from disk), and
+     the page talks only to the sync project, pictures, the agent browser's socket (Watch) and the local model. Text from
+     the AI and from web pages is shown on this page, so an injected <script> or a javascript: link must have nothing to
+     run with. mobile/prepare-www.js drops this line for the phone build (Capacitor's bridge is an inline script). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: https: data: blob:; connect-src 'self' file: https: wss: http: ws:; media-src 'self' file: blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Romulus</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
@@ -14,7 +18,6 @@
   <header class="top">
     <h1>Romulus</h1>
     <div class="top-right">
-      <button class="plan-btn" id="planBtn" hidden>Plan today</button>
       <button class="mono stamp" id="stamp" title="Calendar view" aria-label="Open calendar view"></button>
       <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     </div>
@@ -106,6 +109,17 @@
           <span id="agentBrowserStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
+      <div class="settings-sub" id="linkSection" hidden>
+        <h3 class="settings-subhead">Link wallet</h3>
+        <p class="settings-hint">For stores where you have no card saved. The Agent asks Link (Stripe’s wallet) for a one-time card for that checkout, you approve the store and the exact amount in the Link app, and the Agent’s browser types the card in. The AI never sees the number, and the card is dead after that one purchase. Link pays for US and Canadian accounts.</p>
+        <div class="settings-row">
+          <button id="linkConnectBtn" class="ghost mono">Connect Link</button>
+          <button id="linkDisconnectBtn" class="ghost mono danger" hidden>Disconnect</button>
+          <span id="linkStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+        <p id="linkCode" class="settings-hint" style="margin-top:8px" hidden></p>
+        <label class="settings-row adv" style="gap:6px;cursor:pointer"><input type="checkbox" id="linkTest"> <span class="settings-hint" style="margin:0">Test mode: fake cards, nothing is charged (for trying it out)</span></label>
+      </div>
       <div class="settings-sub adv" id="standingSection" hidden>
         <h3 class="settings-subhead">Doesn’t ask again</h3>
         <p class="settings-hint">Steps you’ve said yes to once and for all, so the Agent stops asking on every task: logging in to a site, building a cart, opening a seat map. Buying, paying, sending, submitting and booking are never on this list: those always wait for your yes.</p>
@@ -182,12 +196,12 @@
       <summary class="settings-label">Health</summary>
       <p class="settings-hint">Tasks that check themselves off: <b>Walk #steps 8000</b>, <b>Gym #exercise 30</b> (minutes), <b>Bed early #sleep 7h</b>. One ticks off once that day's total gets there, the day it's due or today. Only daily totals are kept, and no AI sees them.</p>
       <div id="healthPhone" hidden>
-        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="healthOn"><span class="track" aria-hidden="true"></span><span>Read steps, exercise and sleep from Health Connect</span></label>
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="healthOn"><span class="track" aria-hidden="true"></span><span id="healthOnText">Read steps, exercise and sleep from Health Connect</span></label>
         <div class="settings-row">
           <button id="healthManage" class="ghost mono" hidden>Health Connect settings</button>
         </div>
       </div>
-      <p id="healthDesk" class="settings-hint" hidden>The totals come from Romulus on your Android phone: turn this on there. They reach this computer when your lists use end-to-end encryption.</p>
+      <p id="healthDesk" class="settings-hint" hidden>The totals come from Romulus on your phone: turn this on there. They reach this computer when your lists use end-to-end encryption.</p>
       <p class="mono" style="font-size:11px;color:var(--muted);margin:4px 0 0"><span id="healthStatus"></span> <span id="healthToday"></span></p>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
@@ -420,12 +434,15 @@
     </details>
     <details class="settings-panel settings-collapse" id="updateSection" hidden>
       <summary class="settings-label">Updates</summary>
-      <p class="settings-hint">When a new version comes out, this computer can ask you first or update on its own. Either way it installs when you quit, or when the computer has been idle and the Agent isn't working.</p>
+      <p class="settings-hint" id="updateHint">When a new version comes out, this computer can ask you first or update on its own. Either way it installs when you quit, or when the computer has been idle and the Agent isn't working.</p>
       <div class="settings-row" style="align-items:center">
         <select id="updateMode" class="settings-inp" style="width:auto;margin:0">
           <option value="ask">Ask me</option>
           <option value="auto">Automatically</option>
         </select>
+        <!-- the phone instead (mobile/update-phone.js): looks right now, past the wait and any Later or Not now -->
+        <button id="updateCheck" class="ghost mono" hidden>Check for updates</button>
+        <span id="updateStatus" class="settings-hint" style="margin:0"></span>
       </div>
     </details>
     <details class="settings-panel settings-collapse" id="themeSection">
@@ -472,11 +489,12 @@
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
     <!-- the Group tab: shared lists and sent to-dos (family.js) -->
-    <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Family</button>
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
     <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
+    <button id="tabHealth" class="tab"      role="tab" aria-selected="false">Health</button>
+    <button id="tabKitchen" class="tab"     role="tab" aria-selected="false">Kitchen</button>
     <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Group</button>
   </div>
 
@@ -521,6 +539,13 @@
         <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
         <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
       </div>
+      <ul class="welcome-tips">
+        <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
+        <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
+        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Notes</b> and <b>Hours</b> are extra views of the same tasks.</li>
+        <li id="welcomeTrayTip">Closing the window hides Romulus in the tray. On Windows it sits under the ^ by the clock until you drag it onto the taskbar; right-click the icon to quit.</li>
+      </ul>
+      <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
     </div>
     <!-- bringing tasks over from Todoist, TickTick, Google Tasks, a spreadsheet… (task-import.js) -->
     <div id="importCard" class="connect-card welcome import-card" hidden>
@@ -607,9 +632,10 @@
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
   </div>
 
-  <!-- Notes (hidden by default; internal name "ideas") -->
+  <!-- Notes (hidden by default; the "ideas" ids stay so synced data keeps its key) -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
+      <input id="ideaSearch" class="search idea-search" type="search" placeholder="Search notes…" aria-label="Search notes" autocomplete="off">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
@@ -621,6 +647,12 @@
 
   <!-- Finance (SimpleFIN on the computer and phone, CSV files anywhere; js/finance.js draws it) -->
   <div id="financeView" hidden></div>
+
+  <!-- Health: the Food plan (macros the Agent buys groceries to) everywhere; steps, sleep and exercise on the phone
+       (Apple Health on iPhone, Health Connect on Android); js/health.js draws it -->
+  <div id="healthView" hidden></div>
+  <!-- Pantry, recipes, meals and the shopping list (hidden by default; js/kitchen.js draws it) -->
+  <div id="kitchenView" class="kit-view" hidden></div>
 </main>
 
 <script src="js/no-emoji.js"></script>
@@ -628,6 +660,7 @@
 <script src="js/sync.js"></script>
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
+<script src="js/school-overdue.js"></script>
 <script src="js/quick-add.js"></script>
 <script src="js/order-match.js"></script>
 <script src="js/task-actions.js"></script>
@@ -646,7 +679,6 @@
 <script src="js/calendar-view.js"></script>
 <script src="js/ideas.js"></script>
 <script src="js/hours.js"></script>
-<script src="js/health.js"></script>
 <script src="js/finance-core.js"></script>
 <script src="js/finance-csv.js"></script>
 <script src="js/finance-costs.js"></script>
@@ -678,12 +710,13 @@
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/connect-accounts.js"></script>
+<script src="js/health.js"></script>
+<script src="js/kitchen.js"></script>
 <script src="js/look-ahead.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>
 <script src="js/goals.js"></script>
 <script src="js/local-sites.js"></script>
-<script src="js/swipe.js"></script>
 <script src="js/update-sync.js"></script>
 <script src="js/update-desktop.js"></script>
 <script src="js/init.js"></script>

@@ -105,7 +105,8 @@ test('uploads: only his files for forms, by their exact path', () => {
 });
 
 test('Space, a line break typed key by key, and an address that cannot be read are Enter too', () => {
-  for (const k of ['Space', ' ', 'Shift+Space']) assert.match(proxy.buyRefusal(call('browser_press_key', { key: k }), 'https://www.walmart.com/checkout'), /Not without a yes/, k);
+  // "\n", "\r" and "Return" are Enter to Playwright as much as "Enter" is: a page saying "press \n" gets the same refusal
+  for (const k of ['Space', ' ', 'Shift+Space', '\n', '\r', 'Return', 'Control+\n', 'Enter\n']) assert.match(proxy.buyRefusal(call('browser_press_key', { key: k }), 'https://www.walmart.com/checkout'), /Not without a yes/, JSON.stringify(k));
   assert.match(proxy.buyRefusal(call('browser_type', { ref: 'e8', text: 'Smith\n', slowly: true }), here), /Not without a yes/);
   assert.strictEqual(proxy.buyRefusal(call('browser_type', { ref: 'e8', text: 'line one\nline two' }), here), null); // filled in one go: no key is pressed
   assert.match(proxy.buyRefusal(call('browser_press_key', { key: 'Enter' }), null), /Not without a yes/); // the tab's address could not be read
@@ -145,6 +146,14 @@ test('only the page tools reach Playwright: no running code, raw requests or clo
     assert.strictEqual(proxy.toolRefusal(call(t, {})), null, t);
   for (const t of ['browser_evaluate', 'browser_run_code_unsafe', 'browser_network_request', 'browser_close', 'browser_install', 'anything_else'])
     assert.match(proxy.toolRefusal(call(t, {})), /not available/, t);
+});
+
+test('the browser and Playwright are started without the AI\'s key in their environment', () => {
+  const env = proxy.childEnv({ PATH: '/bin', ANTHROPIC_API_KEY: 'sk-ant-x', GEMINI_API_KEY: 'g', OPENAI_API_KEY: 'o', CLAUDE_CODE_OAUTH_TOKEN: 't',
+    GH_TOKEN: 'gh', MY_SECRET: 's', DB_PASSWORD: 'p', TASKS_BROWSER_TASK: 'Buy milk', TASKS_LINK_AUTH: 'C:/auth.json', TASKS_BROWSER_HOSTS: '[]', HOME: '/h' });
+  assert.deepStrictEqual(env, { PATH: '/bin', TASKS_BROWSER_TASK: 'Buy milk', TASKS_LINK_AUTH: 'C:/auth.json', TASKS_BROWSER_HOSTS: '[]', HOME: '/h' });
+  const src = require('fs').readFileSync(require.resolve('../agent/browser-proxy'), 'utf8');
+  for (const m of src.match(/spawn\((?:chrome|process\.execPath)[^;]*/g)) assert.match(m, /env: childEnv\(\)/, 'every start of Chrome or Playwright passes the scrubbed environment: ' + m.slice(0, 60));
 });
 
 test('the current tab\'s address is read even when it holds parentheses', () => {

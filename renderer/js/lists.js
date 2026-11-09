@@ -27,13 +27,11 @@ function buildRow(t,canDrag){
   }
   let dueDiff=null;
   const today=formatDate(new Date());
-  // swiped to tomorrow's deck; with a due date it rides on the date chip instead of a second chip
-  const movedLater=!t.done&&t.plan&&t.plan>today;
   if(t.due){
     const info=dateInfo(t.due,t.dueTime);
     dueDiff=info.diff;
-    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text+(movedLater?' ↪ tmrw':''));
-    dateBtn.title=movedLater?'You swiped this to tomorrow — it comes back in tomorrow’s deck. Click to view in calendar':'View in calendar';
+    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text);
+    dateBtn.title='View in calendar';
     dateBtn.addEventListener('click',function(e){
       e.stopPropagation();
       const p=t.due.split('-').map(Number);
@@ -49,13 +47,6 @@ function buildRow(t,canDrag){
   }
   if(workConfigured()&&taskWs(t)==='work'&&state.wsFilter!=='work'&&state.activeTab!=='work'){
     chips.appendChild(el('span','chip ws','work'));
-  }
-  // what the morning swipe decided: picked for today, or pushed to tomorrow's deck
-  if(!t.done&&t.plan){
-    // worded as a decision, not a date, so it can't read as a second due date; and nothing when
-    // it would just repeat the due chip ("today · today")
-    if(t.plan===today&&t.planSet===today&&t.due!==today){ const c=el('span','chip plan','doing today'); c.title='You picked this for today'; chips.appendChild(c); }
-    else if(movedLater&&!t.due){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; chips.appendChild(c); }
   }
   if(taskWs(t)==='school'){
     if(state.activeTab!=='school')chips.appendChild(el('span','chip school','school'));
@@ -745,13 +736,21 @@ function buildPanel(t){
 }
 
 /* ── render ── */
+let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
-  updatePlanBtn();
   if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
   const ae=document.activeElement;
-  if(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor)){
+  const typing=!!(ae&&ae.dataset&&(ae.dataset.replyFor||ae.dataset.draftFor));
+  // on a phone the rebuilt box can't take the keyboard back (only a tap opens it), so the redraw waits until you
+  // leave the box: a moment after, so a tap on Send or a chevron lands on the buttons it was aimed at
+  if(typing&&touchDevice()){
+    if(!renderWaiting){ renderWaiting=true; ae.addEventListener('blur',function(){ setTimeout(function(){ if(renderWaiting){ renderWaiting=false; render(); } },300); },{once:true}); }
+    return;
+  }
+  renderWaiting=false;
+  if(typing){
     const attr=ae.dataset.replyFor?'data-reply-for':'data-draft-for', id=ae.dataset.replyFor||ae.dataset.draftFor, s=ae.selectionStart, e=ae.selectionEnd;
     queueMicrotask(function(){
       const ta=document.querySelector('textarea['+attr+'="'+id+'"]');

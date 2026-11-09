@@ -7,7 +7,7 @@
    The channel's name is a hash of the agent list's sync key, and every message is sealed with AES-GCM
    under a key made from it, so a message that doesn't open is dropped: only his devices can watch or click. */
 const liveRelay=(function(){
-  const LEASE_MS=12000, PING_MS=4000, FRAME_GAP_MS=350, MAX_MSG=230*1024;
+  const LEASE_MS=12000, PING_MS=4000, FRAME_GAP_MS=350, MAX_MSG=230*1024, STALE_MS=30000;
   const INPUT=['Input.dispatchMouseEvent','Input.dispatchKeyEvent','Input.insertText'];
   let info=null, infoAt=0, key=null, sock=null, joined=false, ref=0, hb=null, retry=null, tries=0, lastMsg=0;
 
@@ -16,13 +16,16 @@ const liveRelay=(function(){
   function unb64(s){ const bin=atob(s), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out; }
   async function seal(obj){
     const iv=crypto.getRandomValues(new Uint8Array(12));
-    const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,new TextEncoder().encode(JSON.stringify(obj))));
+    const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,new TextEncoder().encode(JSON.stringify(Object.assign({at:Date.now()},obj)))));
     return {iv:b64(iv),ct:b64(ct)};
   }
   async function open(p){
     if(!p||typeof p.iv!=='string'||typeof p.ct!=='string')return null;
-    try{ return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(p.iv)},key,unb64(p.ct)))); }
+    let msg=null;
+    try{ msg=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(p.iv)},key,unb64(p.ct)))); }
     catch(e){ return null; } // not sealed with his key: ignored
+    if(!msg||typeof msg.at!=='number'||Math.abs(Date.now()-msg.at)>STALE_MS)return null; // a message kept and sent again later: ignored
+    return msg;
   }
 
   /* ── the channel (Phoenix, like sync.js's live updates) ── */

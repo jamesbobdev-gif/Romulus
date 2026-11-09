@@ -15,6 +15,7 @@ function syncFillForm(){
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
+  const eb=$('syncV2Btn'); if(eb)eb.hidden=!(validProfile(p)&&!p.v2); // gone once the lists are encrypted
   if(typeof devicesDraw==='function')devicesDraw();
   syncShowFirstSteps();
 }
@@ -258,11 +259,61 @@ $('formFileAddBtn').addEventListener('click',async function(){
   setTimeout(function(){ $('formFilesStatus').textContent=''; },3000);
   formFilesLoad();
 });
+/* His Link wallet (Stripe's Link, desktop only: agent/link-wallet.js): connect by a device code he approves in the
+   Link app, watch that sign-in finish, disconnect, and test mode */
+if(window.desktop&&window.desktop.linkStatus){
+  $('linkSection').hidden=false;
+  let linkPoll=null, linkPolls=0;
+  const money=function(c){ return '$'+(Number(c)/100).toFixed(Number(c)%100?2:0); };
+  const stopPoll=function(){ if(linkPoll){ clearInterval(linkPoll); linkPoll=null; } };
+  const showCode=function(p){ // where he signs in, and the phrase the Link app asks for
+    const box=$('linkCode'); box.hidden=false; box.innerHTML='';
+    box.appendChild(document.createTextNode('Open '));
+    const a=el('a','',p.url.replace(/^https?:\/\//,'').split('?')[0]); a.href='#';
+    a.addEventListener('click',function(ev){ ev.preventDefault(); window.desktop.linkOpen(p.url); });
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(', sign in to Link and, when it asks, enter the phrase '));
+    box.appendChild(el('b','mono',p.phrase||''));
+    box.appendChild(document.createTextNode('. This updates by itself once it goes through.'));
+  };
+  const linkDraw=function(s){
+    $('linkConnectBtn').hidden=!!s.connected; $('linkDisconnectBtn').hidden=!s.connected;
+    $('linkConnectBtn').textContent=s.installed?'Connect Link':'Install and connect Link';
+    $('linkTest').checked=!!s.test;
+    const lim=s.limits&&s.limits.per_transaction&&s.limits.per_transaction.limit!=null?' · up to '+money(s.limits.per_transaction.limit)+' a purchase':'';
+    $('linkStatus').textContent=!s.node?'needs Node.js (see Setup)':s.connected?'connected'+(s.email?' as '+s.email:'')+lim+(s.test?' · test mode':''):s.pending?'waiting for your approval in Link…':'not connected';
+    if(s.connected){ $('linkCode').hidden=true; stopPoll(); }
+    else if(s.pending&&s.pending.url){ showCode(s.pending); startPoll(); }
+    else $('linkCode').hidden=true;
+  };
+  const startPoll=function(){ // a sign-in waits: ask every few seconds whether he has approved it
+    if(linkPoll)return; linkPolls=0;
+    linkPoll=setInterval(async function(){
+      if(++linkPolls>75){ stopPoll(); $('linkStatus').textContent='the sign-in timed out: press Connect again'; $('linkCode').hidden=true; return; }
+      try{ linkDraw(await window.desktop.linkStatus({poll:true})); }catch(e){}
+    },4000);
+  };
+  window.linkLoad=async function(){ try{ linkDraw(await window.desktop.linkStatus()); }catch(e){} };
+  $('linkConnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='getting Link ready…'; $('linkConnectBtn').disabled=true;
+    let r=null; try{ r=await window.desktop.linkConnect(); }catch(e){ r={ok:false,error:e.message}; }
+    $('linkConnectBtn').disabled=false;
+    if(!r||!r.ok){ $('linkStatus').textContent=(r&&r.error)||'could not start the sign-in'; return; }
+    $('linkStatus').textContent='waiting for your approval in Link…';
+    showCode(r); window.desktop.linkOpen(r.url); startPoll();
+  });
+  $('linkDisconnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='disconnecting…'; stopPoll();
+    try{ linkDraw(await window.desktop.linkDisconnect()); }catch(e){ $('linkStatus').textContent='could not disconnect'; }
+  });
+  $('linkTest').addEventListener('change',async function(){ try{ linkDraw(await window.desktop.linkSave({test:this.checked})); }catch(e){} });
+}
 let prefsLoadedAt; // updated_at of the version in the box: Save only replaces that version (undefined = never loaded)
 async function prefsLoad(){
   lockedLoad();
   routingLoad();
   formFilesLoad();
+  if(typeof linkLoad==='function')linkLoad();
   if(typeof standingLoad==='function')standingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
@@ -301,15 +352,7 @@ function drawThemeModes(){
   document.querySelectorAll('.theme-modes [data-saved]').forEach(function(b){ const on=!!named&&b.dataset.saved===named; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
 }
 document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
-  b.addEventListener('click',function(){
-    let saved=''; try{ saved=localStorage.getItem(THEME_KEY)||''; }catch(e){}
-    if(b.dataset.mode==='custom'&&!saved.trim()){ // nothing saved yet: open the box to paste into
-      $('themeCss').closest('details').open=true; $('themeCss').focus();
-      $('themeStatus').textContent='paste CSS, then Apply';
-      return;
-    }
-    setThemeMode(b.dataset.mode);
-  });
+  b.addEventListener('click',function(){ setThemeMode(b.dataset.mode); });
 });
 drawThemeModes();
 // every unique colour in the box, named (theme-colors.js); redrawn as you type
@@ -494,6 +537,7 @@ $('syncSaveBtn').addEventListener('click',function(){
   if(!SYNC_KEY_SHAPE.test(sk)){ setSyncStatus('a sync key starts with tk_ and has only letters, digits, - and _ (press Generate key)',true); return; }
   // the lists share the project; a key typed for one is its own, blank = made from the sync key
   const raw={personal:{url:url,key:key,syncKey:sk}};
+  const cur=syncState.cfg&&syncState.cfg.personal; if(cur&&cur.v2&&cur.syncKey===sk)raw.personal.v2=true; // the same key stays end-to-end encrypted
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
   for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
@@ -559,7 +603,7 @@ $('syncOffBtn').addEventListener('click',function(){
    sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
    back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
    Lists with a key of their own (not made from the sync key) are not touched. */
-const SYNC_SIDE_ROWS={personal:[':ideas',':hours'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance',':kitchen'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros'],work:[],school:[]};
 const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
 function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
   const out=[];
@@ -692,7 +736,7 @@ async function syncUseOneKey(){
    device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
    (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
    Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
-   (buy emails, school feeds, the work calendar) can't read sealed rows yet (docs/phone-only-plan.md). */
+   (school feeds, the work calendar) can't read sealed rows yet. */
 const SYNC_MOVED={moved:'v2'};
 function syncV2Moves(c){
   const out=[];
@@ -745,3 +789,14 @@ async function syncMoveToV2(){
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',syncRotateKey);
 })();
+(function(){ // end-to-end encryption (syncMoveToV2): shows while the lists are still plain in the project
+  const b=document.createElement('button'); b.id='syncV2Btn'; b.className='ghost mono'; b.textContent='Encrypt my lists end to end'; b.hidden=true;
+  b.title='Re-upload every list encrypted on this device, so the sync project holds only ciphertext';
+  $('syncGenBtn').insertAdjacentElement('afterend',b);
+  b.addEventListener('click',async function(){
+    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nYour other devices follow on their next sync if they run Romulus 1.0.10 or newer; older ones show a sync error until they update. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
+    b.disabled=true;
+    try{ await syncMoveToV2(); }finally{ b.disabled=false; syncFillForm(); }
+  });
+})();
+

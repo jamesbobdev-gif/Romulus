@@ -25,7 +25,7 @@ const impTag=(typeof tagFromWords==='function')?tagFromWords:(typeof require==='
 
 /* ── CSV ── quoted fields, doubled quotes, commas/newlines inside quotes; ; or tab when the file uses those */
 function impSplitCsv(text){
-  text=String(text||'').replace(/^﻿/,'');
+  text=String(text||'').replace(/^\uFEFF/,'');
   const lines=text.split(/\r?\n/).slice(0,12);
   const score=function(sep){ return Math.max.apply(null,lines.map(function(l){ return l.split(sep).length; })); };
   const sep=[',','\t',';'].sort(function(a,b){ return score(b)-score(a); })[0];
@@ -276,7 +276,7 @@ function impWhen(s,now){
 }
 function impText(text,opts){
   const out=[]; let heading=null, last=null;
-  String(text||'').replace(/^﻿/,'').split(/\r?\n/).forEach(function(raw,n){
+  String(text||'').replace(/^\uFEFF/,'').split(/\r?\n/).forEach(function(raw,n){
     if(!raw.trim())return;
     const indent=/^(\s*)/.exec(raw.replace(/\t/g,'    '))[1].length;
     let s=raw.trim();
@@ -307,7 +307,7 @@ function impText(text,opts){
 const IMP_NAMES={todoist:'Todoist',ticktick:'TickTick',gtasks:'Google Tasks',trello:'Trello',asana:'Asana',csv:'a spreadsheet',text:'a list',json:'a JSON file'};
 function parseImport(text,opts){
   opts=opts||{};
-  text=String(text||'').replace(/^﻿/,'');
+  text=String(text||'').replace(/^\uFEFF/,'');
   const name=String(opts.fileName||'').toLowerCase();
   let source=null, items=[];
   const t=text.trim();

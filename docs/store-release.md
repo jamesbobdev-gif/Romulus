@@ -11,7 +11,7 @@ switches on once its secrets or variables are set, and does nothing until then.
 | Microsoft Store | `.appx`, a run artifact | builds once the three `MS_STORE_*` variables are set |
 | Mac, signed and notarized | the normal `.dmg` / `.zip` (Apple chip and Intel) | signs once the Apple secrets are set |
 | Windows, signed | the normal installer | signs once the Azure secrets and variables are set |
-| iPhone App Store | not started | needs the Apple account, a Mac with Xcode, and an iOS port of the Android-only parts |
+| iPhone App Store | uploaded to App Store Connect (TestFlight) by the `ios` job | builds once the four `APPLE_API_*` / `APPLE_TEAM_ID` secrets are set; see the iPhone section for what it leaves out |
 
 ## Google Play
 
@@ -58,7 +58,7 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
     Delete my account, which needs the `sync-delete` function deployed; see below). Play's
     account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
     the privacy policy's "Deleting your data" section as the deletion web link when Play asks for one.
-  - **Payments**: the $5 sync plan is a Stripe link, and Play requires Play Billing for subscriptions bought
+  - **Payments**: the sync plans ($3 alone, $5 for a family) are Stripe links, and Play requires Play Billing for subscriptions bought
     inside the app, so the Play build never shows it (`hostedInStore` in hosted-sync.js, keyed on
     `window.ROMULUS_STORE`). Someone who pays on a computer gets the space on their phone too. The same goes
     for an iPhone build: give it its own `ROMULUS_STORE` value and the button stays hidden.
@@ -142,10 +142,61 @@ The Mac App Store is not planned: its sandbox would block the Agent's browser an
 
 ## iPhone (App Store)
 
-Not started. It needs the Apple Developer account above, a Mac with Xcode (or a cloud Mac), and a test
-iPhone. The work: add Capacitor's iOS project, then rebuild what is Android-only today (widgets in
-WidgetKit, the share menu, calendar sign-in, the Finance fingerprint vault, the update banner left out).
-iOS won't let "Hey Romulus" listen in the background, so there it would work only with Romulus open.
+The iPhone app is Capacitor's iOS project in `mobile/ios`, wrapping the same web UI as Android. The release
+workflow's `ios` job builds it on a GitHub Mac and uploads it to App Store Connect, so no Mac of your own is
+needed for releases (one with Xcode is still the way to run it on a test iPhone: `cd mobile && node
+prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`).
+
+1. **Apple Developer Program** ($99 a year), the account from the Mac section above.
+2. **Register the app**: in App Store Connect, My Apps → + → New App, platform iOS, name Romulus, bundle ID
+   `com.jartro.tasks` (register the bundle ID first at developer.apple.com → Identifiers if it isn't offered).
+   The bundle ID can never change.
+3. **API key**: App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys →
+   generate one with the **Admin** role (Admin is what lets Xcode make the signing certificate and
+   provisioning profile itself; a Developer-role key fails at the signing step). Download the `.p8` (only
+   offered once) and note its Key ID and the Issuer ID shown on that page. Your Team ID is at
+   developer.apple.com → Membership.
+4. Set four secrets: `APPLE_API_KEY_P8` (`base64 -i AuthKey_XXXX.p8`), `APPLE_API_KEY_ID`,
+   `APPLE_API_ISSUER_ID`, `APPLE_TEAM_ID` (the Mac section's `APPLE_TEAM_ID` is the same value).
+5. Push a tag. The build appears under TestFlight in App Store Connect once Apple has processed it (ten
+   minutes or so). The first time, Apple emails about **export compliance**; the app already declares it uses
+   no non-exempt encryption (`ITSAppUsesNonExemptEncryption` in `Info.plist`), so there is nothing to answer.
+6. **Release**: App Store Connect → the app → + Version, pick the TestFlight build, fill the listing with
+   the Google Play text above (promotional text is optional; the Play "full description" fits the
+   description field), add screenshots for the 6.7" and 6.5" iPhone sizes, the privacy policy URL, and
+   submit for review. Set **Age rating** from the questionnaire (expect 4+ or 12+ depending on how you answer
+   "unrestricted web access", which the Agent's browser is not on iPhone) and the same answers as Play's Data
+   safety for **App Privacy** ("data not collected" by us; data the user sends to services they connect
+   themselves is not collection).
+7. **Reviewer note** (App Review Information): the same as Play's: no accounts of ours, tasks work offline,
+   AI features need the reviewer's own key, entered in Settings → AI. Apple's reviewers do ask for a demo
+   path; say which free key to use (a Gemini key from aistudio.google.com).
+8. **HealthKit** (the Health tab, `HealthPlugin.swift`): the App ID needs the HealthKit capability. With
+   automatic signing and the Admin key the first build turns it on itself; if the archive fails on
+   "entitlement not supported", switch it on by hand at developer.apple.com → Identifiers →
+   `com.jartro.tasks` → HealthKit. Review checks three things: a privacy policy with a HealthKit section (the
+   Health section of `PRIVACY.md`), the purpose string in `Info.plist`
+   (`NSHealthShareUsageDescription`), and that health data is used for the feature alone. Add to the
+   reviewer note: "The Health tab reads steps, sleep and workouts from Apple Health, read-only, to tick off
+   the user's own goal to-dos such as 'Walk 8,000 steps'. Nothing is stored, synced or shared." App Privacy:
+   Health & Fitness, not collected (it never leaves the phone).
+
+**Before paying Apple**: Actions → *iPhone build check* → Run workflow compiles the project unsigned on a GitHub
+Mac (`.github/workflows/ios-check.yml`), so a broken project shows up before the $99 and before any secret
+exists. The task-photo picker offers the camera on iPhone, so `Info.plist` carries the camera and photo
+library purpose strings; without them iOS closes the app the moment someone taps *Take Photo*.
+
+**What the iPhone app leaves out today**, each because its native plugin is Android-only and the web side
+simply does without it when the plugin is absent: home-screen widgets, the share menu, Google / Microsoft
+calendar sign-in on the phone (calendars still arrive through sync from a computer), the fingerprint-locked
+Finance vault, voice input and "Hey Romulus" (iOS wouldn't let it listen in the background anyway). Tasks,
+all the lists, sync, reminders (local notifications), the Agent's conversation and the Health tab (Apple Health
+in place of Health Connect, the same goal to-dos) all work. There is no update
+banner (`ROMULUS_STORE` is `appstore`): the App Store updates the app. Porting the rest means Swift versions
+of the plugins in `mobile/android/app/src/main/java/com/jartro/tasks/` and WidgetKit widgets.
+
+**Version numbers**: the app's version is the root `package.json` one; its build number is the same figure
+Android uses for `versionCode` (1.0.27 → 1000027), so every tag uploads a build Apple accepts as newer.
 
 ## Before any store goes public
 
