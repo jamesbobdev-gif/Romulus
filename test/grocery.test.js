@@ -82,6 +82,8 @@ test('the meal-plan skill matches meal planning, not everyday tasks', () => {
     assert.ok(s.match.test(t), t);
   for (const t of ['cut the grass', 'book a haircut', 'order groceries', 'plan the trip to Denver', 'what time is the game'])
     assert.ok(!s.match.test(t), t);
+});
+
 test('a food task that is not an order sees his usual groceries, pantry and recipes, liked first', () => {
   const tasks = [{ ws: 'agent', created: 1, list: ['Old'] }, { ws: 'agent', created: 2, list: ['Eggs', { name: 'Kiwis', every: 2 }] }];
   const kitchen = { items: [{ name: 'Chicken breast', qty: 2, unit: 'lb' }, { name: 'Salt', qty: null, unit: '' }],
