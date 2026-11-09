@@ -11,7 +11,7 @@ switches on once its secrets or variables are set, and does nothing until then.
 | Microsoft Store | `.appx`, a run artifact | builds once the three `MS_STORE_*` variables are set |
 | Mac, signed and notarized | the normal `.dmg` / `.zip` (Apple chip and Intel) | signs once the Apple secrets are set |
 | Windows, signed | the normal installer | signs once the Azure secrets and variables are set |
-| iPhone App Store | uploaded to App Store Connect (TestFlight) by the `ios` job | builds once the four `APPLE_API_*` / `APPLE_TEAM_ID` secrets are set; see the iPhone section for what it leaves out |
+| iPhone App Store | uploaded to App Store Connect (TestFlight) by the `ios` job | builds once the four `APPLE_API_*` / `APPLE_TEAM_ID` secrets are set; see the iPhone section for what it has |
 
 ## Google Play
 
@@ -186,14 +186,42 @@ Mac (`.github/workflows/ios-check.yml`), so a broken project shows up before the
 exists. The task-photo picker offers the camera on iPhone, so `Info.plist` carries the camera and photo
 library purpose strings; without them iOS closes the app the moment someone taps *Take Photo*.
 
-**What the iPhone app leaves out today**, each because its native plugin is Android-only and the web side
-simply does without it when the plugin is absent: home-screen widgets, the share menu, Google / Microsoft
-calendar sign-in on the phone (calendars still arrive through sync from a computer), the fingerprint-locked
-Finance vault, voice input and "Hey Romulus" (iOS wouldn't let it listen in the background anyway). Tasks,
-all the lists, sync, reminders (local notifications), the Agent's conversation and the Health tab (Apple Health
-in place of Health Connect, the same goal to-dos) all work. There is no update
-banner (`ROMULUS_STORE` is `appstore`): the App Store updates the app. Porting the rest means Swift versions
-of the plugins in `mobile/android/app/src/main/java/com/jartro/tasks/` and WidgetKit widgets.
+**What the iPhone app has** (Swift in `mobile/ios/App`, each the counterpart of an Android file in
+`mobile/android/app/src/main/java/com/jartro/tasks/`):
+
+| iPhone | Android | Notes |
+|---|---|---|
+| `HealthPlugin.swift` | `HealthPlugin.kt` | Apple Health in place of Health Connect, the same goal to-dos |
+| `VoicePlugin.swift` | `VoicePlugin.java` | Apple's speech recognition, on the phone when the iPhone supports it |
+| `WakeWordPlugin.swift` | `WakeWordPlugin.java` / `WakeWordService.java` | "Hey Romulus" only while Romulus is open (iOS allows no background listening), on-device only, so no speech model download |
+| `FinanceVaultPlugin.swift` | `FinanceVaultPlugin.java` | key in the Keychain behind Face ID / Touch ID; adding a face or finger means pairing again. iOS can't block screenshots, so `secure` only hides Finance in the app switcher and while the screen is recorded |
+| `CalAccountsPlugin.swift` | `CalAccountsPlugin.java` | Apple's sign-in sheet; tokens in the Keychain |
+| `ShareLinkPlugin.swift` | `ShareLinkPlugin.java` | |
+| `RomulusWidgets/` + `WidgetDataPlugin.swift` | the `*WidgetProvider.java` files | the same five: Today, List (Personal or Groceries, picked in the widget's settings), School, Agent (one board: needs you, working, queued, done, parked), Quick add. The page feeds them (`mobile/widgets-phone.js`), since only it can read the encrypted lists. Checking off on a widget needs iOS 17; the app itself runs on iOS 15 and up |
+| `RomulusViewController.swift` | `MainActivity.java` | registers the plugins and turns widget taps (`romulus://hook?...`) into `window.__tasksHook` |
+
+Still Android-only: sharing *into* Romulus from other apps (it needs a Share extension of its own). The
+Finance wording still says "fingerprint" in places. There is no update banner (`ROMULUS_STORE` is
+`appstore`): the App Store updates the app.
+
+**Extra setup for these parts**:
+- **App Group** for the widgets: developer.apple.com → Identifiers → App Groups → `group.com.jartro.tasks`,
+  then turn on App Groups with that group for both `com.jartro.tasks` and `com.jartro.tasks.widgets` (the
+  widget extension's App ID). Automatic signing may do this itself; doing it first avoids a failed archive.
+- **Calendar sign-in on the iPhone** (optional; without it the iPhone has calendar links only): a Google
+  OAuth client of type **iOS**, bundle ID `com.jartro.tasks`, stored as `"googleIos": {"clientId": "..."}` in
+  `oauth-clients.json` and the `OAUTH_CLIENTS_JSON` secret; and in the Entra app registration, Authentication
+  → Add a platform → iOS / macOS with bundle ID `com.jartro.tasks` (redirect `msauth.com.jartro.tasks://auth`).
+- **Reviewer note** additions: "Hey Romulus is off by default (Settings > Hey Romulus) and listens only while
+  the app is open, on the phone itself. Face ID opens the Finance tab. Every order, booking, form and email
+  the Agent prepares waits for the user's yes."
+- **App Privacy** additions: Photos or Videos and Other User Content (photos on Agent tasks and files the
+  Agent downloads, kept on the Romulus server for sync), and Identifiers → Device ID (the hashed key id, for
+  abuse limits), all for App Functionality, not tracking. `App/PrivacyInfo.xcprivacy` declares no tracking.
+- **Check on a real iPhone** before submitting (none of it could be tried from Windows): voice and Hey
+  Romulus (the chime, then Voice listening), Face ID and the Finance pairing scan, Google / Microsoft sign-in
+  coming back to the app, the widgets filling in after the app is opened once, and a widget check-off being
+  saved the next time the app opens.
 
 **Version numbers**: the app's version is the root `package.json` one; its build number is the same figure
 Android uses for `versionCode` (1.0.27 → 1000027), so every tag uploads a build Apple accepts as newer.
