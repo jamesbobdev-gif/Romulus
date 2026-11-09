@@ -182,6 +182,10 @@
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- the apps that write to Health Connect, so HealthPlugin.kt can name the ones feeding each number -->
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>

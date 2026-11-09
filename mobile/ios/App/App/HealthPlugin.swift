@@ -57,10 +57,11 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     /**
-     * {days: [{date: "YYYY-MM-DD", steps?, exerciseMin?, sleepMin?}]} for the last `days` days (1-30, today last).
+     * {days: [{date: "YYYY-MM-DD", steps?, exerciseMin?, sleepMin?, from?}]} for the last `days` days (1-30, today last).
      * Steps are HealthKit's own daily sums (which merge the phone's and the watch's counts); exercise is the day's
      * workouts from any app or the watch's exercise minutes, whichever says more; sleep counts toward the morning it
      * ended, overlapping records from different apps counted once.
+     * from: {steps?, exercise?, sleep?: ["iPhone", "Apple Watch", "Oura"]}, the apps and devices that wrote each number.
      */
     @objc func read(_ call: CAPPluginCall) {
         guard HKHealthStore.isHealthDataAvailable() else { call.reject("Apple Health isn’t available."); return }
@@ -75,18 +76,30 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         var out: [String: [String: Any]] = [:]
         for d in dates { out[d] = ["date": d] }
         var workoutMin: [String: Double] = [:], ringMin: [String: Double] = [:]
+        var from: [String: [String: [String]]] = [:] // day → kind → names, in the order first seen
         let lock = NSLock()
+        let addFrom = { (day: String, kind: String, name: String) in
+            lock.lock()
+            var kinds = from[day] ?? [:], names = kinds[kind] ?? []
+            if !names.contains(name) { names.append(name) }
+            kinds[kind] = names; from[day] = kinds
+            lock.unlock()
+        }
         let put = { (day: String, key: String, value: Any) in lock.lock(); if out[day] != nil { out[day]![key] = value }; lock.unlock() }
         let range = HKQuery.predicateForSamples(withStart: first, end: end, options: .strictStartDate)
         let group = DispatchGroup()
 
         // steps: one sum per day
         group.enter()
-        let stepsQuery = HKStatisticsCollectionQuery(quantityType: steps, quantitySamplePredicate: range, options: .cumulativeSum,
+        let stepsQuery = HKStatisticsCollectionQuery(quantityType: steps, quantitySamplePredicate: range, options: [.cumulativeSum, .separateBySource],
                                                      anchorDate: first, intervalComponents: DateComponents(day: 1))
         stepsQuery.initialResultsHandler = { _, results, _ in
             results?.enumerateStatistics(from: first, to: end) { stat, _ in
-                if let q = stat.sumQuantity() { put(Self.ymd(stat.startDate), "steps", Int(q.doubleValue(for: .count()).rounded())) }
+                if let q = stat.sumQuantity() {
+                    let d = Self.ymd(stat.startDate)
+                    put(d, "steps", Int(q.doubleValue(for: .count()).rounded()))
+                    for src in stat.sources ?? [] where (stat.sumQuantity(for: src)?.doubleValue(for: .count()) ?? 0) > 0 { addFrom(d, "steps", Self.name(src)) }
+                }
             }
             group.leave()
         }
@@ -94,11 +107,15 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
 
         // exercise: the watch's exercise minutes per day, and the workouts logged by any app
         group.enter()
-        let ringQuery = HKStatisticsCollectionQuery(quantityType: exerciseTime, quantitySamplePredicate: range, options: .cumulativeSum,
+        let ringQuery = HKStatisticsCollectionQuery(quantityType: exerciseTime, quantitySamplePredicate: range, options: [.cumulativeSum, .separateBySource],
                                                     anchorDate: first, intervalComponents: DateComponents(day: 1))
         ringQuery.initialResultsHandler = { _, results, _ in
             results?.enumerateStatistics(from: first, to: end) { stat, _ in
-                if let q = stat.sumQuantity() { lock.lock(); ringMin[Self.ymd(stat.startDate)] = q.doubleValue(for: .minute()); lock.unlock() }
+                if let q = stat.sumQuantity() {
+                    let d = Self.ymd(stat.startDate)
+                    lock.lock(); ringMin[d] = q.doubleValue(for: .minute()); lock.unlock()
+                    for src in stat.sources ?? [] where (stat.sumQuantity(for: src)?.doubleValue(for: .minute()) ?? 0) > 0 { addFrom(d, "exercise", Self.name(src)) }
+                }
             }
             group.leave()
         }
@@ -108,6 +125,7 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
             for w in (samples as? [HKWorkout] ?? []) {
                 let d = Self.ymd(w.startDate)
                 lock.lock(); workoutMin[d] = (workoutMin[d] ?? 0) + w.duration / 60; lock.unlock()
+                addFrom(d, "exercise", Self.name(w.sourceRevision.source))
             }
             group.leave()
         })
@@ -120,7 +138,11 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
                                     sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]) { _, samples, _ in
             let asleep = (samples as? [HKCategorySample] ?? []).filter { Self.isAsleep($0.value) }
             var byDay: [String: [(Date, Date)]] = [:]
-            for s in asleep { byDay[Self.ymd(s.endDate), default: []].append((s.startDate, s.endDate)) }
+            for s in asleep {
+                let d = Self.ymd(s.endDate)
+                byDay[d, default: []].append((s.startDate, s.endDate))
+                addFrom(d, "sleep", Self.name(s.sourceRevision.source))
+            }
             for (d, spans) in byDay { put(d, "sleepMin", Self.unionMinutes(spans)) }
             group.leave()
         })
@@ -129,6 +151,7 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
             for d in dates {
                 let w = workoutMin[d], r = ringMin[d]
                 if w != nil || r != nil { out[d]!["exerciseMin"] = Int(max(w ?? 0, r ?? 0).rounded()) }
+                if let f = from[d], !f.isEmpty { out[d]!["from"] = f }
             }
             call.resolve(["days": dates.map { out[$0]! }])
         }
@@ -136,6 +159,15 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private static func info(_ available: String, asked: Bool) -> [String: Any] {
         ["available": available, "granted": asked, "steps": asked, "exercise": asked, "sleep": asked]
+    }
+
+    /// The name he knows a source by. The iPhone and Watch record under the device's own name ("Sam's Apple Watch"),
+    /// so those are just "iPhone" and "Apple Watch"; any other app (Oura, Garmin Connect, Strava...) by its name.
+    private static func name(_ src: HKSource) -> String {
+        if src.bundleIdentifier.hasPrefix("com.apple.health") {
+            return src.name.range(of: "watch", options: .caseInsensitive) != nil ? "Apple Watch" : "iPhone"
+        }
+        return src.name
     }
 
     private static func isAsleep(_ value: Int) -> Bool {
