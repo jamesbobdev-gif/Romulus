@@ -1200,6 +1200,8 @@ body.review-open .top-right{display:none!important}
 .health-goal-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .health-goal-v{font-size:11.5px;color:var(--muted)}
 .health-goal.done .health-goal-t{color:var(--muted);text-decoration:line-through}
+.health-train{font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer}
+.health-train:hover{border-color:var(--accent)}
 .health-bar{grid-column:1/-1;height:4px;border-radius:2px;background:var(--hairline);overflow:hidden}
 .health-fill{height:100%;background:var(--accent)}
 /* the Food plan: his per-day macros, which the Agent buys groceries to */

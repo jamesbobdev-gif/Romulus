@@ -639,11 +639,32 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     });
     return card;
   };
+  // training goals the phone can't count ("Bench 225", "Run a half marathon"): to-dos tagged health, which is what
+  // saying one in the add box makes (tab-route.js). Each opens its to-do, where he ticks it off or changes it.
+  const drawTraining=function(){
+    const wrap=el('div','health-goals-sec');
+    const list=state.tasks.filter(function(t){ return !t.done&&taskWs(t)!=='agent'&&t.tag==='health'&&!healthGoal(t.title); })
+      .sort(function(a,b){ return String(a.due||'9999').localeCompare(String(b.due||'9999'))||(a.created||0)-(b.created||0); });
+    wrap.appendChild(el('h3','settings-subhead','Training'));
+    if(!list.length){ wrap.appendChild(el('p','settings-hint','Say or type a goal like “I want to bench 225 by March” or “I want to run a half marathon” and it lands here.')); return wrap; }
+    const ul=el('div','health-goals');
+    list.forEach(function(t){
+      const row=el('button','health-goal health-train');
+      row.type='button'; row.title='Open this to-do';
+      row.appendChild(el('span','health-goal-t',t.title));
+      row.appendChild(el('span','mono health-goal-v',t.due?(typeof dateInfo==='function'?dateInfo(t.due,t.dueTime).text:t.due):''));
+      row.addEventListener('click',function(){ if(typeof openTaskById==='function')openTaskById(t.id); });
+      ul.appendChild(row);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  };
   const draw=function(){
     view.innerHTML='';
     view.appendChild(drawNumbers());
     view.appendChild(drawPlan());
     view.appendChild(drawGoals());
+    view.appendChild(drawTraining());
   };
   // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today;
   // with keep ("1 g of protein per pound") only those numbers change and the rest of the plan stays

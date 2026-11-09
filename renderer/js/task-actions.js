@@ -59,6 +59,9 @@ async function addTask(){
   if(!title){ titleEl.value=''; titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
   if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')+(g.pantry.length?'. Taken out of the pantry':'')); return; } }
+  // said something about his health or his kitchen ("I want to walk 10k steps a day", "I have 2 lb of chicken"):
+  // it changes that tab instead of becoming a to-do (tab-route.js); a training goal keeps the date box's date
+  if(!withPhotos&&typeof tabRouteTry==='function'&&tabRouteTry(title,$('newDue').value||null)){ titleEl.value=''; buzz('add'); return 'routed'; }
   let photoUrls=[], photoFiles=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
@@ -361,8 +364,9 @@ async function voiceAdd(smart){
     // fill the boxes like you'd typed it, add, then put the sticky date/time back how they were
     const dueEl=$('newDue'), timeEl=$('newTime'), oldDue=dueEl.value, oldTime=timeEl.value;
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
-    await addTask();
+    const res=await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
+    if(res==='routed')return; // it went to the Health or Kitchen tab, which already said so (tab-route.js)
     voiceToast(cmd.raw?'Sent to the Agent: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+(cmd.learned?' (like your past ones)':'')+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
