@@ -5,7 +5,9 @@
    there: the day the task is due, or today when it has no date. Agent tasks never are, and one he unticked by hand
    stays unticked for that day.
    The phone keeps one line per day in state.health:
-     {days: {'YYYY-MM-DD': {steps, exerciseMin, sleepMin, at}}}   a kind he didn't allow is left out, not 0
+     {days: {'YYYY-MM-DD': {steps, exerciseMin, sleepMin, at, from}}}   a kind he didn't allow is left out, not 0
+   from: {steps|exercise|sleep: ['Garmin Connect', ...]}, the apps and devices that wrote that number (Samsung Health,
+   Fitbit, Garmin, Oura, Strava and the rest all feed Health Connect or Apple Health, so the phone reads them there).
    Sleep counts toward the morning it ended. The days sync through their own row next to the personal list
    (syncKey+':health') so the computer can tick tasks off too, but only when the lists are end-to-end
    encrypted; otherwise they stay on the phone. They are never put in front of any AI.
@@ -81,9 +83,29 @@ function normHealth(raw){
     const d=src[k]; if(!/^\d{4}-\d{2}-\d{2}$/.test(k)||!d||typeof d!=='object')return;
     const o={at:+d.at||0};
     Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; if(isFinite(d[f])&&d[f]!==null&&d[f]>=0)o[f]=Math.round(+d[f]); });
+    const from=healthFrom(d.from); if(from)o.from=from;
     days[k]=o;
   });
   return {days:days};
+}
+// what the phone said fed each number → {steps?, exercise?, sleep?: [names]}, or null when it said nothing.
+// At most 6 names a kind, 40 characters each, no repeats.
+function healthFrom(raw){
+  if(!raw||typeof raw!=='object')return null;
+  const out={};
+  Object.keys(HEALTH_FIELD).forEach(function(kind){
+    if(!Array.isArray(raw[kind]))return;
+    const names=[];
+    raw[kind].forEach(function(n){ const s=String(n==null?'':n).replace(/\s+/g,' ').trim().slice(0,40); if(s&&names.indexOf(s)===-1&&names.length<6)names.push(s); });
+    if(names.length)out[kind]=names;
+  });
+  return Object.keys(out).length?out:null;
+}
+// every app behind a day's numbers, once each: ['Samsung Health', 'Garmin Connect']
+function healthFromAll(day){
+  const all=[];
+  if(day&&day.from)Object.keys(HEALTH_FIELD).forEach(function(kind){ (day.from[kind]||[]).forEach(function(n){ if(all.indexOf(n)===-1)all.push(n); }); });
+  return all;
 }
 function healthYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function healthCutoff(now){ const d=new Date(now||Date.now()); d.setHours(0,0,0,0); d.setDate(d.getDate()-HEALTH_KEEP_DAYS); return healthYmd(d); }
@@ -97,7 +119,7 @@ function healthMergeDocs(local,remoteDoc,now){
     days[k]=!a?b:!b?a:((b.at||0)>(a.at||0)?b:a);
   });
   const merged=healthPrune({days:days},now);
-  const canon=function(h){ return JSON.stringify(Object.keys(h.days).sort().map(function(k){ const d=h.days[k]; return [k,d.at,d.steps,d.exerciseMin,d.sleepMin]; })); };
+  const canon=function(h){ return JSON.stringify(Object.keys(h.days).sort().map(function(k){ const d=h.days[k]; return [k,d.at,d.steps,d.exerciseMin,d.sleepMin,d.from||null]; })); };
   return {merged:merged,changedLocal:canon(merged)!==canon(local),changedRemote:canon(merged)!==canon(healthPrune(remote,now))};
 }
 
@@ -163,7 +185,7 @@ function macroPlanSay(p,todayYmd){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={healthGoal:healthGoal,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
+  module.exports={healthGoal:healthGoal,healthFrom:healthFrom,healthFromAll:healthFromAll,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
     healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
     macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay};
 }
@@ -217,7 +239,9 @@ async function healthRead(days){
       if(!d||!/^\d{4}-\d{2}-\d{2}$/.test(d.date))return;
       const prev=state.health.days[d.date]||{}, next={at:now};
       Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; if(typeof d[f]==='number')next[f]=Math.round(d[f]); });
-      const same=Object.keys(HEALTH_FIELD).every(function(kind){ const f=HEALTH_FIELD[kind]; return prev[f]===next[f]; });
+      const from=healthFrom(d.from); if(from)next.from=from;
+      const same=Object.keys(HEALTH_FIELD).every(function(kind){ const f=HEALTH_FIELD[kind]; return prev[f]===next[f]; })&&
+        JSON.stringify(prev.from||null)===JSON.stringify(next.from||null);
       if(!same){ state.health.days[d.date]=next; changed=true; }
     });
     healthRun.last=now;
@@ -245,7 +269,8 @@ function healthDraw(){
   if(typeof t.steps==='number')parts.push(t.steps.toLocaleString('en-US')+' steps');
   if(typeof t.exerciseMin==='number')parts.push(healthFmtMin(t.exerciseMin)+' exercise');
   if(typeof t.sleepMin==='number')parts.push(healthFmtMin(t.sleepMin)+' sleep');
-  box.textContent=parts.length?'Today so far: '+parts.join(' · ')+(t.at?' (read '+new Date(t.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+')':''):'';
+  const from=healthFromAll(t);
+  box.textContent=parts.length?'Today so far: '+parts.join(' · ')+(from.length?', from '+from.join(', '):'')+(t.at?' (read '+new Date(t.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+')':''):'';
 }
 
 if(typeof document!=='undefined')(function(){
@@ -367,6 +392,9 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
         const c=el('div','health-tile');
         c.appendChild(el('div','health-tile-k',x[0]));
         c.appendChild(el('div','health-tile-v',fmt(x[1],x[2])));
+        // which apps wrote it: the phone itself, a watch, Samsung Health, Garmin, Oura...
+        const from=t&&t.from&&t.from[x[1]];
+        if(from&&from.length&&typeof x[2]==='number'){ const s=el('div','health-tile-s',from.join(', ')); s.title='From '+from.join(', '); c.appendChild(s); }
         tiles.appendChild(c);
       });
       wrap.appendChild(tiles);

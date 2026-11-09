@@ -138,3 +138,25 @@ test('a plan the Agent set remembers which task it came from; his own save drops
   assert.strictEqual(macroPlanClean({ protein: 150, span: 'week', source: '  Plan my   meals ' }).source, 'Plan my meals');
   assert.strictEqual(macroPlanClean({ protein: 150, span: 'week' }).source, undefined);
 });
+
+/* which apps fed each number: Samsung Health, Garmin, Oura... read through Health Connect or Apple Health */
+test('a day keeps the apps behind each number, tidied, and they sync with it', () => {
+  const { normHealth, healthFrom, healthFromAll, healthMergeDocs } = require('../renderer/js/health');
+  assert.deepStrictEqual(healthFrom({ steps: [' Samsung  Health ', 'Samsung Health', '', null, 'Garmin Connect'], sleep: 'Oura', exercise: [] }),
+    { steps: ['Samsung Health', 'Garmin Connect'] });
+  assert.strictEqual(healthFrom(null), null);
+  assert.strictEqual(healthFrom({ steps: [] }), null);
+  assert.strictEqual(healthFrom({ steps: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }).steps.length, 6);
+  assert.strictEqual(healthFrom({ steps: ['x'.repeat(80)] }).steps[0].length, 40);
+  const h = normHealth({ days: { '2026-11-09': { steps: 4000, at: 5, from: { steps: ['iPhone'], sleep: ['Oura', 'Apple Watch'] } }, '2026-11-08': { steps: 10, at: 1 } } });
+  assert.deepStrictEqual(h.days['2026-11-09'].from, { steps: ['iPhone'], sleep: ['Oura', 'Apple Watch'] });
+  assert.strictEqual(h.days['2026-11-08'].from, undefined);
+  assert.deepStrictEqual(healthFromAll(h.days['2026-11-09']), ['iPhone', 'Oura', 'Apple Watch']);
+  assert.deepStrictEqual(healthFromAll(h.days['2026-11-08']), []);
+  // only the names changed: still a change worth syncing
+  const now = new Date('2026-11-09T12:00:00').getTime();
+  const local = normHealth({ days: { '2026-11-09': { steps: 4000, at: 5 } } });
+  const r = healthMergeDocs(local, { days: { '2026-11-09': { steps: 4000, at: 6, from: { steps: ['Fitbit'] } } } }, now);
+  assert.ok(r.changedLocal);
+  assert.deepStrictEqual(r.merged.days['2026-11-09'].from, { steps: ['Fitbit'] });
+});

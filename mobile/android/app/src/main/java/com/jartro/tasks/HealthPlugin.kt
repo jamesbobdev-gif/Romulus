@@ -7,6 +7,7 @@ import androidx.activity.result.ActivityResult
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -125,10 +126,11 @@ class HealthPlugin : Plugin() {
     }
 
     /**
-     * {days: [{date: "YYYY-MM-DD", steps?, exerciseMin?, sleepMin?}]} for the last `days` days (1-30,
+     * {days: [{date: "YYYY-MM-DD", steps?, exerciseMin?, sleepMin?, from?}]} for the last `days` days (1-30,
      * today last). A kind he didn't allow is left out rather than reported as 0. Steps and workouts come
      * from Health Connect's own totals, which drop the overlap when two apps record the same walk; sleep
      * counts toward the morning it ended, overlapping sessions from different apps counted once.
+     * from: {steps?, exercise?, sleep?: ["Samsung Health", "Garmin Connect"]}, the apps that wrote each number.
      */
     @PluginMethod
     fun read(call: PluginCall) {
@@ -144,6 +146,7 @@ class HealthPlugin : Plugin() {
                 val start = first.atStartOfDay()
                 val end = today.plusDays(1).atStartOfDay()
                 val out = LinkedHashMap<String, JSObject>()
+                val sources = HashMap<String, HashMap<String, LinkedHashSet<String>>>() // day → kind → app names
                 for (i in 0 until days) {
                     val d = first.plusDays(i.toLong()).toString()
                     out[d] = JSObject().put("date", d)
@@ -151,29 +154,48 @@ class HealthPlugin : Plugin() {
                 if (stepsPerm in granted) {
                     val rows = c.aggregateGroupByPeriod(AggregateGroupByPeriodRequest(
                         setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(start, end), Period.ofDays(1)))
-                    for (row in rows) out[row.startTime.toLocalDate().toString()]?.put("steps", row.result[StepsRecord.COUNT_TOTAL] ?: 0L)
+                    for (row in rows) {
+                        val d = row.startTime.toLocalDate().toString()
+                        out[d]?.put("steps", row.result[StepsRecord.COUNT_TOTAL] ?: 0L)
+                        addFrom(sources, d, "steps", row.result.dataOrigins)
+                    }
                     for (o in out.values) if (!o.has("steps")) o.put("steps", 0)
                 }
                 if (exercisePerm in granted) {
                     val rows = c.aggregateGroupByPeriod(AggregateGroupByPeriodRequest(
                         setOf(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL), TimeRangeFilter.between(start, end), Period.ofDays(1)))
-                    for (row in rows) out[row.startTime.toLocalDate().toString()]?.put("exerciseMin", row.result[ExerciseSessionRecord.EXERCISE_DURATION_TOTAL]?.toMinutes() ?: 0L)
+                    for (row in rows) {
+                        val d = row.startTime.toLocalDate().toString()
+                        out[d]?.put("exerciseMin", row.result[ExerciseSessionRecord.EXERCISE_DURATION_TOTAL]?.toMinutes() ?: 0L)
+                        addFrom(sources, d, "exercise", row.result.dataOrigins)
+                    }
                     for (o in out.values) if (!o.has("exerciseMin")) o.put("exerciseMin", 0)
                 }
                 if (sleepPerm in granted) {
                     // a night that ended on the first day began the evening before it
                     val from = start.minusDays(1).atZone(zone).toInstant()
                     val spans = ArrayList<Pair<Instant, Instant>>()
+                    val sleepFrom = HashMap<String, MutableSet<DataOrigin>>()
                     var token: String? = null
                     do {
                         val resp = c.readRecords(ReadRecordsRequest(SleepSessionRecord::class,
                             TimeRangeFilter.between(from, Instant.now()), pageToken = token))
-                        for (s in resp.records) spans.add(s.startTime to s.endTime)
+                        for (s in resp.records) {
+                            spans.add(s.startTime to s.endTime)
+                            sleepFrom.getOrPut(s.endTime.atZone(zone).toLocalDate().toString()) { HashSet() }.add(s.metadata.dataOrigin)
+                        }
                         token = resp.pageToken
                     } while (token != null)
                     for (o in out.values) o.put("sleepMin", 0)
                     spans.groupBy { it.second.atZone(zone).toLocalDate().toString() }
                         .forEach { (d, list) -> out[d]?.put("sleepMin", unionMinutes(list)) }
+                    for ((d, origins) in sleepFrom) addFrom(sources, d, "sleep", origins)
+                }
+                for ((d, kinds) in sources) {
+                    val o = out[d] ?: continue
+                    val f = JSObject()
+                    for ((kind, names) in kinds) if (names.isNotEmpty()) f.put(kind, JSArray(names.toList()))
+                    if (f.length() > 0) o.put("from", f)
                 }
                 val arr = JSArray()
                 for (o in out.values) arr.put(o)
@@ -182,6 +204,25 @@ class HealthPlugin : Plugin() {
                 call.reject("Couldn't read Health Connect: " + (e.message ?: e.javaClass.simpleName))
             }
         }
+    }
+
+    private fun addFrom(from: HashMap<String, HashMap<String, LinkedHashSet<String>>>, day: String, kind: String, origins: Set<DataOrigin>) {
+        if (origins.isEmpty()) return
+        val names = from.getOrPut(day) { HashMap() }.getOrPut(kind) { LinkedHashSet() }
+        for (o in origins) appName(o.packageName)?.let { names.add(it) }
+    }
+
+    private val nameCache = HashMap<String, String?>()
+
+    /**
+     * The name he knows an app by. The common health apps by package, since Android 11 hides other apps' labels
+     * unless they're listed under <queries>; anything else by its label when Android shares it, or left out.
+     */
+    private fun appName(pkg: String): String? = nameCache.getOrPut(pkg) {
+        KNOWN_APPS[pkg] ?: try {
+            val pm = context.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().takeIf { it.isNotBlank() }
+        } catch (e: Exception) { null }
     }
 
     /** Minutes covered by the spans, overlaps counted once. */
@@ -197,6 +238,33 @@ class HealthPlugin : Plugin() {
         }
         if (curStart != null && curEnd != null) total += java.time.Duration.between(curStart, curEnd).toMinutes()
         return total
+    }
+
+    companion object {
+        private val KNOWN_APPS = mapOf(
+            "android" to "This phone",
+            "com.google.android.apps.healthdata" to "This phone",
+            "com.sec.android.app.shealth" to "Samsung Health",
+            "com.google.android.apps.fitness" to "Google Fit",
+            "com.fitbit.FitbitMobile" to "Fitbit",
+            "com.garmin.android.apps.connectmobile" to "Garmin Connect",
+            "com.ouraring.oura" to "Oura",
+            "com.strava" to "Strava",
+            "com.whoop.android" to "WHOOP",
+            "com.withings.wiscale2" to "Withings",
+            "fi.polar.polarflow" to "Polar Flow",
+            "com.huami.watch.hmwatchmanager" to "Zepp",
+            "com.mi.health" to "Mi Fitness",
+            "com.xiaomi.wearable" to "Mi Fitness",
+            "com.huawei.health" to "Huawei Health",
+            "com.nike.plusgps" to "Nike Run Club",
+            "com.onepeloton.callisto" to "Peloton",
+            "com.myfitnesspal.android" to "MyFitnessPal",
+            "com.urbandroid.sleep" to "Sleep as Android",
+            "com.runtastic.android" to "adidas Running",
+            "com.yf.smart.coros.dist" to "COROS",
+            "com.stt.android.suunto" to "Suunto",
+        )
     }
 
     override fun handleOnDestroy() {
