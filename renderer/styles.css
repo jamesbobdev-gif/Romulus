@@ -455,15 +455,16 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 /* ── tabs ── */
-/* nine tabs share the column's width instead of spilling past its right edge; if they still can't fit, the bar scrolls sideways */
+/* a rubber band: however many tabs are on, they share the bar in equal widths (two fill it in halves, three in thirds);
+   a label never shrinks below its own width, so when too many are on for the space the bar scrolls sideways instead */
 .tabs{display:flex;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
-.tab{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:center;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 5px;border:0;border-radius:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
+.tab{flex:1 1 0;min-width:max-content;text-align:center;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 5px;border:0;border-radius:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 .tab.tab-off{display:none} /* switched off in Settings > Tabs (tab-picker.js) */
-@media(max-width:520px){.tab{padding:8px 9px;flex:none}.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}}
-@media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* a seventh tab (Finance) on a phone: the bar scrolls sideways instead of widening the page */
+@media(max-width:520px){.tab{padding:8px 9px}.tabs{-webkit-overflow-scrolling:touch}}
+@media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* many tabs on a phone: tighter labels, then the bar scrolls sideways instead of widening the page */
 
 /* ── ideas: note cards you sort into groups ── */
 :root{
