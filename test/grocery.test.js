@@ -141,3 +141,18 @@ test('emptyPantryClaim: "added to your pantry" with no items to put there', () =
   assert.strictEqual(emptyPantryClaim({ status: 'done', note: 'Your pantry has 3 eggs left.' }), false);
   assert.strictEqual(emptyPantryClaim(null), false);
 });
+
+test('his weight from the Food plan row goes to the Agent as bodyWeight', () => {
+  const { weightBrief, macroBrief } = require('../agent/grocery');
+  const now = new Date('2026-11-09T12:00:00').getTime();
+  const at = new Date('2026-11-07T08:00:00').getTime();
+  const row = JSON.stringify({ protein: 180, span: 'open', weight: { lb: 182, at, from: 'Withings' } });
+  assert.deepStrictEqual(weightBrief(row, now), { lb: 182, kg: 82.6, asOf: '2026-11-07', daysAgo: 2, from: 'Withings' });
+  assert.strictEqual(macroBrief(row, now).perDay.protein, 180); // the plan still reads the same
+  // weight alone: no plan for grocery orders, but the weight still comes through
+  const alone = JSON.stringify({ weight: { lb: 182, at } });
+  assert.strictEqual(macroBrief(alone, now), undefined);
+  assert.strictEqual(weightBrief(alone, now).lb, 182);
+  assert.strictEqual(weightBrief(JSON.stringify({ protein: 180 }), now), undefined);
+  assert.strictEqual(weightBrief('', now), undefined);
+});

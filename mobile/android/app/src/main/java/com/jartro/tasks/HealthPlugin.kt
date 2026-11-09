@@ -11,6 +11,7 @@ import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -34,6 +35,8 @@ import java.time.ZoneId
 /**
  * Health Connect, read-only: daily totals of steps, workout minutes and sleep, for tasks that check
  * themselves off ("Walk #steps 8000"). renderer/js/health.js calls it as the "Health" plugin.
+ * Also his latest weight, for the Food plan ("1 g of protein per pound"); it's asked for alongside the three but
+ * optional, so "granted" still means the three.
  * Only totals per day leave this file, never the samples, and nothing is ever written to Health Connect.
  * Health Connect needs Android 8 (API 26); the app still installs from Android 7, where status() says "no".
  */
@@ -43,6 +46,7 @@ class HealthPlugin : Plugin() {
     private val stepsPerm = HealthPermission.getReadPermission(StepsRecord::class)
     private val exercisePerm = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     private val sleepPerm = HealthPermission.getReadPermission(SleepSessionRecord::class)
+    private val weightPerm = HealthPermission.getReadPermission(WeightRecord::class)
     private val perms = setOf(stepsPerm, exercisePerm, sleepPerm)
     private val contract by lazy { PermissionController.createRequestPermissionResultContract() }
 
@@ -60,6 +64,7 @@ class HealthPlugin : Plugin() {
         r.put("steps", stepsPerm in granted)
         r.put("exercise", exercisePerm in granted)
         r.put("sleep", sleepPerm in granted)
+        r.put("weight", weightPerm in granted)
     }
 
     /** {available: "yes" | "install" | "no", granted, steps, exercise, sleep} */
@@ -80,7 +85,7 @@ class HealthPlugin : Plugin() {
     @PluginMethod
     fun connect(call: PluginCall) {
         when (sdk()) {
-            HealthConnectClient.SDK_AVAILABLE -> startActivityForResult(call, contract.createIntent(context, perms), "connectResult")
+            HealthConnectClient.SDK_AVAILABLE -> startActivityForResult(call, contract.createIntent(context, perms + weightPerm), "connectResult")
             HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
                 openStore()
                 call.reject("Install or update Health Connect from Google Play, then press Connect again.")
@@ -131,6 +136,7 @@ class HealthPlugin : Plugin() {
      * from Health Connect's own totals, which drop the overlap when two apps record the same walk; sleep
      * counts toward the morning it ended, overlapping sessions from different apps counted once.
      * from: {steps?, exercise?, sleep?: ["Samsung Health", "Garmin Connect"]}, the apps that wrote each number.
+     * weight: {kg, at (ms), from?} the newest weigh-in of the last 180 days, when that read is allowed.
      */
     @PluginMethod
     fun read(call: PluginCall) {
@@ -199,12 +205,26 @@ class HealthPlugin : Plugin() {
                 }
                 val arr = JSArray()
                 for (o in out.values) arr.put(o)
-                call.resolve(JSObject().put("days", arr))
+                val res = JSObject().put("days", arr)
+                if (weightPerm in granted) latestWeight(c)?.let { res.put("weight", it) }
+                call.resolve(res)
             } catch (e: Exception) {
                 call.reject("Couldn't read Health Connect: " + (e.message ?: e.javaClass.simpleName))
             }
         }
     }
+
+    /** The newest weigh-in of the last 180 days: {kg, at, from?}, or null. */
+    private suspend fun latestWeight(c: HealthConnectClient): JSObject? = try {
+        val resp = c.readRecords(ReadRecordsRequest(WeightRecord::class,
+            TimeRangeFilter.between(Instant.now().minus(java.time.Duration.ofDays(180)), Instant.now()),
+            ascendingOrder = false, pageSize = 1))
+        resp.records.firstOrNull()?.let { w ->
+            val o = JSObject().put("kg", w.weight.inKilograms).put("at", w.time.toEpochMilli())
+            appName(w.metadata.dataOrigin.packageName)?.let { o.put("from", it) }
+            o
+        }
+    } catch (e: Exception) { null }
 
     private fun addFrom(from: HashMap<String, HashMap<String, LinkedHashSet<String>>>, day: String, kind: String, origins: Set<DataOrigin>) {
         if (origins.isEmpty()) return

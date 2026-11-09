@@ -7,7 +7,8 @@ import UIKit
  * Apple Health (HealthKit), read-only: daily totals of steps, exercise minutes and sleep, for tasks that check
  * themselves off ("Walk #steps 8000", "Walk 8,000 steps"). The same "Health" plugin, with the same four calls and
  * answers, as the Android one (HealthPlugin.kt), so renderer/js/health.js has no platform branches.
- * Only totals per day leave this file, never the samples, and nothing is ever written to Apple Health.
+ * Also his latest weight, for the Food plan ("1 g of protein per pound").
+ * Only totals per day and that one weigh-in leave this file, and nothing is ever written to Apple Health.
  * HealthKit never says whether a read was allowed (a kind said no to simply reads as empty), so "granted" means
  * the permission sheet has been shown, and a day only carries the kinds that had data.
  */
@@ -27,7 +28,8 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
     private let exerciseTime = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime)!
     private let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)!
     private let workouts = HKObjectType.workoutType()
-    private var readTypes: Set<HKObjectType> { [steps, exerciseTime, sleep, workouts] }
+    private let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass)!
+    private var readTypes: Set<HKObjectType> { [steps, exerciseTime, sleep, workouts, bodyMass] }
 
     /// {available: "yes" | "no", granted, steps, exercise, sleep}
     @objc func status(_ call: CAPPluginCall) {
@@ -62,6 +64,7 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
      * workouts from any app or the watch's exercise minutes, whichever says more; sleep counts toward the morning it
      * ended, overlapping records from different apps counted once.
      * from: {steps?, exercise?, sleep?: ["iPhone", "Apple Watch", "Oura"]}, the apps and devices that wrote each number.
+     * weight: {kg, at (ms), from} the newest weigh-in of the last 180 days, when there is one and it may be read.
      */
     @objc func read(_ call: CAPPluginCall) {
         guard HKHealthStore.isHealthDataAvailable() else { call.reject("Apple Health isn’t available."); return }
@@ -147,18 +150,35 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
             group.leave()
         })
 
+        // weight: the newest weigh-in of the last 180 days
+        var weight: [String: Any]? = nil
+        group.enter()
+        let lately = HKQuery.predicateForSamples(withStart: cal.date(byAdding: .day, value: -180, to: now), end: now, options: [])
+        store.execute(HKSampleQuery(sampleType: bodyMass, predicate: lately, limit: 1,
+                                    sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, samples, _ in
+            if let w = (samples as? [HKQuantitySample])?.first {
+                let kg = w.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                lock.lock()
+                weight = ["kg": kg, "at": Int(w.endDate.timeIntervalSince1970 * 1000), "from": Self.name(w.sourceRevision.source)]
+                lock.unlock()
+            }
+            group.leave()
+        })
+
         group.notify(queue: .main) {
             for d in dates {
                 let w = workoutMin[d], r = ringMin[d]
                 if w != nil || r != nil { out[d]!["exerciseMin"] = Int(max(w ?? 0, r ?? 0).rounded()) }
                 if let f = from[d], !f.isEmpty { out[d]!["from"] = f }
             }
-            call.resolve(["days": dates.map { out[$0]! }])
+            var res: [String: Any] = ["days": dates.map { out[$0]! }]
+            if let w = weight { res["weight"] = w }
+            call.resolve(res)
         }
     }
 
     private static func info(_ available: String, asked: Bool) -> [String: Any] {
-        ["available": available, "granted": asked, "steps": asked, "exercise": asked, "sleep": asked]
+        ["available": available, "granted": asked, "steps": asked, "exercise": asked, "sleep": asked, "weight": asked]
     }
 
     /// The name he knows a source by. The iPhone and Watch record under the device's own name ("Sam's Apple Watch"),

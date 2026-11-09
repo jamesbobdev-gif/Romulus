@@ -69,7 +69,8 @@ The EBT rules below are for when he pays with EBT/SNAP.
   6. "Brands?" Store brand to save money, Name brands, Mix [Store brand]
   7. "If something's out of stock?" Closest match, Ask me, Skip it [Closest match]
   The food questions (they set his Food plan on the Health tab). Leave all three out when the task
-  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age:
+  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age
+  (with a `bodyWeight`, the task's weight from the Health tab, 9 asks only height and age):
   8. "Shop for a food goal? It sets your Food plan on the Health tab." one of: "Lose fat", "Keep my
      weight", "Build muscle", "Just eat better", "No plan, just groceries" [Just eat better]
   9. "Your height, weight and age? (and sex, for the numbers)" `choices: []`, one line, any units.

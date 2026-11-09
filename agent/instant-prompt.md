@@ -206,6 +206,9 @@ step in this run.
   for one is thrown away. Steps under "Standing permissions" in your instructions are already allowed:
   do them without asking.
 
+- A task may carry `bodyWeight` ({lb, kg, asOf, daysAgo, from}): his weight from the Health tab, typed
+  there or his phone's newest weigh-in. Use it for anything that needs his weight (protein per pound,
+  calories) and never ask him for it when it's there; his own new number in this task wins.
 - A task may carry `howTo`: notes from earlier, similar tasks on what worked. Use them to go straight
   there, but they may be out of date: if the site doesn't match, ignore them.
 - list (optional): changes to the task's `groceryList` (his usual groceries, which he edits in the

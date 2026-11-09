@@ -188,3 +188,24 @@ test('a one-number change ("1 g of protein per pound") keeps the rest of the pla
   assert.strictEqual(macroPlanMerge(old, { keep: true }, '2026-11-09', 5).protein, 140); // nothing new: the plan as it was
   assert.strictEqual(macroPlanMerge(null, { keep: true }, '2026-11-09', 5), null);
 });
+
+test('his weight: typed or from the phone, the newer wins, and it rides in the Food plan row', () => {
+  const { weightClean, weightFromStore, weightNewer, weightSay, macroRowText, macroPlanClean } = require('../renderer/js/health');
+  assert.deepStrictEqual(weightClean({ lb: '182.44', at: 5, from: ' typed  in ' }), { lb: 182.4, at: 5, from: 'typed in' });
+  assert.strictEqual(weightClean({ lb: 12 }), null); // not a person's weight
+  assert.strictEqual(weightClean({ lb: 'abc' }), null);
+  // Health Connect answers in kg; "This phone" is just the store's own name
+  assert.deepStrictEqual(weightFromStore({ kg: 82.5, at: 9, from: 'Withings' }, 'Health Connect'), { lb: 181.9, at: 9, from: 'Withings' });
+  assert.strictEqual(weightFromStore({ kg: 82.5, at: 9, from: 'This phone' }, 'Health Connect').from, 'Health Connect');
+  assert.strictEqual(weightFromStore(null, 'Health Connect'), null);
+  assert.strictEqual(weightNewer({ lb: 180, at: 1 }, { lb: 185, at: 2 }).lb, 185);
+  assert.strictEqual(weightNewer({ lb: 180, at: 3 }, { lb: 185, at: 2 }).lb, 180);
+  assert.strictEqual(weightNewer(null, null), null);
+  assert.match(weightSay({ lb: 182, at: new Date('2026-11-09T12:00:00').getTime(), from: 'Withings' }), /^182 lb, from Withings, Nov 9$/);
+  // the row: the plan plus his weight; weight alone still saves, and doesn't read back as a plan
+  const plan = { protein: 180, span: 'open', from: '2026-11-09', until: null, at: 5 };
+  assert.deepStrictEqual(JSON.parse(macroRowText(plan, { lb: 182, at: 4 })), Object.assign({}, plan, { weight: { lb: 182, at: 4 } }));
+  const alone = macroRowText(null, { lb: 182, at: 4 });
+  assert.strictEqual(macroPlanClean(JSON.parse(alone)), null);
+  assert.strictEqual(macroRowText(null, null), '');
+});

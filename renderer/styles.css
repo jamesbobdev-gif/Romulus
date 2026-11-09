@@ -1195,6 +1195,7 @@ body.review-open .top-right{display:none!important}
 .health-plan-field input::-webkit-outer-spin-button,.health-plan-field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .health-plan-field input:focus{outline:0;border-bottom-color:var(--accent)}
 .health-plan-unit{font-size:11px;color:var(--muted)}
+.health-plan-row.health-weight-row{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:12px}.health-weight-row .health-plan-field{width:110px;flex:none}.health-weight-say{flex:1;min-width:160px;margin:0 0 4px}
 .health-plan-say{margin:10px 0 6px}
 .health-plan-src{margin:0 0 8px;font-size:12px}
 .health-plan-foot{display:flex;align-items:center;gap:8px}

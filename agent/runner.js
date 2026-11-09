@@ -51,7 +51,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, foodBrief } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, foodBrief, weightBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -232,10 +232,12 @@ async function startAgentRun() {
   const allSkills = loadSkills();
   const mealSkill = allSkills.find((s) => s.name === 'meal-plan');
   const isMealRun = (t) => !!(mealSkill && mealSkill.match && t && t.ws === 'agent' && mealSkill.match.test(String(t.title || '')));
-  let macros;
+  // and his weight (Health tab, same row), so a per-pound target is worked out without asking him
+  let macros, weight;
   if (tasks.some((t) => isGroceryRun(t, allTasks) || isMealRun(t))) {
-    try { macros = macroBrief(await agentRow(':macros')); } catch (e) {}
+    try { const row = await agentRow(':macros'); macros = macroBrief(row); weight = weightBrief(row); } catch (e) {}
     if (macros) agentLog('macros: plan handed over');
+    if (weight) agentLog('weight: handed over');
   }
   // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
   const nearMe = tasks.filter((t) => wantsNearby(t, allSkills)).map((t) => t.id);
@@ -259,6 +261,7 @@ async function startAgentRun() {
     knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook || asksPantryFill(t) ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
+    bodyWeight: isGroceryRun(t, allTasks) || isMealRun(t) ? weight : undefined, // his weight (Health tab): typed there, or his phone's newest weigh-in
     macroPlan: isGroceryRun(t, allTasks) || isMealRun(t) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them; a meal-plan change starts from them
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance

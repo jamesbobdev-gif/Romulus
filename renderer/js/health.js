@@ -16,6 +16,9 @@
    per-day macros (calories, protein, carbs, fat) for a week, two weeks, a month or until he changes it, which the
    Agent builds grocery orders to add up to (agent/grocery.js macroBrief, groceries skill). It's kept on this device
    and in the agent list's ':macros' sync row, so the computer that runs the Agent sees it.
+   His weight sits with the Food plan: typed there, or the newest weigh-in the phone's health store has (when he
+   allowed that read). It rides in the same ':macros' row as {weight: {lb, at, from}}, and unlike the daily totals
+   the Agent does see it, on meal-plan and grocery runs, so "1 g of protein per pound" works the number out.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists
    them. The parts without page globals are also loaded by test/health.test.js. */
 'use strict';
@@ -207,10 +210,42 @@ function macroPlanSay(p,todayYmd){
   return s;
 }
 
+/* ── his weight (pure, for tests) ── */
+const KG_LB=2.20462;
+// what's saved → {lb (one decimal), at, from} or null. lb within what a person weighs
+function weightClean(w){
+  if(!w||typeof w!=='object')return null;
+  const lb=Math.round(Number(w.lb)*10)/10;
+  if(!(lb>=50&&lb<=900))return null;
+  const out={lb:lb,at:Number(w.at)>0?Number(w.at):0};
+  if(w.from&&String(w.from).trim())out.from=String(w.from).replace(/\s+/g,' ').trim().slice(0,40);
+  return out;
+}
+// the phone's answer ({kg, at, from}) → a weight, or null; from says which store fed it
+function weightFromStore(r,store){
+  if(!r||typeof r!=='object'||!(Number(r.kg)>0))return null;
+  const app=r.from&&String(r.from).trim();
+  return weightClean({lb:Number(r.kg)*KG_LB,at:r.at,from:app&&app!=='This phone'?app:store});
+}
+// the newer of two (null when neither)
+function weightNewer(a,b){ a=weightClean(a); b=weightClean(b); return !a?b:!b?a:(b.at>a.at?b:a); }
+// "182 lb, from Withings, Nov 9"
+function weightSay(w){
+  if(!w)return '';
+  return (w.lb%1?w.lb.toFixed(1):String(w.lb))+' lb'+(w.from==='typed in'?', typed in':w.from?', from '+w.from:'')+(w.at?', '+new Date(w.at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'');
+}
+// the ':macros' row's text: the plan (or nothing) and his weight
+function macroRowText(plan,weight){
+  const w=weightClean(weight);
+  if(!plan&&!w)return '';
+  return JSON.stringify(Object.assign({},plan||{},w?{weight:w}:{}));
+}
+
 if(typeof module!=='undefined'&&module.exports){
   module.exports={healthProfileOf:healthProfileOf,healthGoal:healthGoal,healthFrom:healthFrom,healthFromAll:healthFromAll,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
     healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
-    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay,macroPlanMerge:macroPlanMerge};
+    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay,macroPlanMerge:macroPlanMerge,
+    weightClean:weightClean,weightFromStore:weightFromStore,weightNewer:weightNewer,weightSay:weightSay,macroRowText:macroRowText};
 }
 
 /* ── the page: sync row, the phone's reads, ticking tasks off, Settings → Health, the Health tab ── */
@@ -254,6 +289,12 @@ function healthOn(){ try{ return localStorage.getItem(HEALTH_ON_KEY)==='1'; }cat
 function healthSetOn(v){ try{ if(v)localStorage.setItem(HEALTH_ON_KEY,'1'); else localStorage.removeItem(HEALTH_ON_KEY); }catch(e){} }
 const healthRun={last:0,busy:false,noRowUntil:0}; // noRowUntil: sync.js waits after the database refused the :health row
 
+// his weight on this device; the Health tab syncs it with the Food plan (healthWeightChanged)
+const WEIGHT_KEY='health.weight.v1';
+let healthWeightChanged=null, healthStatus=null; // healthStatus: the plugin's last status() (weight: may it read weight)
+function healthWeight(){ try{ return weightClean(JSON.parse(localStorage.getItem(WEIGHT_KEY)||'null')); }catch(e){ return null; } }
+function healthWeightKeep(w){ try{ if(w)localStorage.setItem(WEIGHT_KEY,JSON.stringify(w)); else localStorage.removeItem(WEIGHT_KEY); }catch(e){} }
+
 // the phone: today and the days before it from the health store into state.health, then tick off what's reached
 async function healthRead(days){
   const cap=healthCap(); if(!cap||!healthOn()||healthRun.busy)return false;
@@ -272,6 +313,9 @@ async function healthRead(days){
     });
     healthRun.last=now;
     if(changed){ healthPrune(state.health); persist(); }
+    // a newer weigh-in than the one kept (or typed) becomes his weight
+    const w=weightFromStore(r&&r.weight,healthStoreName()), had=healthWeight();
+    if(w&&(!had||w.at>had.at)){ healthWeightKeep(w); if(healthWeightChanged)healthWeightChanged(); }
     if(!healthAutoCheck()&&state.activeTab==='health')renderHealth(); // a tick redraws through touch()
     healthDraw();
     return true;
@@ -281,6 +325,7 @@ async function healthRead(days){
 async function healthConnect(){
   const cap=healthCap(); if(!cap)return null;
   const s=await cap.nativePromise('Health','connect',{});
+  healthStatus=s;
   if(s&&(s.steps||s.exercise||s.sleep)){ healthSetOn(true); await healthRead(30); }
   else healthSetOn(false);
   return s;
@@ -329,7 +374,7 @@ if(typeof document!=='undefined')(function(){
     say((healthProfile()?'Reading steps, exercise and sleep. Your computer sees the daily totals, encrypted.':'Reading steps, exercise and sleep. They stay on this phone until sync is on.')+
       (healthIos()?' A number that stays blank wasn’t allowed: the Health app, Sharing, Apps, Romulus.':''));
   }
-  function refresh(){ cap.nativePromise('Health','status',{}).then(show).catch(function(){ show(null); }); }
+  function refresh(){ cap.nativePromise('Health','status',{}).then(function(s){ healthStatus=s; show(s); }).catch(function(){ show(null); }); }
   on.addEventListener('change',async function(){
     const want=this.checked; this.disabled=true;
     try{
@@ -367,16 +412,22 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     const p=macrosProfile(); if(!p)return;
     try{
       const r=await syncPullRow(p); planSync.loadedAt=r.updatedAt; planSync.pulled=true;
-      let remote=null; try{ remote=macroPlanClean(JSON.parse(r.doc&&r.doc.text||'null')); }catch(e){}
+      let raw=null; try{ raw=JSON.parse(r.doc&&r.doc.text||'null'); }catch(e){}
+      const remote=macroPlanClean(raw);
       const ra=remote?remote.at:(r.doc?r.doc.clearedAt||0:0);
       if(ra>(plan?plan.at:0)&&!planEdit){ plan=remote; keepLocal(); }
+      // his weight: the newer of this device's and the synced one; push back when this device's is newer
+      const mine=healthWeight(), w=weightNewer(mine,raw&&raw.weight);
+      if(w&&(!mine||w.at>mine.at))healthWeightKeep(w);
+      if(w&&!(raw&&weightClean(raw.weight)&&weightClean(raw.weight).at>=w.at))setTimeout(function(){ pushPlan(); },0);
       planSync.msg='';
     }catch(e){ planSync.msg='not synced yet ('+e.message+')'; }
   };
   const pushPlan=async function(){
     const p=macrosProfile();
     if(!p){ planSync.msg='kept on this device: turn sync on so the Agent’s computer sees it'; return; }
-    const doc=plan?{v:1,text:JSON.stringify(plan)}:{v:1,text:'',clearedAt:Date.now()};
+    const text=macroRowText(plan,healthWeight());
+    const doc=plan?{v:1,text:text}:{v:1,text:text,clearedAt:Date.now()};
     try{
       for(let i=0;i<3;i++){
         if(!planSync.pulled||i){ const r=await syncPullRow(p); planSync.loadedAt=r.updatedAt; planSync.pulled=true; }
@@ -472,6 +523,24 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       row.appendChild(f);
     });
     card.appendChild(row);
+    // his weight: typed here, or the phone's newest weigh-in; the Agent uses it for per-pound targets
+    const w=healthWeight(), wrow=el('div','health-plan-row health-weight-row');
+    const wf=el('label','health-plan-field');
+    wf.appendChild(el('span','health-tile-k','Weight'));
+    const winp=document.createElement('input'); winp.type='number'; winp.min='50'; winp.max='900'; winp.step='0.1'; winp.inputMode='decimal'; winp.placeholder='–';
+    winp.value=w?String(w.lb):''; winp.addEventListener('input',function(){ planEdit=true; });
+    wf.appendChild(winp); wf.appendChild(el('span','health-plan-unit','lb'));
+    wrow.appendChild(wf);
+    const wsay=el('span','settings-hint health-weight-say',w?weightSay(w)+'. The Agent uses it for targets like 1 g of protein per pound.':'Type it, or let your phone fill it in. The Agent uses it for targets like 1 g of protein per pound.');
+    wrow.appendChild(wsay);
+    // a phone that's connected but wasn't allowed to read weight (connected before weight was asked for)
+    const hcap=healthCap();
+    if(hcap&&healthOn()&&healthStatus&&healthStatus.available==='yes'&&!healthStatus.weight){
+      const allow=el('button','ghost mono','Read it from '+healthStoreName());
+      allow.addEventListener('click',async function(){ allow.disabled=true; try{ await healthConnect(); }catch(e){} draw(); });
+      wrow.appendChild(allow);
+    }
+    card.appendChild(wrow);
     const say=el('p','settings-hint health-plan-say');
     say.textContent=plan?macroPlanSay(plan,today())+'. The Agent buys your groceries to add up to this, for you alone.'
       :'Set what you want to eat a day and the Agent buys groceries that add up to it (the 2-week order, or when you ask).';
@@ -483,9 +552,15 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     const stop=el('button','ghost mono','Stop'); stop.hidden=!plan; stop.title='Drop the plan: orders go back to your usual list'; foot.appendChild(stop);
     card.appendChild(foot);
     save.addEventListener('click',async function(){
+      // the weight he typed, when it differs from the kept one
+      const typed=winp.value.trim()?weightClean({lb:winp.value,at:Date.now(),from:'typed in'}):null;
+      if(winp.value.trim()&&!typed){ planSync.msg='that weight doesn’t look right (pounds)'; st.textContent=planSync.msg; return; }
+      const wNow=healthWeight(), wChanged=typed&&(!wNow||wNow.lb!==typed.lb);
+      if(wChanged)healthWeightKeep(typed);
       const next={span:spanSel.value,at:Date.now()};
       MACRO_KEYS.forEach(function(k){ next[k]=inputs[k].value; });
       const c=macroPlanClean(next);
+      if(!c&&wChanged){ planEdit=false; save.disabled=true; planSync.msg='saving…'; st.textContent=planSync.msg; await pushPlan(); draw(); return; }
       if(!c){ planSync.msg='give at least one number'; st.textContent=planSync.msg; return; }
       const t=today();
       c.from=plan&&plan.span===c.span&&plan.from&&macroPlanDaysLeft(plan,t)>0?plan.from:t; // the same span again keeps its dates
@@ -517,6 +592,8 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     return macroPlanSay(c,today());
   };
   healthUi={draw:draw};
+  // the phone read a newer weigh-in: sync it, and show it unless he's mid-edit
+  healthWeightChanged=function(){ pushPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); };
   // the synced copy, once sync has started; and again each time the tab opens
   setTimeout(async function(){ await pullPlan(); if(state.activeTab==='health')draw(); },6000);
   $('tabHealth').addEventListener('click',function(){ if(planSync.pulled)pullPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); });

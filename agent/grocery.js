@@ -136,6 +136,24 @@ function macroBrief(text, now = Date.now()) {
   return out;
 }
 
+// his weight from the same ':macros' row (the Health tab's Weight: typed, or the phone's newest weigh-in)
+// → {lb, kg, asOf: 'YYYY-MM-DD', daysAgo, from}, or undefined
+function weightBrief(text, now = Date.now()) {
+  let p; try { p = JSON.parse(String(text || '')); } catch (e) { return undefined; }
+  const w = p && typeof p === 'object' && p.weight;
+  const lb = w && Math.round(Number(w.lb) * 10) / 10;
+  if (!(lb >= 50 && lb <= 900)) return undefined;
+  const out = { lb, kg: Math.round(lb / 2.20462 * 10) / 10 };
+  const at = Number(w.at);
+  if (at > 0) {
+    const d = new Date(at);
+    out.asOf = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    out.daysAgo = Math.max(0, Math.floor((now - at) / 864e5));
+  }
+  if (w.from && String(w.from).trim()) out.from = String(w.from).replace(/\s+/g, ' ').trim().slice(0, 40);
+  return out;
+}
+
 // a run's `macros` (the meal-plan skill: the plan's per-day targets) → what the app sets as his Food plan, or
 // undefined. {kcal, protein, carbs, fat} per day (at least one), span = how long it runs.
 // keep: true = only these numbers change ("1 g of protein per pound"); the rest of his plan, and its dates, stay
@@ -171,4 +189,4 @@ function foodBrief(t, tasks, kitchen) {
   return { usualGroceries: usual.length ? usual : undefined, pantry: pantry.length ? pantry : undefined, recipes: recipes.length ? recipes : undefined };
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, isFoodTask, foodBrief };
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, isFoodTask, foodBrief, weightBrief };
