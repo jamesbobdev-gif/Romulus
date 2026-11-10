@@ -154,7 +154,17 @@ function snapshot(now) {
   res.gemini.tokensText = fmtT(res.gemini.tokens);
   return res;
 }
+/* how much of one AI is left, for auto routing: 0..1, or null when there's no limit to measure against
+   (a pay-as-you-go key, a daily limit not learned yet), which counts as plenty. Out of usage = 0 */
+function roomLeft(id, snap) {
+  const u = (snap || {})[id];
+  if (!u) return null;
+  if (u.out || (u.plan && u.plan.out)) return 0;
+  if (id === 'claude') return Math.max(0, Math.min(1 - (u.pct || 0), 1 - (u.week || 0)));
+  if (u.plan && u.plan.windows && u.plan.windows.length) return Math.max(0, 1 - Math.max(...u.plan.windows.map((w) => w.used || 0)));
+  return typeof u.pct === 'number' ? Math.max(0, 1 - u.pct) : null;
+}
 const claudeCheckedAt = () => (load().claude || {}).at || 0;
 const codexCheckedAt = () => (load().codex || {}).at || 0;
 
-module.exports = { init, noteClaude, readClaudeStream, geminiDailyLimit, noteCall, noteCredit, noteCodex, noteRate, parseDuration, snapshot, claudeCheckedAt, codexCheckedAt, pacificDay, nextPacificMidnight };
+module.exports = { init, noteClaude, readClaudeStream, geminiDailyLimit, noteCall, noteCredit, noteCodex, noteRate, parseDuration, snapshot, roomLeft, claudeCheckedAt, codexCheckedAt, pacificDay, nextPacificMidnight };

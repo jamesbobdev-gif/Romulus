@@ -181,6 +181,21 @@ function cloudOrder() {
   return s.claudeLast ? ids.filter((id) => id !== 'claude').concat(ids.filter((id) => id === 'claude')) : ids;
 }
 const claudeLast = () => providers.settings(readConfig()).claudeLast;
+/* how much cloud usage is left across his connected AIs, for auto routing: the most any one of them has left
+   (a run moves on to the next AI when one runs out, so the pool is only low when all of them are).
+   → {left: 0..1 or null (no limit to measure, counts as plenty), tight (under 10% left), out (none left), best: id} */
+const TIGHT = 0.1;
+function cloudRoom(ids, snap, claudeHeld) {
+  let left = -1, best = null;
+  for (const id of ids) {
+    const r = id === 'claude' && claudeHeld ? 0 : meter.roomLeft(id, snap);
+    if (r == null) return { left: null, tight: false, out: false, best: id };
+    if (r > left) { left = r; best = id; }
+  }
+  if (best == null) return { left: null, tight: false, out: false, best: null }; // nothing connected: routing's cloudUp covers that
+  return { left, tight: left < TIGHT, out: left <= 0, best };
+}
+const cloudRoomNow = () => cloudRoom(cloudOrder(), meter.snapshot(), Date.now() < usage.blockedUntil());
 
 /* who a run asks, in turn, until every task is answered: inbox runs Claude only (the others can't read
    Gmail and could reach the web); a task he put on Gemini or ChatGPT that one first, then the rest of his
@@ -215,4 +230,4 @@ function runOrder({ order, pinned, mailRun, ready }) {
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }
 
-module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudReady, runOrder, homeCloud, outOfUsage, couldntDo, PINNED_CLOUDS };
+module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudRoom, cloudRoomNow, cloudReady, runOrder, homeCloud, outOfUsage, couldntDo, PINNED_CLOUDS };

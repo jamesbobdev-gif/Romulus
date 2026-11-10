@@ -66,3 +66,14 @@ test('asking him, offering picks, or done is not "couldn’t"', () => {
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Which theater?', ask: [{ q: 'Which?' }], cant: 'x' }), false);
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Pick a time', showtimes: { days: [] } }), false);
 });
+
+test('cloud room: the pool is only low when every connected AI is', () => {
+  const { cloudRoom } = require('../agent/ai-connections');
+  const snap = { claude: { pct: 0.95, week: 0.2 }, gemini: { pct: 0.5 }, groq: { pct: 0.97 }, openrouter: { pct: null } };
+  assert.deepStrictEqual(cloudRoom(['claude', 'gemini'], snap), { left: 0.5, tight: false, out: false, best: 'gemini' });
+  const tight = cloudRoom(['claude', 'groq'], snap);
+  assert.strictEqual(tight.tight, true); assert.strictEqual(tight.out, false); assert.strictEqual(tight.best, 'claude');
+  assert.strictEqual(cloudRoom(['claude', 'openrouter'], snap).tight, false); // no limit to measure counts as plenty
+  assert.strictEqual(cloudRoom(['claude'], { claude: { pct: 0.2, week: 0.1 } }, true).out, true); // Claude held for its limit
+  assert.strictEqual(cloudRoom([], snap).tight, false);
+});
