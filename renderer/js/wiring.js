@@ -380,6 +380,11 @@ if(window.desktop&&window.desktop.aiStatus){
       } else if(id==='openrouter'){
         const o=u.openrouter;
         if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
+        const rt=o&&o.rate; // Groq's own count of requests left today
+        if(rt){
+          if(o.out){ row(ai.names[id],1,'out until '+(o.out===true?'it resets':fmtWhen(o.out)),true); return; }
+          row(ai.names[id],o.pct,rt.left+' of '+rt.limit+' requests left today'+(rt.resetsAt&&rt.left<rt.limit?' · full again '+fmtWhen(rt.resetsAt):''));
+          return; }
         if(!o){ row('OpenRouter',null,'…'); return; }
         const cr=o.credit;
         row('OpenRouter',o.pct,cr?'$'+Number(cr.usage||0).toFixed(2)+(cr.limit?' of $'+cr.limit:' used · no limit set'):o.calls+' calls this month');
