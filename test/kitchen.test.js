@@ -90,6 +90,15 @@ test('groceries bought go into the pantry, with their size when the name has one
   assert.deepStrictEqual([kt.items.find((i) => i.name === 'Milk').qty, kt.items.find((i) => i.name === 'Milk').unit], [1, 'gal']);
 });
 
+test('"we\'re out of eggs" takes eggs out of the pantry, and an exact name keeps a looser one', () => {
+  const kt = kitchen(['12 large eggs', '1 gallon milk', '1 qt almond milk', '2 lb rice'], []);
+  const gone = k.pantryRanOut(kt, ['eggs', 'milk', 'cheese'], 5);
+  assert.deepStrictEqual(gone, ['large eggs', 'milk']); // no exact "eggs", so "large eggs" goes; "milk" leaves the almond milk
+  assert.deepStrictEqual(kt.items.map((i) => i.name).sort(), ['almond milk', 'rice']);
+  assert.strictEqual(kt.tombstones.length, 2); // so a sync doesn't bring them back
+  assert.deepStrictEqual(k.pantryRanOut(kt, ['egg noodles'], 6), []);
+});
+
 test('two devices merge: newer copy wins, a delete beats an older copy', () => {
   const a = { items: [{ id: 'e', name: 'eggs', qty: 6, updatedAt: 5 }, { id: 'm', name: 'milk', updatedAt: 1 }], recipes: [], tombstones: [] };
   const b = { items: [{ id: 'e', name: 'eggs', qty: 3, updatedAt: 9 }], recipes: [{ id: 'r', name: 'Omelet', ingredients: ['2 eggs'], updatedAt: 2 }], tombstones: [{ id: 'm', deletedAt: 4 }] };

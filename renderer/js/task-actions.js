@@ -58,7 +58,7 @@ async function addTask(){
   if(!title&&withPhotos)title=forAgent?(composerAtts.length===1?'Look at this photo':'Look at these photos'):(composerAtts.length===1?'Photo':'Photos');
   if(!title){ titleEl.value=''; titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
-  if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')); return; } }
+  if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')+(g.pantry.length?'. Taken out of the pantry':'')); return; } }
   let photoUrls=[], photoFiles=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
@@ -337,7 +337,7 @@ async function voiceAdd(smart){
     if(cmd.kind==='grocery'){
       ti.value=before;
       const g=addToGroceries(cmd.text);
-      voiceToast(g?'On the next grocery order: '+g.names.join(', '):'Couldn’t find your grocery list',!g);
+      voiceToast(g?'On the next grocery order: '+g.names.join(', ')+(g.pantry.length?'. Taken out of the pantry':''):'Couldn’t find your grocery list',!g);
       return;
     }
     if(cmd.kind==='idea'){

@@ -235,10 +235,26 @@ function stockPantry(k,names,now,newId){
   return added;
 }
 
+/* "We're out of eggs" (grocery-list.js addToGroceries): that food leaves the pantry. A pantry item with
+   exactly that name goes; only when there's none does a looser match go ("eggs" → "Large eggs"), so
+   "out of milk" doesn't also take the almond milk. → the pantry names taken out */
+function pantryRanOut(k,names,now){
+  now=now||Date.now();
+  const gone=[];
+  (Array.isArray(names)?names:[]).forEach(function(n){
+    if(!foodKey(n))return;
+    const exact=k.items.filter(function(p){ return foodKey(p.name)===foodKey(n); });
+    const hits=exact.length?exact:k.items.filter(function(p){ return sameFood(p.name,n); });
+    hits.forEach(function(p){ k.tombstones.push({id:p.id,deletedAt:now}); gone.push(p.name); });
+    k.items=k.items.filter(function(p){ return hits.indexOf(p)===-1; });
+  });
+  return gone;
+}
+
 if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
-    shoppingList:shoppingList,stockPantry:stockPantry,kFmtQty:kFmtQty};
+    shoppingList:shoppingList,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty};
 }
 
 /* ══ the page ══ */
@@ -312,6 +328,13 @@ function kitchenToTodo(entries,meals){
 window.kitchenBought=function(names){
   if(!state.kitchen||!Array.isArray(names)||!names.length)return;
   if(stockPantry(state.kitchen,names,Date.now(),uid).length)persist();
+};
+// "we're out of eggs" (grocery-list.js addToGroceries): out of the pantry too → the pantry names taken out
+window.kitchenRanOut=function(names){
+  if(!state.kitchen||!Array.isArray(names)||!names.length)return [];
+  const gone=pantryRanOut(state.kitchen,names,Date.now());
+  if(gone.length)kSave();
+  return gone;
 };
 
 /* ── drawing ── */
