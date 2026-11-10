@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<!-- Only the app's own scripts run here, and the page talks only to https sites (the sync project, pictures), the
-     agent browser's localhost socket (Watch) and the fonts. Text from the AI and from web pages is shown on this page,
-     so an injected <script> or a javascript: link must have nothing to run with. mobile/prepare-www.js drops this
-     line for the phone build (Capacitor's bridge is an inline script). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https: wss: ws://127.0.0.1:* http://127.0.0.1:* ws://localhost:* http://localhost:*; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<!-- Only the app's own scripts run here (file: as well as 'self', since the window loads the page from disk), and
+     the page talks only to the sync project, pictures, the agent browser's socket (Watch) and the local model. Text from
+     the AI and from web pages is shown on this page, so an injected <script> or a javascript: link must have nothing to
+     run with. mobile/prepare-www.js drops this line for the phone build (Capacitor's bridge is an inline script). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: https: data: blob:; connect-src 'self' file: https: wss: http: ws:; media-src 'self' file: blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Romulus</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
@@ -18,7 +18,6 @@
   <header class="top">
     <h1>Romulus</h1>
     <div class="top-right">
-      <button class="plan-btn" id="planBtn" hidden>Plan today</button>
       <button class="mono stamp" id="stamp" title="Calendar view" aria-label="Open calendar view"></button>
       <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     </div>
@@ -33,7 +32,18 @@
       <h2>Settings</h2>
     </div>
     <div id="settingsAlerts" hidden></div>
+    <!-- setup-list.js: the four things worth setting up, each done or one button away; gone once all four are done -->
+    <div id="setupList" class="setup-list" hidden>
+      <b>Get set up</b>
+      <div id="setupRows"></div>
+    </div>
     <div id="aiUsage" hidden></div>
+    <!-- tab-picker.js: always open, right under Usage; the switches are grouped by kind -->
+    <div class="settings-panel" id="tabsSection">
+      <span class="settings-label">Tabs</span>
+      <p class="settings-hint">Switch off the tabs you don't use and they leave the tab bar. Nothing in them is deleted; switch a tab back on to see it again. Set on each device.</p>
+      <div id="tabPicker"></div>
+    </div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Agent &amp; AI</summary>
       <div class="settings-sub" id="aiSection" hidden>
@@ -45,6 +55,15 @@
       <div class="settings-sub adv" id="localSection" hidden>
         <h3 class="settings-subhead">Local model</h3>
         <p class="settings-hint">Your own model through <a id="ollamaLink" href="#">Ollama</a>, on this computer or another one on your network. Nothing it works on leaves your machines. Tasks with private words always go here.</p>
+        <!-- local-model.js: start or install Ollama, download a model that fits this computer, switch it on -->
+        <div id="localEasy" class="local-easy">
+          <div class="settings-row" style="margin-top:0">
+            <button id="localEasyBtn" class="btn-accent">Set it up for me</button>
+            <span id="localEasyNote" class="settings-hint" style="margin:0"></span>
+          </div>
+          <div id="localPullBar" class="local-pull" hidden><div id="localPullFill"></div></div>
+          <p class="settings-hint" style="margin:6px 0 10px">Or pick a model yourself:</p>
+        </div>
         <div class="settings-row" style="margin-top:0">
           <input id="localUrl" class="settings-inp mono" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" style="flex:1;margin:0">
           <button id="localProbeBtn" class="ghost mono">Find models</button>
@@ -81,7 +100,7 @@
           </select>
         </div>
         <p class="settings-hint" style="margin-top:6px">Auto: if the local machine has a small decider model, it picks first. Otherwise inbox, web, shopping → cloud. Writing, forms → the local model. Anything else → cloud, or the local model if Claude is near its limit. If a side is offline, the other takes it.</p>
-        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line.</p>
+        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line. About 100 common sites (Google, Wikipedia, YouTube, the big stores and news sites, .gov sites) are always allowed on top of these. Banks and payment sites are not: add them here if you want them.</p>
         <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="routingSaveBtn" class="btn-accent">Save</button>
@@ -138,17 +157,17 @@
     </details>
     <details class="settings-panel settings-collapse settings-group" id="aboutGroup">
       <summary class="settings-label">About you</summary>
-      <div class="settings-sub" id="prefsSection" hidden>
-        <h3 class="settings-subhead">What the Agent knows about you</h3>
+      <details class="settings-sub settings-collapse" id="prefsSection" hidden>
+        <summary class="settings-subhead">What the Agent knows about you</summary>
         <p class="settings-hint">Read before every Agent task. One preference per line. Keep private details out — put those in Locked below.</p>
         <textarea id="prefsText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="- Sign emails as “Alex”&#10;- Morning appointments work best"></textarea>
         <div class="settings-row">
           <button id="prefsSaveBtn" class="btn-accent">Save</button>
           <span id="prefsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-      <div class="settings-sub" id="lockedSection" hidden>
-        <h3 class="settings-subhead">Locked — only the local model sees this</h3>
+      </details>
+      <details class="settings-sub settings-collapse" id="lockedSection" hidden>
+        <summary class="settings-subhead">Locked — only the local model sees this</summary>
         <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. The Agent’s cloud AIs never read it. No passwords, card numbers or SSN.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
@@ -156,16 +175,35 @@
           <button id="lockedFormBtn" class="ghost mono" title="Adds the questions forms keep asking, for you to answer once">+ Form answers</button>
           <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-      <div class="settings-sub" id="formFilesSection" hidden>
-        <h3 class="settings-subhead">Files for forms</h3>
+      </details>
+      <details class="settings-sub settings-collapse" id="formFilesSection" hidden>
+        <summary class="settings-subhead">Files for forms</summary>
         <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, the Agent or the local model attaches it; nothing else on this computer can be uploaded.</p>
         <div id="formFilesList"></div>
         <div class="settings-row">
           <button id="formFileAddBtn" class="ghost mono">+ Add a file</button>
           <span id="formFilesStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
+      </details>
+    </details>
+    <details class="settings-panel settings-collapse" id="ebtSection">
+      <summary class="settings-label">EBT</summary>
+      <p class="settings-hint">Change your balance here or in Finance → EBT. The switch and alert are set on each device.</p>
+      <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
+      <div class="settings-row" id="ebtLowRow" style="margin-top:0;font-size:13.5px"><span>Alert me when it's under $</span><input id="ebtLow" class="settings-inp" inputmode="decimal" style="width:80px;margin:0" aria-label="Low balance alert, in dollars"></div>
+      <div id="ebtEditBox" class="fin-ebt"></div>
+    </details>
+    <details class="settings-panel settings-collapse" id="healthSection">
+      <summary class="settings-label">Health</summary>
+      <p class="settings-hint">Tasks that check themselves off: <b>Walk #steps 8000</b>, <b>Gym #exercise 30</b> (minutes), <b>Bed early #sleep 7h</b>. One ticks off once that day's total gets there, the day it's due or today. Only daily totals are kept, and no AI sees them.</p>
+      <div id="healthPhone" hidden>
+        <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="healthOn"><span class="track" aria-hidden="true"></span><span id="healthOnText">Read steps, exercise and sleep from Health Connect</span></label>
+        <div class="settings-row">
+          <button id="healthManage" class="ghost mono" hidden>Health Connect settings</button>
+        </div>
       </div>
+      <p id="healthDesk" class="settings-hint" hidden>The totals come from Romulus on your phone: turn this on there. They reach this computer when your lists use end-to-end encryption.</p>
+      <p class="mono" style="font-size:11px;color:var(--muted);margin:4px 0 0"><span id="healthStatus"></span> <span id="healthToday"></span></p>
     </details>
     <details class="settings-panel settings-collapse settings-group" id="featuresGroup">
       <summary class="settings-label">Agent features</summary>
@@ -222,9 +260,9 @@
         </div>
       </div>
       <div class="settings-sub" id="feedsSection" hidden>
-        <h3 class="settings-subhead">Course calendars</h3>
-        <p class="settings-hint">Paste calendar links, one per line; due dates land on School. <b>Blackboard:</b> Calendar → settings → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
-        <textarea id="feedsText" class="settings-inp" rows="3" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="Blackboard calendar link&#10;D2L calendar link" autocomplete="off" spellcheck="false"></textarea>
+        <h3 class="settings-subhead">Due-date calendars</h3>
+        <p class="settings-hint">Paste any calendar link whose events are things you have to get done, one per line; each one becomes a to-do on its due date (on School if you use it). Classes, for example: <b>Blackboard:</b> Calendar → settings → Share Calendar. <b>D2L:</b> Calendar → Subscribe.</p>
+        <textarea id="feedsText" class="settings-inp" rows="3" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="Calendar link&#10;Another calendar link" autocomplete="off" spellcheck="false"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="feedsSaveBtn" class="btn-accent">Save &amp; import</button>
           <span id="feedsStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
@@ -233,57 +271,106 @@
     </details>
     <details class="settings-panel settings-collapse" id="syncSection">
       <summary class="settings-label">Device sync</summary>
-      <p class="settings-hint">Adding a device? Press <b>Add a device</b> on one that already syncs, then type the code it shows into <b>Pairing code</b> on the new one.</p>
+      <p class="settings-hint">New device? Press <b>Add a device</b> here, then enter the code on the new one.</p>
       <div class="settings-row">
         <input id="pairCodeIn" class="settings-inp mono" placeholder="Pairing code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" style="max-width:220px">
         <button id="pairUseBtn" class="btn-accent">Pair</button>
+        <button id="pairScanBtn" class="btn-accent" hidden>Scan code</button>
         <button id="pairAddBtn" class="ghost mono">Add a device</button>
       </div>
       <div id="pairBox" hidden style="margin:8px 0 12px">
         <div id="pairCode" class="mono" style="font-size:28px;letter-spacing:3px;user-select:all"></div>
+        <div id="pairQr" class="fin-qr" hidden></div>
         <p id="pairInfo" class="settings-hint" style="margin:4px 0 0"></p>
       </div>
       <span id="syncStatus" class="mono" style="display:block;font-size:11px;color:var(--muted)"></span>
       <!-- the Romulus server new installs sync through, its space, and moving off it (hosted-sync.js) -->
       <div id="hostedBox" hidden style="margin-top:14px">
+        <!-- which plan, in a line, then the space used (hosted-sync.js) -->
+        <div id="hostedMyPlan" hidden style="margin:0 0 4px">
+          <div id="hostedMyPlanTitle" class="settings-label" style="margin-bottom:2px;color:var(--accent)">Your plan</div>
+          <p id="hostedMyPlanInfo" class="settings-hint" style="margin:0"></p>
+        </div>
         <p id="hostedInfo" class="settings-hint" style="margin:0 0 8px"></p>
-        <!-- the $5 plan, offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
+        <!-- the Group plan (and Personal, when its links are set), offered all along on the free space, not only once it's nearly full (hosted-sync.js) -->
         <div id="hostedPlan" hidden style="margin:0 0 10px">
-          <p class="settings-hint" style="margin:0 0 6px">The $5 plan keeps Romulus running and gives you 600 MB, 30 days of history to undo a bad day, your plan shared with up to 4 more people, and early access to new versions.</p>
+          <!-- the words come from hostedPlanPitch (hosted-sync.js), which knows whether the links start with a free trial -->
+          <p id="hostedPitch" class="settings-hint" style="margin:0 0 6px"></p>
           <div class="settings-row">
-            <button id="hostedPayBtn" class="btn-accent" hidden>Support Romulus: $5 a month</button>
+            <button id="hostedPayBtn" class="btn-accent" hidden></button>
             <button id="hostedPayYearBtn" class="ghost mono" hidden>$50 a year</button>
-            <button id="hostedJoinBtn" class="ghost mono">I have a family code</button>
+            <button id="hostedPayPersonalBtn" class="ghost mono" hidden></button>
+            <button id="hostedPayPersonalYearBtn" class="ghost mono" hidden></button>
+            <button id="hostedPlanOwnBtn" class="ghost mono" hidden>Or use my own Supabase</button>
+            <button id="hostedJoinBtn" class="ghost mono">I have a group code</button>
           </div>
         </div>
         <div id="hostedFamily" hidden style="margin:0 0 10px">
-          <div class="settings-label" style="margin-bottom:4px">Family</div>
           <p id="hostedFamilyInfo" class="settings-hint" style="margin:0 0 6px"></p>
           <div id="hostedFamilyList"></div>
           <div class="settings-row">
             <button id="hostedInviteBtn" class="ghost mono" hidden>Invite someone</button>
-            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the family plan</button>
+            <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the group</button>
           </div>
         </div>
-        <div id="hostedHistory" hidden style="margin:0 0 10px">
-          <div class="settings-label" style="margin-bottom:4px">History</div>
-          <p class="settings-hint" style="margin:0 0 6px">Your lists as they were at the end of a day, for the last 30 days. Restoring brings back what was on them that day on every device; anything added since is removed.</p>
-          <div class="settings-row" style="align-items:center">
-            <select id="hostedHistoryDay" class="settings-inp" style="width:auto;margin:0"></select>
-            <button id="hostedRestoreBtn" class="ghost mono">Restore</button>
+        <!-- where the links he picks on Agent tasks are emailed, once the address is confirmed with a code (link-email.js) -->
+        <div id="linkEmailBox" hidden style="margin:0 0 10px">
+          <div class="settings-label" style="margin-bottom:2px">Email me links</div>
+          <p id="linkEmailInfo" class="settings-hint" style="margin:0 0 6px"></p>
+          <div id="linkEmailAskRow" class="settings-row" style="align-items:center">
+            <input id="linkEmailIn" type="email" class="settings-inp" placeholder="you@example.com" maxlength="254" autocomplete="email" spellcheck="false" style="max-width:260px;margin:0">
+            <button id="linkEmailSendBtn" class="ghost mono">Send code</button>
+          </div>
+          <div id="linkEmailCodeRow" class="settings-row" hidden style="align-items:center">
+            <input id="linkEmailCode" class="settings-inp mono" placeholder="6-digit code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" spellcheck="false" style="max-width:140px;margin:0">
+            <button id="linkEmailConfirmBtn" class="btn-accent">Confirm</button>
+            <button id="linkEmailBack" class="ghost mono">Use another address</button>
+          </div>
+          <div id="linkEmailDoneRow" class="settings-row" hidden>
+            <button id="linkEmailChange" class="ghost mono">Change address</button>
+            <button id="linkEmailForget" class="ghost mono">Stop emailing me</button>
           </div>
         </div>
-        <div id="hostedEarlyRow" hidden style="margin:0 0 10px">
-          <label class="settings-hint" style="display:flex;gap:8px;align-items:center;margin:0">
-            <input type="checkbox" id="hostedEarly"> Early access: get new versions of the app before everyone else (they may have rough edges)
-          </label>
-        </div>
-        <p id="hostedSupporters" class="settings-hint" hidden style="margin:0 0 10px"></p>
-        <div class="settings-row">
-          <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
-          <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
-          <button id="hostedDeleteBtn" class="ghost mono" hidden>Delete my synced data</button>
-        </div>
+        <!-- the rarely used settings, out of the way until wanted -->
+        <details class="settings-sub" id="hostedMore" style="margin-top:6px">
+          <summary class="settings-label">More</summary>
+          <div id="hostedHistory" hidden style="margin:8px 0 10px">
+            <p class="settings-hint" style="margin:0 0 6px">Restore your lists as they were at the end of a day (last 30 days).</p>
+            <div class="settings-row" style="align-items:center">
+              <select id="hostedHistoryDay" class="settings-inp" style="width:auto;margin:0"></select>
+              <button id="hostedRestoreBtn" class="ghost mono">Restore</button>
+            </div>
+          </div>
+          <!-- someone paying can put a name on the thanks list, or take it off (hosted-sync.js) -->
+          <div id="hostedNameRow" hidden style="margin:0 0 10px">
+            <div class="settings-row" style="align-items:center">
+              <input id="hostedNameIn" class="settings-inp" placeholder="Name on the thanks list (optional)" maxlength="40" autocomplete="off" style="max-width:260px;margin:0">
+              <button id="hostedNameBtn" class="ghost mono">Save name</button>
+            </div>
+          </div>
+          <div id="hostedEarlyRow" hidden style="margin:0 0 10px">
+            <label class="settings-hint" style="display:flex;gap:8px;align-items:center;margin:0">
+              <input type="checkbox" id="hostedEarly"> Get new versions early
+            </label>
+          </div>
+          <p id="hostedSupporters" class="settings-hint" hidden style="margin:0 0 10px"></p>
+          <div class="settings-row">
+            <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
+            <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
+            <button id="hostedDeleteBtn" class="ghost mono danger" hidden>Delete my account</button>
+          </div>
+          <!-- deleting the account: three clicks on the button above, and the number shown here typed in (hosted-sync.js) -->
+          <div id="hostedDeleteBox" class="del-box" hidden>
+            <p id="hostedDeleteStep" class="settings-hint" style="margin:0 0 8px"></p>
+            <div id="hostedDeleteCodeRow" hidden>
+              <div id="hostedDeleteCode" class="del-code mono" aria-label="Number to type"></div>
+              <input id="hostedDeleteIn" class="settings-inp" placeholder="Type the number above" inputmode="numeric" autocomplete="off" spellcheck="false" style="max-width:260px">
+            </div>
+            <div class="settings-row">
+              <button id="hostedDeleteCancel" class="ghost mono">Cancel</button>
+            </div>
+          </div>
+        </details>
       </div>
       <!-- every device on these lists, and taking one off (devices.js) -->
       <div id="devicesBox" hidden style="margin-top:14px">
@@ -320,6 +407,7 @@
         <input id="syncKeyW" class="settings-inp" placeholder="Work sync key (automatic)" autocomplete="off" spellcheck="false">
         <input id="syncKeyA" class="settings-inp" placeholder="Agent sync key (automatic)" autocomplete="off" spellcheck="false">
         <input id="syncKeyS" class="settings-inp" placeholder="School sync key (automatic)" autocomplete="off" spellcheck="false">
+        <input id="syncKeyF" class="settings-inp" placeholder="Family list key (set by Family list below)" autocomplete="off" spellcheck="false">
       </details>
       <div class="settings-row">
         <button id="syncSaveBtn" class="btn-accent">Save &amp; sync</button>
@@ -347,18 +435,21 @@
     </details>
     <details class="settings-panel settings-collapse" id="updateSection" hidden>
       <summary class="settings-label">Updates</summary>
-      <p class="settings-hint">When a new version comes out, this computer can ask you first or update on its own. Either way it installs when you quit, or when the computer has been idle and the Agent isn't working.</p>
+      <p class="settings-hint" id="updateHint">When a new version comes out, this computer can ask you first or update on its own. Either way it installs when you quit, or when the computer has been idle and the Agent isn't working.</p>
       <div class="settings-row" style="align-items:center">
         <select id="updateMode" class="settings-inp" style="width:auto;margin:0">
           <option value="ask">Ask me</option>
           <option value="auto">Automatically</option>
         </select>
+        <!-- the phone instead (mobile/update-phone.js): looks right now, past the wait and any Later or Not now -->
+        <button id="updateCheck" class="ghost mono" hidden>Check for updates</button>
+        <span id="updateStatus" class="settings-hint" style="margin:0"></span>
       </div>
     </details>
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
       <div class="theme-modes" role="radiogroup" aria-label="Light or dark">
-        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS">Custom</button>
+        <button class="chip st tap" data-mode="system" role="radio">System</button><button class="chip st tap" data-mode="light" role="radio">Light</button><button class="chip st tap" data-mode="dark" role="radio">Dark</button><button class="chip st tap" data-mode="custom" role="radio" title="Your saved Custom CSS">Custom</button><span id="themeSaved" class="theme-saved"></span>
       </div>
       <details class="settings-sub">
       <summary class="settings-label">Custom CSS (advanced)</summary>
@@ -374,11 +465,13 @@
   --accent:#2742C8;  /* buttons + highlights */
   --late:#C03B2B;    /* overdue */
 }"></textarea>
+      <input id="themeName" class="settings-inp" maxlength="40" placeholder="Name it (e.g. Pink): it goes next to Light and Dark above">
       <div class="settings-row">
         <button id="themeApplyBtn" class="btn-accent">Apply</button>
         <button id="themeResetBtn" class="ghost mono danger">Reset</button>
         <span id="themeStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
       </div>
+      <div id="themeColors" class="theme-colors" hidden></div>
       </details>
     </details>
     <!-- Basic shows what most people need; the switch shows the power-user panels (.adv) too (settings.js) -->
@@ -396,10 +489,14 @@
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
     <button id="tabWork" class="tab"        role="tab" aria-selected="false">Work</button>
+    <!-- the Group tab: shared lists and sent to-dos (family.js) -->
     <button id="tabCal"  class="tab"        role="tab" aria-selected="false">Calendar</button>
     <button id="tabIdeas" class="tab"       role="tab" aria-selected="false">Notes</button>
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
     <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
+    <button id="tabHealth" class="tab"      role="tab" aria-selected="false">Health</button>
+    <button id="tabKitchen" class="tab"     role="tab" aria-selected="false">Kitchen</button>
+    <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Group</button>
   </div>
 
   <section class="composer" aria-label="Add a task">
@@ -440,9 +537,16 @@
         <button id="welcomeTasksBtn" class="btn-accent">Just tasks</button>
         <button id="welcomeAiBtn" class="ghost">Add an AI assistant</button>
         <button id="welcomeSyncBtn" class="ghost">Sync with my phone</button>
-        <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
         <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
+        <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
       </div>
+      <ul class="welcome-tips">
+        <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
+        <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
+        <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Notes</b> and <b>Hours</b> are extra views of the same tasks.</li>
+        <li id="welcomeTrayTip">Closing the window hides Romulus in the tray. On Windows it sits under the ^ by the clock until you drag it onto the taskbar; right-click the icon to quit.</li>
+      </ul>
+      <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
     </div>
     <!-- bringing tasks over from Todoist, TickTick, Google Tasks, a spreadsheet… (task-import.js) -->
     <div id="importCard" class="connect-card welcome import-card" hidden>
@@ -481,6 +585,8 @@
     <div id="lupaStuck" class="lupa-stuck" hidden></div>
     <details id="lupaFiles" class="lupa-files" hidden></details>
     <!-- the Agent is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
+    <!-- to-dos someone in the group sent: add to the list or say no (family.js famDrawIncoming) -->
+    <div id="famIncoming" class="yes-prompts" hidden></div>
     <div id="yesPrompts" class="yes-prompts" hidden></div>
     <div id="suggestPrompts" class="yes-prompts" hidden></div>
     <ul id="openList" class="list"></ul>
@@ -527,9 +633,10 @@
     <div id="calEmpty" class="cal-empty" hidden>No tasks with due dates yet.</div>
   </div>
 
-  <!-- Notes (hidden by default; internal name "ideas") -->
+  <!-- Notes (hidden by default; the "ideas" ids stay so synced data keeps its key) -->
   <div id="ideasView" hidden>
     <div class="ideas-bar">
+      <input id="ideaSearch" class="search idea-search" type="search" placeholder="Search notes…" aria-label="Search notes" autocomplete="off">
       <button id="ideaAddGroup" class="btn-accent">+ Group</button>
     </div>
     <div id="ideaGroups" class="idea-groups"></div>
@@ -537,14 +644,21 @@
 
   <!-- Hours worked for school or work (hidden by default; js/hours.js draws it) -->
   <div id="hoursView" hidden></div>
+  <div id="familyView" class="fam-view" hidden></div>
 
   <!-- Finance (SimpleFIN on the computer and phone, CSV files anywhere; js/finance.js draws it) -->
   <div id="financeView" hidden></div>
+
+  <!-- Health: the Food plan (macros the Agent buys groceries to) everywhere; steps, sleep and exercise on the phone
+       (Apple Health on iPhone, Health Connect on Android); js/health.js draws it -->
+  <div id="healthView" hidden></div>
+  <!-- Pantry, recipes, meals and the shopping list (hidden by default; js/kitchen.js draws it) -->
+  <div id="kitchenView" class="kit-view" hidden></div>
 </main>
 
+<script src="js/no-emoji.js"></script>
 <script src="js/sync-crypto.js"></script>
 <script src="js/sync.js"></script>
-<script src="js/no-emoji.js"></script>
 <script src="js/core.js"></script>
 <script src="js/recur.js"></script>
 <script src="js/school-overdue.js"></script>
@@ -552,6 +666,8 @@
 <script src="js/order-match.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
+<script src="js/ai-report.js"></script>
+<script src="js/task-files.js"></script>
 <script src="js/live-relay.js"></script>
 <script src="js/agent-live-view.js"></script>
 <script src="js/agent-ask.js"></script>
@@ -572,28 +688,36 @@
 <script src="js/year-review.js"></script>
 <script src="js/finance-bills.js"></script>
 <script src="js/finance-insights.js"></script>
+<script src="js/finance-ebt.js"></script>
+<script src="js/ebt-alerts.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/year-review-view.js"></script>
 <script src="js/popups.js"></script>
 <script src="js/wiring.js"></script>
+<script src="js/theme-colors.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/tab-picker.js"></script>
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
 <script src="js/hosted-sync.js"></script>
+<script src="js/link-email.js"></script>
+<script src="js/family.js"></script>
 <script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
+<script src="js/setup-list.js"></script>
 <script src="js/task-import.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/connect-accounts.js"></script>
+<script src="js/health.js"></script>
+<script src="js/kitchen.js"></script>
 <script src="js/look-ahead.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>
 <script src="js/goals.js"></script>
 <script src="js/local-sites.js"></script>
-<script src="js/swipe.js"></script>
 <script src="js/update-sync.js"></script>
 <script src="js/update-desktop.js"></script>
 <script src="js/init.js"></script>

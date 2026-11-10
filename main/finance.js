@@ -19,7 +19,7 @@
      the passphrase to open it; finance:setupShared opens it on the other computer.
    - It only ever talks to simplefin.org over HTTPS, never follows redirects, and the log never gets amounts,
      names or the link.
-   - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to Claude to be read,
+   - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to his AIs (in his order, no tools) to be read,
      and what they bought is kept in the vault too. Nothing from the bank goes with them.
    - Live stock prices (main/finance-stocks.js) come from Yahoo Finance's public chart data: only ticker
      symbols are sent, never shares, amounts or account names.
@@ -35,6 +35,7 @@ const stocks = require('./finance-stocks');
 const hello = require('./finance-hello');
 const billsLib = require('../renderer/js/finance-bills');
 const insights = require('../renderer/js/finance-insights');
+const { ebtClean, ebtReceiptAnswer, EBT_RECEIPT_ASK } = require('../renderer/js/finance-ebt');
 // the SimpleFIN reading the phone shares (renderer/js/finance-core.js)
 const { checkSimplefinUrl, cleanAccounts, mergeAccounts: mergeWith, downloadAccounts, txt } = require('../renderer/js/finance-core');
 
@@ -80,20 +81,32 @@ function decrypt(box, k, aad) {
   d.setAuthTag(Buffer.from(box.tag, 'base64'));
   return JSON.parse(Buffer.concat([d.update(Buffer.from(box.data, 'base64')), d.final()]).toString('utf8'));
 }
-function readVaultFile() {
+// Windows' encryption is asynchronous (Electron's safeStorage), so these wait for it; await works on a plain value too
+async function readVaultFile() {
+  await vaultWrites; // the copy still being written (from before it locked) is the one to read
   let text;
   try { text = fs.readFileSync(file(), 'utf8'); } catch (e) { return null; }
-  const opened = ctx.unseal ? ctx.unseal(text) : text;
+  const opened = ctx.unseal ? await ctx.unseal(text) : text;
   try { return JSON.parse(opened); } catch (e) { throw new Error('The finance file can’t be read on this account (it only opens for the Windows user that made it).'); }
 }
+/* The vault as it is now is encrypted at once (so a later change can't slip into this write); sealing it with
+   Windows' encryption and writing it wait their turn, one write after another, so an older copy never lands last. */
+let vaultWrites = Promise.resolve();
 function writeVault() {
   const out = Object.assign({ v: 1, kdf: 'scrypt', N: KDF.N, r: KDF.r, p: KDF.p, salt: salt.toString('base64') }, encrypt(vault, key));
   const text = JSON.stringify(out);
-  fs.mkdirSync(path.dirname(file()), { recursive: true });
-  const tmp = file() + '.tmp';
-  fs.writeFileSync(tmp, ctx.seal ? ctx.seal(text) : text, { mode: 0o600 });
-  fs.renameSync(tmp, file());
+  const p = vaultWrites.then(async () => {
+    const sealed = ctx.seal ? await ctx.seal(text) : text;
+    fs.mkdirSync(path.dirname(file()), { recursive: true });
+    const tmp = file() + '.tmp';
+    fs.writeFileSync(tmp, sealed, { mode: 0o600 });
+    fs.renameSync(tmp, file());
+  });
+  vaultWrites = p.catch(() => {});
+  return p;
 }
+// for the writes nobody waits on: a failure is logged rather than lost
+const writeVaultSoon = () => { writeVault().catch((e) => log('couldn’t save (' + txt(e.message, 80) + ')')); };
 const isSetUp = () => fs.existsSync(file());
 
 /* ── Windows Hello: the vault key, sealed by Windows, for when Hello says it's him ── */
@@ -106,7 +119,7 @@ async function rememberForHello() {
   if (!key || (vault && vault.hello === false) || !ctx.seal) return false;
   const k = Buffer.from(key);
   if (!(await helloApi().available().catch(() => false))) return false;
-  const sealed = ctx.seal(k.toString('base64'));
+  const sealed = await ctx.seal(k.toString('base64'));
   k.fill(0);
   if (typeof sealed !== 'string' || !sealed.startsWith('enc:')) return false; // never the key in the clear
   fs.writeFileSync(helloFile(), JSON.stringify({ v: 1, key: sealed }), { mode: 0o600 });
@@ -170,7 +183,7 @@ async function refresh(force) {
   const got = await download(vault.accessUrl);
   if (!key) return { ok: false, error: 'locked' }; // it locked while downloading: drop what came
   vault.cache = { fetchedAt: Date.now(), accounts: mergeAccounts(vault.cache && vault.cache.accounts, got.accounts, Date.now()), errors: got.errors };
-  writeVault();
+  await writeVault();
   log('refreshed ' + got.accounts.length + ' accounts' + (got.errors.length ? ', ' + got.errors.length + ' bank messages' : ''));
   return { ok: true };
 }
@@ -182,7 +195,7 @@ function lookAtMail(force) {
   if (mailBusy || !key) return;
   const was = vault.mail || {};
   if (!force && Date.now() - (was.last || 0) < MAIL_EVERY_MS) return;
-  const gd = ctx.mail || require('./gmail-dates'); // {gmail, claudeJson, mailAllowed}
+  const gd = ctx.mail || require('./gmail-dates'); // {gmail, aiJson, mailAllowed}
   // every Gmail account in Settings → Calendars with "Read receipts for Finance" on, each with its own seen ids
   let accts = [];
   try { accts = gd.receiptAccounts ? gd.receiptAccounts() : (gd.mailAllowed() ? [{ id: null }] : []); } catch (e) {}
@@ -198,7 +211,7 @@ function lookAtMail(force) {
     let checked = 0;
     for (const a of accts) {
       try {
-        const r = await financeMail.lookForReceipts({ gmail: (sub) => gd.gmail(sub, a.id), ask: gd.claudeJson, seen: seenBy[a.id] });
+        const r = await financeMail.lookForReceipts({ gmail: (sub) => gd.gmail(sub, a.id), ask: gd.aiJson, seen: seenBy[a.id] });
         seenBy[a.id] = r.seen; got.push(...r.receipts); checked += r.checked;
       } catch (e) { errors.push((accts.length > 1 && a.email ? a.email + ': ' : '') + e.message); }
     }
@@ -212,13 +225,13 @@ function lookAtMail(force) {
       vault.receipts = (vault.receipts || []).filter((x) => !ids.has(x.id) && x.at >= cutoff).concat(r.receipts)
         .sort((a, b) => b.at - a.at).slice(0, 1500);
       vault.mail = { seenBy, last: Date.now(), error: r.error ? txt(r.error, 200) : null };
-      writeVault();
+      writeVaultSoon();
       log('emails: ' + r.checked + ' looked at in ' + accts.length + ' inbox' + (accts.length > 1 ? 'es' : '') + ', ' + r.receipts.length + ' purchases');
     })
     .catch((e) => {
       if (key !== k) return;
       vault.mail = Object.assign({}, was, { last: Date.now(), error: txt(e.message, 200), off: false });
-      writeVault();
+      writeVaultSoon();
       log('emails: couldn’t look (' + txt(e.message, 80) + ')');
     })
     .finally(() => { mailBusy = false; if (key === k) tell(); });
@@ -239,14 +252,14 @@ async function stocksNow(force) {
   let error = null;
   if (force || !lastQuotes || Date.now() - lastQuotes.at >= QUOTE_MS) {
     try {
-      const got = await stocks.fetchQuotes(symbols, doFetch, '1d');
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1d', lastQuotes && lastQuotes.quotes);
       if (key !== k) return { locked: true };
       lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning };
     } catch (e) { if (key !== k) return { locked: true }; error = e.message; }
   }
   if (!lastDaily || Date.now() - lastDaily.at >= DAILY_MS) {
     try {
-      const got = await stocks.fetchQuotes(symbols, doFetch, '1y');
+      const got = await stocks.fetchQuotes(symbols, doFetch, '1y', lastDaily && lastDaily.quotes);
       if (key !== k) return { locked: true };
       lastDaily = { at: Date.now(), quotes: got.quotes };
     } catch (e) { if (key !== k) return { locked: true }; }
@@ -270,10 +283,10 @@ function pairPayload(accessUrl, kinds) {
 
 /* ── his other computers: the link sealed under the passphrase key, for the :finance sync row ──
    Made once and kept in the vault, so the same copy goes up each time and the tab can tell it's already there. */
-function shareBox() {
+async function shareBox() {
   if (!vault.shared || !vault.shared.data) {
     vault.shared = Object.assign({ v: 1, kdf: 'scrypt', N: KDF.N, r: KDF.r, p: KDF.p, salt: salt.toString('base64') }, encrypt({ u: vault.accessUrl }, key, SHARE_AAD));
-    writeVault();
+    await writeVault();
   }
   return vault.shared;
 }
@@ -294,24 +307,68 @@ async function startVault(accessUrl, s, k, shared) {
   salt = s; key = k;
   vault = { accessUrl, cache: { fetchedAt: 0, accounts: [], errors: [] } };
   if (shared) vault.shared = shared;
-  writeVault();
+  await writeVault();
+  await takeLockedEbt(); await keepEbt(); // an EBT balance he saved before Finance was connected
   watchPower(); stillHere();
   rememberForHello().catch(() => false);
   lookAtMail(true);
   try { await refresh(false); } catch (e) { return { ok: true, warning: e.message }; }
-  keepBills();
+  await keepBills();
   return { ok: true };
 }
 
 // after either unlock: an old download refreshed, purchase emails looked at → a warning or undefined
 async function afterUnlock() {
   let warning;
+  await takeLockedEbt(); // before anything reads the vault's EBT settings
   if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) {
     try { await refresh(false); } catch (e) { warning = e.message; }
   }
   lookAtMail(false);
-  keepBills();
+  await keepBills();
+  await keepEbt();
   return warning;
+}
+
+/* ── the EBT wallet's settings, outside the vault (renderer/js/finance-ebt.js) ──
+   His EBT balance, deposit day and monthly amount, sealed by Windows, so the grocery list and the Agent's
+   grocery runs can use them while Finance is locked. He chose this (2026-11-06): the balance isn't
+   something to keep from them. Nothing else from Finance goes in it. */
+const EBT_FILE = 'finance-ebt.json';
+const ebtFile = () => path.join(ctx.userData(), EBT_FILE);
+let ebtWrites = Promise.resolve();
+// rec: the cleaned settings, plus pending: true when saved while Finance was locked (Settings → EBT)
+function writeEbtFile(rec) {
+  ebtWrites = ebtWrites.then(async () => {
+    const sealed = ctx.seal ? await ctx.seal(JSON.stringify(rec)) : JSON.stringify(rec);
+    const tmp = ebtFile() + '.tmp';
+    fs.writeFileSync(tmp, sealed, { mode: 0o600 });
+    fs.renameSync(tmp, ebtFile());
+  }).catch((err) => log('ebt: couldn’t keep it (' + txt(err.message, 80) + ')'));
+  return ebtWrites;
+}
+function keepEbt() {
+  if (!key) return ebtWrites;
+  return writeEbtFile(ebtClean(vault.ebt));
+}
+async function readEbtFile() {
+  try {
+    const text = fs.readFileSync(ebtFile(), 'utf8');
+    const rec = JSON.parse(ctx.unseal ? await ctx.unseal(text) : text);
+    return rec && typeof rec === 'object' ? rec : {};
+  } catch (e) { return {}; }
+}
+// locked or not → {balance, at, day, monthly} (any missing), {} when there's none
+async function ebtNow() { return ebtClean(await readEbtFile()); }
+// unlocking (or connecting): what he saved while Finance was locked replaces the vault's, then the file is
+// written again without the mark
+async function takeLockedEbt() {
+  await ebtWrites;
+  const rec = await readEbtFile();
+  if (!key || !rec.pending) return;
+  vault.ebt = ebtClean(rec);
+  await writeVault();
+  log('ebt: took the settings saved while locked');
 }
 
 /* ── bill reminders (renderer/js/finance-bills.js) ──
@@ -323,36 +380,47 @@ const BILLS = 'finance-bills.json';
 const REMIND_DAYS = 3; // the to-do arrives 3 days ahead; the phone reminds again on the day (renderer/js/bill-reminders.js)
 const DAY_MS = 86400000;
 const billsFile = () => path.join(ctx.userData(), BILLS);
-function readBills() {
+async function readBills() {
   try {
     const text = fs.readFileSync(billsFile(), 'utf8');
-    const b = JSON.parse(ctx.unseal ? ctx.unseal(text) : text);
+    const b = JSON.parse(ctx.unseal ? await ctx.unseal(text) : text);
     return { bills: Array.isArray(b.bills) ? b.bills : [], odd: Array.isArray(b.odd) ? b.odd : [], reminded: b.reminded || {} };
   } catch (e) { return { bills: [], odd: [], reminded: {} }; }
 }
-function writeBills(b) {
+async function writeBills(b) {
+  const sealed = ctx.seal ? await ctx.seal(JSON.stringify(b)) : JSON.stringify(b);
   const tmp = billsFile() + '.tmp';
-  fs.writeFileSync(tmp, ctx.seal ? ctx.seal(JSON.stringify(b)) : JSON.stringify(b), { mode: 0o600 });
+  fs.writeFileSync(tmp, sealed, { mode: 0o600 });
   fs.renameSync(tmp, billsFile());
 }
-function keepBills() {
+// each read-change-write of the bills file waits for the one before, so no reminder is handed out twice
+let billsTurn = Promise.resolve();
+function billsInTurn(fn) {
+  const p = billsTurn.then(fn);
+  billsTurn = p.catch(() => {});
+  return p;
+}
+function keepBills() { return billsInTurn(keepBillsNow); }
+async function keepBillsNow() {
   if (!key) return;
   try {
+    // worked out from the vault before the wait below, in case it locks meanwhile
     const list = billsLib.billsOf((vault.cache && vault.cache.accounts) || [], vault.kinds);
-    const old = readBills(), cutoff = Date.now() - 90 * DAY_MS;
-    const reminded = {};
-    Object.keys(old.reminded).forEach((id) => { if (old.reminded[id] > cutoff) reminded[id] = old.reminded[id]; });
     // and charges worth a second look (renderer/js/finance-insights.js): the to-do's words only, no amount
     const odd = insights.oddCharges((vault.cache && vault.cache.accounts) || [], vault.kinds, Date.now(), 7)
       .map((o) => ({ id: o.id, title: insights.oddTitle(o) }));
-    writeBills({ bills: list.map((b) => ({ key: b.key, name: b.name, day: b.day, due: b.due, paidThrough: b.paidThrough, interest: b.interest })), odd, reminded });
+    const old = await readBills(), cutoff = Date.now() - 90 * DAY_MS;
+    const reminded = {};
+    Object.keys(old.reminded).forEach((id) => { if (old.reminded[id] > cutoff) reminded[id] = old.reminded[id]; });
+    await writeBills({ bills: list.map((b) => ({ key: b.key, name: b.name, day: b.day, due: b.due, paidThrough: b.paidThrough, interest: b.interest })), odd, reminded });
     if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'bills');
   } catch (e) { log('bills: couldn’t work them out (' + txt(e.message, 80) + ')'); }
 }
 /* for the Human list, locked or not: the bills due within 3 days (or overdue) not handed out before, and the
    ones the bank shows paid, whose to-dos get checked off. Handing one out counts as reminding him. */
-function billsNow() {
-  const b = readBills();
+function billsNow() { return billsInTurn(billsNowInTurn); }
+async function billsNowInTurn() {
+  const b = await readBills();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due = [], paid = [];
   b.bills.forEach((x) => {
@@ -371,7 +439,7 @@ function billsNow() {
     b.reminded['odd|' + o.id] = Date.now();
     due.push({ title: o.title, prefix: o.title, due: billsLib.billYmd(today), kind: 'charge' });
   });
-  if (due.length) { writeBills(b); log('bills: ' + due.length + ' reminder(s) or charge check(s) to the Human list'); }
+  if (due.length) { await writeBills(b); log('bills: ' + due.length + ' reminder(s) or charge check(s) to the Human list'); }
   return { due, paid };
 }
 
@@ -411,16 +479,18 @@ function forAgent(args) {
     const s = stmt.incomeStatement(accounts, vault.kinds);
     const line = (name, vals) => name + ': ' + vals.map(money).join(' | ');
     return 'Income statement, columns: ' + s.cols.map((c) => c.label + (c.partial ? ' (so far)' : '')).join(' | ') + '\n' +
-      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Contribution margin', s.contribution),
-        line('Fixed costs', s.fixedTotal), line('Net income', s.net)].join('\n') +
+      [line('Income', s.incomeTotal), line('Variable costs', s.variableTotal), line('Fixed costs', s.fixedTotal),
+        line('Net income', s.net)].join('\n') +
       '\nBiggest variable costs: ' + s.variable.slice(0, 6).map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ') +
       '\nFixed costs: ' + s.fixed.map((r) => r.name + ' ' + r.vals.map(money).join('/')).join('; ');
   }
   const c = costs.costsOf([].concat(...accounts.map((x) => x.transactions || [])), vault.kinds);
   const net = accounts.reduce((sum, x) => sum + x.balance, 0);
   const held = stocks.holdingsOf(accounts);
+  const b = stmt.balanceSheet(accounts);
   return 'Accounts:\n' + accounts.map((x) => '- ' + (x.org ? x.org + ' ' : '') + x.name + ': ' + money(x.balance)).join('\n') +
     '\nNet (all accounts, cards and loans negative): ' + money(net) +
+    '\nWorking capital (cash minus cards and other short-term debt; not long-term loans or investments): ' + money(b.workingCapital[0]) +
     '\nMonthly bills (fixed costs), about ' + money(c.fixedTotal) + ' a month: ' + c.fixed.map((f) => f.name + ' ' + money(f.monthly)).join('; ') +
     '\nEverything else bought (variable), by month: ' + c.months.map((m) => m.label + (m.partial ? ' so far' : '') + ' ' + money(m.total)).join('; ') +
     (held.length ? '\nStocks (brokerage values): ' + held.map((h) => (h.symbol || h.name) + ' ' + h.shares + ' sh ' + money(h.value)).join('; ') : '') +
@@ -445,9 +515,9 @@ const handlers = {
     return startVault(accessUrl, s, k);
   },
   // the sealed link for the :finance sync row (renderer/js/finance.js finShareUp), while unlocked
-  'finance:shareBox': () => {
+  'finance:shareBox': async () => {
     if (!key) return { ok: false, error: 'locked' };
-    return { ok: true, box: shareBox() };
+    return { ok: true, box: await shareBox() };
   },
   // connecting with the link his other computer shared: the same passphrase opens it, and stays this one's
   'finance:setupShared': async (_e, box, passphrase) => {
@@ -470,7 +540,7 @@ const handlers = {
     if (key) { stillHere(); return { ok: true }; }
     if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + status().waitSeconds + ' seconds.' };
     let v;
-    try { v = readVaultFile(); } catch (e) { return { ok: false, error: e.message }; }
+    try { v = await readVaultFile(); } catch (e) { return { ok: false, error: e.message }; }
     if (!v) return { ok: false, error: 'Finance isn’t connected.' };
     try { await unlockWith(passphrase, v); }
     catch (e) {
@@ -491,9 +561,10 @@ const handlers = {
     if (key) { stillHere(); return { ok: true }; }
     let v, k;
     try {
-      v = readVaultFile();
-      const raw = ctx.unseal(JSON.parse(fs.readFileSync(helloFile(), 'utf8')).key);
+      v = await readVaultFile();
+      const raw = await ctx.unseal(JSON.parse(fs.readFileSync(helloFile(), 'utf8')).key);
       if (!raw || raw.startsWith('enc:')) throw new Error('sealed');
+      if (key) { stillHere(); return { ok: true }; } // unlocked another way while Windows opened it
       k = Buffer.from(raw, 'base64');
       vault = decrypt(v, k); key = k; salt = Buffer.from(v.salt, 'base64');
     } catch (e) {
@@ -508,7 +579,7 @@ const handlers = {
   'finance:setHello': async (_e, on) => {
     if (!key) return { ok: false, error: 'locked' };
     stillHere();
-    vault.hello = !!on; writeVault();
+    vault.hello = !!on; await writeVault();
     if (on) { if (!(await rememberForHello())) return { ok: false, error: 'Windows Hello isn’t set up on this computer (Settings → Accounts → Sign-in options).', hello: false }; }
     else forgetHello();
     return { ok: true, hello: helloReady() };
@@ -523,12 +594,12 @@ const handlers = {
     stillHere();
     const c = vault.cache || {};
     const m = vault.mail || {};
-    return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, hello: helloReady(),
+    return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, ebt: vault.ebt || {}, hello: helloReady(),
       receipts: vault.receipts || [], mail: { last: m.last || 0, error: m.error || null, off: !!m.off, busy: mailBusy } };
   },
   // his correction for a payee on the cost charts: fixed, variable, not spending ('skip'), or back to the guess (null);
   // for money in, the key is 'in:' + payee and the kind 'income' or 'skip' (finance-statements.js)
-  'finance:setKind': (_e, payee, kind) => {
+  'finance:setKind': async (_e, payee, kind) => {
     if (!key) return { ok: false, error: 'locked' };
     stillHere();
     const k = txt(payee, 80).trim();
@@ -537,9 +608,50 @@ const handlers = {
     if (kind == null) delete kinds[k]; else kinds[k] = kind;
     if (Object.keys(kinds).length > 2000) return { ok: false, error: 'too many' };
     vault.kinds = kinds;
-    writeVault();
-    keepBills();
+    await writeVault();
+    await keepBills();
     return { ok: true, kinds };
+  },
+  // the EBT wallet (renderer/js/finance-ebt.js): his balance, deposit day and monthly amount, kept in the vault
+  'finance:setEbt': async (_e, ebt) => {
+    // locked (Settings → EBT): into the sealed copy only, marked so the next unlock moves it into the vault
+    if (!key) {
+      const e = ebtClean(ebt);
+      await writeEbtFile(Object.assign({}, e, { pending: true }));
+      if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');
+      return { ok: true, ebt: e, locked: true };
+    }
+    stillHere();
+    vault.ebt = ebtClean(ebt);
+    await writeVault();
+    await keepEbt();
+    if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');
+    return { ok: true, ebt: vault.ebt };
+  },
+  // the grocery list, locked or not: the sealed copy above
+  'finance:ebtNow': () => ebtNow(),
+  // a receipt photo he picked → the SNAP balance printed on it. Lupa reads it when it's set up, else his cloud AIs
+  // (main/overlay.js readPicture). Only the picture and the question go; nothing from the vault
+  'finance:ebtReceipt': async (_e, pic) => {
+    const mime = pic && /^image\/(jpeg|png|webp)$/.test(pic.mime) ? pic.mime : null;
+    const b64 = pic && typeof pic.b64 === 'string' && /^[A-Za-z0-9+/=]+$/.test(pic.b64) ? pic.b64 : null;
+    if (!mime || !b64 || b64.length > 8 * 1024 * 1024) return { ok: false, error: 'That picture can’t be read.' };
+    if (!ctx.readPicture) return { ok: false, error: 'Reading pictures isn’t available here.' };
+    let r;
+    try { r = await ctx.readPicture(EBT_RECEIPT_ASK, { mime, b64 }); } catch (err) { r = { why: err.message }; }
+    if (!r || !r.text) return { ok: false, error: (r && r.why) || 'No AI could read it.' };
+    const found = ebtReceiptAnswer(r.text);
+    log('ebt receipt: ' + (found ? 'balance read' : 'no balance found') + ' by ' + r.via);
+    return found ? { ok: true, balance: found.balance, at: found.at, via: r.via } : { ok: false, error: 'No EBT balance on that receipt that ' + r.via + ' could read.' };
+  },
+  // Settings → EBT switched off: grocery runs get no balance (agent/runner.js reads config.ebtOff)
+  'finance:setEbtOn': async (_e, on) => {
+    if (!ctx.readConfig || !ctx.writeConfig) return { ok: false };
+    const cfg = ctx.readConfig();
+    if (!on === !!cfg.ebtOff) return { ok: true };
+    if (on) delete cfg.ebtOff; else cfg.ebtOff = true;
+    await ctx.writeConfig(cfg);
+    return { ok: true };
   },
   // the tab's minute-by-minute check doesn't count as using it (it still locks after 10 idle minutes)
   'finance:stocks': async (_e, force) => {
@@ -562,17 +674,20 @@ const handlers = {
     if (!key) return { ok: false, error: 'locked' };
     stillHere();
     lookAtMail(true);
-    try { const r = await refresh(true); if (r.ok) keepBills(); return r; } catch (e) { return { ok: false, error: e.message }; }
+    try { const r = await refresh(true); if (r.ok) await keepBills(); return r; } catch (e) { return { ok: false, error: e.message }; }
   },
   // deletes the local file only; the connection itself is turned off on bridge.simplefin.org
-  'finance:forget': () => {
+  'finance:forget': async () => {
     lock('forgotten');
+    // a write still on its way would bring the files back after they're deleted
+    await vaultWrites; await billsTurn; await ebtWrites;
     try { fs.unlinkSync(file()); } catch (e) {}
     forgetHello();
     try { fs.unlinkSync(billsFile()); } catch (e) {}
+    try { fs.unlinkSync(ebtFile()); } catch (e) {}
     log('forgotten');
     return { ok: true };
   },
 };
 
-module.exports = { init, handlers, lock, forAgent, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };
+module.exports = { init, handlers, lock, forAgent, ebtNow, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };

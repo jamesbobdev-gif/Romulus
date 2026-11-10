@@ -28,10 +28,10 @@ test('every list and side row is copied from the old plain key to a new sealed k
     assert.ok(m.to.syncKey.includes('2222') && !m.to.syncKey.includes('1111'), 'to the new key, never the old');
     assert.strictEqual(m.to.syncKey.slice(m.newBase.length), m.sfx); // the same side row
   }
-  assert.deepStrictEqual(moves.filter((m) => m.ws === 'personal').map((m) => m.to.syncKey), [NEW, NEW + ':ideas', NEW + ':hours', NEW + ':updates', NEW + ':finance']);
+  assert.deepStrictEqual(moves.filter((m) => m.ws === 'personal').map((m) => m.to.syncKey), [NEW, NEW + ':ideas', NEW + ':hours', NEW + ':updates', NEW + ':finance', NEW + ':kitchen']);
   assert.strictEqual(moves.find((m) => m.ws === 'agent').newBase, 'tk_agent_' + NEW.slice(3)); // derived lists follow the new personal key
   assert.strictEqual(moves.find((m) => m.ws === 'agent' && m.sfx === ':locked').newBase, 'tk_agent_' + NEW.slice(3)); // its cipher key follows too (syncCopyRows)
-  assert.strictEqual(moves.filter((m) => m.ws === 'agent').length, 8);
+  assert.strictEqual(moves.filter((m) => m.ws === 'agent').length, 9); // the list itself and its eight side rows (:prefs … :macros)
 });
 
 test('a list with a key of its own gets a fresh key of its own, in the shape it needs', () => {

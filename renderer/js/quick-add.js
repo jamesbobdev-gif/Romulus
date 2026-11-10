@@ -39,10 +39,14 @@ function recurFromWords(text,now){
   return null;
 }
 
-// "Water plants #home" → {title:'Water plants', tag:'home'}; the first #word only, and never a title that's only tags
+// "Water plants #home" → {title:'Water plants', tag:'home'}; the first #word only, and never a title that's only tags.
+// A health goal ("Walk #steps 8000", health.js) stays in the title: it's what ticks the task off.
+const QA_HEALTH=/^(steps|exercise|workout|sleep)$/i;
 function tagFromWords(text){
   const s=String(text||'');
-  const m=/(^|\s)#([A-Za-z0-9][\w-]{0,30})(?=\s|$|[,.;:!?])/.exec(s);
+  const re=/(^|\s)#([A-Za-z0-9][\w-]{0,30})(?=\s|$|[,.;:!?])/g;
+  let m;
+  while((m=re.exec(s))&&QA_HEALTH.test(m[2])&&/^\s+\d/.test(s.slice(m.index+m[0].length))){}
   if(!m)return {title:s,tag:null};
   const title=qaTidy(s.slice(0,m.index)+' '+s.slice(m.index+m[0].length));
   return title?{title:title,tag:m[2]}:{title:s,tag:null};

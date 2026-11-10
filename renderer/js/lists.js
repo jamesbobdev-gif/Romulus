@@ -27,13 +27,11 @@ function buildRow(t,canDrag){
   }
   let dueDiff=null;
   const today=formatDate(new Date());
-  // swiped to tomorrow's deck; with a due date it rides on the date chip instead of a second chip
-  const movedLater=!t.done&&t.plan&&t.plan>today;
   if(t.due){
     const info=dateInfo(t.due,t.dueTime);
     dueDiff=info.diff;
-    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text+(movedLater?' ↪ tmrw':''));
-    dateBtn.title=movedLater?'You swiped this to tomorrow — it comes back in tomorrow’s deck. Click to view in calendar':'View in calendar';
+    const dateBtn=el('button','chip date'+(info.cls?' '+info.cls:''),info.text);
+    dateBtn.title='View in calendar';
     dateBtn.addEventListener('click',function(e){
       e.stopPropagation();
       const p=t.due.split('-').map(Number);
@@ -49,13 +47,6 @@ function buildRow(t,canDrag){
   }
   if(workConfigured()&&taskWs(t)==='work'&&state.wsFilter!=='work'&&state.activeTab!=='work'){
     chips.appendChild(el('span','chip ws','work'));
-  }
-  // what the morning swipe decided: picked for today, or pushed to tomorrow's deck
-  if(!t.done&&t.plan){
-    // worded as a decision, not a date, so it can't read as a second due date; and nothing when
-    // it would just repeat the due chip ("today · today")
-    if(t.plan===today&&t.planSet===today&&t.due!==today){ const c=el('span','chip plan','doing today'); c.title='You picked this for today'; chips.appendChild(c); }
-    else if(movedLater&&!t.due){ const c=el('span','chip plan later','↪ moved to tomorrow'); c.title='You swiped this to tomorrow — it comes back in tomorrow’s deck'; chips.appendChild(c); }
   }
   if(taskWs(t)==='school'){
     if(state.activeTab!=='school')chips.appendChild(el('span','chip school','school'));
@@ -109,6 +100,12 @@ function buildRow(t,canDrag){
   const del=iconBtn(I.x,'Delete task');
   del.addEventListener('click',function(e){ e.stopPropagation(); deleteTask(t); });
   acts.appendChild(pen);
+  // send it to someone on the family plan: it waits on their Family tab for Add / No thanks (family.js)
+  if(!isAgentTask&&!t.done&&typeof famCanSend==='function'&&famCanSend()){
+    const sd=iconBtn(FAM_SEND_ICON,'Send to someone in the group'); sd.title='Send to someone in the group';
+    sd.addEventListener('click',function(e){ e.stopPropagation(); famSendTask(t); });
+    acts.appendChild(sd);
+  }
   // send an Agent task out as a legion: Lupa splits it so no cloud AI sees the whole of it (agent/legion.js)
   if(isAgentTask&&!t.done&&t.status!=='working'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
     const lg=iconBtn(I.legion,'Send out as a legion'); lg.title='Legion sends out a legion of agents to do your bidding: your local model splits the question into pieces, each AI you connected takes one piece without seeing the whole, then your local model writes the report';
@@ -170,7 +167,9 @@ function buildPanel(t){
         if(h.allow&&typeof allowBox==='function')b.appendChild(allowBox(t,h)); // standing.js: Allow / Keep asking
         if(Array.isArray(h.plan)&&h.plan.length&&typeof planBox==='function')b.appendChild(planBox(t,h)); // goals.js: Start these steps
         if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
+        if(who==='claude'&&h.text&&typeof famCanSend==='function'&&famCanSend())b.appendChild(famChatSendBox(t,h)); // family.js: its to-dos, to someone in the group
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
+        if(who==='claude'&&h.text&&typeof aiReportControl==='function')b.appendChild(aiReportControl(t,h)); // ai-report.js: flag an offensive reply
         th.appendChild(b);
       });
       if(spinning){ // a "typing" line at the bottom while the answer is coming
@@ -294,6 +293,8 @@ function buildPanel(t){
     if(lastAns&&lastAns.thoughts&&t.status!=='working')foot.appendChild(thoughtsBox(t,lastAns));
     if(!agentBusy&&!t.done&&t.status==='needs-you'&&(stuck||failed)&&window.desktop&&window.desktop.agentRetry)foot.appendChild(retryButton(t));
     if(foot.firstChild)nb.appendChild(foot);
+    // the answer shown here can be reported too, without opening the conversation (ai-report.js)
+    if(lastAns&&lastAns.text&&t.status!=='working'&&!convOpen.has(t.id)&&typeof aiReportControl==='function')nb.appendChild(aiReportControl(t,lastAns));
     if(!t.done&&t.status==='needs-you'&&t.lane!=='local'&&liveViewAvailable())nb.appendChild(watchButton(t)); // e.g. to log in, or check a cart (its own tabs: fine while another task runs)
     panel.appendChild(nb);
   }
@@ -327,7 +328,7 @@ function buildPanel(t){
         // email the link to yourself (the desktop sends it; nothing is picked or bought);
         // not when "Send me link" below already does exactly that
         if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
-        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); buzz('send'); touch(); });
+        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); if(typeof linkEmailPick==='function')linkEmailPick(t); buzz('send'); touch(); });
         btns.appendChild(mb); } }
       if(canPick&&isLegionTask(t)){
         const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
@@ -344,7 +345,7 @@ function buildPanel(t){
           if(kind==='order')agentSay(t,'sys','Getting the '+store+' order ready. You’ll see it before anything is bought.');
           else if(kind==='tickets')agentSay(t,'sys','Getting the booking ready. You’ll see the total before anything is bought.');
           // other links: stage an email with it — the desktop sends it (never orders anything)
-          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); }
+          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); if(typeof linkEmailPick==='function')linkEmailPick(t); }
           touch(); });
         btns.appendChild(pb);
       }
@@ -485,7 +486,7 @@ function buildPanel(t){
     panel.appendChild(hl); panel.appendChild(ht);
   }
   // grocery tasks: when the next 2-week order opens (grocery-list.js); the order itself shows as picture cards
-  if(isGroceryTask(t)&&!t.done)panel.appendChild(groceryNextLine());
+  if(isGroceryTask(t)&&!t.done){ panel.appendChild(groceryNextLine()); const eb=groceryEbtLine(); if(eb)panel.appendChild(eb); }
   // repeat: Claude re-runs this task on a schedule (desktop app does the timing)
   if(taskWs(t)==='agent'){
     const rr=el('div','panel-meta repeat-row');
@@ -571,59 +572,74 @@ function buildPanel(t){
     pm.appendChild(rs);
   }
 
-  // Screenshots: attach context photos to any (non-agent) task. Reuses the
-  // agent-attachments bucket; carried to Claude if the task is handed to Agent.
-  if(taskWs(t)!=='agent'&&attachProfile()){
-    // no label or button: paste (Ctrl+V) or drag an image anywhere on the open task;
-    // the strip only shows once there's something in it
-    const strip=el('div','att-thumbs'); strip.style.margin='2px 0 8px';
-    // phones can't paste images, so there you get a small + tile to pick one
-    const touchOnly=!!window.Capacitor||matchMedia('(pointer:coarse)').matches;
-    let fileIn=null;
-    if(touchOnly){ fileIn=document.createElement('input'); fileIn.type='file'; fileIn.accept='image/*'; fileIn.multiple=true; fileIn.hidden=true; fileIn.addEventListener('change',function(){ addPics(fileIn.files); fileIn.value=''; }); panel.appendChild(fileIn); }
-    const uploading=[]; // in-flight {blob, preview, failed}
+  // Photos and files: on any (non-agent) task, for everyone who syncs (task-files.js). Encrypted on the device,
+  // counted toward the account's space, kept as long as the task has them. A visible button picks them; paste
+  // (Ctrl+V) or drop works too. Older photos (t.images, before files were encrypted) still show and can be removed.
+  if(taskWs(t)!=='agent'&&(taskFilesOn()||(t.images||[]).length||(t.files||[]).length)){
+    const box=el('div','task-files'); box.style.margin='2px 0 8px';
+    const strip=el('div','att-thumbs');
+    const fileIn=document.createElement('input'); fileIn.type='file'; fileIn.multiple=true; fileIn.hidden=true;
+    fileIn.addEventListener('change',function(){ addFiles(fileIn.files); fileIn.value=''; });
+    const addBtn=el('button','ghost mono task-files-add','Add photo or file'); addBtn.type='button';
+    addBtn.addEventListener('click',function(){ fileIn.click(); });
+    const uploading=[]; // in-flight {file, preview, failed, why}
     function badge(th,text){ const b=el('div',null,text); b.style.cssText='position:absolute;left:0;right:0;bottom:0;font-family:var(--mono);font-size:8px;text-align:center;background:rgba(20,20,20,.62);color:#fff;padding:1px 0'; th.appendChild(b); }
-    function drawPics(){
-      strip.innerHTML=''; strip.hidden=!fileIn&&!(t.images||[]).length&&!uploading.length;
-      (t.images||[]).filter(function(u){ return /^https:\/\//i.test(String(u)); }).forEach(function(u,i){ // synced from other devices: web pictures only
-        const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=u; im.alt='Screenshot'; im.referrerPolicy='no-referrer';
-        im.addEventListener('click',function(){ openLightbox((t.images||[]).map(function(x,j){ return {image:x,label:'Screenshot '+(j+1)}; }),i); });
-        const x=el('button',null,'✕'); x.setAttribute('aria-label','Remove screenshot');
-        x.addEventListener('click',function(e){ e.stopPropagation(); t.images=(t.images||[]).filter(function(y){ return y!==u; }); if(!t.images.length)delete t.images; drawPics(); touch(); });
-        th.appendChild(im); th.appendChild(x); strip.appendChild(th);
-      });
-      uploading.forEach(function(u){
-        const th=el('div','att-thumb'); th.style.opacity=u.failed?'1':'.55';
-        const im=document.createElement('img'); im.src=u.preview; im.alt=u.failed?'Upload failed':'Uploading'; th.appendChild(im);
-        badge(th,u.failed?'retry':'…');
-        if(u.failed){ th.style.cursor='pointer'; th.title='Upload failed — click to retry'; th.addEventListener('click',function(){ u.failed=false; drawPics(); doUpload(u); }); }
+    function removeBtn(label,onGo){ const x=el('button',null,'x'); x.setAttribute('aria-label',label); x.addEventListener('click',function(e){ e.stopPropagation(); onGo(); }); return x; }
+    function drawFiles(){
+      strip.innerHTML='';
+      (t.images||[]).forEach(function(u,i){ // older, unencrypted photos
+        const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=u; im.alt='Photo'; im.referrerPolicy='no-referrer';
+        im.addEventListener('click',function(){ openLightbox((t.images||[]).map(function(x,j){ return {image:x,label:'Photo '+(j+1)}; }),i); });
+        th.appendChild(im); th.appendChild(removeBtn('Remove photo',function(){ const lt=liveTask(t); lt.images=(lt.images||[]).filter(function(y){ return y!==u; }); if(!lt.images.length)delete lt.images; t.images=lt.images; drawFiles(); touch(); }));
         strip.appendChild(th);
       });
-      if(fileIn){
-        const plus=el('button','att-thumb','+'); plus.type='button'; plus.setAttribute('aria-label','Add a photo');
-        plus.style.cssText='padding:0;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--muted);background:var(--chip);border:1px dashed var(--hairline);cursor:pointer';
-        plus.addEventListener('click',function(){ fileIn.click(); });
-        strip.appendChild(plus);
-      }
+      (t.files||[]).forEach(function(fl){
+        const gone=function(){ const lt=liveTask(t); lt.files=(lt.files||[]).filter(function(y){ return y.id!==fl.id; }); if(!lt.files.length)delete lt.files; t.files=lt.files; taskFilesRemove([fl]); drawFiles(); touch(); };
+        if(taskFileIsImage(fl)){
+          const th=el('div','att-thumb'); th.title=fl.name; const im=document.createElement('img'); im.alt=fl.name; th.appendChild(im);
+          taskFileUrl(fl).then(function(u){ im.src=u; }).catch(function(){ badge(th,'gone'); });
+          im.addEventListener('click',function(){ taskFileShow(t,fl); });
+          th.appendChild(removeBtn('Remove '+fl.name,gone)); strip.appendChild(th);
+        } else {
+          const chip=el('div','att-file'); chip.title='Open '+fl.name;
+          const nm=el('button','att-file-name',fl.name+' · '+taskFileSize(fl.size)); nm.type='button';
+          nm.addEventListener('click',function(){ taskFileShow(t,fl); });
+          chip.appendChild(nm); chip.appendChild(removeBtn('Remove '+fl.name,gone)); strip.appendChild(chip);
+        }
+      });
+      uploading.forEach(function(u){
+        let th;
+        if(u.preview){ th=el('div','att-thumb'); const im=document.createElement('img'); im.src=u.preview; im.alt=u.failed?'Upload failed':'Uploading'; th.appendChild(im); badge(th,u.failed?'retry':'…'); }
+        else th=el('div','att-file',(u.failed?'retry: ':'uploading: ')+u.file.name);
+        th.style.opacity=u.failed?'1':'.55';
+        if(u.failed){ th.style.cursor='pointer'; th.title='Upload failed: '+(u.why||'')+'. Click to try again.'; th.addEventListener('click',function(){ u.failed=false; drawFiles(); doUpload(u); }); }
+        strip.appendChild(th);
+      });
+      strip.hidden=!strip.childNodes.length;
+      addBtn.hidden=!taskFilesOn();
     }
     async function doUpload(u){
-      try{ const url=await uploadAttachment(u.blob); const k=uploading.indexOf(u); if(k!==-1)uploading.splice(k,1); try{URL.revokeObjectURL(u.preview);}catch(_e){} const lt=liveTask(t); lt.images=(lt.images||[]).concat([url]); t.images=lt.images; drawPics(); touch(); }
-      catch(e){ u.failed=true; drawPics(); }
+      try{
+        const entry=await taskFileUpload(u.file);
+        const k=uploading.indexOf(u); if(k!==-1)uploading.splice(k,1); if(u.preview)try{ URL.revokeObjectURL(u.preview); }catch(_e){}
+        const lt=liveTask(t); lt.files=(lt.files||[]).concat([entry]); t.files=lt.files; drawFiles(); touch();
+      }catch(e){ u.failed=true; u.why=e.message; drawFiles(); pasteToast('Couldn’t add '+u.file.name+': '+e.message); }
     }
-    drawPics(); panel.appendChild(strip);
-    async function addPics(list){
-      const room=Math.max(0,8-((t.images||[]).length)-uploading.length);
-      const files=Array.from(list||[]).filter(function(f){ return /^image\//.test(f.type); }).slice(0,room);
-      for(const f of files){
-        let blob; try{ blob=await shrinkImage(f); }catch(e){ continue; }
-        const u={blob:blob,preview:URL.createObjectURL(blob),failed:false};
-        uploading.push(u); drawPics(); // show it instantly, then upload in the background
-        doUpload(u);
-      }
+    function addFiles(list){
+      if(!taskFilesOn()){ pasteToast('Photos and files need sync: set it up in Settings > Device sync.'); return; }
+      const room=Math.max(0,TASK_FILES_MAX-(t.files||[]).length-uploading.length);
+      const files=Array.from(list||[]).slice(0,room);
+      if(Array.from(list||[]).length>room)pasteToast('A task holds up to '+TASK_FILES_MAX+' photos and files.');
+      files.forEach(function(file){
+        const u={file:file,preview:/^image\//.test(file.type)?URL.createObjectURL(file):null,failed:false};
+        uploading.push(u); doUpload(u); // shows at once, uploads in the background
+      });
+      drawFiles();
     }
-    picTargets[t.id]={add:addPics,el:panel}; // lets a pasted screenshot land here
+    drawFiles(); box.appendChild(strip); box.appendChild(addBtn); box.appendChild(fileIn); panel.appendChild(box);
+    picTargets[t.id]={add:addFiles,el:panel}; // lets a pasted screenshot land here
     panel.addEventListener('dragover',function(e){ if(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).indexOf('Files')!==-1){ e.preventDefault(); } });
-    panel.addEventListener('drop',function(e){ if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){ e.preventDefault(); addPics(e.dataTransfer.files); } });
+    panel.addEventListener('drop',function(e){ if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){ e.preventDefault(); addFiles(e.dataTransfer.files); } });
   }
 
   // Subtasks section: the label only once there are some ("Add a subtask…" says it otherwise)
@@ -722,7 +738,6 @@ function buildPanel(t){
 /* ── render ── */
 let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
-  updatePlanBtn();
   if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
@@ -745,19 +760,22 @@ function render(){
   // a pulsing dot on the Agent tab while any task is running, so you see it from other tabs
   const anyWorking=state.tasks.some(function(t){ return taskWs(t)==='agent'&&!t.done&&t.status==='working'; });
   const ta=$('tabAgent'); if(ta){ ta.classList.toggle('busy',anyWorking); ta.title=anyWorking?'The Agent is working on a task':''; }
-  const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work';
-  const tab=onAgent?'agent':onSchool?'school':onWork?'work':'list';
+  const onAgent=state.activeTab==='agent', onSchool=state.activeTab==='school', onWork=state.activeTab==='work', onFamily=state.activeTab==='family';
+  const tab=onAgent?'agent':onSchool?'school':onWork?'work':onFamily?'family':'list';
+  // the Group tab: family.js decides when it shows (everyone on the Romulus server, or anyone in a group)
+  if(typeof famShowTab==='function')famShowTab();
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
-  const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():false;
+  const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():onFamily?!familyConfigured():false;
   document.querySelector('.composer').hidden=unconnected;
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
     const what=onAgent?['Agent','agent','Hand tasks to the Agent — on this computer or the local model: they work on them and come back when they need you.']
       :onSchool?['School','school','Your assignments, with due dates pulled in from your course calendars.']
+      :onFamily?['Family','family','One list everyone on your family plan keeps together: groceries, chores, a trip. Changes show up on everyone’s devices as they happen, end-to-end encrypted.']
       :['Work','work','A second list that syncs with your work project.'];
-    $('connectTitle').textContent='Connect your '+what[0]+' list';
-    $('connectText').textContent=what[2]+' It’s shared online between your computer'+(onAgent?', phone and mini PC':' and phone')+', so it needs connecting once.';
+    $('connectTitle').textContent=onFamily?'Share a list with your family':'Connect your '+what[0]+' list';
+    $('connectText').textContent=what[2]+(onFamily?' Start it, or join with the code someone on your plan gave you, in Settings.':' It’s shared online between your computer'+(onAgent?', phone and mini PC':' and phone')+', so it needs connecting once.');
     $('connectBtn').setAttribute('data-ws',what[1]);
   }
   const tasks=state.tasks.filter(function(t){ return inTab(t,tab); });
@@ -793,7 +811,7 @@ function render(){
   fitNeedsBar();
   $('newAttBtn').hidden=!onAgent||!attachProfile(); drawComposerAtts();
   $('legionBtn').hidden=!onAgent; if(!onAgent)setLegion(false);
-  $('newTitle').placeholder=onAgent&&legionOn?'What should the legion research?':onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':'Add a task…';
+  $('newTitle').placeholder=onAgent&&legionOn?'What should the legion research?':onAgent?'Add a task for the Agent…':onSchool?'Add an assignment… (tag = class)':onWork?'Add a work task…':onFamily?'Add something for the family…':'Add a task…';
 
   // workspace filter chips (only when a work list is connected; not on the Agent tab)
   const wsf=$('wsFilters'); wsf.innerHTML='';
@@ -831,6 +849,7 @@ function render(){
   if(state.selectedId&&navOrder.indexOf(state.selectedId)===-1)state.selectedId=null;
   drawLupaStuck(onAgent||tab==='list',tab==='list'); // agent-live-view.js: the local model's browser, when it stopped on a task (Human tab too, his verification steps first)
   drawLupaFiles(onAgent); // agent-chat.js: what the mini PC's browser downloaded
+  if(typeof famDrawIncoming==='function')famDrawIncoming(tab==='list'); // family.js: to-dos sent to me, Add / No thanks
   drawYesPrompts(tab==='list'?needing:[]);
   drawSuggestions(tab==='list');
   const ol=$('openList'); ol.innerHTML='';

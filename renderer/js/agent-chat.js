@@ -116,7 +116,7 @@ document.addEventListener('paste',function(e){
   const go=function(map,id){ e.preventDefault(); map[id].add(imgs); };
   // 1) typing directly in a reply box → that task
   const ae=document.activeElement, focusedReply=ae&&ae.dataset&&ae.dataset.replyFor;
-  const listy=state.activeTab!=='ideas'&&state.activeTab!=='hours'&&state.activeTab!=='calendar'&&state.activeTab!=='finance';
+  const listy=!isViewTab(state.activeTab)&&state.activeTab!=='calendar';
   if(ae&&ae.id==='newTitle'&&listy&&attachProfile()){ e.preventDefault(); addComposerFiles(imgs); return; }
   if(focusedReply&&replies.indexOf(focusedReply)!==-1)return go(attachTargets,focusedReply);
   // 2) the task you're in (focus inside its panel / last clicked / selected / the only open one)
@@ -161,7 +161,7 @@ async function addComposerFiles(list){
 }
 function drawComposerAtts(){
   const box=document.getElementById('newAtts'); if(!box)return;
-  box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='calendar'||state.activeTab==='finance';
+  box.innerHTML=''; box.hidden=!composerAtts.length||isViewTab(state.activeTab)||state.activeTab==='calendar';
   composerAtts.forEach(function(a,i){
     const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for the Agent';
     im.addEventListener('click',function(){ openLightbox(composerAtts.map(function(x,j){ return {image:x.preview,label:'Photo '+(j+1)}; }),i); });
@@ -318,6 +318,8 @@ function moveTask(t,toWs,id){ // id: keep a known one (holoBackToSchool); otherw
   state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:now});
   touch();
+  // its encrypted photos reach Claude as plain copies in the Agent's own photo folder (task-files.js)
+  if(toWs==='agent'&&Array.isArray(c.files)&&c.files.length&&typeof taskFilesToAgent==='function')taskFilesToAgent(c);
 }
 /* Undo the short-lived "every School assignment goes to Holo by itself" (2026-10-17): those Agent tasks
    ("holo-<old id>") go back to School under their old id, so the course calendars still know them. */
@@ -349,6 +351,7 @@ function deleteTask(t){
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; }); state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:Date.now()});
+  if(typeof taskFilesForget==='function')taskFilesForget(t); // its photos and files go from the server too
   buzz('delete');
   touch();
 }

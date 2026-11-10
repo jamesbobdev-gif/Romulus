@@ -218,11 +218,19 @@ end $$;
 
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours,
--- :worker, :updates, :finance, :files, :files-gone; the id is 13+ characters of letters, digits, - and _) and a document of at
--- most 4 MB, so the anon key alone can't fill the table (supabase/migrations/20261028_sync_limits.sql), a row moved to v2
--- takes nothing but another moved marker, and sync_guard has to let the write through: false is also the answer for an
--- account that is full or saving too often (sync_usage says which).
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone, :devices, :health, :macros, :kitchen;
+-- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
+-- can't fill the table (supabase/migrations/20261028_sync_limits.sql), and sync_guard has to let the write through:
+-- false is also the answer for an account that is full or saving too often (sync_usage says which).
+-- A device that moves its lists to end-to-end encryption (renderer/js/sync-crypto.js) leaves {"moved":"v2"}
+-- under the old key; from then on that row takes no write but another moved marker, so an older build that
+-- only knows the old key can't upload its copy in the clear on top (supabase/migrations/20261031_sync_moved_v2.sql).
+create or replace function public.sync_is_moved(p_sync_key text)
+returns boolean
+language sql stable
+set search_path = public
+as $$ select coalesce((select doc->>'moved' = 'v2' from public.tasks_sync where sync_key = p_sync_key), false) $$;
+
 -- compare-and-swap write: p_prev null = make the row (false if it exists); else replace it only if it is
 -- still the version read (updated_at unchanged). false = someone else wrote in between: read and merge again.
 create or replace function public.sync_put(p_sync_key text, p_doc jsonb, p_prev timestamptz)
@@ -232,7 +240,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -252,7 +260,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -269,7 +277,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then
@@ -438,7 +446,7 @@ create policy "agent attachments: app can upload" on storage.objects for insert 
 -- computers through this bucket (agent/worker-files.js), so no device has to reach the mini PC. Documents up to
 -- 10 MB, in a folder named by a hash of the agent key (never the key). The bucket is public, so a file is served by
 -- its exact address without any policy; everything else (adding, listing, removing) is allowed only to a request
--- that proves the agent key in an x-romulus-key header, and only for that key's own folder. Without the proof the
+-- that proves the agent key in an x-romulus-proof header (a hash of the key, never the key), and only for that key's own folder. Without the proof the
 -- bucket lists nothing: a folder name was all it took to read or remove everything in it.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
   values ('agent-files', 'agent-files', true, 10485760, array['application/pdf', 'application/msword',
@@ -449,9 +457,10 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
     'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'])
   on conflict (id) do update set file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
--- the request proves the agent key (the storage server hands request headers to Postgres as request.headers, like
--- PostgREST does): true when the object's folder is that key's folder, so a request sees, adds to and removes from
--- its own folder only
+-- the request proves it holds the agent key without showing it (the storage server hands request headers to Postgres
+-- as request.headers, like PostgREST does): the proof is sha256('romulus-files-v1|' || key) and the folder is the hash
+-- of the proof (agent/worker-files.js proofFor, folderFor), so a request sees, adds to and removes from its own folder
+-- only, and the key itself (what the lists are sealed under, end to end) never reaches the server or its logs
 create or replace function public.agent_folder_proved(p_name text)
 returns boolean
 language plpgsql stable security definer
@@ -459,8 +468,8 @@ set search_path = public
 as $$
 declare k text;
 begin
-  begin k := (nullif(current_setting('request.headers', true), '')::json)->>'x-romulus-key'; exception when others then k := null; end;
-  if k is null or k !~ '^tk_agent_[A-Za-z0-9_-]{13,}$' then return false; end if;
+  begin k := (nullif(current_setting('request.headers', true), '')::json)->>'x-romulus-proof'; exception when others then k := null; end;
+  if k is null or k !~ '^[0-9a-f]{64}$' then return false; end if;
   return split_part(coalesce(p_name, ''), '/', 1) = 'tk_agent_att_' || left(encode(sha256(convert_to(k, 'UTF8')), 'hex'), 40);
 end $$;
 revoke all on function public.agent_folder_proved(text) from public;
@@ -501,6 +510,24 @@ create policy "agent files: app can see" on storage.objects for select to anon
 drop policy if exists "agent files: app can remove" on storage.objects;
 create policy "agent files: app can remove" on storage.objects for delete to anon
   using (bucket_id = 'agent-files' and public.agent_folder_proved(name));
+
+-- ───────────── photos and files on any task ─────────────
+-- Encrypted on the device before they go up (renderer/js/task-files.js): the bucket holds only ciphertext under
+-- random names, in a folder named by a hash of the key's id part ('acct_' + sync_account_of). Up to 10 MB a
+-- file. A project of your own is yours alone, so the app may also remove files here directly; the shared Romulus
+-- server does that through a function instead (supabase/migrations/20261109_task_files.sql).
+insert into storage.buckets (id, name, public, file_size_limit)
+  values ('task-files', 'task-files', true, 10485760)
+  on conflict (id) do nothing;
+drop policy if exists "task files: app can upload" on storage.objects;
+create policy "task files: app can upload" on storage.objects for insert to anon
+  with check (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+drop policy if exists "task files: app can see" on storage.objects;
+create policy "task files: app can see" on storage.objects for select to anon
+  using (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+drop policy if exists "task files: app can remove" on storage.objects;
+create policy "task files: app can remove" on storage.objects for delete to anon
+  using (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
 
 -- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
 -- Pairing codes (renderer/js/pair.js). A device that already syncs shows a 12-character code (60 random

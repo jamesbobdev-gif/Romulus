@@ -67,13 +67,18 @@ test('every line keeps its transactions; his income / not income mark wins', () 
   assert.strictEqual(incomeStatement([t], { 'in:transfer from mom': 'income' }, NOW).incomeTotal[2], 300);
 });
 
-test('contribution margin: income minus variable costs, and its share of income', () => {
+test('no contribution margin on the income statement', () => {
   const s = incomeStatement([checking, visa], {}, NOW);
-  const sep = 2;
-  assert.strictEqual(Math.round(s.contribution[sep] * 100) / 100, 3001.5 - 15);
-  assert.strictEqual(Math.round((s.contribution[sep] - s.fixedTotal[sep]) * 100) / 100, Math.round(s.net[sep] * 100) / 100, 'margin − fixed = net income');
-  assert.ok(Math.abs(s.contributionRatio[sep] - (3001.5 - 15) / 3001.5) < 1e-9);
-  assert.strictEqual(s.contributionRatio[0], null, 'no income in July');
+  assert.strictEqual(s.contribution, undefined);
+  assert.strictEqual(s.contributionRatio, undefined);
+});
+
+test('working capital: cash minus cards and short-term debt, not long-term loans or investments', () => {
+  const mortgage = { id: 'm', name: 'Home Mortgage', org: 'Rocket', balance: -150000, transactions: [] };
+  const b = balanceSheet([checking, visa, broker, mortgage], NOW);
+  assert.deepStrictEqual([b.currentLiabilityTotal[0], b.workingCapital[0]], [640, 2000 - 640]);
+  assert.strictEqual(b.liabilityTotal[0], 150640, 'the mortgage is still a liability');
+  assert.strictEqual(b.workingCapital[1], b.cashTotal[1] - b.currentLiabilityTotal[1], '30 days ago too');
 });
 
 test('Public is an investment account, and money sent to it is not spending', () => {
@@ -86,4 +91,20 @@ test('Public is an investment account, and money sent to it is not spending', ()
   assert.ok(notSpending.test('PUBLIC INVESTING DES:ACH ID:123'));
   assert.ok(notSpending.test('Public.com deposit'));
   assert.ok(!notSpending.test('PUBLIC STORAGE 1234'));
+});
+
+test('money sent to his brokerage is not spending, whatever the bank calls it', () => {
+  const bank = { id: 'k', name: 'Checking', org: 'Chase', balance: 1000, transactions: [
+    tx('ACH DEBIT WEB 8834', -500, on(9, 3)),       // vague name, matched to Public's deposit below
+    tx('PUBLIC 8005551234', -200, on(9, 6)),        // Public's ACH by name alone
+    tx('APEX CLEARING ACH', -50, on(9, 7)),         // Public's clearing firm
+    tx('FIDELITY INVESTMENTS 4410', -300, on(9, 9)),
+    tx('FID BKG SVC LLC MONEYLINE', -25, on(9, 10)),
+    tx('PUBLIC STORAGE 0412', -90, on(9, 8)),       // a real bill that only starts with "Public"
+    tx('Corner Deli', -500, on(9, 20)),             // same amount, but no deposit matches it
+  ] };
+  const pub = { id: 'p', name: 'Brokerage', org: 'Public', balance: 750, transactions: [tx('Deposit', 500, on(9, 4))] };
+  const s = incomeStatement([bank, pub], {}, NOW);
+  assert.strictEqual(s.expenseTotal[3], 590, 'the deli and Public Storage only');
+  assert.strictEqual(s.incomeTotal[3], 0, 'the deposit into Public isn’t income either');
 });

@@ -78,4 +78,7 @@ test('a Microsoft account from before Mail.Send refreshes without asking for it'
   assert.ok(!/Mail\.Send/.test(calendars.msRefreshScope({ scope: 'openid User.Read Calendars.ReadWrite' })));
   assert.match(calendars.msRefreshScope({ scope: 'openid https://graph.microsoft.com/Mail.Send Calendars.ReadWrite' }), /Mail\.Send/);
   assert.match(calendars.msRefreshScope({ scope: '' }), /Calendars\.ReadWrite/);
+  // the Agent's mail tools: Mail.ReadWrite only once he agreed to it
+  assert.ok(!/Mail\.ReadWrite/.test(calendars.msRefreshScope({ scope: 'https://graph.microsoft.com/Mail.Send' })));
+  assert.match(calendars.msRefreshScope({ scope: 'https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send' }), /Mail\.ReadWrite/);
 });

@@ -54,6 +54,14 @@
     clearTimeout(idleTimer); idleTimer = null;
     if (was) lockedCbs.forEach(function (cb) { try { cb(why || 'asked'); } catch (e) {} });
   }
+  // EBT settings saved while locked (finance-ebt.js ebtPending) go into the vault once it's open
+  async function takePendingEbt() {
+    var e = typeof ebtPending === 'function' ? ebtPending() : null;
+    if (!e || !key || !vault) return;
+    vault.ebt = e;
+    await save();
+    ebtFinishPending(e);
+  }
   function stillHere() { clearTimeout(idleTimer); idleTimer = setTimeout(function () { lock('idle'); }, IDLE_LOCK_MS); }
   // leaving the app locks it (but not the fingerprint prompt or the scanner, which hide the page for a moment)
   document.addEventListener('visibilitychange', function () { if (document.hidden && !native) lock('away'); });
@@ -106,6 +114,7 @@
       key = await useKey(raw);
       vault = { accessUrl: p.accessUrl, kinds: p.kinds, cache: { fetchedAt: 0, accounts: [], errors: [] } };
       await save();
+      await takePendingEbt(); // a balance he saved before pairing
       stillHere();
       try { await refresh(false); } catch (e) { return { ok: true, warning: why(e) }; }
       return { ok: true };
@@ -122,6 +131,7 @@
       var k = await useKey(raw);
       try { vault = await open(k); } catch (e) { return { ok: false, error: 'Couldn’t open Finance’s data on this phone. Forget it and pair again.' }; }
       key = k; stillHere();
+      await takePendingEbt();
       var warning;
       if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) { try { await refresh(false); } catch (e) { warning = why(e); } }
       return { ok: true, warning: warning };
@@ -132,7 +142,7 @@
       if (!key) return { locked: true };
       stillHere();
       var c = vault.cache || {};
-      return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {},
+      return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, ebt: vault.ebt || {},
         receipts: [], mail: { phone: true } };
     },
     financeRefresh: async function () {
@@ -151,6 +161,15 @@
       await save();
       return { ok: true, kinds: kinds };
     },
+    // the EBT wallet (renderer/js/finance-ebt.js, a page script here): kept in this phone's vault
+    // locked (Settings → EBT): the plain copy, marked, until the next unlock (finance-ebt.js ebtKeepPending)
+    financeSetEbt: async function (ebt) {
+      if (!key) return ebtKeepPending(ebt) ? { ok: true, ebt: ebtClean(ebt), locked: true } : { ok: false, error: 'Couldn’t save that.' };
+      stillHere();
+      vault.ebt = ebtClean(ebt);
+      await save();
+      return { ok: true, ebt: vault.ebt };
+    },
     // the tab asks every minute while it's open: that doesn't count as using it
     financeStocks: async function (force) {
       if (!key) return { locked: true };
@@ -160,11 +179,11 @@
       if (!held.length) return { held: 0, rows: [] };
       var symbols = held.map(function (h) { return h.symbol; }).filter(Boolean), error = null;
       if (force || !lastQuotes || Date.now() - lastQuotes.at >= QUOTE_MS) {
-        try { var got = await C.fetchQuotes(symbols, doFetch, '1d'); if (key !== k) return { locked: true }; lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning }; }
+        try { var got = await C.fetchQuotes(symbols, doFetch, '1d', lastQuotes && lastQuotes.quotes); if (key !== k) return { locked: true }; lastQuotes = { at: Date.now(), quotes: got.quotes, warning: got.warning }; }
         catch (e) { if (key !== k) return { locked: true }; error = why(e); }
       }
       if (!lastDaily || Date.now() - lastDaily.at >= DAILY_MS) {
-        try { var d = await C.fetchQuotes(symbols, doFetch, '1y'); if (key !== k) return { locked: true }; lastDaily = { at: Date.now(), quotes: d.quotes }; }
+        try { var d = await C.fetchQuotes(symbols, doFetch, '1y', lastDaily && lastDaily.quotes); if (key !== k) return { locked: true }; lastDaily = { at: Date.now(), quotes: d.quotes }; }
         catch (e) { if (key !== k) return { locked: true }; }
       }
       // sectors hardly change: asked once per ticker while unlocked (the Portfolio mix charts)
@@ -177,7 +196,7 @@
       return C.stocksView(held, lastQuotes && lastQuotes.quotes, lastDaily && lastDaily.quotes, error, lastQuotes && lastQuotes.warning, sectorsKnown);
     },
     // this phone only: the computer and SimpleFIN keep working
-    financeForget: async function () { lock('forgotten'); await call('forget'); return { ok: true }; },
+    financeForget: async function () { lock('forgotten'); await call('forget'); try { localStorage.removeItem('finance.ebtCopy'); } catch (e) {} return { ok: true }; },
     onFinanceLocked: function (cb) { lockedCbs.push(cb); },
     onFinanceUpdated: function (cb) { updatedCbs.push(cb); },
     _readPairing: readPairing,

@@ -57,11 +57,12 @@ function parseOutput(text) {
 /* One command of Link's tool → {ok: true, data} or {ok: false, error, code}. node: the node to run it
    with; cli: its dist/cli.js; auth: his sign-in file. --format json tells it an agent is calling, so it
    draws no screens and checks for no updates; its skill installer is kept off too. */
-function runner({ node, cli, auth, spawn: sp = spawn, timeoutMs = 90000 }) {
+// env: the environment to start from (the launcher hands in one without the AI's key; browser-proxy.js childEnv)
+function runner({ node, cli, auth, env: baseEnv = process.env, spawn: sp = spawn, timeoutMs = 90000 }) {
   return (args, opts = {}) => new Promise((resolve) => {
     let out = '', err = '', p, done = false;
     const finish = (r) => { if (!done) { done = true; resolve(r); } };
-    const env = Object.assign({}, process.env, { NO_UPDATE_NOTIFIER: '1', LINK_CLI_SKIP_SKILL_INSTALL: '1' }, auth ? { LINK_AUTH_FILE: auth } : {});
+    const env = Object.assign({}, baseEnv, { NO_UPDATE_NOTIFIER: '1', LINK_CLI_SKIP_SKILL_INSTALL: '1' }, auth ? { LINK_AUTH_FILE: auth } : {});
     try { p = sp(node, [cli].concat(args, ['--format', 'json']), { windowsHide: true, env, stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (e) { return finish({ ok: false, error: e.message }); }
     const killer = setTimeout(() => { try { p.kill(); } catch (e) {} finish({ ok: false, error: 'Link’s tool took too long' }); }, opts.timeoutMs || timeoutMs);
@@ -106,8 +107,8 @@ function totalsFor({ amount, subtotal, shipping, tax }) {
 
 /* The launcher's side: spend requests and the card, for one run.
    {node, cli, auth, test, pending (the pending file), task (its title), spawn, now} */
-function wallet({ node, cli, auth, test, pending, task, spawn: sp, now = Date.now, log = () => {} }) {
-  const run = runner({ node, cli, auth, spawn: sp });
+function wallet({ node, cli, auth, env, test, pending, task, spawn: sp, now = Date.now, log = () => {} }) {
+  const run = runner({ node, cli, auth, env, spawn: sp });
   const cards = {}; // spend request id → the card itself: only ever in this process's memory, never written or logged
   let current = null; // the request this run is paying with
   const readPending = () => { try { const p = JSON.parse(fs.readFileSync(pending, 'utf8')); return p && p.id ? p : null; } catch (e) { return null; } };

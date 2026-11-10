@@ -14,7 +14,7 @@ const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog } = require('./helpers');
 const agentFiles = require('./agent-files');
 const supabase = require('./supabase');
@@ -30,14 +30,16 @@ const { enrichOption, pagePreviewImage } = require('./previews');
 const standing = require('./standing');
 const goals = require('./goals');
 const linkWallet = require('./link-wallet');
+const calendars = require('./calendars');
 
 // Claude comes after the AI being asked: what it can't do goes to Claude, rather than back to him as needs-you
-const CLAUDE_AFTER_NOTE = '\n\n## Handing over\nClaude (with a full browser, his inbox and his photos) comes after you in this run. If a ' +
-  'task needs a tool you don\'t have here (a browser to shop, order or check live prices, his inbox, a photo), leave that task out of ' +
+// (his inbox isn't Claude's: inbox tasks run on their own, and every AI gets the same Gmail tools there)
+const CLAUDE_AFTER_NOTE = '\n\n## Handing over\nClaude (with a full browser and his photos) comes after you in this run. If a ' +
+  'task needs a tool you don\'t have here (a browser to shop, order or check live prices, a photo), leave that task out of ' +
   '`updates` entirely and Claude will take it. This replaces the needs-you advice below for those tasks; everything you can do, do.\n';
-// the same for an AI that has the agent browser this run: shopping and prices are its to do, only his inbox or a photo goes to Claude
-const CLAUDE_AFTER_BROWSER_NOTE = '\n\n## Handing over\nClaude (with his inbox and his photos) comes after you in this run. If a ' +
-  'task needs his inbox or a photo, leave that task out of `updates` entirely and Claude will take it. You have the browser_* tools: ' +
+// the same for an AI that has the agent browser this run: shopping and prices are its to do, only a photo goes to Claude
+const CLAUDE_AFTER_BROWSER_NOTE = '\n\n## Handing over\nClaude (with his photos) comes after you in this run. If a ' +
+  'task needs a photo, leave that task out of `updates` entirely and Claude will take it. You have the browser_* tools: ' +
   'shopping, live prices and orders are yours to do, not to hand over. This replaces the needs-you advice below for those tasks; ' +
   'everything you can do, do.\n';
 
@@ -49,7 +51,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, foodBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -61,16 +63,34 @@ let agentTimer = null, agentProc = null, agentLastKey = '', agentLastAt = 0;
 let runIds = [], runRetried = false; // the tasks the current run has, and whether he pressed Retry on one
 let live = null; // the current run's plan, steps and his mid-run messages (agent/run-live.js)
 
-// what a run may do in Gmail when a task asks for an inbox check: look, never touch
-const GMAIL_READ_TOOLS = ['search_threads', 'get_thread', 'get_message', 'list_labels'].map((n) => 'mcp__claude_ai_Gmail__' + n);
-const GMAIL_WRITE_TOOLS = ['send_message', 'reply', 'forward', 'create_draft', 'update_draft', 'delete_draft', 'get_draft', 'list_drafts',
-  'trash_message', 'trash_thread', 'untrash_message', 'untrash_thread', 'mark_message_spam', 'mark_thread_spam', 'unmark_message_spam',
-  'unmark_thread_spam', 'label_message', 'label_thread', 'unlabel_message', 'unlabel_thread', 'update_message_labels', 'create_label',
-  'update_label', 'delete_label', 'apply_sensitive_message_label', 'apply_sensitive_thread_label'].map((n) => 'mcp__claude_ai_Gmail__' + n);
+/* An inbox run's mail tools (agent/mail-mcp.js), the same for every AI: his Gmail and Outlook on the app's own
+   sign-ins. Reading, drafts, labels, archive and read/unread on their own; send, reply, forward and trash only in a
+   run his yes unlocked (final: one task, his "yes" to its ask, as with an order). The server is copied out of the
+   app (plain node runs it, as with run-inbox.js); the mailboxes and fresh access tokens go in a file of their own,
+   emptied when the run ends, so they never sit in an AI's settings → the MCP config's path. No mailbox: the tools
+   say so, and the run tells him. */
+const mailDir = () => path.join(ctx.userData(), 'agent-mail');
+async function prepareMailTools(final) {
+  const dir = mailDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const script = path.join(dir, 'mail-mcp.js'), acctFile = path.join(dir, 'accounts.json'), cfgFile = path.join(dir, 'mcp.json');
+  fs.writeFileSync(script, fs.readFileSync(path.join(__dirname, 'mail-mcp.js')));
+  const list = [];
+  for (const a of calendars.mailToolAccounts()) {
+    try { list.push({ provider: a.provider, email: a.email, write: a.write, send: a.send, token: await calendars.tokenFor(a.id) }); }
+    catch (e) { agentLog('mail: ' + (a.email || a.provider) + ': ' + e.message); }
+  }
+  agentLog(list.length ? 'mail tools: ' + list.length + ' mailbox(es)' + (final ? ', send and trash unlocked by his yes' : '')
+    : 'mail: no mailbox connected (Settings → Calendars): the run will say so');
+  fs.writeFileSync(acctFile, JSON.stringify(list), { mode: 0o600 });
+  const node = findNode(), env = { MAIL_ACCOUNTS_FILE: acctFile, MAIL_FINAL: final ? '1' : '0' };
+  if (!node) env.ELECTRON_RUN_AS_NODE = '1'; // no node on this computer: the app's own, run as node
+  fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { mail: { command: node || process.execPath, args: [script], env } } }));
+  return cfgFile;
+}
+const clearMailTools = () => { try { fs.writeFileSync(path.join(mailDir(), 'accounts.json'), '[]'); } catch (e) {} };
 // its own checklist: the plan shown on the task while it works (agent/run-live.js)
 const PLAN_TOOLS = 'TaskCreate,TaskUpdate';
-const OTHER_CONNECTORS = ['Claude_Docs', 'Tasks', 'Microsoft_365', 'Gamma', 'Figma', 'Excalidraw', 'Zapier', 'Supabase', 'Slack',
-  'Interactive_Brokers_IBKR', 'Canva', 'Notion', 'Google_Drive', 'Google_Calendar'].map((n) => 'mcp__claude_ai_' + n);
 function queuedAgentTasks(raw) {
   let data;
   try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
@@ -126,16 +146,17 @@ async function startAgentRun() {
   const cfg = readConfig().agentRunner || {};
   const all = queuedAgentTasks();
   if (!all.length) { agentLog('skip: nothing queued any more'); return; }
-  // Gmail and the web never share a run: an email (or a page) could tell Claude to send his mail to
+  // Gmail and the web never share a run: an email (or a page) could tell the AI to send his mail to
   // some server, and a run that can read mail has no way to reach one. Inbox tasks go first, on their
-  // own; the rest wait for the next run. agentRunner.gmail=true makes every task an inbox task.
-  // Tasks he put on Gemini or ChatGPT (the pill) run on their own too, with that AI only (neither reads his inbox).
+  // own, with whichever AI his order gives (every one gets the same read-only Gmail tools); the rest
+  // wait for the next run. agentRunner.gmail=true makes every task an inbox task.
+  // Tasks he put on Gemini or ChatGPT (the pill) run on their own too, with that AI first.
   // A task already on an AI (the one that answered it last) runs with that AI too, so a conversation
   // doesn't hop between them: it only moves on when that AI is out of usage (see the loop below).
   const on = cloudOrder(), saveClaude = claudeLast();
   const kindOf = (t) => {
-    if (PINNED_CLOUDS.includes(t.cloud)) return t.cloud;
     if (cfg.gmail === true || wantsInbox(t)) return 'mail';
+    if (PINNED_CLOUDS.includes(t.cloud)) return t.cloud;
     const home = homeCloud(t, saveClaude);
     return home && on.includes(home) ? home : 'web'; // an AI he has since turned off: his order instead
   };
@@ -198,8 +219,20 @@ async function startAgentRun() {
   if (Object.keys(photos).length) agentLog('photos for Claude: ' + Object.values(photos).reduce((n, f) => n + f.length, 0));
   const calendar = tasks.some(wantsCalendar) ? await calendarForAgent() : null;
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
-  let allTasks = [];
-  try { allTasks = JSON.parse(fs.readFileSync(dataFile(), 'utf8')).tasks || []; } catch (e) {}
+  let allTasks = [], kitchen;
+  try { const doc = JSON.parse(fs.readFileSync(dataFile(), 'utf8')); allTasks = doc.tasks || []; kitchen = doc.kitchen; } catch (e) {}
+  // his EBT wallet for grocery runs (agent/grocery.js ebtBrief): about what's left, from Finance's sealed copy
+  let ebt;
+  if (tasks.some((t) => isGroceryRun(t, allTasks)) && ctx.finance && ctx.finance.ebtNow && !readConfig().ebtOff) { // Settings → EBT off: none
+    try { ebt = ebtBrief(await ctx.finance.ebtNow(), allTasks); } catch (e) {}
+    if (ebt) agentLog('ebt: balance handed over');
+  }
+  // his macro plan (the Health tab's Food plan) for grocery runs: the order is built to add up to it
+  let macros;
+  if (tasks.some((t) => isGroceryRun(t, allTasks))) {
+    try { macros = macroBrief(await agentRow(':macros')); } catch (e) {}
+    if (macros) agentLog('macros: plan handed over');
+  }
   // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
   const allSkills = loadSkills();
   const nearMe = tasks.filter((t) => wantsNearby(t, allSkills)).map((t) => t.id);
@@ -212,6 +245,9 @@ async function startAgentRun() {
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
+    whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
+    ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
+    macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
@@ -251,7 +287,7 @@ async function startAgentRun() {
     (browses(id) ? filesPart + (id === 'claude' && link ? link.part : '') : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
     'Today is ' + new Date().toDateString() + '.\n' + // for deadlines and a followUp's day
-    (id !== 'claude' && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
+    (id !== 'claude' && !mailRun && order.indexOf('claude') > order.indexOf(id) ? (browses(id) ? CLAUDE_AFTER_BROWSER_NOTE : CLAUDE_AFTER_NOTE) : '');
   // his files for forms (the resume), for a run with the browser: name and the full path the upload tool takes
   const filesPart = (() => { const f = formFiles(); return f.length ? '\n\n## His files for forms\nHis own documents, for a site that asks for a resume or the like (the agent browser rules say how). ' +
     'Give browser_file_upload the full path as written here; no other file can be sent:\n' + agentFiles.brief(f) : ''; })();
@@ -265,6 +301,9 @@ async function startAgentRun() {
   // his Link wallet, for a store with no saved card (agent/link-wallet.js): where the launcher finds it, and what Claude is told
   const link = browserCfg ? await linkWallet.forRun().catch((e) => { agentLog('link: ' + e.message); return null; }) : null;
   if (link) agentLog('link wallet: on' + (link.test ? ' (test mode)' : ''));
+  // ...they get his mail tools instead, whichever AI answers. Send and trash only when his yes started this run:
+  // one task, and his latest reply is the yes to its ask (a yes never unlocks them for another task)
+  const mailCfg = mailRun ? await prepareMailTools(tasks.length === 1 && saidYes(tasks[0])).catch((e) => { agentLog('mail tools: ' + e.message); return null; }) : null;
   const grocer = loadSkills().find((s) => s.name === 'groceries');
   runTimeoutMs = grocer && grocer.match && tasks.some((t) => grocer.match.test(skillText(t))) ? GROCERY_TIMEOUT_MS : AGENT_TIMEOUT_MS;
   // A shopping run (groceries, or a task whose links are store pages) is kept to the stores and the task's own
@@ -280,11 +319,11 @@ async function startAgentRun() {
   // the cloud AIs he connected, in his order (Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
-  // first; its pill follows whichever AI takes over. (Inbox runs: Claude only.)
+  // first; its pill follows whichever AI takes over. (Inbox runs: his order, each with the Gmail tools.)
   const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
-  let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer';
+  let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer', tries = 0;
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   // an answer saying it couldn't do the task waits here while the next AI tries; it's what he gets if none can
   const held = {}, gaveUp = {};
@@ -314,18 +353,29 @@ async function startAgentRun() {
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id, limitMs: runTimeoutMs });
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
       const prompt = promptFor(pending, id);
-      const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, workDir, prompt,
+      // live steps: Claude's come from its own stream; the others' from what the browser launcher writes down
+      // (agent/run-live.js tail). A line says who is on it whenever that isn't plainly Claude alone
+      if (id !== 'claude' || tries) live.note('-- ' + providers.NAMES[id] + (tries ? ' takes over' : ' is on it'));
+      tries++;
+      const untail = id !== 'claude' && browserCfg ? live.tail(stepsFile()) : null;
+      // the other AIs get the same site limit on a shopping run as Claude (browserOpts.hosts), never his yes
+      const steps = { steps: true, hosts: runHosts, task: browserOpts.task };
+      // the other AIs' tools: the agent browser, or in an inbox run his Gmail (read-only) and no web search
+      const otherTools = (st) => mailRun ? { browserMcpFile: mailCfg, browserDenied: [], mail: true }
+        : { browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, st), browserDenied: BROWSER_DENIED };
+      const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, browserOpts) }).finally(() => live.close())
-        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED,
+        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, ...otherTools(steps),
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
         : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+          ...otherTools(steps), onProc: (p) => { agentProc = p; } })
         // the ones answering one request at a time get the browser through the app's tool loop (agent/tool-loop.js);
         // the free ones only when he turned it on for that one (<id>Browser)
         : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs,
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } })
+          ...otherTools(steps), onProc: (p) => { agentProc = p; } })
         : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs,
-          browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab), browserDenied: BROWSER_DENIED, onProc: (p) => { agentProc = p; } });
+          ...otherTools(steps), onProc: (p) => { agentProc = p; } });
+      if (untail) untail();
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
       if (slept) break; // whatever it answered (or didn't) came from a frozen run: start over
       // the last run overall, and each AI's own last run (agent-last-run-gemini.log…), so one AI's try isn't lost to the next
@@ -342,7 +392,7 @@ async function startAgentRun() {
       if (Array.isArray(updates)) {
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
-        got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; if (id === 'claude') { u.heard = live.heard(u.id); u.thoughts = live.thoughts(u.id); } });
+        got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; u.thoughts = live.thoughts(u.id); if (id === 'claude') u.heard = live.heard(u.id); });
         const cant = isLast ? [] : got.filter(couldntDo);
         cant.forEach((u) => { held[u.id] = u; (gaveUp[u.id] = gaveUp[u.id] || []).push(providers.NAMES[id]); });
         const ok = got.filter((u) => !cant.includes(u));
@@ -366,6 +416,7 @@ async function startAgentRun() {
     }
   } finally {
     agentProc = null; runIds = []; if (live) live.stop(); live = null;
+    if (mailCfg) clearMailTools(); // the access tokens go with the run
     endPageP = browserCfg ? taskTabs.endRun().catch(() => null) : null; // the page its tasks ended on
     clearInterval(beats); ctx.powerSaveBlocker.stop(awake);
   }
@@ -405,6 +456,7 @@ async function startAgentRun() {
     delete u.cant;
     // changes to his grocery list: short plain names only, and never from a run that saw his mail
     u.list = sawMail ? undefined : groceryChanges(u.list);
+    u.macros = sawMail ? undefined : macroChanges(u.macros); // a meal plan's per-day targets: the app sets his Food plan to them
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
@@ -442,15 +494,15 @@ async function startAgentRun() {
   if (!claudeResetAt || !pending.length) scheduleAgentRun(); // anything queued while this run was going
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
-function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
+function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg }) {
   return new Promise((resolve) => {
     let out = '', err = '', proc, killer = null, settled = false;
     const finish = (r) => { if (!settled) { settled = true; clearTimeout(killer); resolve(r); } };
     try {
-      // Inbox run: Gmail READ-ONLY and nothing that reaches the internet. The account's connectors load,
-      // so every Gmail tool that could change anything is blocked by name, every other connected service
-      // is blocked outright, and in -p mode anything not on the allowed list is refused anyway. --tools
-      // takes the web tools out entirely, whatever his Claude settings allow.
+      // Inbox run: his mail and nothing that reaches the internet. The mail tools are the app's own
+      // (mailCfg, agent/mail-mcp.js: send and trash refuse unless his yes unlocked the run), none of his
+      // claude.ai connectors load (--strict-mcp-config), and in -p mode anything not on the allowed list is
+      // refused anyway. --tools takes the web tools out entirely, whatever his Claude settings allow.
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
       // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway). The work folder
@@ -458,16 +510,16 @@ function runClaudeOnce({ exe, cfg, mailRun, workDir, prompt, browserCfg }) {
       // cloud AI sees them: Claude Code lets Read open anything under its working folder without asking, so the
       // allow list above doesn't keep it out of them; only a deny does
       const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)',
-        'Read(./Research/**)', 'Read(./Coach/**)'];
+        'Read(**/finance-ebt.json)', 'Read(./Research/**)', 'Read(./Coach/**)'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
       const claudeModel = providers.settings(readConfig()).claudeModel; // none: Claude Code's own default for his plan
       if (claudeModel) args.push('--model', claudeModel);
       if (mailRun) {
-        args.push('--tools', 'Read,' + PLAN_TOOLS);
-        allowed.push(...GMAIL_READ_TOOLS);
-        denied.push('WebSearch', 'WebFetch', ...GMAIL_WRITE_TOOLS, ...OTHER_CONNECTORS);
+        args.push('--tools', 'Read,' + PLAN_TOOLS, '--strict-mcp-config');
+        if (mailCfg) { args.push('--mcp-config', mailCfg); allowed.push('mcp__mail'); }
+        denied.push('WebSearch', 'WebFetch');
       } else {
         args.push('--tools', 'Read,WebSearch,WebFetch,' + PLAN_TOOLS, '--strict-mcp-config'); // no claude.ai connectors (only the agent browser, if any)
         allowed.push('WebSearch', 'WebFetch');

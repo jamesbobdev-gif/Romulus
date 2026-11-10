@@ -148,6 +148,14 @@ test('only the page tools reach Playwright: no running code, raw requests or clo
     assert.match(proxy.toolRefusal(call(t, {})), /not available/, t);
 });
 
+test('the browser and Playwright are started without the AI\'s key in their environment', () => {
+  const env = proxy.childEnv({ PATH: '/bin', ANTHROPIC_API_KEY: 'sk-ant-x', GEMINI_API_KEY: 'g', OPENAI_API_KEY: 'o', CLAUDE_CODE_OAUTH_TOKEN: 't',
+    GH_TOKEN: 'gh', MY_SECRET: 's', DB_PASSWORD: 'p', TASKS_BROWSER_TASK: 'Buy milk', TASKS_LINK_AUTH: 'C:/auth.json', TASKS_BROWSER_HOSTS: '[]', HOME: '/h' });
+  assert.deepStrictEqual(env, { PATH: '/bin', TASKS_BROWSER_TASK: 'Buy milk', TASKS_LINK_AUTH: 'C:/auth.json', TASKS_BROWSER_HOSTS: '[]', HOME: '/h' });
+  const src = require('fs').readFileSync(require.resolve('../agent/browser-proxy'), 'utf8');
+  for (const m of src.match(/spawn\((?:chrome|process\.execPath)[^;]*/g)) assert.match(m, /env: childEnv\(\)/, 'every start of Chrome or Playwright passes the scrubbed environment: ' + m.slice(0, 60));
+});
+
 test('the current tab\'s address is read even when it holds parentheses', () => {
   assert.strictEqual(proxy.currentUrl('- 0: (current) [Apply](https://x.wd5.myworkdayjobs.com/job/Engineer-(Remote)_R1/apply)'), 'https://x.wd5.myworkdayjobs.com/job/Engineer-(Remote)_R1/apply');
   assert.strictEqual(proxy.currentUrl('- 1: [Other](https://a.example/)\n- 0: (current) [Cart](https://www.walmart.com/cart) [crashed]'), 'https://www.walmart.com/cart');

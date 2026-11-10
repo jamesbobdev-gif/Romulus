@@ -17,7 +17,7 @@ function finSwitchSource(csv){
   finApi=finUseCsv()?(window.csvFinance||null):finNative; fin.data=null; finSay(''); renderFinance();
 }
 if(window.csvFinance)window.csvFinance.onFinanceLocked(function(){ if(finApi===window.csvFinance){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); } });
-if(finApi)$('tabFinance').hidden=false;
+if(finApi)$('tabFinance').hidden=false; // Settings > Tabs (tab-picker.js) can still switch it off
 if(finNative){
   // SimpleFIN's own lock and update events count only while it's the one showing
   finNative.onFinanceLocked(function(){ if(finApi!==finNative)return; fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });
@@ -874,16 +874,14 @@ function finIncomeTable(host,s,cur,d,onMark){
   const rows=[['head','Income']];
   s.income.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   if(!s.income.length)rows.push(['line','No income in these months',null]);
-  // contribution format: variable costs first, the margin they leave, then the fixed costs it has to cover
   rows.push(['sub','Total income',s.incomeTotal],['gap'],['head','Variable costs']);
   s.variable.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
-  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],
-    ['margin','Contribution margin',s.contribution],['pct','Contribution margin ratio',s.contributionRatio],['gap'],['head','Fixed costs']);
+  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],['head','Fixed costs']);
   s.fixed.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   rows.push(['sub','Total fixed costs',s.fixedTotal],['gap'],
     ['total','Net income',s.net],['pct','Savings rate',s.savingsRate]);
   finStmtTable(host,s.cols,rows,cur,'Income statement',
-    'Contribution margin is what your income leaves after variable costs, to pay the fixed ones; its ratio is that as a share of income. Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
+    'Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
     // money in: a "not income" button on each, so a transfer counted as income can be taken out
     function(r){ return s.income.indexOf(s.income.find(function(x){ return x.items===r[3]; }))===-1?null:function(x){ return finIncomeTag(x.t,'income',onMark); }; });
 }
@@ -894,9 +892,10 @@ function finBalanceTable(host,b,cur){
   rows.push(['sub','Total assets',b.assetTotal],['gap'],['head','Liabilities']);
   b.liabilities.forEach(function(r){ rows.push(['line',r.name,r.vals]); });
   if(!b.liabilities.length)rows.push(['line','Nothing owed',null]);
-  rows.push(['sub','Total liabilities',b.liabilityTotal],['gap'],['total','Net worth',b.netWorth]);
+  rows.push(['sub','Total liabilities',b.liabilityTotal],['gap'],
+    ['margin','Working capital',b.workingCapital],['gap'],['total','Net worth',b.netWorth]);
   finStmtTable(host,b.cols,rows,cur,'Balance sheet',
-    'Earlier balances are worked back from today’s using the transactions in between. Investment accounts also move with the market, so their earlier values are rougher.');
+    'Working capital is your cash minus what you owe soon (cards and other short-term debt; mortgages and loans paid over years aren’t counted, and neither are investments). Earlier balances are worked back from today’s using the transactions in between. Investment accounts also move with the market, so their earlier values are rougher.');
 }
 
 /* ── the cost charts ── */
@@ -1003,9 +1002,144 @@ function finDebtsCard(d,cur){
     r.appendChild(el('span','fin-amt neg',finMoney(x.owed,cur)));
     box.appendChild(r);
   });
-  box.appendChild(el('p','fin-note','The rate is worked out from the interest actually charged, so it’s rough. On a card, paying the full statement balance by the due date stops new interest.'));
   const owed=p.debts.reduce(function(s,x){ return s+x.owed; },0);
   return finFoldable(box,'debts','Debts',finMoney(owed,cur)+(p.interestMonth>0?' · '+finMoney(p.interestMonth,cur)+' interest/mo':''));
+}
+/* EBT wallet (finance-ebt.js): about what's left on his EBT card, when the next deposit lands, and what the
+   Agent's grocery orders put on it since the last one. He types the balance in now and then; the Agent's
+   checkout notes keep it current in between */
+// the phone and CSV files: a copy of the EBT settings on this device, for the grocery list while Finance is
+// locked (grocery-list.js loadGroceryEbt). The computer keeps a sealed one in main/finance.js instead
+function finKeepEbtCopy(e){
+  if(window.desktop&&window.desktop.financeEbtNow)return;
+  try{ localStorage.setItem('finance.ebtCopy',JSON.stringify(ebtClean(e))); }catch(err){}
+  if(typeof loadGroceryEbt==='function')loadGroceryEbt();
+}
+// a photo he picked → {mime, b64}, at most 1600 px on its long side (small print stays readable, sends quickly)
+function finShrinkImage(file){
+  return new Promise(function(ok,fail){
+    const url=URL.createObjectURL(file), im=new Image();
+    im.onload=function(){
+      const k=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight));
+      const c=document.createElement('canvas'); c.width=Math.round(im.naturalWidth*k); c.height=Math.round(im.naturalHeight*k);
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url);
+      ok({mime:'image/jpeg',b64:c.toDataURL('image/jpeg',0.85).split(',')[1]});
+    };
+    im.onerror=function(){ URL.revokeObjectURL(url); fail(new Error('not a picture')); };
+    im.src=url;
+  });
+}
+// a saved EBT wallet: Finance's copy and the grocery list's copy. Saved while locked, the copy already has
+// it, marked for the next unlock (finance-ebt.js ebtKeepPending), so it's only read again
+function finEbtSaved(ebt,locked){
+  if(locked){ if(typeof loadGroceryEbt==='function')loadGroceryEbt(); return; }
+  if(fin.data)fin.data.ebt=ebt;
+  finKeepEbtCopy(ebt);
+}
+/* the balance / next deposit / deposit amount boxes and Save, for the Finance card and Settings → EBT.
+   e: ebtClean settings, w: ebtWallet. → {row, msg, bal}; onSaved runs after a save went through */
+function finEbtForm(e,w,onSaved){
+  const field=function(label,input){ const l=el('label','fin-ebt-field'); l.appendChild(el('span','mono fin-label',label)); l.appendChild(input); return l; };
+  const bal=finInput('text','$0.00'); bal.inputMode='decimal'; bal.title='On your last grocery receipt, your state’s EBT site or the Propel app';
+  // the date his benefits next load: only its day of the month is kept, and it repeats monthly
+  const dd=finInput('date',''); if(w.nextDeposit!=null)dd.value=ebtYmd(w.nextDeposit); dd.title='When your benefits load next. It repeats on that day each month';
+  const mo=finInput('text','$0.00'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly); mo.title='How much loads each month';
+  const row=el('div','fin-row fin-ebt-form');
+  row.appendChild(field('Balance',bal)); row.appendChild(field('Next deposit',dd)); row.appendChild(field('Deposit amount',mo));
+  const save=el('button','btn-accent','Save');
+  const msg=el('p','fin-msg err'); msg.hidden=true;
+  save.addEventListener('click',async function(){
+    const money=function(s){ const t=String(s).replace(/[$,\s]/g,''); return t===''?null:Number(t); };
+    const b=money(bal.value), m=money(mo.value), n=/^\d{4}-\d{2}-\d{2}$/.test(dd.value)?Number(dd.value.slice(8,10)):null;
+    if((b!=null&&!(b>=0))||(m!=null&&!(m>0))){ msg.textContent='Use amounts like 143.20.'; msg.hidden=false; return; }
+    const next={day:n||undefined,monthly:m||undefined};
+    if(b!=null){ next.balance=b; next.at=Date.now(); }
+    else if(e.balance!=null){ next.balance=e.balance; next.at=e.at; } // only the deposit changed
+    if(!finApi||!finApi.financeSetEbt){ msg.textContent='Set up Finance first.'; msg.hidden=false; return; }
+    save.disabled=true;
+    const r=await finApi.financeSetEbt(next).catch(function(err){ return {ok:false,error:err.message}; });
+    save.disabled=false;
+    if(!r.ok){ msg.textContent=r.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'; msg.hidden=false; return; }
+    finEbtSaved(r.ebt,r.locked); if(onSaved)onSaved(r.ebt,!!r.locked);
+  });
+  row.appendChild(save);
+  return {row:row,msg:msg,bal:bal};
+}
+// Settings → EBT: the same boxes, filled from the copy the grocery list keeps (it's there while Finance is
+// locked, and a save then waits in it for the next unlock). saved/locked: what a save just returned
+function drawEbtSettingsForm(saved,locked){
+  const host=$('ebtEditBox'); if(!host)return;
+  host.innerHTML='';
+  if(!ebtOn())return;
+  const e=ebtClean(saved||(fin.data&&fin.data.ebt?fin.data.ebt:groceryEbt));
+  const w=ebtWallet(e,agentOrders(state.tasks));
+  if(w.known)host.appendChild(el('p','settings-hint','About '+finMoney(w.balance)+' left'+(w.daysToDeposit!=null?', next deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):'')+'.'));
+  const f=finEbtForm(e,w,function(ebt,wasLocked){
+    drawEbtSettingsForm(ebt,wasLocked);
+    if(state.activeTab==='finance'&&fin.data&&!fin.busy)renderFinance(); // the Finance card shows the new numbers too
+  });
+  host.appendChild(f.row); host.appendChild(f.msg);
+  if(locked)host.appendChild(el('p','settings-hint','Saved. Finance picks it up the next time you unlock it.'));
+}
+function finEbtCard(d){
+  if(JSON.stringify(ebtClean(d.ebt))!==JSON.stringify(groceryEbt))finKeepEbtCopy(d.ebt); // an older copy, or none yet
+  const box=el('div','fin-card fin-chart fin-ebt');
+  box.appendChild(el('h3',null,'EBT'));
+  const w=ebtWallet(d.ebt,agentOrders(state.tasks));
+  const e=ebtClean(d.ebt);
+  const day=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
+  // two short rows: the balance, and the next deposit
+  const line=function(label,sub,amt,neg){
+    const r=el('div','fin-acct');
+    const who=el('span','fin-desc'); who.appendChild(el('b',null,label)); if(sub)who.appendChild(el('span','fin-sub',sub));
+    r.appendChild(who); r.appendChild(el('span','fin-amt'+(neg?' neg':''),amt)); box.appendChild(r);
+  };
+  if(w.known)line('Balance',w.balance<0?'out of date, update it':'as of '+day(w.asOf),finMoney(w.balance),w.balance<0);
+  if(w.nextDeposit!=null)line('Next deposit',w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days',
+    day(w.nextDeposit)+(e.monthly?' · '+finMoney(e.monthly):''));
+  if(w.spent.length){
+    box.appendChild(el('div','mono fin-label fin-org',w.nextDeposit!=null?'Spent since deposit':'Spent, last 30 days'));
+    w.spent.forEach(function(x){
+      const r=el('div','fin-acct');
+      const who=el('span','fin-desc'); who.appendChild(el('span',null,x.title)); who.appendChild(el('span','fin-sub',day(x.at)));
+      r.appendChild(who); r.appendChild(el('span','fin-amt',finMoney(x.ebt)));
+      box.appendChild(r);
+    });
+  }
+  if(finApi.financeSetEbt){
+    const f=finEbtForm(e,w,function(){ box.replaceWith(finEbtCard(fin.data)); });
+    const row=f.row, msg=f.msg, bal=f.bal;
+    const tools=el('div','fin-ebt-tools');
+    // set up: the boxes wait behind "update"; not yet: they're the whole card
+    if(w.known){
+      const up=el('button','ghost mono','update');
+      up.addEventListener('click',function(){ up.hidden=true; row.hidden=false; bal.focus(); });
+      row.hidden=true; tools.appendChild(up);
+    }
+    // a receipt photo: the SNAP balance printed on it becomes the balance (main/finance.js finance:ebtReceipt)
+    if(finApi.financeEbtReceipt){
+      const pick=document.createElement('input'); pick.type='file'; pick.accept='image/*'; pick.hidden=true;
+      const rb=el('button','ghost mono','read a receipt'); rb.title='A photo of a store receipt. Lupa reads it if it’s set up, otherwise your AI connections';
+      rb.addEventListener('click',function(){ pick.click(); });
+      pick.addEventListener('change',async function(){
+        const f=pick.files&&pick.files[0]; pick.value=''; if(!f)return;
+        rb.disabled=true; rb.textContent='reading…'; msg.hidden=true;
+        let r;
+        try{ r=await finApi.financeEbtReceipt(await finShrinkImage(f)); }catch(err){ r={ok:false,error:'That picture can’t be read.'}; }
+        if(r.ok){
+          const s=await finApi.financeSetEbt(Object.assign({},e,{balance:r.balance,at:r.at})).catch(function(err){ return {ok:false,error:err.message}; });
+          if(s.ok){ voiceToast('EBT balance from the receipt: '+finMoney(r.balance)+' (read by '+r.via+')'); fin.data.ebt=s.ebt; finKeepEbtCopy(s.ebt); box.replaceWith(finEbtCard(fin.data)); return; }
+          r={ok:false,error:s.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'};
+        }
+        rb.disabled=false; rb.textContent='read a receipt'; msg.textContent=r.error; msg.hidden=false;
+      });
+      tools.appendChild(rb); tools.appendChild(pick);
+    }
+    if(tools.childNodes.length)box.appendChild(tools);
+    box.appendChild(row); box.appendChild(msg);
+  }
+  const sum=w.known?finMoney(w.balance)+' left'+(w.daysToDeposit!=null?' · deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):''):'not set up';
+  return finFoldable(box,'ebt','EBT',sum);
 }
 /* Subscriptions (finance-insights.js subscriptionCheck): price rises first, then ones that just started (a free
    trial turning paid looks like that), then everything that charges each month and since when */
@@ -1211,12 +1345,14 @@ function drawFinMain(v){
   v.appendChild(finFoldable(accts,'accounts','Accounts',d.accounts.length+(d.accounts.length===1?' account':' accounts')));
   v.appendChild(finWorthChart(d.accounts,cur));
   const debts=finDebtsCard(d,cur); if(debts)v.appendChild(debts);
+  if(ebtOn())v.appendChild(finEbtCard(d)); // Settings → EBT (grocery-list.js)
   if(!d.csv)v.appendChild(finStocksCard(cur)); // a CSV has no holdings
 
   // fixed and variable costs (finance-costs.js): drawn again when he corrects a payee below
   const costBox=el('div','fin-charts');
   v.appendChild(costBox);
   const subsBox=el('div'); v.appendChild(subsBox);
+  costMarkInvestMoves(d.accounts); // money sent to his brokerage isn't spending
   const allTxs=[];
   d.accounts.forEach(function(a){ a.transactions.forEach(function(t){ allTxs.push(t); }); });
   let costs=null;

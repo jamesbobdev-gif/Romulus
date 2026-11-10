@@ -13,6 +13,17 @@ const http = require('http');
 const [cli, chrome, profile, port, flagsJson] = process.argv.slice(2);
 const endpoint = 'http://127.0.0.1:' + port;
 
+/* The environment a child gets. This launcher runs inside the AI's command (Claude Code, the Gemini CLI), whose
+   environment carries that AI's API key, and Chrome outlives the run: any program of this user can read a running
+   program's environment. So nothing that looks like a key, token or password is handed down; the browser, Playwright
+   and Link's tool never need one. */
+const SECRET_ENV = /API_KEY|_TOKEN$|^TOKEN$|SECRET|PASSWORD|PASSWD|CREDENTIAL|^ANTHROPIC_|^GEMINI_|^OPENAI_|^OPENROUTER_|^CLAUDE_CODE_OAUTH/i;
+function childEnv(base = process.env) {
+  const out = {};
+  for (const [k, v] of Object.entries(base)) if (!SECRET_ENV.test(k)) out[k] = v;
+  return out;
+}
+
 function browserUp() {
   return new Promise((resolve) => {
     const req = http.get(endpoint + '/json/version', { timeout: 1000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
@@ -27,7 +38,7 @@ async function ensureBrowser() {
   let flags = null; try { flags = flagsJson ? JSON.parse(flagsJson) : null; } catch (e) {}
   const p = spawn(chrome, flags || ['--user-data-dir=' + profile, '--remote-debugging-port=' + port, '--remote-debugging-address=127.0.0.1',
     '--no-first-run', '--no-default-browser-check',
-    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore' });
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], { detached: true, stdio: 'ignore', env: childEnv() });
   p.unref(); // outlives this run
   for (let i = 0; i < 40 && !(await browserUp()); i++) await new Promise((r) => setTimeout(r, 250));
 }
@@ -441,6 +452,27 @@ function noteAction(msg, here) {
   } else if (pressesEnter(name, a) && (here == null || checkoutPage(here))) { logAction('pressed Enter', { url: String(here || '').slice(0, 200) }); spent = true; }
   else if (name === 'browser_file_upload' && a.paths != null) logAction('uploaded', { files: (Array.isArray(a.paths) ? a.paths : [a.paths]).map(fileName), url: String(here || '').slice(0, 200) });
 }
+/* Live steps (TASKS_BROWSER_STEPS), for the AIs whose own output the app can't follow as it runs (Gemini,
+   ChatGPT, OpenRouter, Grok, Groq): one JSON line per browser call, with only what agent/run-live.js describe()
+   needs to write "Opening walmart.com/cart" on the task. Typed text is never kept; refused calls say so. */
+const STEPS_FILE = process.env.TASKS_BROWSER_STEPS || '';
+function stepLine(msg, refused) {
+  if (!msg || !msg.params || !msg.params.name) return null;
+  const name = String(msg.params.name), a = msg.params.arguments || {};
+  const input = {};
+  if (a.url) input.url = String(a.url).slice(0, 300);
+  const label = name === 'browser_click' ? ((refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '')).trim() : String(a.element || '');
+  if (label) input.element = label.slice(0, 80);
+  if (a.key) input.key = String(a.key).slice(0, 30);
+  if (Array.isArray(a.fields)) input.fields = a.fields.map(() => ({})); // how many, not what
+  if (a.values != null) input.values = [].concat(a.values).map((v) => String(v).slice(0, 40)).slice(0, 5);
+  return { at: Date.now(), name, input, blocked: !!refused || undefined };
+}
+function noteStep(msg, refused) {
+  if (!STEPS_FILE) return;
+  const line = stepLine(msg, refused);
+  if (line) try { require('fs').appendFileSync(STEPS_FILE, JSON.stringify(line) + '\n'); } catch (e) {}
+}
 // the last step of buying or applying, by the page's address (its path; the host is anyone's)
 const CHECKOUT = /check-?out|\/buy\b|payment|\/pay\b|place-?order|\/orders?\b|purchase|\/apply\b|application|\/submit\b/i;
 const checkoutPage = (url) => { try { return CHECKOUT.test(new URL(String(url || '')).pathname); } catch (e) { return false; } };
@@ -476,7 +508,7 @@ function fileRefusal(msg) {
    three work only once his yes has unlocked the order button on this store (the same gate as buyRefusal),
    and the AI never sees the number: the launcher keeps it in memory, types it, blanks it out of every page it
    passes on afterwards, and refuses screenshots once a card is on the page. */
-const LINK = process.env.TASKS_LINK_CLI ? { node: process.execPath, cli: process.env.TASKS_LINK_CLI, auth: process.env.TASKS_LINK_AUTH || '',
+const LINK = process.env.TASKS_LINK_CLI ? { node: process.execPath, cli: process.env.TASKS_LINK_CLI, auth: process.env.TASKS_LINK_AUTH || '', env: childEnv(),
   test: process.env.TASKS_LINK_TEST === '1', pending: process.env.TASKS_LINK_PENDING || '', task: TASK_TITLE } : null;
 const LINK_NAMES = new Set(['link_pay_request', 'link_wait', 'link_enter_card', 'link_cancel']);
 const LINK_TOOLS = [
@@ -636,7 +668,7 @@ async function shopTabs(msg) { // → a refusal, or null (msg may be changed to 
 }
 
 function main() {
-  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'] });
+  child = spawn(process.execPath, [cli, '--cdp-endpoint', endpoint, ...extraArgs], { stdio: ['pipe', 'pipe', 'inherit'], env: childEnv() });
   child.on('exit', (code) => process.exit(code || 0));
   process.on('exit', () => { try { child.kill(); } catch (e) {} });
 
@@ -679,6 +711,7 @@ function main() {
             return;
           }
           const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || await resolvedRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || screenshotRefusal(msg) || await shopTabs(msg));
+          if (msg) noteStep(msg, refused);
           if (refused) { // answer it ourselves; Playwright never sees the call
             process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
             return;
@@ -694,7 +727,7 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { toolRefusal, schemeRefusal, hostRefusal, privateRefusal, resolvedRefusal, resolvesPrivate, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
+else module.exports = { stepLine, childEnv, SECRET_ENV, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, resolvedRefusal, resolvesPrivate, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
   _net: { setLookup: (f) => { lookup = f; resolved.clear(); } }, // tests: the name → addresses lookup
   // his Link wallet
   LINK_TOOLS, LINK_NAMES, withLinkTools, linkRefusal, linkCall, linkSay, blank, screenshotRefusal,

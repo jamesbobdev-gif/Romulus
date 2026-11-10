@@ -37,7 +37,7 @@ test('setup, lock, wrong and right passphrase', async () => {
   assert.strictEqual((await h['finance:unlock'](null, 'wrong passphrase!')).ok, false);
   assert.strictEqual((await h['finance:unlock'](null, 'correct horse battery')).ok, true);
   assert.strictEqual(h['finance:data']().accounts[0].transactions[0].description, 'Coffee');
-  h['finance:forget']();
+  await h['finance:forget']();
   assert.strictEqual(fs.existsSync(path.join(dir, 'finance.vault')), false);
 });
 
@@ -54,14 +54,33 @@ test('corrections on the cost charts are kept in the vault', async () => {
   finance.init({ userData: () => d2, agentLog: () => {}, sendToRenderer: () => {}, fetch: async (url, opts) => opts.method === 'POST'
     ? { ok: true, status: 200, text: async () => ACCESS } : { ok: true, status: 200, json: async () => ({ accounts: [] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
-  assert.strictEqual(h['finance:setKind'](null, 'shell oil', 'fixed').ok, true);
-  assert.strictEqual(h['finance:setKind'](null, 'shell oil', 'nonsense').ok, false);
+  assert.strictEqual((await h['finance:setKind'](null, 'shell oil', 'fixed')).ok, true);
+  assert.strictEqual((await h['finance:setKind'](null, 'shell oil', 'nonsense')).ok, false);
   h['finance:lock']();
   await h['finance:unlock'](null, 'correct horse battery');
   assert.deepStrictEqual(h['finance:data']().kinds, { 'shell oil': 'fixed' });
-  h['finance:setKind'](null, 'shell oil', null);
+  await h['finance:setKind'](null, 'shell oil', null);
   assert.deepStrictEqual(h['finance:data']().kinds, {});
-  h['finance:forget']();
+  // the EBT wallet: kept sealed with the rest, and only the fields it uses
+  assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291, pin: '1234' })).ok, true);
+  // saved while locked (Settings → EBT): the grocery list sees it at once, and the next unlock moves it into the vault
+  h['finance:lock']();
+  const lk = await h['finance:setEbt'](null, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  assert.deepStrictEqual([lk.ok, lk.locked], [true, true]);
+  assert.deepStrictEqual(await h['finance:ebtNow'](), { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  await h['finance:unlock'](null, 'correct horse battery');
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  h['finance:lock'](); await h['finance:unlock'](null, 'correct horse battery'); // taken once, then it's the vault's
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291 })).ok, true);
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 143.2, at: 1000, day: 3, monthly: 291 });
+  // the vault never has it in the clear; the grocery list's copy is its own file (sealed by Windows in the app)
+  assert.ok(!fs.readdirSync(d2).filter((f) => f !== 'finance-ebt.json').some((f) => /143\.2/.test(fs.readFileSync(path.join(d2, f), 'latin1'))));
+  h['finance:lock']();
+  assert.deepStrictEqual(await h['finance:ebtNow'](), { balance: 143.2, at: 1000, day: 3, monthly: 291 }); // locked, still there
+  await h['finance:forget']();
+  assert.deepStrictEqual(await h['finance:ebtNow'](), {});
+  assert.ok(!fs.existsSync(path.join(d2, 'finance-ebt.json')));
 });
 
 test('purchase emails are read after setup and kept in the vault, not in the clear', async () => {
@@ -74,13 +93,13 @@ test('purchase emails are read after setup and kept in the vault, not in the cle
     mail: { mailAllowed: () => true,
       gmail: async (p) => p.startsWith('messages?') ? { messages: [{ id: 'm1' }] }
         : { id: 'm1', internalDate: String(Date.now()), payload: { mimeType: 'text/plain', body: { data: b64('Total $9.99') }, headers: [{ name: 'Subject', value: 'Your receipt' }] } },
-      claudeJson: async () => JSON.stringify({ receipts: [{ email: 1, store: 'spotify', merchant: 'Spotify', total: 9.99, date: '', items: [] }] }) } });
+      aiJson: async () => JSON.stringify({ receipts: [{ email: 1, store: 'spotify', merchant: 'Spotify', total: 9.99, date: '', items: [] }] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
   await done;
   const d = h['finance:data']();
   assert.deepStrictEqual(d.receipts.map((r) => [r.store, r.total]), [['spotify', 9.99]]);
   assert.ok(!fs.readFileSync(path.join(d3, 'finance.vault'), 'utf8').includes('spotify'));
-  h['finance:forget']();
+  await h['finance:forget']();
 });
 
 test('purchase emails come from every Gmail account switched on, each read from its own inbox', async () => {
@@ -95,12 +114,12 @@ test('purchase emails come from every Gmail account switched on, each read from 
       gmail: async (p, acct) => { asked.push(acct); const id = acct + '-m';
         return p.startsWith('messages?') ? { messages: [{ id }] }
           : { id, internalDate: String(Date.now()), payload: { mimeType: 'text/plain', body: { data: b64('Total $5') }, headers: [{ name: 'Subject', value: 'Receipt' }] } }; },
-      claudeJson: async (m) => JSON.stringify({ receipts: [{ email: 1, store: /g-2/.test(m[1].content) ? 'target' : 'spotify', total: 5, date: '', items: [] }] }) } });
+      aiJson: async (m) => JSON.stringify({ receipts: [{ email: 1, store: /g-2/.test(m[1].content) ? 'target' : 'spotify', total: 5, date: '', items: [] }] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
   await done;
   assert.deepStrictEqual(h['finance:data']().receipts.map((r) => r.id).sort(), ['g-1-m', 'g-2-m']);
   assert.deepStrictEqual([...new Set(asked)], ['g-1', 'g-2']);
-  h['finance:forget']();
+  await h['finance:forget']();
 });
 
 test('stock prices come from Yahoo for the holdings SimpleFIN sent', async () => {
@@ -123,7 +142,7 @@ test('stock prices come from Yahoo for the holdings SimpleFIN sent', async () =>
   assert.deepStrictEqual([s.total, s.change, s.gain], [2000, 10, 500]);
   assert.deepStrictEqual(s.today.map((p) => p[1]), [1980, 2000]);
   assert.ok(asked.every((u) => !/1500|1900|Brokerage/.test(u)), 'only the symbol goes to Yahoo');
-  h['finance:forget']();
+  await h['finance:forget']();
 });
 
 test('Windows Hello: kept after a passphrase unlock, opens Finance after Hello says yes, never stored in the clear', async () => {
@@ -153,14 +172,14 @@ test('Windows Hello: kept after a passphrase unlock, opens Finance after Hello s
   h['finance:lock']();
   assert.strictEqual((await h['finance:unlock'](null, 'correct horse battery')).ok, true);
   assert.strictEqual(h['finance:status']().hello, false);
-  h['finance:forget']();
+  await h['finance:forget']();
   // Windows can't encrypt (seal hands it back as is): Hello is never set up
   const d6 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
   finance.init(Object.assign({}, base, { userData: () => d6, seal: (s) => s, unseal: (s) => s }));
   await h['finance:setup'](null, token, 'correct horse battery');
   await new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(fs.existsSync(path.join(d6, 'finance.hello')), false);
-  h['finance:forget']();
+  await h['finance:forget']();
 });
 
 test('the Finance tab on screen shuts out screen capture, and lets it back when it goes', () => {
@@ -189,12 +208,12 @@ test('The local model’s view of Finance: only while unlocked, plain text, read
   const gas = finance.forAgent({ what: 'transactions', query: 'shell' });
   assert.match(gas, /1 transaction\(s\) matching "shell": \$42\.10 out/);
   assert.ok(!gas.includes('Deli'));
-  assert.match(finance.forAgent({ what: 'statement' }), /Contribution margin/);
+  assert.match(finance.forAgent({ what: 'statement' }), /Net income/);
   assert.ok(logs.filter((m) => /the local model read/.test(m)).every((m) => !/\d+\.\d\d/.test(m)), 'the log never gets amounts');
   h['finance:lock']();
   assert.match(finance.forAgent({ what: 'overview' }), /locked/);
   assert.strictEqual(finance.isUnlocked(), false);
-  h['finance:forget']();
+  await h['finance:forget']();
 });
 
 test('another computer connects with the shared link and the same passphrase', async () => {
@@ -202,14 +221,14 @@ test('another computer connects with the shared link and the same passphrase', a
     : { ok: true, status: 200, json: async () => ({ accounts: [{ id: 'a1', name: 'Checking', balance: '5', transactions: [] }] }) };
   const d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
   finance.init({ userData: () => d8, agentLog: () => {}, sendToRenderer: () => {}, fetch: fetchOk });
-  assert.strictEqual(h['finance:shareBox']().ok, false, 'nothing to share while locked or not set up');
+  assert.strictEqual((await h['finance:shareBox']()).ok, false, 'nothing to share while locked or not set up');
   await h['finance:setup'](null, token, 'correct horse battery');
-  const box = h['finance:shareBox']().box;
+  const box = (await h['finance:shareBox']()).box;
   assert.ok(!JSON.stringify(box).includes('pass@') && !JSON.stringify(box).includes('simplefin'), 'the link is sealed');
-  assert.deepStrictEqual(h['finance:shareBox']().box, box, 'the same copy each time');
+  assert.deepStrictEqual((await h['finance:shareBox']()).box, box, 'the same copy each time');
   h['finance:lock']();
   await h['finance:unlock'](null, 'correct horse battery');
-  assert.deepStrictEqual(h['finance:shareBox']().box, box, 'kept in the vault');
+  assert.deepStrictEqual((await h['finance:shareBox']()).box, box, 'kept in the vault');
   h['finance:lock']();
   // the second computer
   const d9 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
@@ -225,6 +244,29 @@ test('another computer connects with the shared link and the same passphrase', a
   assert.strictEqual((await h['finance:setupShared'](null, box, 'correct horse battery')).ok, false, 'already connected');
   h['finance:lock']();
   assert.strictEqual((await h['finance:unlock'](null, 'correct horse battery')).ok, true);
-  assert.deepStrictEqual(h['finance:shareBox']().box, box, 'it shares the same copy on from here');
-  h['finance:forget']();
+  assert.deepStrictEqual((await h['finance:shareBox']()).box, box, 'it shares the same copy on from here');
+  await h['finance:forget']();
+});
+
+test('Settings → EBT off: kept in the config so grocery runs get no balance', async () => {
+  let cfg = { other: 1 };
+  finance.init({ userData: () => dir, agentLog: () => {}, sendToRenderer: () => {}, readConfig: () => JSON.parse(JSON.stringify(cfg)), writeConfig: async (c) => { cfg = c; } });
+  await h['finance:setEbtOn'](null, false);
+  assert.deepStrictEqual(cfg, { other: 1, ebtOff: true });
+  await h['finance:setEbtOn'](null, true);
+  assert.deepStrictEqual(cfg, { other: 1 });
+});
+
+test('an EBT receipt photo: only the picture and the question go, and the balance comes back', async () => {
+  const asked = [];
+  finance.init({ userData: () => dir, agentLog: () => {}, sendToRenderer: () => {},
+    readPicture: async (q, img) => { asked.push([q, img]); return { text: '{"balance": 52.75, "date": null}', via: 'Lupa' }; } });
+  const r = await h['finance:ebtReceipt'](null, { mime: 'image/jpeg', b64: 'aGVsbG8=' });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.balance, 52.75);
+  assert.strictEqual(r.via, 'Lupa');
+  assert.deepStrictEqual(asked[0][1], { mime: 'image/jpeg', b64: 'aGVsbG8=' });
+  assert.match(asked[0][0], /receipt/);
+  assert.strictEqual((await h['finance:ebtReceipt'](null, { mime: 'text/html', b64: 'aGVsbG8=' })).ok, false);
+  assert.strictEqual((await h['finance:ebtReceipt'](null, { mime: 'image/png', b64: '<script>' })).ok, false);
 });

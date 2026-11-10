@@ -52,6 +52,25 @@ function devicesKindLabel(e){
   const os=e.os||'';
   return e.kind==='phone'?(os?os+' phone':'Phone'):e.kind==='computer'?(os?os+' computer':'Computer'):'Browser';
 }
+// 1.2.2 is newer than 1.1.1; a 'v' in front is ignored (the same rule as update-sync.js, which the tests don't load)
+function devicesVersionNewer(a,b){
+  const x=String(a||'').replace(/^v/i,'').split('.').map(Number), y=String(b||'').replace(/^v/i,'').split('.').map(Number);
+  for(let i=0;i<Math.max(x.length,y.length);i++){
+    const p=x[i]||0, q=y[i]||0;
+    if(isNaN(p)||isNaN(q))return false;
+    if(p!==q)return p>q;
+  }
+  return false;
+}
+// the newest version any of these devices runs, or null
+function devicesNewest(items){
+  return items.reduce(function(best,e){ return e.version&&(!best||devicesVersionNewer(e.version,best))?e.version:best; },null);
+}
+// "v1.2.2", or "v1.1.1 · behind" when another device runs a newer one; nothing when the device never said
+function devicesVersionLabel(e,newest){
+  if(!e.version)return null;
+  return 'v'+e.version+(newest&&devicesVersionNewer(newest,e.version)?' · behind':'');
+}
 
 /* sealing the new settings to one device's public key */
 function devB64(bytes){ let s=''; new Uint8Array(bytes).forEach(function(b){ s+=String.fromCharCode(b); }); return btoa(s); }
@@ -89,7 +108,7 @@ async function devicesHandoff(doc,keepIds,text){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={devicesWithMe,devicesNeedBeat,devicesList,devicesSeenLabel,devicesKindLabel,devicesSeal,devicesOpen,devicesHandoff,DEVICES_BEAT_MS};
+  module.exports={devicesWithMe,devicesNeedBeat,devicesList,devicesSeenLabel,devicesKindLabel,devicesNewest,devicesVersionLabel,devicesSeal,devicesOpen,devicesHandoff,DEVICES_BEAT_MS};
 } else {
   /* ── this device ── */
   const DEV_ID_KEY='tasks.deviceId', DEV_NAME_KEY='tasks.deviceName';
@@ -132,8 +151,10 @@ if(typeof module!=='undefined'&&module.exports){
     if(!devState.info){
       let info={};
       if(window.desktop&&window.desktop.syncDeviceInfo){ try{ info=await window.desktop.syncDeviceInfo(); }catch(e){} }
-      const phone=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
-      devState.info={name:info.name||(phone?'Phone':'Browser'),kind:info.os?'computer':phone?'phone':'browser',os:info.os||(phone?'Android':''),version:info.version||null};
+      const cap=window.Capacitor, phone=!!(cap&&cap.isNativePlatform&&cap.isNativePlatform());
+      const ios=phone&&typeof cap.getPlatform==='function'&&cap.getPlatform()==='ios';
+      // the phone's version is baked into its page by mobile/prepare-www.js; a computer's comes from the main process
+      devState.info={name:info.name||(phone?(ios?'iPhone':'Phone'):'Browser'),kind:info.os?'computer':phone?'phone':'browser',os:info.os||(phone?(ios?'iOS':'Android'):''),version:info.version||(phone&&window.ROMULUS_VERSION)||null};
     }
     let name=null; try{ name=localStorage.getItem(DEV_NAME_KEY); }catch(e){}
     const k=await deviceKeys();
@@ -141,6 +162,7 @@ if(typeof module!=='undefined'&&module.exports){
   }
   window.deviceId=deviceId;
   window.deviceMe=deviceMe;
+  window.deviceKeys=deviceKeys; // the family list hands its new key to this device's key pair too (family-list.js)
   window.devicesProfileOf=function(p){ return validProfile(p)?Object.assign({},p,{syncKey:p.syncKey+DEVICES_SFX}):null; };
   function devicesProfile(){ return devicesProfileOf(syncState.cfg&&syncState.cfg.personal); }
 
@@ -198,7 +220,7 @@ if(typeof module!=='undefined'&&module.exports){
     const list=document.getElementById('devicesList'), note=document.getElementById('devicesNote');
     list.textContent='';
     if(devState.unsupported){ note.textContent=(devState.notice&&devState.notice.until>Date.now()?devState.notice.text+' ':'')+'Your Supabase project needs one update before devices can show here: paste supabase/migrations/20261106_sync_devices_key.sql into its SQL Editor and press Run.'; return; }
-    const items=devicesList(devState.doc,deviceId()), now=Date.now();
+    const items=devicesList(devState.doc,deviceId()), now=Date.now(), newest=devicesNewest(items);
     // what the last Remove / Rotate did stays here a while (the sync status line is overwritten by the next sync)
     const said=devState.notice&&devState.notice.until>now?devState.notice.text+' ':'';
     note.textContent=said+(items.length?'Each device shows up once it has synced on this version or newer.':'Looking for devices…');
@@ -208,7 +230,7 @@ if(typeof module!=='undefined'&&module.exports){
       const nm=document.createElement('div'); nm.className='device-name'; nm.style.cssText='color:var(--ink)'; nm.textContent=e.name||'Unnamed device';
       if(e.me){ const t=document.createElement('span'); t.className='device-me mono'; t.style.cssText='margin-left:8px;font-size:11px;color:var(--accent)'; t.textContent='this device'; nm.appendChild(t); }
       const sub=document.createElement('div'); sub.className='device-sub mono'; sub.style.cssText='font-size:11px;color:var(--muted);margin-top:2px';
-      sub.textContent=[devicesKindLabel(e),e.version?'v'+e.version:null,e.me?null:devicesSeenLabel(e.seen,now),e.pub?null:'pairs again after a key change'].filter(Boolean).join(' · ');
+      sub.textContent=[devicesKindLabel(e),devicesVersionLabel(e,newest),e.me?null:devicesSeenLabel(e.seen,now),e.pub?null:'pairs again after a key change'].filter(Boolean).join(' · ');
       txt.append(nm,sub); row.appendChild(txt);
       const b=document.createElement('button'); b.className='ghost mono'+(e.me?'':' danger');
       b.textContent=e.me?'Rename':'Remove';

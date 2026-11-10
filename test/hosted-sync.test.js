@@ -7,13 +7,13 @@ const h = require('../renderer/js/hosted-sync');
 test('every plain key a list or its side rows could be looked for under gets the encrypted-list marker', () => {
   const keys = h.hostedMarkerKeys('tk_abc');
   assert.deepStrictEqual(keys, [
-    'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:devices',
+    'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:kitchen', 'tk_abc:devices',
     'tk_work_abc',
     'tk_agent_abc', 'tk_agent_abc:prefs', 'tk_agent_abc:locked', 'tk_agent_abc:routing', 'tk_agent_abc:standing',
     'tk_school_abc',
   ]);
   // each one is a key the database's sync_set takes (supabase/setup.sql)
-  const shape = /^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices))?$/;
+  const shape = /^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|kitchen))?$/;
   for (const k of h.hostedMarkerKeys('tk_26dbc739-a57d-4d40-900d-984640e0415d')) assert.ok(shape.test(k), k);
 });
 
@@ -24,7 +24,7 @@ test('the space line, and the choice once the free space is nearly used', () => 
   assert.match(quiet.line, /^Using 900 KB of 5 MB free\.$/);
   const near = h.hostedPlanText({ used_bytes: 4.6 * MB, quota_bytes: 5 * MB, paid_quota_bytes: 600 * MB }, true);
   assert.strictEqual(near.full, true);
-  assert.match(near.line, /\$5 a month \(600 MB\)/);
+  assert.match(near.line, /with a plan \(600 MB\)/);
   assert.match(near.line, /Pro at \$25 a month/);
   const refused = h.hostedPlanText({ used_bytes: 1, quota_bytes: 5 * MB, refused: 'full', paid_quota_bytes: 600 * MB }, false);
   assert.strictEqual(refused.full, true);
@@ -106,6 +106,90 @@ test('restoring a day brings its tasks back everywhere and removes what came aft
 test('a paid plan says how much its history uses', () => {
   const MB = 1024 * 1024;
   const t = h.hostedPlanText({ used_bytes: 2 * MB, quota_bytes: 600 * MB, paid_until: '2026-12-09T00:00:00Z', paid_quota_bytes: 600 * MB, history_bytes: 9 * MB }, true);
-  assert.match(t.line, /History uses 9 MB more\./);
+  assert.doesNotMatch(t.line, /History/); // kept short: history size isn't shown
   assert.doesNotMatch(h.hostedPlanText({ used_bytes: 1, quota_bytes: 5 * MB, history_bytes: 9 * MB }, true).line, /History/);
+});
+
+test('the plan is offered as the Group plan, with a free trial only when the links have one', () => {
+  const plain = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x' });
+  assert.strictEqual(plain.button, 'Group plan: $5 a month for up to 5 people');
+  assert.match(plain.pitch, /^The Group plan: share lists and send each other to-dos with up to 4 more people/);
+  assert.strictEqual(plain.personal, null); // no Personal links: one plan, at what the existing links charge
+  assert.ok(plain.pitch.indexOf('30 days of history') < plain.pitch.indexOf('600 MB')); // storage comes last
+  assert.doesNotMatch(plain.pitch, /free for|trial/i);
+  const trial = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/x', trialDays: 14 });
+  assert.strictEqual(trial.button, 'Try the Group plan free for 14 days');
+  assert.match(trial.pitch, /Free for 14 days, then \$5 a month\. Cancel before the trial ends and you pay nothing\.$/);
+  assert.strictEqual(h.hostedPlanPitch({ trialDays: 'junk' }).button, plain.button);
+  assert.strictEqual(h.hostedPlanPitch(null).year, 'Pay yearly: 2 months free');
+});
+
+test('with Personal links there are two plans, Group $6 and Personal $4', () => {
+  const two = h.hostedPlanPitch({ pay: 'https://buy.stripe.com/g', payPersonal: 'https://buy.stripe.com/p', payPersonalYear: 'https://buy.stripe.com/py' });
+  assert.strictEqual(two.button, 'Group plan: $6 a month for up to 5 people');
+  assert.strictEqual(two.personal, 'Personal: $4 a month');
+  assert.strictEqual(two.personalYear, 'Personal yearly: $40');
+  assert.match(two.pitch, /Just you\? The Personal plan is \$4 a month/);
+  assert.ok(two.pitch.indexOf('Group plan') < two.pitch.indexOf('Personal plan')); // Group is the one offered first
+  assert.strictEqual(h.hostedPlanPitch({ payPersonal: 'x' }).personalYear, null); // no yearly link, no yearly button
+  assert.match(h.hostedPlanPitch({ payPersonal: 'x', trialDays: 7 }).pitch, /then \$6 a month/);
+});
+
+test('fireworks only when this device saw the free space and now sees the plan', () => {
+  assert.equal(h.hostedJustPaid('free', true), true);
+  assert.equal(h.hostedJustPaid('paid', true), false); // a restart
+  assert.equal(h.hostedJustPaid(null, true), false); // a new device of someone already paying
+  assert.equal(h.hostedJustPaid('free', false), false);
+});
+
+test('Settings says which plan someone is on', () => {
+  const MB = 1024 * 1024;
+  assert.equal(h.hostedMyPlanText('payer', { paid_until: '2026-12-01', quota_bytes: 600 * MB, paid_quota_bytes: 600 * MB }).title, 'Group plan');
+  assert.match(h.hostedMyPlanText('payer', null).text, /30 days of history, up to 4 more people/);
+  assert.match(h.hostedMyPlanText('member', null).text, /Covered by the person who runs your group/);
+  assert.equal(h.hostedMyPlanText('personal', null).title, 'Personal plan');
+  assert.doesNotMatch(h.hostedMyPlanText('personal', null).text, /more people/);
+  assert.match(h.hostedMyPlanText('member-free', { quota_bytes: 5 * MB }).text, /Your own space: 5 MB/);
+  assert.doesNotMatch(h.hostedMyPlanText('member', null).text, /4 more people/);
+  const free = h.hostedMyPlanText('free', { quota_bytes: 5 * MB, paid_quota_bytes: 600 * MB });
+  assert.equal(free.title, 'Free plan');
+  assert.match(free.text, /^5 MB of space\.$/);
+  assert.equal(h.hostedMyPlanText('own', null).title, 'Your own Supabase');
+});
+
+test('moving to your own project leaves the encrypted-list marker under every plain key there, and stops if a list key is refused', async () => {
+  const sent = [];
+  global.syncRpc = async (p, fn, body) => { sent.push([p.url, fn, body.p_sync_key, JSON.stringify(body.p_doc)]); return true; };
+  await h.hostedSealMarkers({ url: 'https://own.supabase.co', key: 'k' }, 'tk_abc');
+  assert.deepStrictEqual(sent.map((s) => s[2]), h.hostedMarkerKeys('tk_abc'));
+  assert.ok(sent.every((s) => s[0] === 'https://own.supabase.co' && s[1] === 'sync_set' && s[3] === '{"moved":"v2"}'));
+  // a side row an older setup.sql doesn't know may be refused; a list's own key may not
+  global.syncRpc = async (p, fn, body) => body.p_sync_key.indexOf(':') !== -1 ? false : true;
+  await h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc');
+  global.syncRpc = async (p, fn, body) => body.p_sync_key === 'tk_work_abc' ? false : true;
+  global.syncRefusal = async () => 'the project is full';
+  await assert.rejects(h.hostedSealMarkers({ url: 'u', key: 'k' }, 'tk_abc'), /the project is full/);
+  delete global.syncRpc; delete global.syncRefusal;
+});
+
+test('deleting the account: a 16-digit number, typed back with or without spaces', () => {
+  const code = h.hostedDeleteCode();
+  assert.match(code, /^[1-9]\d{15}$/);
+  assert.notEqual(h.hostedDeleteCode(), code); // fresh each time (1 in 10^15 to collide)
+  assert.equal(h.hostedDeleteCodeShown('1234567890123456'), '1234 5678 9012 3456');
+  assert.ok(h.hostedDeleteCodeMatches('1234567890123456', '1234 5678 9012 3456'));
+  assert.ok(h.hostedDeleteCodeMatches('1234567890123456', '1234567890123456'));
+  assert.ok(!h.hostedDeleteCodeMatches('1234567890123456', '1234 5678 9012 345'));
+  assert.ok(!h.hostedDeleteCodeMatches('1234567890123456', '12345678901234567'));
+  assert.ok(!h.hostedDeleteCodeMatches('', ''));
+  // a leading zero is turned into a 7, so the number never starts with one
+  assert.match(h.hostedDeleteCode((b) => b.fill(0)), /^70{15}$/);
+});
+
+test('deleting the account takes three clicks: the button says which one is next', () => {
+  assert.equal(h.hostedDeleteStepText(0).button, 'Delete my account');
+  assert.match(h.hostedDeleteStepText(1).button, /2 of 3/);
+  assert.match(h.hostedDeleteStepText(1).text, /can’t be undone/);
+  assert.match(h.hostedDeleteStepText(2).button, /3 of 3/);
+  assert.match(h.hostedDeleteStepText(2).text, /Type the number/);
 });

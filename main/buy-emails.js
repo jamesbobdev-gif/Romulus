@@ -19,7 +19,8 @@ const buySending = new Set(); // keys being sent right now (a second save meanwh
 async function processBuyEmails(raw) {
   let saved; try { saved = JSON.parse(raw); } catch (e) { return; }
   const tasks = Array.isArray(saved.tasks) ? saved.tasks : [];
-  const pending = tasks.filter((t) => t && t.ws === 'agent' && t.buyEmail && t.buyEmail.url);
+  // a pick sent by the app itself to the address its account confirmed (renderer/js/link-email.js) is left alone
+  const pending = tasks.filter((t) => t && t.ws === 'agent' && t.buyEmail && t.buyEmail.url && t.buyEmail.via !== 'hosted');
   if (!pending.length) return;
   const cfg = readConfig();
   const to = cfg.buyEmailTo, fnUrl = cfg.buyEmailUrl;

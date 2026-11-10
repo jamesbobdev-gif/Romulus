@@ -44,10 +44,9 @@ Deno.serve(async (req: Request) => {
   if (!(await tokenOk(bearer || url.searchParams.get("token")))) return new Response("Not found", { status: 404 });
   if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
 
-  const res = await fetch(
-    `${BASE}/rest/v1/tasks_sync?sync_key=eq.${encodeURIComponent(WORK_SYNC_KEY)}&select=doc`,
-    { headers: H },
-  );
+  // through the same sync_get function the app uses: the list key travels in the request body, never in the address,
+  // so it stays out of the API gateway's request logs
+  const res = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ p_sync_key: WORK_SYNC_KEY }) });
   const rows = res.ok ? await res.json() : [];
   const doc = rows.length ? rows[0].doc : null;
   // the app moved this list to end-to-end encryption: this server can't read it any more, and an empty calendar

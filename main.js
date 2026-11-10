@@ -11,10 +11,10 @@ const store = require('./main/store');
 const win = require('./main/window');
 const trayMod = require('./main/tray');
 const speak = require('./main/speak');
+const buyEmails = require('./main/buy-emails');
 const feeds = require('./main/feeds');
 const persistence = require('./main/persistence');
 const gcalSync = require('./main/gcal-sync');
-const buyEmails = require('./main/buy-emails');
 const deviceSync = require('./main/device-sync');
 const calendarAccounts = require('./main/calendar-accounts');
 const gmailDates = require('./main/gmail-dates');
@@ -34,6 +34,7 @@ const runner = require('./agent/runner');
 const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
+const ollamaSetup = require('./agent/ollama-setup'); // Settings → Local model → Set it up for me
 const liveView = require('./agent/live-view');
 const finance = require('./main/finance');
 const downloads = require('./main/downloads');
@@ -68,11 +69,13 @@ const ctx = {
   memoryTidying: () => memoryTidy.isTidying(),
   compactHowtos: (asked) => localLane.compactHowtos(asked),
   // Windows' own encryption for a whole file's text (main/finance.js wraps its vault in it)
-  seal: store.sealValue, unseal: store.openValue,
+  seal: store.sealAsync, unseal: store.openAsync,
   windowHandle: win.windowHandle, // Windows Hello's prompt opens on the Tasks window
   protectWindow: win.protect, // no screen capture while Finance is showing
   // The local model’s money questions (agent/local-lane.js): read-only, only while Finance is unlocked here
-  finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked() },
+  finance: { forAgent: (a) => finance.forAgent(a), unlocked: () => finance.isUnlocked(),
+    ebtNow: () => finance.ebtNow() }, // the EBT wallet's settings, for grocery runs (agent/grocery.js ebtBrief), locked or not
+  readPicture: (q, image) => overlay.readPicture(q, image), // an EBT receipt photo (main/finance.js finance:ebtReceipt): Lupa first, then the cloud
   // the updater waits for these before restarting into a new version
   busy: () => runner.isBusy() || localLane.isBusy() || memoryTidy.isTidying(),
   onUpdate: (u) => trayMod.setUpdate(u),
@@ -80,13 +83,17 @@ const ctx = {
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
+  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);
   Object.assign(allHandlers, m.handlers || {});
 }
 for (const [channel, fn] of Object.entries(allHandlers)) ipcMain.handle(channel, fn);
+// the Kitchen tab's Suggest meals (main/kitchen-ai.js)
+const kitchenAi = require('./main/kitchen-ai');
+kitchenAi.init(ctx);
+for (const [channel, fn] of Object.entries(kitchenAi.handlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
 const { loadRouting, askForRoutes } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
@@ -124,8 +131,9 @@ if (!gotLock) {
 } else {
   app.on('second-instance', showWindow);
 
-  app.whenReady().then(() => {
-    store.sealPlainSecrets(); // secrets still in config.json as plain text get encrypted
+  app.whenReady().then(async () => {
+    // every secret in config.json opened (and any still in plain text encrypted) before anything reads them
+    await store.load();
     // Setting up another computer: drop seed-config.json (sync links, runner off) into its user-data
     // folder (%APPDATA%/tasks) before first launch. It fills in a fresh install that has no sync yet, so
     // every list shows up without setup; it never overrides. It is never bundled into the installer —
@@ -198,7 +206,11 @@ if (!gotLock) {
   });
 
   app.on('before-quit', () => win.setQuitting());
-  app.on('will-quit', () => overlay.stop());
+  app.on('will-quit', (e) => {
+    overlay.stop();
+    // config.json is written in the background (main/store.js): a change made just now lands before the app goes
+    if (store.writing()) { e.preventDefault(); store.flush().finally(() => app.quit()); }
+  });
 
   // Window closed -> keep running in the tray (don't quit).
   app.on('window-all-closed', () => {});

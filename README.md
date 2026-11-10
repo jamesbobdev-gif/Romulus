@@ -2,6 +2,8 @@
 
 **Romulus killed Remus. This should kill your need for Meta Muse.**
 
+Romulus is a free, open-source to-do list app with an AI agent built in, for Windows, macOS, Linux and Android. **[Download it free](https://jamesbobdev-gif.github.io/Romulus/)**.
+
 **A to-do list with an agent in it.** Write a task the way you'd tell a person ("find the cheapest flight to Denver the weekend of the 14th", "order the groceries", "apply to these three internships", "draft a reply to the landlord"), hand it to the Agent, and it goes and does it: searches the web, reads pages, fills forms, compares prices, builds the cart, drafts the email. It comes back only when it needs a decision, and it **never buys, sends, submits or books anything until you reply "yes"** to the exact thing it described.
 
 **Bring your own model.** Plug in whatever you already pay for or can run: a Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama. Connect several and the app tries them in your order. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model.
@@ -19,7 +21,7 @@ Plus a School list that pulls due dates from course calendars, a Notes board, an
 
 **Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
 
-**Linux, macOS and Android:** the `.AppImage`, `.dmg` and `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
+**Linux, macOS and Android:** the `.deb` (Ubuntu, Debian, Mint) or `.AppImage` (other distributions), the `.dmg` and the `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
 **From source:** Node 22 or newer, then `npm install` and `npm start`.
 
@@ -41,7 +43,7 @@ Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, wi
 | **Calendar · Notes · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
 | **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Cancel on a subscription or a monthly bill hands it to the Agent, which gets to the last click and waits for your yes. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
 
-What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; any other store through a Link wallet, which hands the Agent's browser a one-time card for the amount you approve in the Link app (the AI never sees the number); flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
+What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; any other store through a Link wallet, which hands the Agent's browser a one-time card for the amount you approve in the Link app (the AI never sees the number); flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email with any AI you connect, in Gmail or Outlook (it drafts, labels and archives on its own, and sends or trashes after your yes); a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
 
 ## Privacy, in short
 
@@ -74,7 +76,7 @@ One-click Google and Microsoft sign-in needs the app's own OAuth clients in `oau
 
 ### Releases
 
-One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule.
+One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule. Settings → Device sync lists every device with the version it runs (and **behind** when another runs a newer one), and on the phone Settings → Updates has **Check for updates**, which looks right away.
 
 **Releasing to every device:** bump the version in `package.json`, commit, and push a `v<version>` tag. That runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS installers and the signed Android APK on GitHub's runners and publishes them all to the public releases repository named in `package.json` → `build.publish`. It needs these repository secrets:
 
@@ -107,7 +109,7 @@ Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/
 
 ### Phone app (iPhone)
 
-The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
+The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Health tab reads Apple Health there (Health Connect on Android). The other Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
 
 ### Where your data lives
 
@@ -136,7 +138,7 @@ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin 
 - ↑/↓ select · Space completes · Enter expands · Delete removes · Esc deselects
 - Drag the dots on a row's left edge to reorder; click a tag chip to filter
 - Hover a row for edit / expand / delete; overdue and due-today rows get a snooze button
-- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
+- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**; search box above the groups (Ctrl+F); **Pin** on an open note keeps it at the top of its group (drag it above the pinned ones or below them to pin or unpin)
 
 ## License
 

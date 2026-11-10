@@ -52,22 +52,24 @@ function setLegion(on){
 async function addTask(){
   if(addingTask)return;
   const titleEl=$('newTitle'); let title=titleEl.value.trim();
-  const withPhotos=composerAtts.length>0&&!!attachProfile();
-  if(!title&&withPhotos)title=state.activeTab==='agent'?(composerAtts.length===1?'Look at this photo':'Look at these photos'):'Screenshot';
+  // photos for the Agent go to its own photo folder; on any other list they're encrypted task files (task-files.js)
+  const forAgent=state.activeTab==='agent';
+  const withPhotos=composerAtts.length>0&&(forAgent?!!attachProfile():taskFilesOn());
+  if(!title&&withPhotos)title=forAgent?(composerAtts.length===1?'Look at this photo':'Look at these photos'):(composerAtts.length===1?'Photo':'Photos');
   if(!title){ titleEl.value=''; titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
   if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')); return; } }
-  let photoUrls=[];
+  let photoUrls=[], photoFiles=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
-    try{ for(const a of composerAtts)photoUrls.push(await uploadAttachment(a.blob)); }
+    try{ for(const a of composerAtts){ if(forAgent)photoUrls.push(await uploadAttachment(a.blob)); else photoFiles.push(await taskFileUpload(new File([a.blob],'photo.jpg',{type:'image/jpeg'}))); } }
     catch(err){ addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add'; alert('Couldn\u2019t upload the photos: '+err.message); return; }
     composerAtts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); composerAtts.length=0; drawComposerAtts();
     addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add';
   }
   let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; let tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
-  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='family'?'family':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
   // typed "#home" and "every sunday" (quick-add.js): the tag and the repeat come out of the title.
   // Not for the Agent: its #legion is a tag of its own, and its repeats are t.repeat (agent-chat.js)
   let recur=null;
@@ -78,13 +80,17 @@ async function addTask(){
   // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
   // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
   if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
+  // typed "call the dentist #health": the hashtag is the tag, as the date came out of the words (never for the Agent: #legion is its own)
+  if(!tag&&ws!=='agent'){ const h=hashTag(title); if(h){ title=h.title; tag=h.tag; } }
   // "every sunday at 5": the weekday wins over the today-or-tomorrow a lone time would give; a repeat needs a date
   if(recur&&!$('newDue').value&&(recur.onDay||!due))due=recur.due;
+  // typed "@Sam": it goes to Sam in the group, waiting on their To do tab, not onto my list (family.js)
+  if(ws!=='agent'&&!photoUrls.length&&!recur&&typeof famSendTyped==='function'&&famSendTyped(title,due)){ titleEl.value=''; $('newDue').value=''; buzz('send'); titleEl.focus(); return; }
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
   if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
-  if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;
+  if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);
   titleEl.value=''; buzz('add'); touch(); titleEl.focus();
@@ -157,9 +163,9 @@ function parseSpokenTask(text,now){
      "add finish the report to work"                    → {kind:'task', tab:'work'}
      "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
-const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
-const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Notes'};
-function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
+const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',family:'family',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
+const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',family:'Family',calendar:'Calendar',ideas:'Notes'};
+function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():tab==='family'?familyConfigured():true; }
 // "app" / "app notes" / "the app notes group" → that note group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
   const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?|notes?)\b/g,' ').replace(/\s+/g,' ').trim(); };
@@ -248,7 +254,7 @@ function voiceWords(text){
   return String(text||'').toLowerCase().replace(/['’]s\b/g,'').split(/[^a-z0-9]+/).filter(function(w){ return w.length>2&&!VOICE_STOP.has(w); })
     .map(function(w){ return w.length>5?w.replace(/(?:ing|ed|es)$/,''):w.length>3?w.replace(/s$/,''):w; });
 }
-const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent'};
+const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent',family:'family'};
 function voiceGuessTab(text){
   const words=Array.from(new Set(voiceWords(text))); if(!words.length)return null;
   const size={}, seen={}; let all=0;
@@ -365,20 +371,20 @@ async function voiceAdd(smart){
 }
 // the site a link goes to, for its button: "Amazon", "Fresha", "Yelp"… (not always Amazon)
 // 3D-model sites: an option there is something to print, not to buy
-// what the card's button does for an option's link: buy (a shop), print (a 3D-model site), or just send
-// him the link (jobs, bookings, articles, forms… anything that isn't a purchase)
+// what an option's link is: buy (a shop), print (a 3D-model site), or just a link (jobs, bookings, articles,
+// forms… anything that isn't a purchase); it words his pick ("I'll print option 2")
 function optionKind(url){
   if(!url)return 'pick';
   if(isModelSite(url))return 'print';
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return 'link'; }
   return /(^|\.)(amazon\.[a-z.]+|amzn\.(to|com)|bestbuy\.com|walmart\.com|target\.com|newegg\.com|ebay\.com|etsy\.com|homedepot\.com|lowes\.com|costco\.com|bhphotovideo\.com|microcenter\.com|bambulab\.com|aliexpress\.com|temu\.com|adorama\.com|rei\.com|ikea\.com)$/.test(h)?'buy':'link';
 }
-// an Amazon product page: The Agent orders it (after a yes) instead of emailing the link
+// an Amazon product page: The Agent orders it (after a yes)
 function isAmazon(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
 }
-// a store the Agent orders from itself (after a yes) instead of emailing the link: the big stores where his
+// a store the Agent orders from itself (after a yes): the big stores where his
 // card is saved in his account, and Shopify stores (Shop Pay). → the store's name, or '' (shopping skill)
 function buyStoreOf(o){
   const url=o&&o.url; let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return ''; }
@@ -415,8 +421,8 @@ function openExternal(url){
   else window.open(url,'_blank','noopener');
 }
 const SHARE_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
-// send just the link to people: the phone's Share sheet (Messages, WhatsApp…), else copy it
 const MAIL_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';
+// send just the link to people: the phone's Share sheet (Messages, WhatsApp…), else copy it
 function shareLink(url,btn){
   url=String(url||''); if(!/^https?:\/\//i.test(url))return;
   const cap=window.Capacitor;

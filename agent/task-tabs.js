@@ -71,6 +71,29 @@ async function startRun(ids, openTaskIds) {
 // a sign-in step (SSO hand-offs carry one-time data): reopening its address later only shows an error
 const SIGN_IN = /^https:\/\/(login\.microsoftonline\.com|login\.live\.com|login\.windows\.net|accounts\.google\.com|login\.yahoo\.com|account\.proton\.me|[^/]*\.okta\.com|[^/]*auth0\.com)(\/|$)|\/(saml2?|sso|oauth2?|signin-oidc)(\/|\?|$)/i;
 const signInPage = (url) => SIGN_IN.test(String(url || ''));
+// Microsoft's sign-in page title, for SSO steps whose address the pattern above doesn't know
+const signInTab = (p) => signInPage(p.url) || /^sign in to your account$/i.test(String(p.title || '').trim());
+const KEEP_TABS = 3; // a task still open keeps at most this many tabs between runs
+/* After a run: the tabs only its tasks own are trimmed, since every open tab is a live page using memory
+   and a task that runs many times would otherwise pile them up. Older sign-in steps go (the login is in
+   the profile; the most recent one stays in case it's waiting on him to sign in), so do repeats of the
+   same address and blank tabs, then all but the KEEP_TABS most recently used. → the tabs closed */
+async function trim(pages, ids, endPage) {
+  const theirs = pages.filter((p) => { const o = owners[p.id] || []; return o.length && o.every((t) => ids.includes(t)); });
+  const seen = new Set(), keep = [], shut = [];
+  theirs.forEach((p, i) => {
+    const addr = String(p.url || '').replace(/#.*$/, '');
+    if (p === endPage || i === 0) { keep.push(p); seen.add(addr); return; }
+    if (signInTab(p) || /^about:blank/i.test(addr) || seen.has(addr) || keep.length >= KEEP_TABS) shut.push(p);
+    else { keep.push(p); seen.add(addr); }
+  });
+  // never close the last tab: that would quit the browser
+  if (shut.length === pages.length) shut.shift();
+  for (const p of shut) await fetch(BASE + '/json/close/' + p.id, { signal: AbortSignal.timeout(1500) }).catch(() => {});
+  for (const p of shut) delete owners[p.id];
+  if (shut.length) save();
+  return shut.length;
+}
 // after a run: its new tabs are its tasks'; → the page it ended on (its most recently used https tab, a
 // real page rather than a sign-in step when it has one)
 async function endRun() {
@@ -80,7 +103,8 @@ async function endRun() {
   running = null; runTab = null;
   if (!pages || !ids) return null;
   const theirs = pages.filter((x) => (owners[x.id] || []).some((t) => ids.includes(t)) && /^https:\/\//i.test(x.url));
-  const p = theirs.find((x) => !signInPage(x.url)) || theirs[0];
+  const p = theirs.find((x) => !signInTab(x)) || theirs[0];
+  await trim(pages, ids, p).catch(() => 0);
   return p ? String(p.url).slice(0, 2000) : null;
 }
 // the tabs Watch shows for a task (most recently used first)

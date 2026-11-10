@@ -435,11 +435,64 @@ async function importCourseFeeds(){
   const live={}; r.items.forEach(function(e){ live[e.id]=1; });
   const vanished=r.complete?state.tasks.filter(function(t){
     return /^ics-/.test(t.id)&&!live[t.id]&&seen[t.id]&&!t.done&&t.due&&t.due>=today&&
-      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
+      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length);
   }).map(function(t){ return t.id; }):[];
   const tidy=tidySchool(r,vanished);
   if(added||moved||sited||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
+  ensureClassSweep(Array.from(new Set(r.items.map(function(e){ return e.source; }).filter(Boolean))));
   return {added:added,moved:moved,count:r.items.length,errors:r.errors,tidy:tidy};
+}
+/* The class sweep (agent/class-sweep.js): once a week the local model goes through every class on Blackboard /
+   D2L and brings back the work the calendar links miss (a class run from Connect or a syllabus never shows
+   up on them). Its finds come in here, the way calendar items do: each keeps its id ("bbs-…", from the class
+   and the name), a date the course moves is followed unless he set his own, one he deleted isn't brought
+   back, and one the calendar or he already has (same class or none, a day apart, same name give or take)
+   isn't added again; an untagged calendar item it matches gets the class instead. */
+const SWEEP_SEEN_KEY='tasks.sweepSeen';
+function importClassItems(items){
+  if(!Array.isArray(items)||!items.length)return {added:0,moved:0,labeled:0};
+  let seen={}; try{ seen=JSON.parse(localStorage.getItem(SWEEP_SEEN_KEY)||'{}')||{}; }catch(e){}
+  const ws=schoolConfigured()?'school':'personal';
+  const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
+  let added=0, moved=0, labeled=0;
+  items.forEach(function(e){
+    if(!e||!/^bbs-[0-9a-f]{20}$/.test(String(e.id||''))||!e.title||!e.course)return;
+    const was=seen[e.id], now=(e.due||'')+' '+(e.dueTime||'');
+    seen[e.id]=now;
+    const t=state.tasks.find(function(x){ return x.id===e.id; });
+    if(t){
+      if(was!=null&&was!==now&&!t.done&&((t.due||'')+' '+(t.dueTime||''))===was){ t.due=e.due||null; t.dueTime=e.dueTime||null; moved++; }
+      return;
+    }
+    if(tombed[e.id]||was!=null)return;
+    const twin=state.tasks.find(function(x){
+      if(taskWs(x)!=='school'&&x.ws!=='school'&&!(x.tag&&x.tag===e.course))return false;
+      if(x.tag&&x.tag!==e.course)return false;
+      if(!!x.due!==!!e.due||(x.due&&Math.abs((new Date(x.due+'T12:00')-new Date(e.due+'T12:00'))/864e5)>1))return false;
+      return sameAssignment(x.title,e.title);
+    });
+    if(twin){ if(!twin.tag){ twin.tag=e.course; labeled++; } return; }
+    const n={id:e.id,title:e.title,done:false,due:e.due||null,dueTime:e.dueTime||null,tag:e.course,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+    if(ws==='school'){ n.kind=e.kind||'regular'; n.notes=[e.notes,e.url].filter(Boolean).join('\n\n')||null; if(e.source)n.site=e.source; }
+    state.tasks.push(n); added++;
+  });
+  try{ localStorage.setItem(SWEEP_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
+  if(added||moved||labeled)touch();
+  return {added:added,moved:moved,labeled:labeled};
+}
+/* the sweep's task: one, made once on a computer with a course calendar and a local model (the same id
+   everywhere, so two computers don't make two). Every Sunday morning; delete it and it stays gone */
+function ensureClassSweep(hosts){
+  if(typeof localStat==='undefined'||!localStat||!localStat.model)return;
+  if(state.tasks.some(function(x){ return x.id==='class-sweep'; })||state.tombstones.some(function(x){ return x.id==='class-sweep'; }))return;
+  const schools=(hosts||[]).filter(function(h){ return /blackboard|d2l|brightspace/i.test(h); });
+  if(!schools.length)return;
+  const repeat={every:'week',day:0,at:'07:00'};
+  const t={id:'class-sweep',classSweep:true,title:'Check my classes for work the school calendar misses',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+    created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],lane:'local',repeat:repeat,nextRun:nextRepeatAt(repeat,Date.now()),
+    notes:'My classes are on: '+schools.map(function(h){ return 'https://'+h+(/blackboard/i.test(h)?'/ultra/course':'/d2l/home'); }).join(' and ')};
+  agentSay(t,'sys','Weekly class sweep: '+localModelName()+' goes through every class on your course sites and adds the work your school calendar link misses to your School list. Runs now, then every Sunday at 7:00 AM.');
+  state.tasks.push(t); touch();
 }
 /* Tidy the School list after each import, so each assignment is there once and labeled with its course:
    - course names and loose codes as tags ("Astronomy", "ecn322") become the code ("PHYS 1010", "ECN 322");
@@ -518,7 +571,6 @@ function tidySchool(r,vanished){
       if(!f.tag&&h.tag)f.tag=h.tag;
       if(schoolKind(f)==='regular'&&schoolKind(h)!=='regular')f.kind=h.kind;
       if(h.notes&&String(f.notes||'').indexOf(h.notes)<0)f.notes=h.notes+(f.notes?'\n\n'+f.notes:'');
-      if(!f.plan&&h.plan){ f.plan=h.plan; f.planSet=h.planSet; }
       if(h.subs&&h.subs.length)f.subs=(f.subs||[]).concat(h.subs);
     });
     // one match: keep whichever name says more ("Homework: Gas Giants, Rings, and Moons" over "Homework: Gas Giants")
@@ -582,7 +634,8 @@ function logEntries(){
   logActions.forEach(function(a){
     let what=String(a.what||''); if(a.label)what+=' “'+a.label+'”'; if(Array.isArray(a.files))what+=' '+a.files.join(', ');
     const site=a.url?String(a.url).replace(/^https?:\/\/(www\.)?/,'').slice(0,60):'';
-    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:''),task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
+    const on=a.where?' · on '+a.where:''; // done by the local model's own computer (Lupa), from its heartbeat
+    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:'')+on,task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
   });
   state.tasks.forEach(function(t){
     if(taskWs(t)!=='agent'||!Array.isArray(t.history))return;
@@ -702,11 +755,13 @@ $('tabList').addEventListener('click',function(){ switchTab('list'); });
 $('tabAgent').addEventListener('click',function(){ switchTab('agent'); });
 $('connectBtn').addEventListener('click',function(){
   const ws=this.getAttribute('data-ws');
-  // every list syncs once the project is set up, so the personal fields are what to fill in
-  const field='syncUrl', label=null;
+  // every list syncs once the project is set up, so the personal fields are what to fill in. The family list has a
+  // box of its own, drawn once Device sync opens (hosted-sync.js), so it's looked for a moment later
+  const fam=ws==='family'&&$('familyListBox');
   setSettingsOpen(true);
   $('syncSection').open=true;
-  requestAnimationFrame(function(){
+  (fam?function(fn){ setTimeout(fn,900); }:requestAnimationFrame)(function(){
+    const field=fam&&!$('familyListBox').hidden?'familyListBox':fam&&!$('hostedBox').hidden?'hostedBox':'syncUrl', label=null;
     const f=$(field); (label?$(label):f).scrollIntoView({block:'center'}); f.focus();
     [f,label&&$(label)].filter(Boolean).forEach(function(n){ n.classList.add('flash'); setTimeout(function(){ n.classList.remove('flash'); },1800); });
   });
@@ -714,9 +769,12 @@ $('connectBtn').addEventListener('click',function(){
 $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
 $('tabWork').addEventListener('click',function(){ switchTab('work'); });
+$('tabFamily').addEventListener('click',function(){ switchTab('family'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
+$('tabHealth').addEventListener('click',function(){ switchTab('health'); });
+$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
@@ -727,7 +785,7 @@ $('clearDone').addEventListener('click',function(){
   else {
     clearTimeout(clearTimer); state.confirmClear=false;
     const now=Date.now();
-    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':'list'; // only clear the tab you're looking at
+    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':state.activeTab==='family'?'family':'list'; // only clear the tab you're looking at
     const gone=function(t){ return t.done&&inTab(t,curTab); };
     reviewLogCleared(state.tasks.filter(gone)); // still counted in the year in review
     state.tasks.forEach(function(t){ if(gone(t))state.tombstones.push({id:t.id,deletedAt:now}); });
@@ -736,7 +794,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||isViewTab(state.activeTab))return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -745,17 +803,27 @@ $('searchBox').addEventListener('keydown',function(e){
   if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); }
   if(e.key==='Enter')this.blur();
 });
-/* phones: the tab bar scrolls sideways with its scrollbar hidden; a fade on the right edge says there's more
-   (styles.css .tabs.more-right) until it's scrolled to the end */
+/* the tab bar scrolls sideways with its scrollbar hidden: a fade at an edge says there's more that way
+   (styles.css .tabs.more-left / .more-right), and on a computer the mouse wheel scrolls it along */
 (function(){
   const bar=document.querySelector('.tabs'); if(!bar)return;
-  function edge(){ bar.classList.toggle('more-right',bar.scrollWidth-bar.clientWidth-bar.scrollLeft>4); }
-  bar.addEventListener('scroll',edge,{passive:true}); window.addEventListener('resize',edge); edge();
+  function edge(){
+    bar.classList.toggle('more-left',bar.scrollLeft>4);
+    bar.classList.toggle('more-right',bar.scrollWidth-bar.clientWidth-bar.scrollLeft>4);
+  }
+  bar.addEventListener('scroll',edge,{passive:true}); window.addEventListener('resize',edge);
+  bar.addEventListener('wheel',function(e){
+    if(bar.scrollWidth<=bar.clientWidth||Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;
+    bar.scrollLeft+=e.deltaY; e.preventDefault();
+  },{passive:false});
+  new MutationObserver(edge).observe(bar,{attributes:true,subtree:true,attributeFilter:['class','hidden']}); // a tab switched off or on
+  edge();
 })();
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')switchTab('list');
+    if(state.activeTab==='ideas'){ $('ideaSearch').focus(); $('ideaSearch').select(); return; } // Notes has its own search box
+    if(state.activeTab==='calendar'||isViewTab(state.activeTab))switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
@@ -766,7 +834,7 @@ function selectNeighbor(){
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
+  if(state.activeTab==='calendar'||isViewTab(state.activeTab))return;
   // the key's own target, not what has focus now: a field's handler (Enter adds a subtask and re-renders, or blurs)
   // runs first, so by the time this fires the focus is on the body and Enter would collapse the open task
   const a=e.target&&e.target.tagName?e.target:document.activeElement;

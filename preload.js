@@ -43,6 +43,14 @@ contextBridge.exposeInMainWorld('desktop', {
   localProbe: (url) => ipcRenderer.invoke('local:probe', url),
   localSave: (change) => ipcRenderer.invoke('local:save', change),
   localWorker: (on) => ipcRenderer.invoke('local:worker', on),
+  // Set it up for me (agent/ollama-setup.js): start or install Ollama, download a model with progress
+  localSetupInfo: () => ipcRenderer.invoke('local:setup-info'),
+  localInstall: () => ipcRenderer.invoke('local:install'),
+  localPull: (model) => ipcRenderer.invoke('local:pull', model),
+  onLocalPullProgress: (cb) => ipcRenderer.on('local:pull-progress', (_event, p) => cb(p)),
+  // start at login (main/tray.js), for Settings' setup list
+  loginGet: () => ipcRenderer.invoke('app:login-get'),
+  loginSet: (on) => ipcRenderer.invoke('app:login-set', !!on),
   // routing: the user's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   // AI connections: Claude / Gemini / OpenRouter for the Agent lane, in his order
@@ -121,6 +129,12 @@ contextBridge.exposeInMainWorld('desktop', {
   financeRefresh: () => ipcRenderer.invoke('finance:refresh'),
   financeForget: () => ipcRenderer.invoke('finance:forget'),
   financeSetKind: (payee, kind) => ipcRenderer.invoke('finance:setKind', payee, kind),
+  financeSetEbt: (ebt) => ipcRenderer.invoke('finance:setEbt', ebt),
+  financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
+  financeSetEbtOn: (on) => ipcRenderer.invoke('finance:setEbtOn', !!on),
+  financeEbtReceipt: (pic) => ipcRenderer.invoke('finance:ebtReceipt', pic),
+  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why}
+  kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),

@@ -39,7 +39,11 @@ function openDoc(a, suffix, doc) {
 async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
   const r = await f(rpcUrl(a, fn), { method: 'POST', headers: headers(a, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) {
+    // a download limit on the Romulus server (supabase/migrations/20261111_sync_read_limits.sql) clears by itself
+    let msg = ''; try { msg = String((await r.json()).message || ''); } catch (e) {}
+    throw new Error(msg === 'read_limit' ? 'read_limit: the sync server limits downloads; trying again later' : 'HTTP ' + r.status);
+  }
   return r.json();
 }
 

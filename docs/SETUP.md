@@ -15,7 +15,7 @@ Romulus works the moment you install it: a to-do list on your computer, nothing 
 
 **Mac:** download the `.dmg` from the same page and drag Romulus to Applications. It isn't signed by Apple yet, so the first open needs **System Settings → Privacy & Security → Open Anyway**, and updates have to be downloaded by hand until it is.
 
-**Linux:** download the `.AppImage`, `chmod +x` it and run it. Encrypted keys need a keyring (GNOME Keyring or KWallet).
+**Linux:** on Ubuntu, Debian or Mint, download `Romulus-<version>-amd64.deb` and open it (or `sudo apt install ./Romulus-<version>-amd64.deb`): it adds Romulus to the app menu, and updates install after your password. Elsewhere, download the `.AppImage`, `chmod +x` it and run it; on Ubuntu 22.04 and newer an AppImage also needs `sudo apt install libfuse2t64` (`libfuse2` on 22.04) and, from 24.04, the `--no-sandbox` flag, which is why the `.deb` is the better pick there. Encrypted keys need a keyring (GNOME Keyring or KWallet).
 
 **From source:** `npm install` then `npm start` (Node 22 or newer).
 
@@ -37,7 +37,7 @@ Claude runs through **Claude Code**, a small program from Anthropic that signs i
 
 No Claude plan? Paste an **Anthropic API key** instead (button on the card takes you to console.anthropic.com). Runs are then billed to that key, pay as you go.
 
-Claude is the only AI that can read your Gmail and open your photos, so inbox tasks always go to Claude.
+Claude is the only AI that can open your photos, so tasks with photos go to Claude. Email is not tied to Claude: inbox tasks go to whichever AI is first in your order, through the app's own mail connection. Connect your Google or Microsoft account in Settings → Calendars and leave the email permissions ticked; an account connected before this change should be connected again so the Agent may change mail. The Agent drafts, labels, archives and marks mail read on its own; it sends, replies, forwards or moves mail to the trash only after you reply yes.
 
 ### OpenRouter (easiest; one account, hundreds of models, some free)
 
@@ -57,10 +57,9 @@ Each card has a **Get a free key** button to the right page and a **Test key** b
 
 ### A local model (private; nothing leaves your machines)
 
-Install [Ollama](https://ollama.com/download) on this computer (or any computer on your network), pull a model (`ollama pull qwen3:8b` is a reasonable start; bigger is smarter), then in **⚙ Settings → Local model**:
+Only if you want one, and only on a computer that can run it: at least 8 GB of memory (16 GB or more to be quick) and a few GB of free disk. On anything smaller the button is greyed out and says why. Open **⚙ Settings → Local model** and press **Set it up for me**. On Windows it installs [Ollama](https://ollama.com/download) if it isn't there yet, starts it, downloads a model that fits this computer's memory (`qwen3:4b`, `qwen3:8b` or `qwen3:14b`, with a progress bar) and switches it on. On a Mac or Linux without Ollama it opens Ollama's download page; install it and press the button again. The top of Settings lists it as optional next to the other three things worth setting up (calendar and email, the Agent's browser, running in the background), and only on a computer that can run one; its button just opens this panel.
 
-1. Leave the address as `http://localhost:11434`, or type the other computer's address.
-2. Press **Find models**, pick one, press **Use it**.
+To pick a model yourself instead: leave the address as `http://localhost:11434` (or type another computer's), press **Find models**, pick one, press **Use it**.
 
 **Model on a different computer (a mini PC, a gaming PC)?** You don't need to connect them over the network. Install Romulus on the computer that runs Ollama too, connect it to sync (step 3, the same way as a phone), set up the local model there with `http://localhost:11434`, and switch on **Run local tasks here for all my devices**. Leave the app open on that computer. It picks up local tasks from your phone and other computers through sync. Your other computers then show it as answering, with nothing to set up on them. Money questions stay with the computer that has your Finance tab.
 
@@ -123,6 +122,22 @@ Then choose, per calendar, whether its events become to-dos and whether your tas
 
 **The local model’s sites.** The list in **⚙ Settings → Routing → Sites the local model may open** fills itself: every site the local model reaches in a run is added, so it's allowed next time. When its browser refuses a site it needed, a to-do appears on your Human list (“Allow the local model on linkedin.com? …”). Check it off to allow the site and run the task again; delete it to say no.
 
+### Health goals (phone)
+
+On the phone, **Settings → Health** (or **Connect** on the **Health** tab) lets Romulus read your steps, exercise
+and sleep, read-only. On Android that is **Health Connect**, which Samsung Health, Fitbit, Google Fit, Oura, Garmin
+and most other health apps write to (on Android 13 or older it first installs Health Connect from Play). On an
+iPhone it is **Apple Health**, which the phone, an Apple Watch and most health apps write to; if a number stays
+blank, allow it in the Health app under Sharing → Apps → Romulus.
+
+Then give a to-do a goal and it ticks itself off once the day's total gets there. As a hashtag: **Walk #steps
+8000**, **Gym #exercise 30** (minutes, or 1h), **Bed early #sleep 7h30**. Or in plain words: **Walk 8,000 steps**
+(or 10k steps), **Sleep 7 hours** (or 8h of sleep), **Work out 30 min** (or 45 minutes of yoga, run 1 hour). A
+to-do due today or with no date goes by today's total; one due yesterday by yesterday's. A repeating one comes
+back the next day as usual, and one you untick stays unticked for the day. The Health tab shows today's numbers
+and how far along each goal is. The daily totals stay on the phone unless your lists are end-to-end encrypted:
+then they sync, sealed, and your computer ticks the goals off too.
+
 ## 5. Where your keys live
 
 Everything you connect stays on the computer where you connected it, in the app's config file (`%APPDATA%\Romulus\config.json` on Windows). API keys, sign-in tokens, sync keys and private calendar links are stored encrypted with your operating system's own encryption, so the file is useless if copied to another account or machine. The Settings page only ever shows a key's first and last characters.
@@ -138,6 +153,7 @@ A Link wallet's sign-in lives in `link-wallet\auth.json` in the same folder, kep
 - **The Claude card says "not installed" after installing.** Press **I already have it**: the app looks again. If `claude` works in a terminal but not here, restart Romulus so it sees the new PATH.
 - **Sign in to Claude never finishes.** Close the terminal window it opened, run `claude auth login` yourself in any terminal, then press Sign in again (or just restart Romulus: it checks on start).
 - **"not reachable" on the Local model panel.** Ollama isn't running on this computer (`ollama serve` should be up). For a model on another machine, don't point this computer at it over the network: install Romulus there, switch on **Run local tasks here for all my devices**, and this computer picks it up through sync ([docs/second-machine.md](second-machine.md)).
+- **A task says "This task needs your local model, and none is set up".** It has private words or is about your money, so no cloud AI may see it, and local tasks wait until a model exists. Set one up (above), or for a private-word task put `#claude` in its title to let a cloud AI have it anyway.
 - **Device sync says "fill in the three personal fields".** All three are needed: URL, anon key, sync key.
 - **The phone and computer show different lists.** Check the sync key matches exactly on both; one character off is a different (empty) list.
 - **Something else.** The app keeps a short diary at `%APPDATA%\Romulus\agent-runner.log`; it usually names the problem. Open an issue with the relevant lines (strip anything personal).

@@ -28,9 +28,34 @@ function freshWorker(doc, now = Date.now()) {
 }
 // stats: how its runs went lately (agent/run-log.js summary), so his other computers can see it
 // doing: what it's on right now (agent/local-lane.js nowDoing); version: the app it runs
-const heartbeat = ({ name, model, busy, stats, doing, version }, now = Date.now()) =>
+const heartbeat = ({ name, model, busy, stats, doing, version, actions }, now = Date.now()) =>
   ({ v: 1, at: now, name: String(name || os.hostname()).slice(0, 60), model: String(model || '').slice(0, 80), host: os.hostname().slice(0, 60), busy: !!busy,
-    ...(doing ? { doing } : {}), ...(version ? { version: String(version).slice(0, 20) } : {}), ...(stats ? { stats } : {}) });
+    ...(doing ? { doing } : {}), ...(version ? { version: String(version).slice(0, 20) } : {}), ...(stats ? { stats } : {}),
+    ...(actions && actions.length ? { actions: actionsForBeat(actions) } : {}) });
+
+/* What its browser did that matters (agent/browser-proxy.js logAction: orders, applications, mail opened, uploads)
+   is written to its own agent-actions.log, on its own disk. The newest lines ride along in the heartbeat so his
+   other computers can show them in Settings → What the Agent did (pure, for tests). */
+const ACTIONS_MAX = 30;
+const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
+function actionsForBeat(lines) { // newest first in, newest first out
+  return (Array.isArray(lines) ? lines : []).filter((l) => l && l.at && l.what).slice(0, ACTIONS_MAX).map((l) => {
+    const o = { at: Number(l.at), task: cut(l.task, 120), what: cut(l.what, 40) };
+    if (l.label) o.label = cut(l.label, 80);
+    if (l.url) o.url = cut(l.url, 160);
+    if (Array.isArray(l.files)) o.files = l.files.slice(0, 5).map((f) => cut(f, 80));
+    return o;
+  });
+}
+// this computer's own lines plus the worker's from its last heartbeat, each worker line marked with where it ran
+function mergeActions(local, doc) {
+  const own = Array.isArray(local) ? local : [];
+  const theirs = doc && Array.isArray(doc.actions) ? doc.actions : [];
+  const where = doc ? cut(doc.name || doc.host || 'the local model', 60) : '';
+  const seen = new Set(own.map((l) => l.at + '|' + l.what + '|' + (l.url || '')));
+  const add = theirs.filter((l) => l && l.at && !seen.has(l.at + '|' + l.what + '|' + (l.url || ''))).map((l) => Object.assign({}, l, { where }));
+  return own.concat(add).sort((a, b) => (b.at || 0) - (a.at || 0));
+}
 
 // written compare-and-swap like every row; a write that lost a race reads again and tries once more
 async function beat(a, info) {
@@ -87,4 +112,4 @@ function share(tasks, { worker, workerUp, isMoney, now = Date.now() }) {
   return tasks;
 }
 
-module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, present, lastSeen, forget, share, workerState, stateNotice, lastDoc };
+module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, present, lastSeen, forget, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };

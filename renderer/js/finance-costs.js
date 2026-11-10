@@ -11,6 +11,33 @@
 const COST_FIXED_WORDS=/\b(rent|mortgage|hoa|insurance|geico|progressive|state ?farm|allstate|netflix|spotify|hulu|disney|hbo|max\.com|youtube ?premium|paramount|peacock|apple\.com\/bill|google \*?(storage|one)|icloud|prime video|amazon prime|verizon|t-?mobile|at ?& ?t|sprint|mint mobile|cricket|comcast|xfinity|spectrum|cox comm|internet|electric|energy|power co|water|sewer|utilit|gas co|planet fitness|gym|fitness|loan|navient|nelnet|mohela|sallie mae|car payment|auto pay(ment)?|lease|simplefin|patreon|adobe|microsoft|openai|anthropic|claude\.ai)\b/i;
 const COST_NOT_SPENDING=/\b(transfer|xfer|payment.{0,12}thank|thank you.{0,12}payment|credit card (payment|pmt)|card ?services|cardmember|crd ?pmt|epay|autopay.{0,12}(card|visa|mastercard|discover|amex)|(to|from) (savings|checking)|zelle from|venmo cashout|paypal transfer|public\.com|public investing|public holdings)\b/i;
 const COST_DAY=86400000;
+// a brokerage account (Public's org is just "Public", so that whole, not "Public Service Credit Union")
+const COST_INVEST=/\b(brokerage|invest|ira|401 ?k|403 ?b|roth|hsa|individual|stock|etf|fidelity|schwab|vanguard|robinhood|e\*?trade|webull|public\.com|public investing|public holdings)\b/i;
+const COST_INVEST_ORG=/^\s*public(\.com)?\s*$/i;
+const costIsInvest=function(a){ return !!(a&&((a.holdings&&a.holdings.length)||COST_INVEST.test((a.name||'')+' '+(a.org||''))||COST_INVEST_ORG.test(a.org||''))); };
+// a payee that is a brokerage by name: Public's ACH shows as just "PUBLIC" (not Public Storage) or its clearing firm,
+// Apex; Fidelity as "FIDELITY INVESTMENTS" or "FID BKG SVC LLC MONEYLINE"; and the other big ones by name
+const COST_BROKERS=/\b(apex clearing|fidelity|fid bkg|schwab|vanguard|robinhood|e\*?trade|webull|wealthfront|betterment|acorns|m1 finance|merrill|investments?)\b/i;
+const costToBroker=function(key,text){ return key==='public'||COST_BROKERS.test(text||''); };
+/* money he moved into his own brokerage isn't spending, whatever the bank calls it: an outflow from a
+   non-brokerage account that shows up as the same amount coming into one of his brokerage accounts
+   within 5 days. Kept in a WeakSet (not on the transaction, so it's never saved). */
+const COST_INVEST_MOVES=new WeakSet();
+function costMarkInvestMoves(accounts){
+  const ins=[];
+  (accounts||[]).forEach(function(a){ if(costIsInvest(a))(a.transactions||[]).forEach(function(t){ if(t&&t.amount>0&&t.posted)ins.push(t); }); });
+  if(!ins.length)return;
+  const used=new Set();
+  (accounts||[]).forEach(function(a){
+    if(costIsInvest(a))return;
+    (a.transactions||[]).forEach(function(t){
+      if(!t||!(t.amount<0)||!t.posted)return;
+      const u=ins.find(function(x){ return !used.has(x)&&Math.abs(x.amount+t.amount)<0.005&&Math.abs(x.posted-t.posted)<=5*86400; });
+      if(u){ used.add(u); COST_INVEST_MOVES.add(t); }
+    });
+  });
+}
+const costIsInvestMove=function(t){ return !!t&&COST_INVEST_MOVES.has(t); };
 
 // one name per payee: "NETFLIX.COM 866-579 CA" and "NETFLIX.COM 123" are the same one (the name is what
 // comes before the bank's first number, store code or *reference)
@@ -26,7 +53,7 @@ function costMedian(a){ const s=a.slice().sort(function(x,y){ return x-y; }); co
 // its own guess for a payee from all its charges (newest history included): 'fixed' | 'variable' | 'skip'
 function costGuess(key,charges){
   const text=charges.map(function(t){ return [t.description,t.bank,t.memo].join(' '); }).join(' ');
-  if(COST_NOT_SPENDING.test(text))return 'skip';
+  if(COST_NOT_SPENDING.test(text)||costToBroker(key,text))return 'skip';
   if(COST_FIXED_WORDS.test(text))return 'fixed';
   const months={}; charges.forEach(function(t){ months[costMonth(t.posted*1000)]=1; });
   const n=Object.keys(months).length;
@@ -41,11 +68,13 @@ function costGuess(key,charges){
 function costsOf(txs,kinds,now,monthsBack){
   now=now||Date.now(); kinds=kinds||{}; monthsBack=monthsBack||6;
   const groups={};
-  (txs||[]).forEach(function(t){ if(t&&t.amount<0&&t.posted)(groups[costKey(t)]=groups[costKey(t)]||[]).push(t); });
-  const kindByKey={};
   kinds=Object.keys(kinds).reduce(function(o,k){ if(['fixed','variable','skip'].indexOf(kinds[k])!==-1)o[k]=kinds[k]; return o; },{}); // not the money-in marks
+  // money moved into his brokerage (costMarkInvestMoves) is skipped unless he said otherwise for that payee
+  const moved=function(t){ return costIsInvestMove(t)&&!kinds[costKey(t)]; };
+  (txs||[]).forEach(function(t){ if(t&&t.amount<0&&t.posted&&!moved(t))(groups[costKey(t)]=groups[costKey(t)]||[]).push(t); });
+  const kindByKey={};
   Object.keys(groups).forEach(function(k){ kindByKey[k]=kinds[k]||costGuess(k,groups[k]); });
-  const kindOf=function(t){ if(!t||!(t.amount<0))return null; const k=costKey(t); return kinds[k]||kindByKey[k]||(t.posted?'variable':costGuess(k,[t])); };
+  const kindOf=function(t){ if(!t||!(t.amount<0))return null; if(moved(t))return 'skip'; const k=costKey(t); return kinds[k]||kindByKey[k]||(t.posted?'variable':costGuess(k,[t])); };
 
   const fixed=[];
   Object.keys(groups).forEach(function(k){
@@ -70,4 +99,4 @@ function costsOf(txs,kinds,now,monthsBack){
   return { kindOf:kindOf, fixed:fixed, fixedTotal:fixed.reduce(function(s,f){ return s+f.monthly; },0), months:months };
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={costKey:costKey,costGuess:costGuess,costsOf:costsOf,notSpending:COST_NOT_SPENDING}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={costKey:costKey,costGuess:costGuess,costsOf:costsOf,notSpending:COST_NOT_SPENDING,isInvest:costIsInvest,markInvestMoves:costMarkInvestMoves,isInvestMove:costIsInvestMove}; }

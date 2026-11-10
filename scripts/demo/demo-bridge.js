@@ -172,8 +172,8 @@
     onFinanceLocked: function () {},
     onFinanceUpdated: function () {}
   };
-  // no welcome card, no "Plan your day" deck, a light theme, and no scrollbar in the frames
-  try { localStorage.setItem('tasks.welcomed.v1', String(now)); localStorage.setItem('tasks.themeMode.v1', 'light'); localStorage.setItem('tasks.swipeDay', ymd(today)); } catch (e) {}
+  // no welcome card, a light theme, and no scrollbar in the frames
+  try { localStorage.setItem('tasks.welcomed.v1', String(now)); localStorage.setItem('tasks.themeMode.v1', 'light'); } catch (e) {}
   const css = document.createElement('style'); css.textContent = '::-webkit-scrollbar{display:none}'; document.head.appendChild(css);
 
   /* ── a caption at the bottom of the page, for the recording ── */

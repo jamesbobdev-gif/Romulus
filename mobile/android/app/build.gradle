@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 // The phone app carries the same version as the desktop app (package.json at the repository root), so one
 // release tag covers both and the phone's update check (mobile/update-phone.js) can compare against it.
@@ -42,6 +43,10 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21 } // matches capacitor.build.gradle's Java 21
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
@@ -57,6 +62,9 @@ dependencies {
     // Finance: fingerprint-locked vault and the pairing QR scanner (FinanceVaultPlugin)
     implementation "androidx.biometric:biometric:1.1.0"
     implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
+    // Health Connect, read only: daily steps, workouts and sleep for tasks that check themselves off (HealthPlugin.kt)
+    implementation "androidx.health.connect:connect-client:1.1.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
     implementation project(':capacitor-android')
     // "Hey Romulus": offline wake word (the English model is downloaded on first use, not bundled)
     // 0.3.75 or later: its native library is built for 16 KB memory pages, which Google Play requires

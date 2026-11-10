@@ -56,7 +56,8 @@ function billsOf(accounts,kinds,now){
       due:billYmd(c.due),paidThrough:c.paidThrough?billYmd(c.paidThrough):null,interest:loan||charged,kind:loan?'loan':'card'});
   });
   // the monthly bills; a loan's payment from checking is already there as its account
-  const fc=typeof costsOf==='function'?{costsOf:costsOf,costKey:costKey}:require('./finance-costs'); // page global, or in node
+  const fc=typeof costsOf==='function'?{costsOf:costsOf,costKey:costKey,markInvestMoves:costMarkInvestMoves}:require('./finance-costs'); // page global, or in node
+  fc.markInvestMoves(accounts); // a monthly deposit to his brokerage isn't a bill
   const txs=[].concat.apply([],(accounts||[]).map(function(a){ return a.transactions||[]; }));
   const debtText=debts.map(function(a){ return ((a.org||'')+' '+(a.name||'')).toLowerCase(); }).join(' | ');
   fc.costsOf(txs,kinds,now).fixed.forEach(function(f){

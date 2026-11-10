@@ -9,9 +9,9 @@ test('a web run asks his whole order, in order', () => {
   assert.deepStrictEqual(runOrder({ order, ready }), ['claude', 'gemini', 'openrouter']);
 });
 
-test('an inbox run asks Claude only', () => {
-  assert.deepStrictEqual(runOrder({ order, mailRun: true, ready }), ['claude']);
-  assert.deepStrictEqual(runOrder({ order: ['gemini'], mailRun: true, ready }), []);
+test('an inbox run asks his whole order too, not Claude only', () => {
+  assert.deepStrictEqual(runOrder({ order, mailRun: true, ready }), ['claude', 'gemini', 'openrouter']);
+  assert.deepStrictEqual(runOrder({ order: ['gemini'], mailRun: true, ready }), ['gemini']);
 });
 
 test('a pinned task asks its AI first, then the rest of his order', () => {

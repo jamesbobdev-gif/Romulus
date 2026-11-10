@@ -4,8 +4,8 @@
    pay, interest & dividends, refunds (which count against spending) and other income. He can say otherwise
    for a payee's money in (kinds['in:'+payee] = 'income' | 'skip', the tag on it in the transaction list).
    In an investment account only dividends and interest count: buying, selling and moving cash there is his
-   own money moving. Expenses: fixed and variable exactly as the cost charts count them, laid out in the
-   contribution format: income − variable costs = contribution margin; − fixed costs = net income.
+   own money moving. Expenses: fixed and variable exactly as the cost charts count them;
+   income − variable costs − fixed costs = net income.
    Every line keeps its transactions (items), so the tab can show what's behind a number.
    Balance sheet: each account's balance on a past day is today's minus what was posted since; investment
    accounts move with the market too, so theirs are only as good as their transactions.
@@ -13,15 +13,11 @@
    Also loaded by test/finance-statements.test.js. */
 'use strict';
 
-const STMT_COSTS=typeof module!=='undefined'&&module.exports?require('./finance-costs'):{costsOf:costsOf,costKey:costKey,notSpending:COST_NOT_SPENDING};
+const STMT_COSTS=typeof module!=='undefined'&&module.exports?require('./finance-costs'):{costsOf:costsOf,costKey:costKey,notSpending:COST_NOT_SPENDING,isInvest:costIsInvest,markInvestMoves:costMarkInvestMoves,isInvestMove:costIsInvestMove};
 const STMT_PAY=/\b(payroll|direct ?dep(osit)?|salary|paycheck|pay ?check|wages|dir dep|ach credit.*(pay|sal))\b/i;
 const STMT_INTEREST=/\b(interest|dividend|div(idend)? ?(paid|reinv)|apy)\b/i;
 const STMT_REFUND=/\b(refund|return|reversal|credit adj|chargeback|cashback|cash back)\b/i;
-const STMT_INVEST=/\b(brokerage|invest|ira|401 ?k|403 ?b|roth|hsa|individual|stock|etf|fidelity|schwab|vanguard|robinhood|e\*?trade|webull|public\.com|public investing|public holdings)\b/i;
-// the brokerage Public: its org is just "Public", so match that whole (not "Public Service Credit Union")
-const STMT_INVEST_ORG=/^\s*public(\.com)?\s*$/i;
-
-const stmtIsInvest=function(a){ return !!((a.holdings&&a.holdings.length)||STMT_INVEST.test((a.name||'')+' '+(a.org||''))||STMT_INVEST_ORG.test(a.org||'')); };
+const stmtIsInvest=STMT_COSTS.isInvest;
 // money in: does it count as income? → 'income' | 'skip' (his mark first, then the rules)
 function stmtIncomeKind(t,a,kinds){
   const mark=(kinds||{})['in:'+STMT_COSTS.costKey(t)];
@@ -47,6 +43,7 @@ function incomeStatement(accounts,kinds,now,full){
     d.setMonth(d.getMonth()+1);
   }
   const n=cols.length;
+  STMT_COSTS.markInvestMoves(accounts); // money sent to his brokerage isn't spending
   const txs=[];
   (accounts||[]).forEach(function(a){ (a.transactions||[]).forEach(function(t){ if(t&&t.posted&&!t.pending&&at[stmtMonth(t.posted*1000)]!=null)txs.push({t:t,a:a}); }); });
   const costs=STMT_COSTS.costsOf(txs.map(function(x){ return x.t; }),kinds,now,full+1);
@@ -82,11 +79,9 @@ function incomeStatement(accounts,kinds,now,full){
   const incomeTotal=stmtSum(income,n), fixedTotal=stmtSum(fixed,n), variableTotal=stmtSum(variable,n);
   const expenseTotal=fixedTotal.map(function(v,i){ return v+variableTotal[i]; });
   const net=incomeTotal.map(function(v,i){ return v-expenseTotal[i]; });
-  // contribution margin: what's left of income after the variable costs, to cover the fixed ones
-  const contribution=incomeTotal.map(function(v,i){ return v-variableTotal[i]; });
   const ofIncome=function(l){ return l.map(function(v,i){ return incomeTotal[i]>0?v/incomeTotal[i]:null; }); };
   return {cols:cols,income:income,fixed:fixed,variable:variable,incomeTotal:incomeTotal,fixedTotal:fixedTotal,variableTotal:variableTotal,
-    expenseTotal:expenseTotal,contribution:contribution,contributionRatio:ofIncome(contribution),net:net,savingsRate:ofIncome(net)};
+    expenseTotal:expenseTotal,net:net,savingsRate:ofIncome(net)};
 }
 
 // an account's balance at the end of a past moment: today's minus what was posted after it
@@ -95,8 +90,12 @@ function stmtBalanceAt(a,end){
   (a.transactions||[]).forEach(function(t){ if(!t.pending&&t.posted&&t.posted*1000>end)b-=t.amount; });
   return Math.round(b*100)/100;
 }
-/* accounts → { cols: [{label, at}], cash, investments, liabilities: [{name, org, vals}] (owed as positive),
-   cashTotal, investTotal, assetTotal, liabilityTotal, netWorth }. Columns: now, 30 and 90 days ago. */
+// a loan paid off over years (mortgage, car, student), not a bill due soon like a card's
+const STMT_LONG_TERM=/\b(mortgage|heloc|loans?|student|auto|car|vehicle|lease)\b/i;
+/* accounts → { cols: [{label, at}], cash, investments, liabilities: [{name, org, vals, longTerm}] (owed as positive),
+   cashTotal, investTotal, assetTotal, liabilityTotal, currentLiabilityTotal, workingCapital, netWorth }.
+   Working capital: cash on hand minus what's owed soon (cards and other short-term debt, not long-term loans);
+   investments aren't counted, since selling them takes days and may cost tax. Columns: now, 30 and 90 days ago. */
 function balanceSheet(accounts,now,daysBack){
   now=now||Date.now(); daysBack=daysBack||[0,30,90];
   const cols=daysBack.map(function(days){ return {label:days?days+' days ago':'Today',at:now-days*86400000}; });
@@ -104,15 +103,17 @@ function balanceSheet(accounts,now,daysBack){
   (accounts||[]).forEach(function(a){
     const vals=cols.map(function(c){ return c.at>=now?Math.round((Number(a.balance)||0)*100)/100:stmtBalanceAt(a,c.at); });
     const row={name:a.name,org:a.org||'',vals:vals};
-    if((Number(a.balance)||0)<0)liabilities.push({name:a.name,org:a.org||'',vals:vals.map(function(v){ return -v; })});
+    if((Number(a.balance)||0)<0)liabilities.push({name:a.name,org:a.org||'',vals:vals.map(function(v){ return -v; }),longTerm:STMT_LONG_TERM.test([a.name,a.org].join(' '))});
     else if(stmtIsInvest(a))investments.push(row);
     else cash.push(row);
   });
   const n=cols.length, by=function(l){ return l.sort(function(x,y){ return y.vals[0]-x.vals[0]; }); };
   const cashTotal=stmtSum(cash,n), investTotal=stmtSum(investments,n), liabilityTotal=stmtSum(liabilities,n);
   const assetTotal=cashTotal.map(function(v,i){ return v+investTotal[i]; });
+  const currentLiabilityTotal=stmtSum(liabilities.filter(function(l){ return !l.longTerm; }),n);
   return {cols:cols,cash:by(cash),investments:by(investments),liabilities:by(liabilities),cashTotal:cashTotal,investTotal:investTotal,
-    assetTotal:assetTotal,liabilityTotal:liabilityTotal,netWorth:assetTotal.map(function(v,i){ return v-liabilityTotal[i]; })};
+    assetTotal:assetTotal,liabilityTotal:liabilityTotal,currentLiabilityTotal:currentLiabilityTotal,
+    workingCapital:cashTotal.map(function(v,i){ return v-currentLiabilityTotal[i]; }),netWorth:assetTotal.map(function(v,i){ return v-liabilityTotal[i]; })};
 }
 
 if(typeof module!=='undefined'&&module.exports){ module.exports={incomeStatement:incomeStatement,balanceSheet:balanceSheet,stmtBalanceAt:stmtBalanceAt,stmtIncomeKind:stmtIncomeKind,stmtIsInvest:stmtIsInvest}; }
