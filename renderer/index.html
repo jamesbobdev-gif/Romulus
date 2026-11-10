@@ -38,6 +38,12 @@
       <div id="setupRows"></div>
     </div>
     <div id="aiUsage" hidden></div>
+    <!-- tab-picker.js: always open, right under Usage; the switches are grouped by kind -->
+    <div class="settings-panel" id="tabsSection">
+      <span class="settings-label">Tabs</span>
+      <p class="settings-hint">Switch off the tabs you don't use and they leave the tab bar. Nothing in them is deleted; switch a tab back on to see it again. Set on each device.</p>
+      <div id="tabPicker"></div>
+    </div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Agent &amp; AI</summary>
       <div class="settings-sub" id="aiSection" hidden>
@@ -179,11 +185,6 @@
           <span id="formFilesStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </details>
-    </details>
-    <details class="settings-panel settings-collapse" id="tabsSection">
-      <summary class="settings-label">Tabs</summary>
-      <p class="settings-hint">Switch off the tabs you don't use and they leave the tab bar. Nothing in them is deleted; switch a tab back on to see it again. Set on each device.</p>
-      <div id="tabPicker"></div>
     </details>
     <details class="settings-panel settings-collapse" id="ebtSection">
       <summary class="settings-label">EBT</summary>
