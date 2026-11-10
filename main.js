@@ -24,7 +24,6 @@ const agentLogMod = require('./main/agent-log');
 const usage = require('./agent/usage-limit');
 const routingMod = require('./agent/routing');
 const ai = require('./agent/ai-connections');
-const usageMeter = require('./agent/usage-meter');
 const agentBrowser = require('./agent/agent-browser');
 const linkWallet = require('./agent/link-wallet');
 const taskContext = require('./agent/task-context');
@@ -103,7 +102,6 @@ let workerWas = null; // the local model's computer as last seen from here: 'non
 async function refreshSituation() {
   const was = JSON.stringify(situationNow);
   const local = await localLane.localStatus().catch(() => ({ online: false }));
-  const claude = usageMeter.snapshot().claude || {};
   // the local model's own computer (agent/worker.js) routes as if the cloud lane is up: his other computer runs
   // it, and the two must send the same tasks to the local model, or a task could wait for a lane nobody runs here
   const workerMod = require('./agent/worker');
@@ -114,8 +112,10 @@ async function refreshSituation() {
     if (workerWas !== null && n.title && Notification.isSupported()) new Notification({ title: n.title, body: n.body }).show();
     workerWas = n.is;
   }
+  // how much usage the connected cloud AIs have left (the local model's own computer doesn't run them, so never tight there)
+  const room = here ? { left: null, tight: false, out: false } : ai.cloudRoomNow();
   situationNow = { localUp: !!(local.configured && local.online), cloudUp: here || ai.cloudOrder().length > 0,
-    claudeTight: !here && (!!claude.out || claude.pct >= 0.9 || claude.week >= 0.95) };
+    cloudTight: room.tight, cloudOut: room.out, cloudLeft: room.left == null ? null : Math.round(room.left * 100) / 100 };
   routingMod.noteSituation(situationNow);
   if (was !== JSON.stringify(situationNow)) { scheduleAgentRun(); scheduleLocalRun(); } // a waiting task may have a new home
 }

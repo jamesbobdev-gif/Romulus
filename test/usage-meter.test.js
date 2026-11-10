@@ -110,3 +110,18 @@ test('parseDuration reads Groq-style reset times', () => {
   assert.strictEqual(meter.parseDuration('30'), 30000);
   assert.strictEqual(meter.parseDuration(''), null);
 });
+test('room left: the tighter Claude window, plan windows, a measured limit, or null for no limit', () => {
+  const snap = {
+    claude: { pct: 0.7, week: 0.95, out: false },
+    openai: { pct: null, plan: { windows: [{ used: 0.4 }, { used: 0.8 }], out: false } },
+    gemini: { pct: 0.25, out: false },
+    groq: { pct: 1, out: Date.now() + 1000 },
+    openrouter: { pct: null },
+  };
+  assert.ok(Math.abs(meter.roomLeft('claude', snap) - 0.05) < 1e-9);
+  assert.ok(Math.abs(meter.roomLeft('openai', snap) - 0.2) < 1e-9);
+  assert.strictEqual(meter.roomLeft('gemini', snap), 0.75);
+  assert.strictEqual(meter.roomLeft('groq', snap), 0);
+  assert.strictEqual(meter.roomLeft('openrouter', snap), null);
+  assert.strictEqual(meter.roomLeft('grok', snap), null); // never used: nothing to measure
+});
