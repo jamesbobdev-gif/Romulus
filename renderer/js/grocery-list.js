@@ -200,15 +200,17 @@ function yesButton(t){
 // Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor). The last dozen stay in
 // t.orders, with the store and total, so the Finance tab can show what a charge was for (order-match.js).
 // note: what the Agent said about it (its total), when t.note has already moved on
-function keepLastOrder(t,note){
+// bought: his list names it marked bought on this answer (applyListUpdate puts those in the pantry itself)
+function keepLastOrder(t,note,bought){
   if(!Array.isArray(t.cart)||!t.cart.length)return;
   const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
   const items=t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).slice(0,40).map(function(it){
     const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; }); // the size he switched to
     const s=op||it;
-    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined};
+    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
   });
   if(!items.length)return;
+  if(typeof kitchenBought==='function')kitchenBought(orderFood(t,items,bought));
   t.lastOrder={at:Date.now(),items:items};
   const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
   // the EBT part, for the Finance tab's EBT wallet (finance-ebt.js): what went on EBT, and the balance left
@@ -216,6 +218,25 @@ function keepLastOrder(t,note){
   const ebt=e1.ebt||e2.ebt, left=e1.left!=null?e1.left:e2.left;
   t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{},
     ebt?{ebt:ebt}:{},left!=null&&left>=0?{ebtLeft:left}:{})]).slice(-12);
+}
+/* what on a placed order goes into the Kitchen pantry (kitchen.js kitchenBought) → names ("Name, 18 ct"):
+   the items the Agent marked food; on a cart from before it marked them, everything on a grocery task or
+   from a food-only store (Instacart, Kroger, Aldi). Never what's already on bought (his list's names for
+   the same things), so nothing is counted twice */
+const FOOD_STORES=['instacart','kroger','aldi'];
+function orderFood(t,items,bought){
+  const marked=items.some(function(it){ return typeof it.food==='boolean'; });
+  const all=!marked&&(isGroceryTask(t)||FOOD_STORES.indexOf(orderStore(items,t.title))!==-1);
+  const done=(Array.isArray(bought)?bought:[]).map(function(n){ return String(n||'').split(',')[0]; });
+  const same=typeof sameFood==='function'?sameFood:sameItem;
+  return items.filter(function(it){ return marked?it.food===true:all; })
+    .filter(function(it){ const base=it.name.split(',')[0]; return !done.some(function(n){ return same(base,n); }); })
+    .reduce(function(out,it){ // ×2 of "Rice, 20 lb" is 40 lb: once per one bought, so the sizes add up
+      if(!(it.qty>1))out.push(it.name);
+      else if(it.name.indexOf(',')===-1)out.push(it.name+', '+it.qty+' ct');
+      else for(let i=0;i<it.qty;i++)out.push(it.name);
+      return out;
+    },[]);
 }
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){

@@ -159,6 +159,7 @@ function cleanCart(c) {
     if (txt(x.unit, 20)) it.unit = txt(x.unit, 20); // unit price ("$0.12/oz"), so he sees it's the best deal
     if (txt(x.swap, 120)) it.swap = txt(x.swap, 120);
     if (x.suggested) it.suggested = true; // an idea for the week: starts unselected
+    if (typeof x.food === 'boolean') it.food = x.food; // eaten or drunk: into the Kitchen pantry once it's bought (grocery-list.js keepLastOrder)
     if (txt(x.why, 100)) it.why = txt(x.why, 100); // what an idea goes with, or why this size/brand was picked
     // the other sizes/brands it found for this item: he can switch to one on the card before checkout
     const opts = (Array.isArray(x.options) ? x.options : []).slice(0, 6).map((o) => {

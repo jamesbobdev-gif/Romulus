@@ -126,7 +126,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       t.ask=Array.isArray(u.ask)&&u.ask.length?u.ask:null; if(typeof askDrafts!=='undefined')delete askDrafts[t.id];
       // the order went through (it marked what was bought): its cards are his last order, pictures and all
       // and an order placed after his yes (Amazon): done, and its cart gone
-      if((u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)||(u.status==='done'&&Array.isArray(t.cart)&&t.cart.length&&!(Array.isArray(u.cart)&&u.cart.length)))keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''));
+      if((u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)||(u.status==='done'&&Array.isArray(t.cart)&&t.cart.length&&!(Array.isArray(u.cart)&&u.cart.length)))keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''),u.list&&u.list.bought);
       t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
       // agent-draft.js: the words waiting on his yes, in full and editable (his edits start over with each answer)
       t.draft=u.draft&&typeof u.draft.text==='string'&&u.draft.text.trim()?{text:u.draft.text,where:String(u.draft.where||'')}:null; if(typeof draftEdits!=='undefined')delete draftEdits[t.id];
