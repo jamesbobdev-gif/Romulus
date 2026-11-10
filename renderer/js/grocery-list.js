@@ -60,8 +60,11 @@ function addToGroceries(text){
     const hit=list.find(function(x){ return sameItem(x.name,n)||sameItem(x.name.split(',')[0],n); });
     if(hit)hit.out=true; else list.push({name:n.charAt(0).toUpperCase()+n.slice(1),every:1,last:null,out:true});
   });
-  t.list=list; touch();
-  return {task:t,names:names};
+  t.list=list;
+  // "we're out of eggs" (not "add eggs to groceries"): eggs leave the Kitchen pantry too (kitchen.js)
+  const pantry=!/^\s*(?:add|put)\s/i.test(text)&&typeof kitchenRanOut==='function'?kitchenRanOut(names):[];
+  touch();
+  return {task:t,names:names,pantry:pantry};
 }
 
 /* ── the 2-week grocery order ──
