@@ -38,9 +38,11 @@ function drawTabPicker(){
     const rows=avail.filter(function(p){ return kind[1].indexOf(p[1])!==-1||(last&&known.indexOf(p[1])===-1); })
       .sort(function(a,b){ return tabKindPos(kind[1],a[1])-tabKindPos(kind[1],b[1]); });
     if(!rows.length)return;
-    const head=el('h3','settings-subhead',kind[0]); if(box.firstChild)head.style.marginTop='14px';
-    box.appendChild(head);
-    rows.forEach(function(p){ box.appendChild(tabPickRow(p,off,onCount)); });
+    // each group is its own column; the columns sit side by side (styles.css .tab-kinds)
+    const col=el('div','tab-kind');
+    col.appendChild(el('h3','settings-subhead',kind[0]));
+    rows.forEach(function(p){ col.appendChild(tabPickRow(p,off,onCount)); });
+    box.appendChild(col);
   });
 }
 function tabKindPos(list,name){ const i=list.indexOf(name); return i===-1?list.length:i; }
