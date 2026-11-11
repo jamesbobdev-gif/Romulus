@@ -373,7 +373,7 @@ if(typeof module!=='undefined'&&module.exports){
 /* ══ the page ══ */
 if(typeof document!=='undefined'){
 
-const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideas:null,ideasBusy:false,ideasWhy:'',ideasVia:'',aim:'',undo:[],going:{}}; // undo: foods he marked out, last first; going: ids tapped dark, about to leave
+const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideas:null,ideasBusy:false,ideasWhy:'',ideasVia:'',aim:'',undo:[],going:{},autoAsked:false}; // undo: foods he marked out, last first; going: ids tapped dark, about to leave
 function kSave(){ persist(); renderKitchen(); }
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
 
@@ -622,16 +622,26 @@ function kDrawMeals(){
   if(close.length)sec('A few things short',close,'');
 }
 /* ── Ideas from your pantry: his AIs suggest meals from what he has (main/kitchen-ai.js, agent/meal-ideas.js).
-   Desktop only (the phone has no AI of its own). What each idea is missing is worked out here against the pantry. */
+   Desktop only (the phone has no AI of its own). What each idea is missing is worked out here against the pantry.
+   They're asked for on their own the first time he opens Meals, sized to his Food plan (health.js); the box above
+   them is for a different aim this time, with suggestions dropping down as he types (kitchen-aim.js). */
+// his Food plan while it runs ({kcal, protein, carbs, fat} per day, from the Health tab), or null
+function kPlan(){
+  const p=typeof healthPlan==='function'?healthPlan():null;
+  if(!p)return null;
+  const left=typeof macroPlanDaysLeft==='function'?macroPlanDaysLeft(p,healthYmd(new Date())):null; // null: until he changes it
+  return left!=null&&left<=0?null:p;
+}
 async function kAskIdeas(){
   if(kitchenUI.ideasBusy)return;
   kitchenUI.ideasBusy=true; kitchenUI.ideasWhy=''; renderKitchen();
+  if(kitchenUI.aim.trim()&&typeof kAimSave==='function')kAimSave(kitchenUI.aim);
   try{
     const k=state.kitchen;
     const r=await window.desktop.kitchenIdeas({
       pantry:k.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
       recipes:k.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),
-      aim:kitchenUI.aim});
+      aim:kitchenUI.aim, plan:kPlan()});
     if(r&&r.meals&&r.meals.length){ kitchenUI.ideas=r.meals; kitchenUI.ideasVia=r.via||''; }
     else kitchenUI.ideasWhy=(r&&r.why)||'No ideas came back. Try again.';
   }catch(e){ kitchenUI.ideasWhy='Couldn’t ask your AIs: '+(e&&e.message||e); }
@@ -639,20 +649,31 @@ async function kAskIdeas(){
 }
 function kIdeaSaved(m){ return state.kitchen.recipes.some(function(r){ return r.name.toLowerCase()===m.name.toLowerCase(); }); }
 function kDrawIdeas(){
-  const box=$('kitIdeas'); if(!box)return; box.innerHTML='';
-  if(!(window.desktop&&window.desktop.kitchenIdeas))return;
+  const box=$('kitIdeas'); if(!box)return;
+  if(!(window.desktop&&window.desktop.kitchenIdeas)){ box.innerHTML=''; return; }
+  const old=$('kitAim'), typing=!!old&&document.activeElement===old; // a redraw mid-typing keeps his place
+  const caret=typing?old.selectionStart:0;
+  box.innerHTML='';
   box.appendChild(el('div','kit-k kit-sec','Ideas from your pantry'));
-  const form=el('div','kit-form');
-  const aim=document.createElement('input'); aim.className='sm kit-grow'; aim.id='kitAim'; aim.value=kitchenUI.aim;
-  aim.placeholder='Anything to aim for? High protein, under 600 calories, quick'; aim.setAttribute('aria-label','What to aim for');
+  const form=el('div','kit-form'), field=el('div','kit-aim-wrap kit-grow');
+  const aim=document.createElement('input'); aim.className='sm'; aim.id='kitAim'; aim.value=kitchenUI.aim;
+  aim.placeholder='Want something else this time? Breakfast, quick, something with eggs'; aim.setAttribute('aria-label','What to aim for this time');
   aim.addEventListener('input',function(){ kitchenUI.aim=aim.value.slice(0,300); });
-  aim.addEventListener('keydown',function(e){ if(e.key==='Enter')kAskIdeas(); });
   const go=el('button','btn-accent',kitchenUI.ideasBusy?'Thinking…':kitchenUI.ideas?'New ideas':'Suggest meals');
   go.disabled=kitchenUI.ideasBusy||!state.kitchen.items.length;
   go.addEventListener('click',kAskIdeas);
-  form.appendChild(aim); form.appendChild(go); box.appendChild(form);
+  field.appendChild(aim); form.appendChild(field); form.appendChild(go); box.appendChild(form);
+  if(typing){ aim.focus(); aim.setSelectionRange(caret,caret); } // before the drop-down listens, so it stays shut
+  const plan=kPlan();
+  if(typeof kAimBox==='function')kAimBox(aim,function(){ return {pantry:state.kitchen.items.map(function(i){ return i.name; }),plan:plan}; },
+    function(text){ kitchenUI.aim=String(text||'').slice(0,300); if(state.kitchen.items.length)kAskIdeas(); });
   if(!state.kitchen.items.length){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
-  box.appendChild(el('div','kit-hint','Uses your pantry and what you’ve told the Agent (foods you avoid, goals).'+(kitchenUI.ideasVia?' Last ideas from '+kitchenUI.ideasVia+'.':'')));
+  box.appendChild(el('div','kit-hint',(plan?'Sized to your Food plan: '+macroPlanSay(plan,healthYmd(new Date()))+'.':'Set a Food plan on the Health tab and these are sized to it.')+
+    ' Uses your pantry, its amounts and what you’ve told the Agent (foods you avoid, goals).'+(kitchenUI.ideasVia?' Last ideas from '+kitchenUI.ideasVia+'.':'')));
+  // the first time he opens Meals, ideas come on their own
+  if(!kitchenUI.autoAsked&&!kitchenUI.ideas&&!kitchenUI.ideasBusy&&state.activeTab==='kitchen'&&kitchenUI.view==='meals'){
+    kitchenUI.autoAsked=true; setTimeout(kAskIdeas,0);
+  }
   if(kitchenUI.ideasWhy)box.appendChild(kEmpty(kitchenUI.ideasWhy));
   (kitchenUI.ideas||[]).forEach(function(m){
     const ings=m.ingredients.map(parseIngredient).filter(Boolean);

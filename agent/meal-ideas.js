@@ -1,6 +1,7 @@
 /* Meal ideas from his pantry (the Kitchen tab's Meals view, renderer/js/kitchen.js): one tool-less ask to his
    AIs (Lupa first, then the cloud, main/kitchen-ai.js) with what's in the pantry, his recipes, his usual
-   groceries and his preferences (what he avoids, what he's aiming for). It answers with meals he can make
+   groceries, his preferences (what he avoids, what he's aiming for) and his Food plan (the Health tab's daily
+   calories and macros, each meal sized to a third of it). It answers with meals he can make
    mostly from what he has; the app works out what's missing against the pantry itself.
    No Electron here, so it can be tested on its own. */
 const { noEmoji } = require('./helpers');
@@ -14,6 +15,10 @@ function prompt() {
     '- Follow his preferences strictly: never use a food he avoids or is allergic to, even a little. ' +
     'If he says what he\'s aiming for (high protein, a calorie or macro target), every meal fits it and ' +
     '`why` says how (e.g. "about 45 g protein").\n' +
+    '- If he has a daily Food plan, size each meal to one meal\'s share of it (the share is given) unless ' +
+    'what he wants this time says otherwise (a snack, a big dinner). `why` gives the meal\'s rough numbers ' +
+    'for what the plan sets, e.g. "about 700 kcal, 55 g protein".\n' +
+    '- Use amounts he actually has: never more of a pantry food than the pantry lists.\n' +
     '- Recipes he already has and likes are a guide to his taste; you may suggest one of them, but most ' +
     'ideas should be new to him.\n' +
     '- Ingredients are short shopping-style lines with an amount for one serving where it matters: ' +
@@ -23,11 +28,24 @@ function prompt() {
     '{"meals":[{"name":"...","why":"one short line","ingredients":["..."],"steps":["..."]}]}\n';
 }
 
-// {pantry:[{name, qty, unit}], recipes, usual:[names], prefs: text, aim: text} → the question's data part
-function input({ pantry, recipes, usual, prefs, aim }) {
+// his Food plan's per-day targets (agent/grocery.js macroBrief's perDay: {kcal, protein, carbs, fat}) → the
+// ask's lines: the day, and one of three meals' share of it; '' when there is no plan
+const MACRO_SAY = [['kcal', ' kcal'], ['protein', ' g protein'], ['carbs', ' g carbs'], ['fat', ' g fat']];
+function planLines(perDay) {
+  if (!perDay || typeof perDay !== 'object') return '';
+  const round = (k, v) => (k === 'kcal' ? Math.round(v / 10) * 10 : Math.round(v)); // calories to the nearest 10
+  const say = (div) => MACRO_SAY.filter(([k]) => Number(perDay[k]) > 0)
+    .map(([k, unit]) => round(k, Number(perDay[k]) / div) + unit).join(', ');
+  const day = say(1);
+  return day ? '## His daily Food plan (for him alone)\n' + day + ' a day. One meal\'s share: about ' + say(3) + '.' : '';
+}
+
+// {pantry:[{name, qty, unit}], recipes, usual:[names], prefs: text, aim: text, plan: perDay} → the question's data part
+function input({ pantry, recipes, usual, prefs, aim, plan }) {
   const amt = (x) => (x.qty != null ? x.qty + (x.unit ? ' ' + x.unit : '') + ' ' : '');
   const lines = [];
   if (clean(aim, 300)) lines.push('## What he wants this time\n' + clean(aim, 300));
+  const pl = planLines(plan); if (pl) lines.push(pl);
   lines.push('## His preferences\n' + (String(prefs || '').trim().slice(0, 4000) || '(none saved)'));
   lines.push('## His pantry (what he has now)\n' + ((pantry || []).filter((x) => x && clean(x.name)).slice(0, 300)
     .map((x) => '- ' + amt(x) + clean(x.name)).join('\n') || '(empty)'));
@@ -59,4 +77,4 @@ function parse(text) {
   }).slice(0, 8);
 }
 
-module.exports = { prompt, input, parse };
+module.exports = { prompt, input, parse, planLines };

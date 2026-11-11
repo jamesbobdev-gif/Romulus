@@ -422,6 +422,7 @@ if(typeof document!=='undefined')(function(){
 
 /* the Health tab: today's numbers and the goals (from the phone's totals, synced to a computer), and the Food plan */
 let healthUi=null, healthSetPlan=null; // healthSetPlan: an Agent answer's `macros` → the Food plan (agent-results.js)
+let healthPlan=null; // healthPlan() → the Food plan as this device has it, or null (kitchen.js sizes meal ideas to it)
 function renderHealth(){ if(healthUi)healthUi.draw(); }
 
 if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getElementById('healthView')){
@@ -657,6 +658,7 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
   healthUi={draw:draw};
   // the phone read a newer weigh-in: sync it, and show it unless he's mid-edit
   healthWeightChanged=function(){ pushPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); };
+  healthPlan=function(){ return plan; };
   // the synced copy, once sync has started; and again each time the tab opens
   setTimeout(async function(){ await pullPlan(); if(state.activeTab==='health')draw(); },6000);
   $('tabHealth').addEventListener('click',function(){ if(planSync.pulled)pullPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); });

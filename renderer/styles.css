@@ -1306,6 +1306,16 @@ body.review-open .top-right{display:none!important}
 .kit-check{font-size:13px;display:flex;align-items:center;gap:6px}
 .kit-form .bad{outline:2px solid var(--late);outline-offset:1px}
 .kit-hint{font-size:12px;color:var(--muted);margin:6px 2px 10px}
+.kit-aim-wrap{position:relative}
+.kit-aim-wrap input{width:100%;box-sizing:border-box}
+.kit-aim-list{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;list-style:none;margin:0;padding:4px 0;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);max-height:320px;overflow-y:auto}
+.kit-aim-list[hidden]{display:none}
+.kit-aim-opt{display:flex;align-items:baseline;gap:8px;padding:7px 12px;font-size:13.5px;color:var(--ink);cursor:pointer}
+.kit-aim-text{min-width:0;white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.kit-aim-opt b{font-weight:600}
+.kit-aim-opt:hover{background:var(--chip)}
+.kit-aim-opt.on{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.kit-aim-tag{margin-left:auto;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .kit-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .kit-sec{margin:16px 2px 6px}
 .kit-empty{color:var(--muted);font-size:13px;padding:14px 2px}

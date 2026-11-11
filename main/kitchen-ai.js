@@ -8,7 +8,7 @@ const fs = require('fs');
 const mealIdeas = require('../agent/meal-ideas');
 const pantryPhoto = require('../renderer/js/pantry-photo');
 const { agentRow } = require('../agent/task-context');
-const { newestGroceryList } = require('../agent/grocery');
+const { newestGroceryList, macroBrief } = require('../agent/grocery');
 
 let ctx = null; // { dataFile, readPicture, agentLog }
 let asking = false, reading = false;
@@ -20,7 +20,7 @@ function usualGroceries() {
   return (newestGroceryList(tasks) || []).map((x) => (x && typeof x === 'object' ? x.name : x));
 }
 
-// {pantry, recipes, aim} → {meals, via} or {why}
+// {pantry, recipes, aim, plan} → {meals, via} or {why}
 async function ideas(_e, req) {
   if (asking) return { why: 'Still working on the last ones.' };
   req = req || {};
@@ -29,7 +29,10 @@ async function ideas(_e, req) {
   asking = true;
   try {
     const prefs = await agentRow(':prefs').catch(() => '');
-    const question = mealIdeas.prompt() + '\n' + mealIdeas.input({ pantry, recipes: req.recipes, usual: usualGroceries(), prefs, aim: req.aim });
+    // his Food plan: this computer's copy from the page, else the synced ':macros' row; none once it has run out
+    let brief = req.plan && typeof req.plan === 'object' ? macroBrief(JSON.stringify(req.plan)) : undefined;
+    if (!brief) brief = macroBrief(await agentRow(':macros').catch(() => ''));
+    const question = mealIdeas.prompt() + '\n' + mealIdeas.input({ pantry, recipes: req.recipes, usual: usualGroceries(), prefs, aim: req.aim, plan: brief && brief.perDay });
     const r = await ctx.readPicture(question, null);
     if (!r || !r.text) { ctx.agentLog('meal ideas: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
     const meals = mealIdeas.parse(r.text);

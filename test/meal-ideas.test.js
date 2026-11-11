@@ -14,6 +14,14 @@ test('the ask carries his pantry, aim, preferences, liked recipes and usual groc
   assert.match(prompt(), /never use a food he avoids/);
 });
 
+test('his Food plan goes in with one meal\'s share of it', () => {
+  const t = input({ pantry: [{ name: 'Eggs', qty: 12 }], plan: { kcal: 2100, protein: 160, fat: 70 } });
+  assert.match(t, /## His daily Food plan \(for him alone\)\n2100 kcal, 160 g protein, 70 g fat a day\. One meal's share: about 700 kcal, 53 g protein, 23 g fat\./);
+  assert.match(prompt(), /size each meal to one meal's share/);
+  assert.match(prompt(), /never more of a pantry food than the pantry lists/);
+  assert.doesNotMatch(input({ pantry: [], plan: {} }), /Food plan/);
+});
+
 test('no preferences or recipes still makes a usable ask', () => {
   const t = input({ pantry: [], recipes: [], usual: [], prefs: '', aim: '' });
   assert.match(t, /His preferences\n\(none saved\)/);
