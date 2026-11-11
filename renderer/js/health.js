@@ -241,9 +241,36 @@ function macroRowText(plan,weight){
   return JSON.stringify(Object.assign({},plan||{},w?{weight:w}:{}));
 }
 
+/* ── the top of the Health tab (pure, for tests) ── */
+// this week's exercise minutes, Monday to the day `now` is in → {week, today}
+function healthWeek(days,now){
+  const d=new Date(now||Date.now()); d.setHours(0,0,0,0);
+  const tk=healthYmd(d); d.setDate(d.getDate()-((d.getDay()+6)%7));
+  let week=0;
+  for(let k=healthYmd(d);k<=tk;d.setDate(d.getDate()+1),k=healthYmd(d)){ const v=days[k]&&days[k].exerciseMin; if(typeof v==='number')week+=v; }
+  const t=days[tk]&&days[tk].exerciseMin;
+  return {week:week,today:typeof t==='number'?t:0};
+}
+// the biggest goal of that kind among the to-dos for today (or undated), else the usual one
+function healthTarget(tasks,kind,today,fallback,wsOf){
+  let best=0;
+  (tasks||[]).forEach(function(t){
+    if((wsOf&&wsOf(t)==='agent')||(t.due&&t.due!==today))return;
+    const g=healthGoal(t.title); if(g&&g.kind===kind&&g.target>best)best=g.target;
+  });
+  return best||fallback;
+}
+// one word for last night's sleep against the goal
+function healthSleepWord(min,goal){
+  if(typeof min!=='number'||!min)return '';
+  return min>=goal?'Good':min>=goal-60?'Fair':'Short';
+}
+function healthPct(v,target){ return target>0&&typeof v==='number'?Math.max(0,Math.min(100,Math.round(100*v/target))):0; }
+
 if(typeof module!=='undefined'&&module.exports){
   module.exports={healthProfileOf:healthProfileOf,healthGoal:healthGoal,healthFrom:healthFrom,healthFromAll:healthFromAll,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
     healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
+    healthWeek:healthWeek,healthTarget:healthTarget,healthSleepWord:healthSleepWord,healthPct:healthPct,
     macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay,macroPlanMerge:macroPlanMerge,
     weightClean:weightClean,weightFromStore:weightFromStore,weightNewer:weightNewer,weightSay:weightSay,macroRowText:macroRowText};
 }
@@ -440,6 +467,64 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
   };
   const today=function(){ return healthYmd(new Date()); };
   const fmt=function(kind,v){ return typeof v!=='number'?'–':kind==='steps'?v.toLocaleString('en-US'):healthFmtMin(v); };
+  // the top: this week's exercise as a ring, and today's steps, exercise and last night's sleep as three pills
+  const NS='http://www.w3.org/2000/svg';
+  const svg=function(tag,attrs,parent){ const n=document.createElementNS(NS,tag); Object.keys(attrs).forEach(function(k){ n.setAttribute(k,attrs[k]); }); if(parent)parent.appendChild(n); return n; };
+  const ICON={ // 24x24 line drawings
+    steps:'M4 16c0-3 1-5 2-7l3 1c1 2 3 3 6 3h3c2 0 3 1 3 2v1H4z M4 19h17',
+    exercise:'M14 4.5a1.5 1.5 0 1 0 0 .01 M6 21l3-6 3 2v4 M9 15l1-5 4-1 3 3h3 M10 10l-4 1-1 3',
+    sleep:'M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5z'
+  };
+  const icon=function(kind){
+    const s=svg('svg',{viewBox:'0 0 24 24','aria-hidden':'true'});
+    svg('path',{d:ICON[kind]},s); return s;
+  };
+  const ring=function(week,todayMin,target){
+    const pct=healthPct(week,target), box=el('div','health-ring');
+    box.setAttribute('role','img'); box.setAttribute('aria-label','Weekly exercise: '+week+' of '+target+' minutes, '+pct+' percent');
+    const s=svg('svg',{viewBox:'0 0 200 200'},box), R=78, C=2*Math.PI*R;
+    svg('circle',{cx:100,cy:100,r:R,class:'health-ring-track'},s);
+    // from the bottom, clockwise; a sliver even at 0 so the "+today" badge has somewhere to sit
+    const frac=Math.max(0.03,Math.min(1,week/(target||1)));
+    svg('circle',{cx:100,cy:100,r:R,class:'health-ring-arc','stroke-dasharray':(frac*C)+' '+C,transform:'rotate(90 100 100)'},s);
+    const a=Math.PI/2+frac*2*Math.PI, bx=100+R*Math.cos(a), by=100+R*Math.sin(a);
+    svg('circle',{cx:bx,cy:by,r:13,class:'health-ring-badge'},s);
+    svg('text',{x:bx,y:by,class:'health-ring-badge-t'},s).textContent='+'+todayMin;
+    // the title follows the top of the inner circle
+    svg('path',{id:'healthRingTitle',d:'M 50 100 A 50 50 0 0 1 150 100',fill:'none'},s);
+    const title=svg('text',{class:'health-ring-title'},s), tp=svg('textPath',{href:'#healthRingTitle',startOffset:'50%'},title);
+    tp.textContent='Weekly exercise';
+    svg('text',{x:100,y:112,class:'health-ring-pct'},s).textContent=pct+'%';
+    svg('text',{x:100,y:136,class:'health-ring-of'},s).textContent=week+' of '+target+' min';
+    return box;
+  };
+  const pill=function(kind,label,value,sub,pct){
+    const p=el('div','health-pill health-pill-'+kind);
+    p.style.setProperty('--p',pct+'%');
+    const ic=el('span','health-pill-ic'); ic.appendChild(icon(kind)); p.appendChild(ic);
+    const txt=el('div','health-pill-txt');
+    if(label)txt.appendChild(el('div','health-pill-k',label));
+    txt.appendChild(el('div','health-pill-v',value));
+    if(sub)txt.appendChild(el('div','health-pill-s',sub));
+    p.appendChild(txt);
+    return p;
+  };
+  const drawTop=function(t){
+    const tk=today(), w=healthWeek(state.health.days,Date.now());
+    // a week's aim: 7 of his daily exercise goal, or the usual 150 minutes
+    const exDaily=healthTarget(state.tasks,'exercise',tk,0,taskWs), exGoal=exDaily||30;
+    const stepGoal=healthTarget(state.tasks,'steps',tk,10000,taskWs), sleepGoal=healthTarget(state.tasks,'sleep',tk,7*60,taskWs);
+    const top=el('div','health-top');
+    top.appendChild(ring(w.week,w.today,exDaily?exDaily*7:150));
+    const pills=el('div','health-pills');
+    const steps=t&&t.steps, ex=t&&t.exerciseMin, sl=t&&t.sleepMin;
+    pills.appendChild(pill('steps','Steps',fmt('steps',steps),'',healthPct(steps,stepGoal)));
+    pills.appendChild(pill('exercise','Exercise',fmt('exercise',ex),'',healthPct(ex,exGoal)));
+    const word=healthSleepWord(sl,sleepGoal);
+    pills.appendChild(pill('sleep','',fmt('sleep',sl),word?'Last night · '+word:'Last night',100));
+    top.appendChild(pills);
+    return top;
+  };
   // today's numbers: on the phone with Connect or Manage above them; on a computer what the phone synced
   const drawNumbers=function(){
     const cap=healthCap(), t=state.health.days[today()]||null, wrap=el('div','health-numbers');
@@ -464,17 +549,7 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       else if(!healthOn())wrap.appendChild(el('p','settings-hint','Not connected. Once connected, the daily totals of steps, exercise and sleep reach your computer too, encrypted.'));
     }
     if(t||(cap&&healthOn())){
-      const tiles=el('div','health-tiles');
-      [['Steps today','steps',t&&t.steps],['Exercise today','exercise',t&&t.exerciseMin],['Sleep last night','sleep',t&&t.sleepMin]].forEach(function(x){
-        const c=el('div','health-tile');
-        c.appendChild(el('div','health-tile-k',x[0]));
-        c.appendChild(el('div','health-tile-v',fmt(x[1],x[2])));
-        // which apps wrote it: the phone itself, a watch, Samsung Health, Garmin, Oura...
-        const from=t&&t.from&&t.from[x[1]];
-        if(from&&from.length&&typeof x[2]==='number'){ const s=el('div','health-tile-s',from.join(', ')); s.title='From '+from.join(', '); c.appendChild(s); }
-        tiles.appendChild(c);
-      });
-      wrap.appendChild(tiles);
+      wrap.appendChild(drawTop(t));
       // Apple Health never says which reads were allowed: a kind said no to simply comes back empty
       if(cap&&healthIos()&&(!t||typeof t.steps!=='number'||typeof t.exerciseMin!=='number'||typeof t.sleepMin!=='number'))
         wrap.appendChild(el('p','settings-hint','A blank number means nothing logged yet, or not allowed: the Health app, Sharing, Apps, Romulus.'));

@@ -209,3 +209,22 @@ test('his weight: typed or from the phone, the newer wins, and it rides in the F
   assert.strictEqual(macroPlanClean(JSON.parse(alone)), null);
   assert.strictEqual(macroRowText(null, null), '');
 });
+
+test('the top of the Health tab: the week, the goals, the sleep word', () => {
+  const { healthWeek, healthTarget, healthSleepWord, healthPct } = require('../renderer/js/health');
+  // Wednesday 2026-11-11: Monday the 9th through today count, last Sunday doesn't
+  const days = { '2026-11-08': { exerciseMin: 90 }, '2026-11-09': { exerciseMin: 20 }, '2026-11-10': { steps: 4000 }, '2026-11-11': { exerciseMin: 10 } };
+  assert.deepStrictEqual(healthWeek(days, new Date(2026, 10, 11, 15).getTime()), { week: 30, today: 10 });
+  assert.deepStrictEqual(healthWeek({}, new Date(2026, 10, 9, 8).getTime()), { week: 0, today: 0 });
+  const tasks = [{ title: 'Walk #steps 8000' }, { title: 'Run 12k steps', due: '2026-11-12' }, { title: 'Gym #exercise 45' }, { title: 'Agent walk 20000 steps' }];
+  assert.strictEqual(healthTarget(tasks, 'steps', '2026-11-11', 10000, t => t.title.startsWith('Agent') ? 'agent' : 'personal'), 8000);
+  assert.strictEqual(healthTarget(tasks, 'exercise', '2026-11-11', 0), 45);
+  assert.strictEqual(healthTarget(tasks, 'sleep', '2026-11-11', 420), 420);
+  assert.strictEqual(healthSleepWord(495, 420), 'Good');
+  assert.strictEqual(healthSleepWord(400, 420), 'Fair');
+  assert.strictEqual(healthSleepWord(300, 420), 'Short');
+  assert.strictEqual(healthSleepWord(undefined, 420), '');
+  assert.strictEqual(healthPct(567, 10000), 6);
+  assert.strictEqual(healthPct(20000, 10000), 100);
+  assert.strictEqual(healthPct(undefined, 10000), 0);
+});
