@@ -142,6 +142,22 @@ function lookForOwnOrders(stores){
   });
   touch();
 }
+/* the regular look at his Instacart orders (order-match.js regularLooks): every 3 days once he uses it. The
+   last finished look task runs again (t.lookAt), so the Agent list doesn't fill up with them; with none, a new one */
+function runRegularLooks(){
+  if(!window.desktop||!window.desktop.onAgentResults||typeof regularLooks!=='function')return;
+  const stores=regularLooks(state.tasks,Date.now()); if(!stores.length)return;
+  const fresh=[];
+  stores.forEach(function(s){
+    const old=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&t.orderLook===s&&!t.done; })
+      .sort(function(a,b){ return (b.lookAt||b.created||0)-(a.lookAt||a.created||0); })[0];
+    if(!old){ fresh.push(s); return; }
+    old.lookAt=Date.now(); old.status='queued'; old.reply=null; old.note=null;
+    agentSay(old,'sys','Looking at your recent '+(LOOK_NAMES[s]||s)+' orders for food to add to your pantry');
+  });
+  if(fresh.length)lookForOwnOrders(fresh); else touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runRegularLooks,2*60*1000); setInterval(runRegularLooks,60*60*1000); }
 // one line in a grocery task's panel: when the next order opens
 function groceryNextLine(){
   const at=nextGroceryAt();
