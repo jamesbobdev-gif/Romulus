@@ -41,9 +41,11 @@ store.load().then(async function(data){
         if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object'){ out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')}; if(t.stuck.verify)out.stuck.verify=true; }
         if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
         if(out.status==='suggested'&&(t.suggest==='look-ahead'||t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'))out.suggest=t.suggest; // a card on the Human tab (lists.js drawSuggestions)
-        // what a waiting answer brought: its order cards (and his picks on them), tap questions, and ◉ Watch's page
+        // an open order's cards (and his picks on them) stay until it is placed, also while a follow-up about it
+        // is queued or running (cart-keep.js): dropping them here lost the pictures after a restart mid-run
+        if(!out.done&&Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick; }
+        // what a waiting answer brought: tap questions, and ◉ Watch's page
         if(out.status==='needs-you'){
-          if(Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick; }
           if(Array.isArray(t.ask)&&t.ask.length)out.ask=t.ask;
           if(t.seats&&Array.isArray(t.seats.rows))out.seats=t.seats;
           if(t.showtimes&&Array.isArray(t.showtimes.days))out.showtimes=t.showtimes;

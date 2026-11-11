@@ -21,7 +21,7 @@ const supabase = require('./supabase');
 const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
-const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
+const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
   wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
@@ -245,6 +245,7 @@ async function startAgentRun() {
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
+    cart: cartBrief(t) || undefined, // the order so far on this task, his picks included (it stays until the order is placed)
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
     macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them

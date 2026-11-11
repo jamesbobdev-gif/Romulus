@@ -232,7 +232,7 @@ step in this run.
 "plan":[{"title":"<an Agent task>","why":"<one line>","needs":"<from him, or empty>","minutes":10}] or null (goals only),
 "list":{"add":[{"name":"<item>","every":1}],"bought":["<item>"],"remove":["<item>"]} or null,
 "ask":[{"q":"<question>","choices":["<choice>"],"pick":"one","default":"<choice>"}] or null,
-"cart":[{"name":"<item>","qty":1,"price":"$0.00","image":"<picture url>","url":"<its product page>","swap":"<what it replaces>","suggested":false,"why":"<for an idea: what it goes with>","food":true}] or null (food = something he eats or drinks; it goes into his Kitchen pantry once the order is placed),
+"cart":[{"name":"<item>","qty":1,"price":"$0.00","image":"<picture url>","url":"<its product page>","swap":"<what it replaces>","suggested":false,"why":"<for an idea: what it goes with>","food":true}] or null (food = something he eats or drinks; it goes into his Kitchen pantry once the order is placed. The task's `cart` is the order so far, with his picks: `items` he kept, `removed` ones he took out. It stays on the task until the order is placed, and null leaves it as it is. When he asks for a change to it, make the change in the store and send the whole new cart, then ask for his yes again),
 "draft":{"text":"<every word he'll post or send>","where":"<where it goes>"} or null,
 "email":{"to":["<address>"],"cc":[],"subject":"<subject>","body":"<the whole email>"} or null,
 "followUp":{"on":"YYYY-MM-DD","mail":"<the email that would move it on, or empty>","why":"<what to check that day>"} or null,

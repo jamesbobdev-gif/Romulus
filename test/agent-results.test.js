@@ -16,6 +16,7 @@ function load(tasks) {
     touch() {}, appendPrefs() {}, setInterval() {}, setTimeout() {}, document: { querySelector: () => null },
   };
   vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/cart-keep.js'), 'utf8'), ctx); // loads before it in index.html
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/agent-results.js'), 'utf8'), ctx);
   return { cb, ctx };
 }
@@ -151,12 +152,22 @@ test('the computer slept mid-run: the task goes back in the queue and says why, 
 });
 
 test('an order placed after his yes is kept, with the review that had its total', () => {
-  const t = { id: 'o', ws: 'agent', status: 'queued', note: 'Total with tax: $25.40. Reply yes to place this order.', cart: [{ name: 'Owala bottle' }], history: [] };
+  const t = { id: 'o', ws: 'agent', status: 'queued', note: 'Total with tax: $25.40. Reply yes to place this order.', cart: [{ name: 'Owala bottle' }], history: [{ who: 'you', text: 'yes', at: 1 }] };
   const { cb } = load([t]);
   cb.working({ ids: ['o'] });
   cb.results([{ id: 'o', status: 'done', note: 'Placed: order 112-3, arrives Tue.' }]);
   assert.ok(t.kept && t.kept.includes('$25.40'));
   assert.strictEqual(t.cart, null);
+});
+
+test('a finished answer to a question about the cart keeps it: no order, his picks stay', () => {
+  const t = { id: 'q', ws: 'agent', status: 'queued', note: 'Total $126.49. Reply yes to place this order.', cart: [{ name: 'Eggs', food: true }], cartOff: ['Eggs'],
+    history: [{ who: 'you', text: 'how do I close the protein gap', at: 1 }] };
+  const { cb } = load([t]);
+  cb.working({ ids: ['q'] });
+  cb.results([{ id: 'q', status: 'done', note: 'Add a sweet potato and an egg a day.' }]);
+  assert.strictEqual(t.kept, undefined);
+  assert.deepStrictEqual([t.cart.length, t.cartOff], [1, ['Eggs']]);
 });
 
 test('words it will post come with the answer, and go with the next one', () => {

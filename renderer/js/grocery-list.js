@@ -250,9 +250,9 @@ function listCardsChanged(cards,ch){
   return out.length?out:null;
 }
 // things to look at, not pick (his grocery list): small picture cards, each opening its product page
-function cardsStrip(t){
+function cardsStrip(t,list){
   const box=el('div','mini-cards');
-  t.cards.slice(0,40).forEach(function(it){
+  (list||t.cards).slice(0,40).forEach(function(it){
     const c=el(it.url?'a':'div','mini-card');
     if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
@@ -265,6 +265,23 @@ function cardsStrip(t){
     if(it.price||it.qty>1)c.appendChild(el('div','mini-price',(it.qty>1?'×'+it.qty+' · ':'')+(it.price||'')));
     box.appendChild(c);
   });
+  return box;
+}
+// while the Agent works on the order he answered (Done, Place order): what he kept, with his size
+// switches, stays on screen as small cards so he can see it until the next answer brings the new cart
+function cartKeptItems(t){
+  const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
+  return t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).map(function(it){
+    const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; });
+    return op||it;
+  });
+}
+function cartWorkingStrip(t){
+  const items=cartKeptItems(t);
+  const box=el('div','cart-box');
+  const total=items.reduce(function(s,it){ return s+cartPrice(it.price); },0);
+  box.appendChild(el('div','cart-head','Your order · '+items.length+' items'+(total?' · about $'+total.toFixed(2):'')));
+  box.appendChild(cardsStrip(t,items));
   return box;
 }
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }

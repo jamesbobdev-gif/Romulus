@@ -44,6 +44,31 @@ test('skillText is only his words', () => {
   assert.strictEqual(ctx.skillText(t), 'T\nR\nN\nY2\nY3');
 });
 
+test('a task with a cart keeps the shopping skills whatever the follow-up says', () => {
+  const skills = ctx.loadSkills();
+  const loads = (t, name) => skills.find((s) => s.name === name).match.test(ctx.skillText(t));
+  const diet = { title: 'I want 1 gram of protein for every pound', history: [{ who: 'you', text: 'close the gap' }] };
+  assert.ok(!loads(diet, 'groceries') && !loads(diet, 'shopping'));
+  const food = Object.assign({ cart: [{ name: 'Eggs', food: true }] }, diet);
+  assert.ok(loads(food, 'groceries') && loads(food, 'shopping'));
+  const lamp = Object.assign({ cart: [{ name: 'Lamp' }] }, diet);
+  assert.ok(!loads(lamp, 'groceries') && loads(lamp, 'shopping'));
+  assert.ok(!loads(Object.assign({ cart: [] }, diet), 'shopping'));
+});
+
+test('cartBrief: the items he kept, his size picks, and the ones he took out', () => {
+  assert.strictEqual(ctx.cartBrief({}), null);
+  assert.strictEqual(ctx.cartBrief({ cart: [] }), null);
+  const t = { cart: [
+    { name: 'Eggs', qty: 2, price: '$4.00', food: true, options: [{ name: 'Eggs 18 ct', price: '$6.00' }] },
+    { name: 'Hummus', food: true },
+    { name: 'Tuna', swap: 'Chicken', food: true }],
+  cartOff: ['Hummus'], cartPick: { Eggs: 'Eggs 18 ct' } };
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.cartBrief(t))), {
+    items: [{ name: 'Eggs 18 ct', price: '$6.00', food: true }, { name: 'Tuna', swap: 'Chicken', food: true }],
+    removed: ['Hummus'] });
+});
+
 test('taskLinks finds links anywhere in the task', () => {
   assert.deepStrictEqual(ctx.taskLinks({ title: 'see https://a.com/x', options: [{ url: 'https://b.com' }] }), ['https://a.com/x', 'https://b.com']);
 });
