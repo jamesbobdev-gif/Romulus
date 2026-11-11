@@ -59,3 +59,25 @@ test('one order, one charge; a smaller charge from the store is only a maybe', (
   const alone = matchOrders([txs[0]], agentOrders(tasks), AT + 5 * DAY);
   assert.strictEqual(alone.x1.sure, false);
 });
+
+test('a food store charge no order explains starts one look at that store', () => {
+  const { storesToCheck } = require('../renderer/js/order-match');
+  const now = AT + 10 * DAY;
+  const txs = [
+    { id: 'i1', amount: -41.5, posted: sec(now - DAY), description: 'INSTACART*ALDI' },
+    { id: 'i2', amount: -12, posted: 0, description: 'Instacart' }, // pending: same store, one look
+    { id: 'w1', amount: -20, posted: sec(now - 2 * DAY), description: 'WAL-MART #123' },
+    { id: 'a1', amount: -30, posted: sec(now - DAY), description: 'AMAZON MKTPLACE' }, // not a food store
+    { id: 'k1', amount: -15, posted: sec(now - 6 * DAY), description: 'KROGER' }, // too old
+    { id: 't1', amount: 25, posted: sec(now - DAY), description: 'TARGET REFUND' }, // money in
+  ];
+  assert.deepStrictEqual(storesToCheck(txs, { w1: { sure: true } }, [], now), ['instacart']);
+  assert.deepStrictEqual(storesToCheck(txs, {}, [], now), ['instacart', 'walmart']);
+  // a look already going, or one since the charge, or one in the last 2 days: none again
+  const open = [{ ws: 'agent', orderLook: 'instacart', created: now - 3 * DAY, done: false }];
+  assert.deepStrictEqual(storesToCheck(txs, { w1: {} }, open, now), []);
+  const after = [{ ws: 'agent', orderLook: 'instacart', created: now - 12 * 3600000, done: true }];
+  assert.deepStrictEqual(storesToCheck(txs.slice(0, 1), {}, after, now), []);
+  const before = [{ ws: 'agent', orderLook: 'instacart', created: now - 3 * DAY, done: true }];
+  assert.deepStrictEqual(storesToCheck(txs.slice(0, 1), {}, before, now), ['instacart']);
+});

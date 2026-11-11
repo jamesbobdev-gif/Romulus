@@ -101,5 +101,36 @@ function matchOrders(txs,orders,now){
   pairs.forEach(function(p){ if(out[p.t]||used[p.o.key])return; out[p.t]={order:p.o,sure:p.sure}; used[p.o.key]=true; });
   return out;
 }
+/* An order he placed himself in a store's own app, with no task here and no receipt email, shows up only as
+   a bank charge. A charge from the last 4 days at a store he orders food from, that no order or receipt
+   explains (`bought`, from matchOrders), means: have the Agent look at that store's order history
+   (grocery-list.js lookForOwnOrders), so the food goes into his pantry. Only the store's name leaves this page,
+   never the amount, the day or the bank. One look per store at a time and at most one every 2 days; a charge
+   from before the last look is already covered (tasks: t.orderLook, when it was made).
+   → ['instacart', ...] */
+const LOOK_STORES=['instacart','walmart','target','costco','kroger','aldi'];
+const LOOK_DAYS=4, LOOK_GAP_DAYS=2;
+function storesToCheck(txs,bought,tasks,now){
+  now=now||Date.now();
+  const last={}, open={};
+  (tasks||[]).forEach(function(t){
+    if(!t||t.ws!=='agent'||!t.orderLook)return;
+    last[t.orderLook]=Math.max(last[t.orderLook]||0,t.created||0);
+    if(!t.done)open[t.orderLook]=true;
+  });
+  const out=[];
+  (txs||[]).forEach(function(t){
+    if(!t||!(t.amount<0)||(bought&&bought[t.id]))return;
+    const when=t.posted?t.posted*1000:now;
+    if(now-when>LOOK_DAYS*ORDER_DAY)return;
+    const text=[t.description,t.bank,t.memo].join(' ');
+    const hit=ORDER_STORES.find(function(s){ return LOOK_STORES.indexOf(s[0])!==-1&&s[1].test(text); });
+    if(!hit)return;
+    const s=hit[0], l=last[s]||0;
+    if(out.indexOf(s)!==-1||open[s]||when<=l||now-l<LOOK_GAP_DAYS*ORDER_DAY)return;
+    out.push(s);
+  });
+  return out;
+}
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={orderTotalFrom:orderTotalFrom,orderEbtFrom:orderEbtFrom,orderStore:orderStore,agentOrders:agentOrders,emailOrders:emailOrders,matchOrders:matchOrders}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={orderTotalFrom:orderTotalFrom,orderEbtFrom:orderEbtFrom,orderStore:orderStore,agentOrders:agentOrders,emailOrders:emailOrders,matchOrders:matchOrders,storesToCheck:storesToCheck}; }
