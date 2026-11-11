@@ -22,7 +22,7 @@ const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks } = require('./task-context');
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -48,7 +48,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, foodBrief } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, knownOrders, foodBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -218,6 +218,10 @@ async function startAgentRun() {
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
     cart: cartBrief(t) || undefined, // the order so far on this task, his picks included (it stays until the order is placed)
+    // the app started this run to see whether he placed that cart's order himself (grocery-list.js runCartCheck)
+    cartCheck: t.cartCheck && cartBrief(t) ? true : undefined,
+    // orders the app already has, so a look at his order history reports only new ones (groceries skill)
+    knownOrders: isGroceryRun(t, allTasks) || t.cartCheck ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
@@ -424,6 +428,7 @@ async function startAgentRun() {
     u.list = sawMail ? undefined : groceryChanges(u.list);
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
+    u.ordered = sawMail ? null : (cleanOrdered(u.ordered) || null); // orders he placed himself: their food goes into the pantry
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
     u.email = u.status === 'needs-you' ? (mailSend.cleanEmail(u.email) || null) : null; // an email he sends with his Send (agent/mail-send.js)
     // a case waiting on someone else: when to look again (agent/triggers.js followUp). A run that saw his
