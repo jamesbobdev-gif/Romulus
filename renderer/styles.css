@@ -1160,35 +1160,23 @@ body.review-open .top-right{display:none!important}
 .health-tile-v{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:2px 0 0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .health-tile-s{font-size:11.5px;color:var(--muted);margin-top:2px}
 @media(max-width:520px){.health-tiles{gap:8px}.health-tile{padding:10px 10px 8px}.health-tile-v{font-size:19px}}
-/* the top: a ring for the week's exercise, three pills for today (health.js drawTop) */
-.health-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:center;margin:4px 0 16px}
-.health-ring{position:relative;width:100%;max-width:240px;justify-self:center}
-.health-ring svg{display:block;width:100%;height:auto;overflow:visible}
-.health-ring-track{fill:none;stroke:var(--hairline);stroke-width:34}
-.health-ring-arc{fill:none;stroke:#8AB4F8;stroke-width:34;stroke-linecap:round}
-.health-ring-badge{fill:#1A57C9}
-.health-ring-badge-t{fill:#fff;font-size:12px;font-weight:650;text-anchor:middle;dominant-baseline:central}
-.health-ring-title{fill:var(--muted);font-size:13px;font-weight:650;text-anchor:middle;letter-spacing:.02em}
-.health-ring-pct{fill:var(--ink);font-size:38px;font-weight:600;text-anchor:middle;letter-spacing:-.02em}
-.health-ring-of{fill:#1A57C9;font-size:12.5px;font-weight:650;text-anchor:middle}
-:root[data-theme="dark"] .health-ring-of{fill:#8AB4F8}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .health-ring-of{fill:#8AB4F8}}
-.health-pills{display:flex;flex-direction:column;gap:8px;min-width:0}
-.health-pill{--p:0%;display:flex;align-items:center;gap:12px;min-width:0;padding:10px 14px 10px 10px;border-radius:26px;
-  background:linear-gradient(90deg,var(--fill) var(--p),var(--track) var(--p));color:var(--on)}
-.health-pill-ic{flex:none;display:grid;place-items:center;width:46px;height:58px;border-radius:23px;background:var(--ic)}
-.health-pill-ic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.health-pill-txt{min-width:0}
-.health-pill-k{font-size:14px;font-weight:600;line-height:1.2}
-.health-pill-v{font-size:28px;font-weight:600;letter-spacing:-.01em;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
-.health-pill-s{font-size:13px;font-weight:600;opacity:.9;margin-top:1px}
-.health-pill-steps{--track:#00504A;--fill:#00756C;--ic:#003A35;--on:#A6F3E4}
-.health-pill-exercise{--track:#0C5A27;--fill:#178A3E;--ic:#0A4620;--on:#C6F4CA}
-.health-pill-sleep{--track:#8656C4;--fill:#8656C4;--ic:#D9C2FF;--on:#fff}
-.health-pill-sleep .health-pill-ic{color:#3A1F6B;border-radius:50%;width:52px;height:52px}
-.health-pill-sleep .health-pill-ic svg{fill:currentColor;stroke:none}
-@media(max-width:520px){.health-top{gap:10px}.health-pill{gap:9px;padding:7px 10px 7px 7px}.health-pill-ic{width:36px;height:46px}
-  .health-pill-sleep .health-pill-ic{width:42px;height:42px}.health-pill-v{font-size:22px}.health-pill-k,.health-pill-s{font-size:12px}}
+/* the top: the week's exercise as a ring, and today's three numbers (health.js drawTop) */
+.health-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px;margin:4px 0 14px}
+.health-ring-card{display:flex;flex-direction:column}
+.health-ring{position:relative;width:100%;max-width:150px;margin:8px auto 4px;flex:1;display:grid;place-items:center}
+.health-ring svg{display:block;width:100%;height:auto}
+.health-ring-track{fill:none;stroke:var(--hairline);stroke-width:8}
+.health-ring-arc{fill:none;stroke:var(--accent);stroke-width:8;stroke-linecap:round}
+.health-ring-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.health-ring-mid .health-tile-v{margin:0}
+.health-ring-today{text-align:center}
+.health-pills{display:flex;flex-direction:column;gap:10px;min-width:0}
+.health-pill{display:flex;flex-direction:column;gap:4px}
+.health-pill-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.health-pill-head .health-tile-s{margin:0;white-space:nowrap}
+.health-pill .health-tile-v{margin:0}
+.health-pill .health-bar{margin-top:2px}
+@media(max-width:520px){.health-top{gap:8px}.health-pills{gap:8px}.health-pill .health-tile-v{font-size:19px}}
 .health-goals{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .health-goal{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:baseline;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px}
 .health-goal-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
