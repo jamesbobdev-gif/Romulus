@@ -103,7 +103,9 @@ function skillText(t) {
   const mine = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-2).map((h) => h.text || '');
   return [t.title, t.reply, t.notes, ...mine].filter(Boolean).join('\n');
 }
-function wantsInbox(t) { return !!t.useInbox || /\bintern(ship)?s?\b/i.test(String(t.title || '')); }
+// an inbox run (agent/runner.js mailRun): internships, and tasks about his mailbox itself (agent/mail-mcp.js tools)
+const MAILBOX_RE = /\b(inbox|gmail|outlook|unread|unsubscribe|my (e-?)?mails?|e-?mails? (from|about)|reply to|forward (the|this|that|my)|archive|label (my|the|these|all))\b/i;
+function wantsInbox(t) { const s = String(t.title || ''); return !!t.useInbox || /\bintern(ship)?s?\b/i.test(s) || MAILBOX_RE.test(s); }
 async function agentRow(suffix) { // a doc next to the agent list ({v, text}): ':prefs' or ':locked'
   const a = supabase.channel(readConfig());
   return a ? supabase.readText(a, suffix) : '';
@@ -121,7 +123,7 @@ function prefLine(p) {
 function cleanAsk(a) {
   if (!Array.isArray(a)) return undefined;
   const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
-  const out = a.slice(0, 10).map((x) => {
+  const out = a.slice(0, 12).map((x) => { // 12: the first grocery order's setup asks 11 (agent/skills/groceries.md)
     if (!x || typeof x !== 'object') return null;
     const q = txt(x.q || x.question, 200);
     const choices = (Array.isArray(x.choices) ? x.choices : []).map((c) => txt(c && typeof c === 'object' ? c.label : c, 80)).filter(Boolean).slice(0, 8);

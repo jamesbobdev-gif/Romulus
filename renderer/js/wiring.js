@@ -774,6 +774,7 @@ $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
 $('tabHealth').addEventListener('click',function(){ switchTab('health'); });
+$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });

@@ -12,7 +12,10 @@ No web needed: this is worked out from his answers. The plan's numbers go to the
 ## Ask first (one `ask`, the questions together)
 Unless this task, his replies or his preferences already answer them, don't write a plan yet: set
 `needs-you` with a one-line note ("A few quick questions and I'll plan your meals") and send these
-in `ask`, so he taps through them. Skip any his preferences already answer; keep the order.
+in `ask`, so he taps through them. Keep the order, and drop every question his preferences, this
+task (its title counts: "1 g of protein per pound" sets the protein) or `whatHeEats` already answers. Drop
+it, don't ask it with a reminder of the answer: if his preferences say he avoids gluten, grains and
+dairy, there is no "Foods to skip?" question. Plan around his pantry and usual groceries (`whatHeEats`).
 1. "What's the goal?" one of: "Lose fat", "Keep my weight", "Build muscle", "Just eat better" [Just eat better]
 2. "Your height, weight and age? (and sex, for the numbers)" `choices: []` — one line, any units.
    If he skips it, plan on general numbers and say so.

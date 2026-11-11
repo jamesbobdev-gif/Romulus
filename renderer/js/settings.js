@@ -76,6 +76,7 @@ function setSettingsOpen(open){
     $('themeName').value=themeSavedNameOf($('themeCss').value);
     drawThemeColors(); drawThemeSaved();
     if(gcalRefreshFn)gcalRefreshFn();
+    if(typeof drawSetupList==='function')drawSetupList();
     prefsLoad();
   }
   window.scrollTo(0,0);
@@ -602,7 +603,7 @@ $('syncOffBtn').addEventListener('click',function(){
    sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
    back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
    Lists with a key of their own (not made from the sync key) are not touched. */
-const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros'],work:[],school:[]};
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance',':kitchen'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros'],work:[],school:[]};
 const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
 function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
   const out=[];

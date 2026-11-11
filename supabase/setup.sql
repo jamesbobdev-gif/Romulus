@@ -218,7 +218,7 @@ end $$;
 
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone, :devices, :health, :macros;
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone, :devices, :health, :macros, :kitchen;
 -- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
 -- can't fill the table (supabase/migrations/20261028_sync_limits.sql), and sync_guard has to let the write through:
 -- false is also the answer for an account that is full or saving too often (sync_usage says which).
@@ -240,7 +240,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -260,7 +260,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -277,7 +277,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then

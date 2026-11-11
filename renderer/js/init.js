@@ -36,7 +36,7 @@ store.load().then(async function(data){
       if(t.recur&&t.recur.every&&out.ws!=='agent'){ out.recur=t.recur; if(t.recurNext)out.recurNext=t.recurNext; } // repeating to-do (recur.js)
       if(Array.isArray(t.images)&&t.images.length)out.images=t.images.slice(0,12); // context screenshots on a task
       if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; if(t.site)out.site=String(t.site); } // the school site it came from (agent/course-sites.js)
-      if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; if(Array.isArray(t.list)&&t.list.length)out.list=normList(t.list); }
+      if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; if(t.site)out.site=String(t.site); /* a "chapter 8" task's class site (agent-results.js applyPinned), kept for Move back to School */ if(Array.isArray(t.list)&&t.list.length)out.list=normList(t.list); }
       if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; if(t.runFrom&&(out.status==='working'||out.status==='queued'))out.runFrom=t.runFrom; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true; if(t.parked&&out.status==='needs-you')out.parked=true;
         if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object'){ out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')}; if(t.stuck.verify)out.stuck.verify=true; }
         if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
@@ -57,6 +57,7 @@ store.load().then(async function(data){
         if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)
         if(Array.isArray(t.goalPlan)&&t.goalPlan.length)out.goalPlan=t.goalPlan; if(t.goalStarted)out.goalStarted=true; if(t.goalDone)out.goalDone=true; // goals.js
         if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
+        if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
         if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
@@ -70,6 +71,7 @@ store.load().then(async function(data){
   state.ideas=normIdeas(data&&data.ideas);
   state.hours=normHours(data&&data.hours);
   state.health=normHealth(data&&data.health); // daily health totals (health.js)
+  state.kitchen=normKitchen(data&&data.kitchen); // the Kitchen tab (kitchen.js)
   rebuildSnap();
   if(spawnMissedRecurs())persist();
   if(sweepSchool())persist(); // assignments two days past their deadline come off (school-overdue.js)

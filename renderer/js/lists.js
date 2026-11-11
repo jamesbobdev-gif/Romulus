@@ -324,7 +324,12 @@ function buildPanel(t){
       const btns=el('div','opt-btns');
       const store=buyStoreOf(o), kind=store?'order':isTicketSite(o.url)?'tickets':optionKind(o.url);
       if(o.url){ const ob=el('button','opt-open',siteName(o.url)+' ↗'); ob.addEventListener('click',function(){ openExternal(String(o.url)); }); btns.appendChild(ob);
-        const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb); }
+        const sb=el('button','opt-share'); sb.innerHTML=SHARE_ICON; sb.title='Send this link to someone'; sb.setAttribute('aria-label','Share link'); sb.addEventListener('click',function(e){ e.stopPropagation(); shareLink(o.url,sb); }); btns.appendChild(sb);
+        // email the link to yourself (the desktop sends it; nothing is picked or bought);
+        // not when "Send me link" below already does exactly that
+        if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
+        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); if(typeof linkEmailPick==='function')linkEmailPick(t); buzz('send'); touch(); });
+        btns.appendChild(mb); } }
       if(canPick&&isLegionTask(t)){
         const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
         const bb=el('button','opt-pick',booked?'Booking…':'Book this'); bb.disabled=booked;
@@ -333,12 +338,14 @@ function buildPanel(t){
         btns.appendChild(bb);
       }
       else if(canPick){
-        const pb=el('button','opt-pick',(kind==='order'||kind==='tickets')?'Buy this':'Choose this');
-        pb.title=kind==='order'?'The Agent gets the '+store+' order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
+        const pb=el('button','opt-pick',kind==='print'?'Print this':kind==='link'?'Send me link':(kind==='order'||kind==='tickets')?'Buy this':'Choose this');
+        pb.title=kind==='print'?'Picks this model and emails it to you to print':kind==='link'?'Picks this and emails you the link':kind==='buy'?'Picks this and emails you the link to buy it':kind==='order'?'The Agent gets the '+store+' order ready and shows it to you; it’s only placed after you reply yes':kind==='tickets'?'The Agent gets the booking ready and shows you the total; it’s only bought after you reply yes':'Picks this option';
         pb.addEventListener('click',function(){ const pick=(kind==='print'?'I’ll print option ':'I choose option ')+(i+1)+': '+label+(kind==='order'?'. Buy it on '+store+'.':kind==='tickets'?'. Book it.':''); t.reply=(agentBusy&&t.reply)?t.reply+'\n'+pick:pick; agentSay(t,'you',pick); buzz('send'); if(t.status!=='working')t.status='queued'; delete replyDrafts[t.id]; saveDrafts();
           // stores it orders from, and ticket sites: The Agent builds the order and asks for a yes before placing it
           if(kind==='order')agentSay(t,'sys','Getting the '+store+' order ready. You’ll see it before anything is bought.');
           else if(kind==='tickets')agentSay(t,'sys','Getting the booking ready. You’ll see the total before anything is bought.');
+          // other links: stage an email with it — the desktop sends it (never orders anything)
+          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); if(typeof linkEmailPick==='function')linkEmailPick(t); }
           touch(); });
         btns.appendChild(pb);
       }

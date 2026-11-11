@@ -254,10 +254,12 @@ function drawIdeas(){
         btns.appendChild(del); foot.appendChild(btns);
         b.appendChild(foot);
       } else {
+        // like a sticky note: the title, with a peek at the notes under it
+        const notes=ideaFullText(c).slice(c.text.length).replace(/^\s+/,'');
         if(c.pinned)b.appendChild(el('div','idea-pinned mono','Pinned'));
-        b.appendChild(el('div','clip',c.text));
-        b.title=c.sections?'Click to open its notes · double-click to edit':'Click to open · double-click to edit';
-        if(c.sections)b.classList.add('hasdesc');
+        b.appendChild(el('div','idea-ctitle'+(notes?'':' solo'),c.text));
+        if(notes)b.appendChild(el('div','clip',notes));
+        b.title='Click to open · double-click to edit';
       }
       flow.appendChild(b);
     });
@@ -273,7 +275,7 @@ function drawIdeas(){
       const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','esc to save'));
       b.appendChild(ta); b.appendChild(foot); flow.appendChild(b); focusEl=ta;
     } else if(!q){ // while searching the board is read-only: a new note would vanish into the filter
-      const add=el('button','idea-addb','+ Add a note'); add.setAttribute('aria-label','Add a note to this group');
+      const add=el('button','idea-addb','Take a note…'); add.setAttribute('aria-label','Add a note to this group');
       add.addEventListener('click',function(){ ideaUI.editing=null; ideaUI.adding=g.id; drawIdeas(); });
       flow.appendChild(add);
     }

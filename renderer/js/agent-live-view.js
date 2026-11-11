@@ -222,6 +222,12 @@ function liveConnect(page,front){
   v.page=page; v.meta=null; v.tabs.value=page.id; liveWhere();
   liveShow('Connecting…');
   const ws=String(page.ws).indexOf('relay:')===0?liveRelay.socket(page):new WebSocket(page.ws); v.ws=ws;
+  // the mini PC's picture can get lost on the way: ask again a few times, then say so rather than "Connecting…" for good
+  if(ws.again){ let asks=0; const t=setInterval(function(){
+    if(liveView!==v||v.ws!==ws||v.meta){ clearInterval(t); return; }
+    if(++asks<=3){ ws.again(); return; }
+    clearInterval(t); liveShow('No picture from the mini PC. It may be busy or still on an older version; pick the tab again to retry.');
+  },5000); }
   ws.onopen=function(){
     if(front)liveSend('Page.bringToFront'); // a tab in the back doesn't draw
     liveSend('Page.enable');

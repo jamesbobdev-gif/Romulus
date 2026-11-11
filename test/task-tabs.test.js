@@ -43,7 +43,8 @@ test('each task works and is watched in its own tabs; logins are shared, tabs ar
   assert.deepStrictEqual((await taskTabs.pagesFor('B')).map((p) => p.id).sort(), ['B1', 'T2']);
   // watching A during B's run never shows B's new tabs
   tabs.unshift({ id: 'B2', url: 'https://www.amazon.com/cart' });
-  assert.deepStrictEqual((await taskTabs.pagesFor('A')).map((p) => p.id).sort(), ['A1', 'A2', 'T1']);
+  // (A's blank start tab went when its run ended; the sign-in it ended on stays, it may be waiting on him)
+  assert.deepStrictEqual((await taskTabs.pagesFor('A')).map((p) => p.id).sort(), ['A1', 'A2']);
   assert.ok((await taskTabs.pagesFor('B')).some((p) => p.id === 'B2'));
   await taskTabs.endRun();
   assert.ok(tabs.some((t) => t.id === 'A1'));
@@ -58,6 +59,23 @@ test('each task works and is watched in its own tabs; logins are shared, tabs ar
   assert.ok(!tabs.some((t) => /^B|^T2$/.test(t.id)));
   assert.ok(tabs.some((t) => t.id === 'A1'));
   await taskTabs.endRun();
+});
+
+test('a task that runs again and again keeps a few tabs, not every page it ever opened', async () => {
+  tabs = [{ id: 'KEEP', url: 'https://other.example.com/' }];
+  await taskTabs.startRun(['C'], ['C']);
+  const d2l = 'https://tri-c.desire2learn.com/d2l/';
+  const opened = [
+    { id: 'C1', url: d2l + 'home/1' }, { id: 'C2', url: 'https://login.microsoftonline.com/x/saml2' },
+    { id: 'C3', url: d2l + 'le/content/1' }, { id: 'C4', url: 'https://tri-c.edu/sso/x', title: 'Sign in to your account' },
+    { id: 'C5', url: d2l + 'home/1' }, { id: 'C6', url: d2l + 'le/discussions' }, { id: 'C7', url: d2l + 'le/schedule' },
+    { id: 'C8', url: d2l + 'quizzing/summary' },
+  ];
+  for (const t of opened) tabs.unshift(t);
+  assert.strictEqual(await taskTabs.endRun(), d2l + 'quizzing/summary');
+  const left = (await taskTabs.pagesFor('C')).map((p) => p.id);
+  assert.deepStrictEqual(left, ['C8', 'C7', 'C6']); // the three most recent, no sign-ins, no repeats
+  assert.ok(left.length <= 3);
 });
 
 test('sign-in steps are never reopened by address', () => {

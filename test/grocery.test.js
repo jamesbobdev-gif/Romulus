@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { itemDue, groceryBrief, groceryChanges, groceryListFor } = require('../agent/grocery');
+const { itemDue, groceryBrief, groceryChanges, groceryListFor, isFoodTask, foodBrief } = require('../agent/grocery');
 
 const day = (s) => new Date(s + 'T12:00:00').getTime();
 
@@ -82,4 +82,26 @@ test('the meal-plan skill matches meal planning, not everyday tasks', () => {
     assert.ok(s.match.test(t), t);
   for (const t of ['cut the grass', 'book a haircut', 'order groceries', 'plan the trip to Denver', 'what time is the game'])
     assert.ok(!s.match.test(t), t);
+});
+
+test('a food task that is not an order sees his usual groceries, pantry and recipes, liked first', () => {
+  const tasks = [{ ws: 'agent', created: 1, list: ['Old'] }, { ws: 'agent', created: 2, list: ['Eggs', { name: 'Kiwis', every: 2 }] }];
+  const kitchen = { items: [{ name: 'Chicken breast', qty: 2, unit: 'lb' }, { name: 'Salt', qty: null, unit: '' }],
+    recipes: [{ name: 'Salad', ingredients: [{ name: 'spinach' }], liked: false, made: [] },
+      { name: 'Turkey bowl', ingredients: [{ name: 'ground turkey' }, { name: 'sweet potato' }], liked: true, made: ['2026-11-01', '2026-11-05'] }] };
+  const t = { ws: 'agent', title: 'I want eat 1 gram of protein for every pound of weight' };
+  assert.strictEqual(isFoodTask(t), true);
+  assert.deepStrictEqual(foodBrief(t, tasks, kitchen), {
+    usualGroceries: ['Eggs', 'Kiwis'],
+    pantry: [{ name: 'Chicken breast', amount: '2 lb' }, { name: 'Salt', amount: undefined }],
+    recipes: [{ name: 'Turkey bowl', liked: true, timesMade: 2, ingredients: ['ground turkey', 'sweet potato'] },
+      { name: 'Salad', liked: undefined, timesMade: undefined, ingredients: ['spinach'] }],
+  });
+});
+
+test('no food brief for other tasks, or when he has nothing saved; an order keeps its list as groceryList', () => {
+  assert.strictEqual(foodBrief({ ws: 'agent', title: 'Find a flight to Denver' }, [{ ws: 'agent', list: ['Eggs'] }], {}), undefined);
+  assert.strictEqual(foodBrief({ ws: 'agent', title: 'Plan my meals' }, [], {}), undefined);
+  const order = foodBrief({ ws: 'agent', title: 'Order groceries' }, [{ ws: 'agent', list: ['Eggs'] }], { items: [{ name: 'Rice' }] });
+  assert.deepStrictEqual(order, { usualGroceries: undefined, pantry: [{ name: 'Rice', amount: undefined }], recipes: undefined });
 });

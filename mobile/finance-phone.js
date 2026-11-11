@@ -54,6 +54,14 @@
     clearTimeout(idleTimer); idleTimer = null;
     if (was) lockedCbs.forEach(function (cb) { try { cb(why || 'asked'); } catch (e) {} });
   }
+  // EBT settings saved while locked (finance-ebt.js ebtPending) go into the vault once it's open
+  async function takePendingEbt() {
+    var e = typeof ebtPending === 'function' ? ebtPending() : null;
+    if (!e || !key || !vault) return;
+    vault.ebt = e;
+    await save();
+    ebtFinishPending(e);
+  }
   function stillHere() { clearTimeout(idleTimer); idleTimer = setTimeout(function () { lock('idle'); }, IDLE_LOCK_MS); }
   // leaving the app locks it (but not the fingerprint prompt or the scanner, which hide the page for a moment)
   document.addEventListener('visibilitychange', function () { if (document.hidden && !native) lock('away'); });
@@ -106,6 +114,7 @@
       key = await useKey(raw);
       vault = { accessUrl: p.accessUrl, kinds: p.kinds, cache: { fetchedAt: 0, accounts: [], errors: [] } };
       await save();
+      await takePendingEbt(); // a balance he saved before pairing
       stillHere();
       try { await refresh(false); } catch (e) { return { ok: true, warning: why(e) }; }
       return { ok: true };
@@ -122,6 +131,7 @@
       var k = await useKey(raw);
       try { vault = await open(k); } catch (e) { return { ok: false, error: 'Couldn’t open Finance’s data on this phone. Forget it and pair again.' }; }
       key = k; stillHere();
+      await takePendingEbt();
       var warning;
       if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) { try { await refresh(false); } catch (e) { warning = why(e); } }
       return { ok: true, warning: warning };
@@ -152,8 +162,9 @@
       return { ok: true, kinds: kinds };
     },
     // the EBT wallet (renderer/js/finance-ebt.js, a page script here): kept in this phone's vault
+    // locked (Settings → EBT): the plain copy, marked, until the next unlock (finance-ebt.js ebtKeepPending)
     financeSetEbt: async function (ebt) {
-      if (!key) return { ok: false, error: 'locked' };
+      if (!key) return ebtKeepPending(ebt) ? { ok: true, ebt: ebtClean(ebt), locked: true } : { ok: false, error: 'Couldn’t save that.' };
       stillHere();
       vault.ebt = ebtClean(ebt);
       await save();

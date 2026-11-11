@@ -20,7 +20,7 @@ test('his rules in order, then the default', () => {
   routing.useRouting({ v: 2, rules: routing.ROUTING_DEFAULT.rules, default: 'ask' });
   assert.deepStrictEqual(routing.routeTask({ title: 'Find a desk lamp' }), { lane: 'claude', reason: 'rule: buy, find, look up, search' });
   assert.deepStrictEqual(routing.routeTask({ title: 'draft a cover letter' }), { lane: 'local', reason: 'rule: write, draft, essay' });
-  assert.deepStrictEqual(routing.routeTask({ title: 'something else' }), { lane: 'ask', reason: 'no rule matched' });
+  assert.deepStrictEqual(routing.routeTask({ title: 'something else' }), { lane: 'claude', reason: 'auto: quickest for everyday tasks' });
   routing.useRouting({ rules: [], default: 'local' });
   assert.deepStrictEqual(routing.routeTask({ title: 'something else' }), { lane: 'local', reason: 'default' });
 });

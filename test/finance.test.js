@@ -63,9 +63,16 @@ test('corrections on the cost charts are kept in the vault', async () => {
   assert.deepStrictEqual(h['finance:data']().kinds, {});
   // the EBT wallet: kept sealed with the rest, and only the fields it uses
   assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291, pin: '1234' })).ok, true);
+  // saved while locked (Settings → EBT): the grocery list sees it at once, and the next unlock moves it into the vault
   h['finance:lock']();
-  assert.strictEqual((await h['finance:setEbt'](null, { balance: 1 })).ok, false);
+  const lk = await h['finance:setEbt'](null, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  assert.deepStrictEqual([lk.ok, lk.locked], [true, true]);
+  assert.deepStrictEqual(await h['finance:ebtNow'](), { balance: 98.4, at: 2000, day: 3, monthly: 291 });
   await h['finance:unlock'](null, 'correct horse battery');
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  h['finance:lock'](); await h['finance:unlock'](null, 'correct horse battery'); // taken once, then it's the vault's
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291 })).ok, true);
   assert.deepStrictEqual(h['finance:data']().ebt, { balance: 143.2, at: 1000, day: 3, monthly: 291 });
   // the vault never has it in the clear; the grocery list's copy is its own file (sealed by Windows in the app)
   assert.ok(!fs.readdirSync(d2).filter((f) => f !== 'finance-ebt.json').some((f) => /143\.2/.test(fs.readFileSync(path.join(d2, f), 'latin1'))));
@@ -86,7 +93,7 @@ test('purchase emails are read after setup and kept in the vault, not in the cle
     mail: { mailAllowed: () => true,
       gmail: async (p) => p.startsWith('messages?') ? { messages: [{ id: 'm1' }] }
         : { id: 'm1', internalDate: String(Date.now()), payload: { mimeType: 'text/plain', body: { data: b64('Total $9.99') }, headers: [{ name: 'Subject', value: 'Your receipt' }] } },
-      claudeJson: async () => JSON.stringify({ receipts: [{ email: 1, store: 'spotify', merchant: 'Spotify', total: 9.99, date: '', items: [] }] }) } });
+      aiJson: async () => JSON.stringify({ receipts: [{ email: 1, store: 'spotify', merchant: 'Spotify', total: 9.99, date: '', items: [] }] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
   await done;
   const d = h['finance:data']();
@@ -107,7 +114,7 @@ test('purchase emails come from every Gmail account switched on, each read from 
       gmail: async (p, acct) => { asked.push(acct); const id = acct + '-m';
         return p.startsWith('messages?') ? { messages: [{ id }] }
           : { id, internalDate: String(Date.now()), payload: { mimeType: 'text/plain', body: { data: b64('Total $5') }, headers: [{ name: 'Subject', value: 'Receipt' }] } }; },
-      claudeJson: async (m) => JSON.stringify({ receipts: [{ email: 1, store: /g-2/.test(m[1].content) ? 'target' : 'spotify', total: 5, date: '', items: [] }] }) } });
+      aiJson: async (m) => JSON.stringify({ receipts: [{ email: 1, store: /g-2/.test(m[1].content) ? 'target' : 'spotify', total: 5, date: '', items: [] }] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
   await done;
   assert.deepStrictEqual(h['finance:data']().receipts.map((r) => r.id).sort(), ['g-1-m', 'g-2-m']);
@@ -201,7 +208,7 @@ test('The local model’s view of Finance: only while unlocked, plain text, read
   const gas = finance.forAgent({ what: 'transactions', query: 'shell' });
   assert.match(gas, /1 transaction\(s\) matching "shell": \$42\.10 out/);
   assert.ok(!gas.includes('Deli'));
-  assert.match(finance.forAgent({ what: 'statement' }), /Contribution margin/);
+  assert.match(finance.forAgent({ what: 'statement' }), /Net income/);
   assert.ok(logs.filter((m) => /the local model read/.test(m)).every((m) => !/\d+\.\d\d/.test(m)), 'the log never gets amounts');
   h['finance:lock']();
   assert.match(finance.forAgent({ what: 'overview' }), /locked/);

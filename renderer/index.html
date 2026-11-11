@@ -32,7 +32,18 @@
       <h2>Settings</h2>
     </div>
     <div id="settingsAlerts" hidden></div>
+    <!-- setup-list.js: the four things worth setting up, each done or one button away; gone once all four are done -->
+    <div id="setupList" class="setup-list" hidden>
+      <b>Get set up</b>
+      <div id="setupRows"></div>
+    </div>
     <div id="aiUsage" hidden></div>
+    <!-- tab-picker.js: always open, right under Usage; the switches are grouped by kind -->
+    <div class="settings-panel" id="tabsSection">
+      <span class="settings-label">Tabs</span>
+      <p class="settings-hint">Switch off the tabs you don't use and they leave the tab bar. Nothing in them is deleted; switch a tab back on to see it again. Set on each device.</p>
+      <div id="tabPicker"></div>
+    </div>
     <details class="settings-panel settings-collapse settings-group" id="agentGroup">
       <summary class="settings-label">Agent &amp; AI</summary>
       <div class="settings-sub" id="aiSection" hidden>
@@ -44,6 +55,15 @@
       <div class="settings-sub adv" id="localSection" hidden>
         <h3 class="settings-subhead">Local model</h3>
         <p class="settings-hint">Your own model through <a id="ollamaLink" href="#">Ollama</a>, on this computer or another one on your network. Nothing it works on leaves your machines. Tasks with private words always go here.</p>
+        <!-- local-model.js: start or install Ollama, download a model that fits this computer, switch it on -->
+        <div id="localEasy" class="local-easy">
+          <div class="settings-row" style="margin-top:0">
+            <button id="localEasyBtn" class="btn-accent">Set it up for me</button>
+            <span id="localEasyNote" class="settings-hint" style="margin:0"></span>
+          </div>
+          <div id="localPullBar" class="local-pull" hidden><div id="localPullFill"></div></div>
+          <p class="settings-hint" style="margin:6px 0 10px">Or pick a model yourself:</p>
+        </div>
         <div class="settings-row" style="margin-top:0">
           <input id="localUrl" class="settings-inp mono" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" style="flex:1;margin:0">
           <button id="localProbeBtn" class="ghost mono">Find models</button>
@@ -80,7 +100,7 @@
           </select>
         </div>
         <p class="settings-hint" style="margin-top:6px">Auto: if the local machine has a small decider model, it picks first. Otherwise inbox, web, shopping → cloud. Writing, forms → the local model. Anything else → cloud, or the local model if Claude is near its limit. If a side is offline, the other takes it.</p>
-        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line.</p>
+        <p class="settings-hint" style="margin-top:14px">Sites the local model may open, one per line. About 100 common sites (Google, Wikipedia, YouTube, the big stores and news sites, .gov sites) are always allowed on top of these. Banks and payment sites are not: add them here if you want them.</p>
         <textarea id="routingSites" class="settings-inp" rows="4" style="font-family:var(--mono);font-size:12.5px;resize:vertical" placeholder="joinhandshake.com&#10;linkedin.com&#10;mail.google.com"></textarea>
         <div class="settings-row" style="margin-top:10px">
           <button id="routingSaveBtn" class="btn-accent">Save</button>
@@ -156,26 +176,22 @@
           <span id="lockedStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </details>
-      <div class="settings-sub" id="formFilesSection" hidden>
-        <h3 class="settings-subhead">Files for forms</h3>
+      <details class="settings-sub settings-collapse" id="formFilesSection" hidden>
+        <summary class="settings-subhead">Files for forms</summary>
         <p class="settings-hint">Your resume (a PDF is safest), plus a transcript or cover letter if you like. They stay on this computer. When a job site asks for one, the Agent or the local model attaches it; nothing else on this computer can be uploaded.</p>
         <div id="formFilesList"></div>
         <div class="settings-row">
           <button id="formFileAddBtn" class="ghost mono">+ Add a file</button>
           <span id="formFilesStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
-      </div>
-    </details>
-    <details class="settings-panel settings-collapse" id="tabsSection">
-      <summary class="settings-label">Tabs</summary>
-      <p class="settings-hint">Switch off the tabs you don't use and they leave the tab bar. Nothing in them is deleted; switch a tab back on to see it again. Set on each device.</p>
-      <div id="tabPicker"></div>
+      </details>
     </details>
     <details class="settings-panel settings-collapse" id="ebtSection">
       <summary class="settings-label">EBT</summary>
-      <p class="settings-hint">Your balance goes in Finance → EBT. Set on each device.</p>
+      <p class="settings-hint">Change your balance here or in Finance → EBT. The switch and alert are set on each device.</p>
       <label class="switch" style="margin-bottom:8px"><input type="checkbox" id="ebtOn"><span class="track" aria-hidden="true"></span><span>I use EBT</span></label>
       <div class="settings-row" id="ebtLowRow" style="margin-top:0;font-size:13.5px"><span>Alert me when it's under $</span><input id="ebtLow" class="settings-inp" inputmode="decimal" style="width:80px;margin:0" aria-label="Low balance alert, in dollars"></div>
+      <div id="ebtEditBox" class="fin-ebt"></div>
     </details>
     <details class="settings-panel settings-collapse" id="healthSection">
       <summary class="settings-label">Health</summary>
@@ -297,6 +313,24 @@
             <button id="hostedLeaveBtn" class="ghost mono" hidden>Leave the group</button>
           </div>
         </div>
+        <!-- where the links he picks on Agent tasks are emailed, once the address is confirmed with a code (link-email.js) -->
+        <div id="linkEmailBox" hidden style="margin:0 0 10px">
+          <div class="settings-label" style="margin-bottom:2px">Email me links</div>
+          <p id="linkEmailInfo" class="settings-hint" style="margin:0 0 6px"></p>
+          <div id="linkEmailAskRow" class="settings-row" style="align-items:center">
+            <input id="linkEmailIn" type="email" class="settings-inp" placeholder="you@example.com" maxlength="254" autocomplete="email" spellcheck="false" style="max-width:260px;margin:0">
+            <button id="linkEmailSendBtn" class="ghost mono">Send code</button>
+          </div>
+          <div id="linkEmailCodeRow" class="settings-row" hidden style="align-items:center">
+            <input id="linkEmailCode" class="settings-inp mono" placeholder="6-digit code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" spellcheck="false" style="max-width:140px;margin:0">
+            <button id="linkEmailConfirmBtn" class="btn-accent">Confirm</button>
+            <button id="linkEmailBack" class="ghost mono">Use another address</button>
+          </div>
+          <div id="linkEmailDoneRow" class="settings-row" hidden>
+            <button id="linkEmailChange" class="ghost mono">Change address</button>
+            <button id="linkEmailForget" class="ghost mono">Stop emailing me</button>
+          </div>
+        </div>
         <!-- the rarely used settings, out of the way until wanted -->
         <details class="settings-sub" id="hostedMore" style="margin-top:6px">
           <summary class="settings-label">More</summary>
@@ -323,7 +357,18 @@
           <div class="settings-row">
             <button id="hostedOwnBtn" class="ghost mono" hidden>Use my own Supabase</button>
             <button id="hostedBackBtn" class="ghost mono" hidden>Use the Romulus server</button>
-            <button id="hostedDeleteBtn" class="ghost mono" hidden>Delete my synced data</button>
+            <button id="hostedDeleteBtn" class="ghost mono danger" hidden>Delete my account</button>
+          </div>
+          <!-- deleting the account: three clicks on the button above, and the number shown here typed in (hosted-sync.js) -->
+          <div id="hostedDeleteBox" class="del-box" hidden>
+            <p id="hostedDeleteStep" class="settings-hint" style="margin:0 0 8px"></p>
+            <div id="hostedDeleteCodeRow" hidden>
+              <div id="hostedDeleteCode" class="del-code mono" aria-label="Number to type"></div>
+              <input id="hostedDeleteIn" class="settings-inp" placeholder="Type the number above" inputmode="numeric" autocomplete="off" spellcheck="false" style="max-width:260px">
+            </div>
+            <div class="settings-row">
+              <button id="hostedDeleteCancel" class="ghost mono">Cancel</button>
+            </div>
           </div>
         </details>
       </div>
@@ -450,6 +495,7 @@
     <button id="tabHours" class="tab"       role="tab" aria-selected="false">Hours</button>
     <button id="tabFinance" class="tab"     role="tab" aria-selected="false" hidden>Finance</button>
     <button id="tabHealth" class="tab"      role="tab" aria-selected="false">Health</button>
+    <button id="tabKitchen" class="tab"     role="tab" aria-selected="false">Kitchen</button>
     <button id="tabFamily" class="tab"      role="tab" aria-selected="false" hidden>Group</button>
   </div>
 
@@ -545,9 +591,9 @@
     <div id="lupaStuck" class="lupa-stuck" hidden></div>
     <details id="lupaFiles" class="lupa-files" hidden></details>
     <!-- the Agent is waiting on a yes: answer it here, or tap the card for the task (lists.js drawYesPrompts) -->
-    <div id="yesPrompts" class="yes-prompts" hidden></div>
     <!-- to-dos someone in the group sent: add to the list or say no (family.js famDrawIncoming) -->
     <div id="famIncoming" class="yes-prompts" hidden></div>
+    <div id="yesPrompts" class="yes-prompts" hidden></div>
     <div id="suggestPrompts" class="yes-prompts" hidden></div>
     <ul id="openList" class="list"></ul>
     <div id="emptyState" class="empty" hidden></div>
@@ -612,6 +658,8 @@
   <!-- Health: the Food plan (macros the Agent buys groceries to) everywhere; steps, sleep and exercise on the phone
        (Apple Health on iPhone, Health Connect on Android); js/health.js draws it -->
   <div id="healthView" hidden></div>
+  <!-- Pantry, recipes, meals and the shopping list (hidden by default; js/kitchen.js draws it) -->
+  <div id="kitchenView" class="kit-view" hidden></div>
 </main>
 
 <script src="js/no-emoji.js"></script>
@@ -658,16 +706,19 @@
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
 <script src="js/hosted-sync.js"></script>
+<script src="js/link-email.js"></script>
 <script src="js/family.js"></script>
 <script src="js/devices.js"></script>
 <script src="js/local-model.js"></script>
 <script src="js/welcome.js"></script>
+<script src="js/setup-list.js"></script>
 <script src="js/task-import.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/connect-accounts.js"></script>
 <script src="js/health.js"></script>
+<script src="js/kitchen.js"></script>
 <script src="js/look-ahead.js"></script>
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>

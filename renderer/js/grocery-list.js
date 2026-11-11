@@ -31,6 +31,7 @@ function applyListUpdate(t,ch){
   (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const it=listItem(a); if(it&&!list.some(function(x){ return sameItem(x.name,it.name); }))list.push(it); });
   (Array.isArray(ch.bought)?ch.bought:[]).forEach(function(n){ list.forEach(function(x){ if(sameItem(x.name,n)){ x.last=today; x.out=false; } }); });
   t.list=list.length?list:null;
+  if(typeof kitchenBought==='function')kitchenBought(ch.bought); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
   if(typeof famCheckOff==='function')famCheckOff(ch.bought); // and off the group's shared Groceries list (family.js)
 }
 
@@ -144,7 +145,8 @@ function setEbtOn(on){
 function wireEbtSetting(){
   const box=$('ebtOn'); if(!box)return;
   const sec=$('ebtSection');
-  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; };
+  // the balance boxes (finance.js drawEbtSettingsForm), filled fresh each time the section opens
+  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; if(typeof drawEbtSettingsForm==='function')drawEbtSettingsForm(); };
   show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
   box.addEventListener('change',function(){ setEbtOn(box.checked); show(); });
 }

@@ -32,6 +32,11 @@ test('wantsInbox: internship tasks or useInbox', () => {
   assert.ok(ctx.wantsInbox({ title: 'Daily internship hunt' }));
   assert.ok(ctx.wantsInbox({ title: 'x', useInbox: true }));
   assert.ok(!ctx.wantsInbox({ title: 'internal memo' }));
+  // tasks about his mailbox itself
+  assert.ok(ctx.wantsInbox({ title: 'Clean up my inbox' }));
+  assert.ok(ctx.wantsInbox({ title: 'Archive the newsletters in Gmail' }));
+  assert.ok(ctx.wantsInbox({ title: 'Reply to the landlord email' }));
+  assert.ok(!ctx.wantsInbox({ title: 'Find a cheap flight to Denver' }));
 });
 
 test('skillText is only his words', () => {
@@ -67,6 +72,12 @@ test('cleanAsk: questions with choices; a default must be one of them; empty one
   assert.strictEqual(a[2].other, true);
   assert.strictEqual(ctx.cleanAsk([]), undefined);
   assert.strictEqual(ctx.cleanAsk('x'), undefined);
+});
+
+test('cleanAsk: keeps all 11 first-grocery-order questions (store to activity), up to 12', () => {
+  const qs = Array.from({ length: 14 }, (_, i) => ({ q: 'Question ' + (i + 1) + '?', choices: ['Yes', 'No'] }));
+  assert.strictEqual(ctx.cleanAsk(qs.slice(0, 11)).length, 11);
+  assert.strictEqual(ctx.cleanAsk(qs).length, 12);
 });
 
 test('cleanCart: names kept, https pictures only, quantity over 1 only', () => {

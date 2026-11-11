@@ -55,7 +55,7 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
     info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks), health and
     fitness (Health Connect daily totals: on the phone, or end-to-end encrypted between his own devices).
   - Encrypted in transit: yes. Users can request deletion: yes, in the app (Settings → Device sync →
-    Delete my synced data, which needs the `sync-delete` function deployed; see below). Play's
+    Delete my account, which needs the `sync-delete` function deployed; see below). Play's
     account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
     the privacy policy's "Deleting your data" section as the deletion web link when Play asks for one.
   - **Payments**: the sync plans ($3 alone, $5 for a family) are Stripe links, and Play requires Play Billing for subscriptions bought

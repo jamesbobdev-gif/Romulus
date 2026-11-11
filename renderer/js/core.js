@@ -3,7 +3,7 @@
 'use strict';
 
 /* ── state ── */
-const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',order:-1,updatedAt:0},groups:[],cards:[],tombstones:[]}, hours:{entries:[],tombstones:[]}, health:{days:{}}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
+const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',order:-1,updatedAt:0},groups:[],cards:[],tombstones:[]}, hours:{entries:[],tombstones:[]}, health:{days:{}}, kitchen:{items:[],recipes:[],tombstones:[]}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
 let navOrder=[]; // ids of open tasks in rendered order, for arrow-key navigation
 // unsent answers to Claude, by task id — kept on disk so a restart or a lost task never eats them
 const DRAFTS_KEY='tasks.replyDrafts';
@@ -27,7 +27,7 @@ function stampChanges(){
   });
   Object.keys(lastSnap).forEach(function(id){ if(!seen[id])delete lastSnap[id]; });
 }
-function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas,hours:state.hours,health:state.health}; }
+function currentDoc(){ return {v:1,tasks:state.tasks,tombstones:state.tombstones,ideas:state.ideas,hours:state.hours,health:state.health,kitchen:state.kitchen}; }
 function persist(){
   if(state.loadFailed){ voiceToast('Not saved: your tasks file couldn’t be read at start-up. Restart Romulus.',true); return; }
   clearTimeout(saveTimer);
@@ -36,9 +36,9 @@ function persist(){
 function touch(){ persist(); renderActive(); }
 // a phone or tablet: fingers, and a keyboard that comes and goes on screen
 function touchDevice(){ return !!window.Capacitor||matchMedia('(pointer:coarse)').matches; }
-function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else if(state.activeTab==='hours') renderHours(); else if(state.activeTab==='health') renderHealth(); else if(state.activeTab==='family') renderFamily(); else if(state.activeTab==='finance') return; else render(); }
+function renderActive(){ if(state.activeTab==='calendar') renderCal(); else if(state.activeTab==='ideas') renderIdeas(); else if(state.activeTab==='hours') renderHours(); else if(state.activeTab==='health') renderHealth(); else if(state.activeTab==='kitchen') renderKitchen(); else if(state.activeTab==='family') renderFamily(); else if(state.activeTab==='finance') return; else render(); }
 /* tabs that aren't lists (no composer, no list view) */
-function isViewTab(tab){ return tab==='ideas'||tab==='hours'||tab==='finance'||tab==='health'||tab==='family'; }
+function isViewTab(tab){ return tab==='ideas'||tab==='hours'||tab==='kitchen'||tab==='finance'||tab==='health'||tab==='family'; }
 function uid(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
 /* ── dates ── */

@@ -415,6 +415,27 @@ function noteAction(msg, here) {
   } else if (pressesEnter(name, a) && (here == null || checkoutPage(here))) { logAction('pressed Enter', { url: String(here || '').slice(0, 200) }); spent = true; }
   else if (name === 'browser_file_upload' && a.paths != null) logAction('uploaded', { files: (Array.isArray(a.paths) ? a.paths : [a.paths]).map(fileName), url: String(here || '').slice(0, 200) });
 }
+/* Live steps (TASKS_BROWSER_STEPS), for the AIs whose own output the app can't follow as it runs (Gemini,
+   ChatGPT, OpenRouter, Grok, Groq): one JSON line per browser call, with only what agent/run-live.js describe()
+   needs to write "Opening walmart.com/cart" on the task. Typed text is never kept; refused calls say so. */
+const STEPS_FILE = process.env.TASKS_BROWSER_STEPS || '';
+function stepLine(msg, refused) {
+  if (!msg || !msg.params || !msg.params.name) return null;
+  const name = String(msg.params.name), a = msg.params.arguments || {};
+  const input = {};
+  if (a.url) input.url = String(a.url).slice(0, 300);
+  const label = name === 'browser_click' ? ((refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '')).trim() : String(a.element || '');
+  if (label) input.element = label.slice(0, 80);
+  if (a.key) input.key = String(a.key).slice(0, 30);
+  if (Array.isArray(a.fields)) input.fields = a.fields.map(() => ({})); // how many, not what
+  if (a.values != null) input.values = [].concat(a.values).map((v) => String(v).slice(0, 40)).slice(0, 5);
+  return { at: Date.now(), name, input, blocked: !!refused || undefined };
+}
+function noteStep(msg, refused) {
+  if (!STEPS_FILE) return;
+  const line = stepLine(msg, refused);
+  if (line) try { require('fs').appendFileSync(STEPS_FILE, JSON.stringify(line) + '\n'); } catch (e) {}
+}
 // the last step of buying or applying, by the page's address (its path; the host is anyone's)
 const CHECKOUT = /check-?out|\/buy\b|payment|\/pay\b|place-?order|\/orders?\b|purchase|\/apply\b|application|\/submit\b/i;
 const checkoutPage = (url) => { try { return CHECKOUT.test(new URL(String(url || '')).pathname); } catch (e) { return false; } };
@@ -652,6 +673,7 @@ function main() {
             return;
           }
           const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || screenshotRefusal(msg) || await shopTabs(msg));
+          if (msg) noteStep(msg, refused);
           if (refused) { // answer it ourselves; Playwright never sees the call
             process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
             return;
@@ -667,7 +689,7 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { childEnv, SECRET_ENV, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
+else module.exports = { stepLine, childEnv, SECRET_ENV, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, mailFilter, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, PRIVATE_FINAL, isTainted, resetSpent: () => { spent = false; },
   // his Link wallet
   LINK_TOOLS, LINK_NAMES, withLinkTools, linkRefusal, linkCall, linkSay, blank, screenshotRefusal,
   _link: { listIds, setWallet: (w) => { linkWallet = w; }, setFill: (f) => { fillFields = f; }, setType: (f) => { typeField = f; }, cardOnPage: () => cardOnPage } }; // tests
