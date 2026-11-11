@@ -16,6 +16,7 @@ function load(tasks) {
     touch() {}, appendPrefs() {}, setInterval() {}, setTimeout() {}, document: { querySelector: () => null },
   };
   vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/cart-keep.js'), 'utf8'), ctx); // loads before it in index.html
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/agent-results.js'), 'utf8'), ctx);
   return { cb, ctx };
 }
@@ -151,12 +152,22 @@ test('the computer slept mid-run: the task goes back in the queue and says why, 
 });
 
 test('an order placed after his yes is kept, with the review that had its total', () => {
-  const t = { id: 'o', ws: 'agent', status: 'queued', note: 'Total with tax: $25.40. Reply yes to place this order.', cart: [{ name: 'Owala bottle' }], history: [] };
+  const t = { id: 'o', ws: 'agent', status: 'queued', note: 'Total with tax: $25.40. Reply yes to place this order.', cart: [{ name: 'Owala bottle' }], history: [{ who: 'you', text: 'yes', at: 1 }] };
   const { cb } = load([t]);
   cb.working({ ids: ['o'] });
   cb.results([{ id: 'o', status: 'done', note: 'Placed: order 112-3, arrives Tue.' }]);
   assert.ok(t.kept && t.kept.includes('$25.40'));
   assert.strictEqual(t.cart, null);
+});
+
+test('a finished answer to a question about the cart keeps it: no order, his picks stay', () => {
+  const t = { id: 'q', ws: 'agent', status: 'queued', note: 'Total $126.49. Reply yes to place this order.', cart: [{ name: 'Eggs', food: true }], cartOff: ['Eggs'],
+    history: [{ who: 'you', text: 'how do I close the protein gap', at: 1 }] };
+  const { cb } = load([t]);
+  cb.working({ ids: ['q'] });
+  cb.results([{ id: 'q', status: 'done', note: 'Add a sweet potato and an egg a day.' }]);
+  assert.strictEqual(t.kept, undefined);
+  assert.deepStrictEqual([t.cart.length, t.cartOff], [1, ['Eggs']]);
 });
 
 test('words it will post come with the answer, and go with the next one', () => {
@@ -184,4 +195,26 @@ test('an answer without macros leaves the Food plan alone', () => {
   let called = 0; ctx.healthSetPlan = () => { called++; return ''; };
   cb.results([{ id: 'n', status: 'done', note: 'Done.' }]);
   assert.strictEqual(called, 0);
+});
+
+test('the cart check: an order he placed himself goes to the pantry and the cart goes; none found keeps it', () => {
+  const t = { id: 'c', ws: 'agent', status: 'working', cartCheck: true, cartAt: 1, cartLooks: 1, note: 'Reply yes to place this order.',
+    cart: [{ name: 'Eggs, 12 ct', food: true }], history: [] };
+  const { cb, ctx } = load([t]);
+  const seen = [];
+  ctx.stockOrdered = (task, orders) => { seen.push(orders); return orders ? [{ store: 'Aldi (Instacart)', date: '2026-11-08', n: 1 }] : []; };
+  ctx.orderedLine = (s) => 'Into your pantry: ' + s.n;
+  cb.results([{ id: 'c', status: 'done', note: 'You ordered this yourself.', ordered: [{ store: 'Aldi (Instacart)', items: [{ name: 'Eggs, 12 ct' }] }] }]);
+  assert.strictEqual(seen.length, 1);
+  assert.strictEqual(t.cart, null);
+  assert.strictEqual(t.cartCheck, undefined);
+  assert.strictEqual(t.cartAt, undefined);
+  assert.ok(t.history.some((h) => h.who === 'sys' && h.text === 'Into your pantry: 1'));
+  // not ordered yet: the cart stays, and the next look is still counted from when it came
+  const t2 = { id: 'd', ws: 'agent', status: 'working', cartCheck: true, cartAt: 1, cartLooks: 1, cart: [{ name: 'Milk' }], history: [] };
+  const r2 = load([t2]);
+  r2.ctx.stockOrdered = () => [];
+  r2.cb.results([{ id: 'd', status: 'needs-you', note: 'Not ordered yet.', cart: null }]);
+  assert.strictEqual(t2.cart.length, 1);
+  assert.deepStrictEqual([t2.cartAt, t2.cartLooks, t2.cartCheck], [1, 1, undefined]);
 });

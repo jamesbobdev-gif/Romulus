@@ -105,3 +105,14 @@ test('no food brief for other tasks, or when he has nothing saved; an order keep
   const order = foodBrief({ ws: 'agent', title: 'Order groceries' }, [{ ws: 'agent', list: ['Eggs'] }], { items: [{ name: 'Rice' }] });
   assert.deepStrictEqual(order, { usualGroceries: undefined, pantry: [{ name: 'Rice', amount: undefined }], recipes: undefined });
 });
+
+test('knownOrders: the orders the app has, newest first, so a run reports only new ones', () => {
+  const { knownOrders } = require('../agent/grocery');
+  const tasks = [
+    { ws: 'agent', orders: [{ store: 'walmart', at: day('2026-11-01'), items: [] }, { store: 'instacart', id: 'A-1', date: '2026-11-08', at: day('2026-11-08'), items: [] }] },
+    { ws: 'personal', orders: [{ store: 'x', at: 1 }] },
+    { ws: 'agent', orders: [{ at: 5 }] },
+  ];
+  assert.deepStrictEqual(knownOrders(tasks), [{ store: 'instacart', id: 'A-1', date: '2026-11-08' }, { store: 'walmart', id: undefined, date: '2026-11-01' }]);
+  assert.deepStrictEqual(knownOrders(null), []);
+});

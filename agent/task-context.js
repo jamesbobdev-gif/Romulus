@@ -98,10 +98,28 @@ handle('howtos:delete', (_event, id) => {
 });
 function siteNotesFor(urls, max = 3) { try { return siteNotes.forUrls(siteNotes.load(siteNoteDirs()), urls).slice(0, max); } catch (e) { return []; } }
 // what a skill's pattern is tested against: only his words (title, replies, instructions), since
-// Claude's own notes mention all sorts of things
+// Claude's own notes mention all sorts of things. A task that already has a cart is still an order
+// however he words the follow-up ("add more protein"), so it keeps the shopping skill, and the
+// groceries one when the cart holds food: the run rebuilds the cart and asks for his yes again.
 function skillText(t) {
   const mine = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who === 'you').slice(-2).map((h) => h.text || '');
-  return [t.title, t.reply, t.notes, ...mine].filter(Boolean).join('\n');
+  const cart = (Array.isArray(t.cart) ? t.cart : []).filter(Boolean);
+  const order = !cart.length ? [] : ['(this task has a cart: order)'].concat(cart.some((it) => it.food) ? ['(groceries)'] : []);
+  return [t.title, t.reply, t.notes, ...mine, ...order].filter(Boolean).join('\n');
+}
+/* The order so far, for whichever AI takes the task next (Claude, ChatGPT, Gemini, Lupa): the items he
+   kept, with the size he switched to (cartPick), and the ones he took out (cartOff). null: no cart. */
+function cartBrief(t) {
+  const cart = (Array.isArray(t.cart) ? t.cart : []).filter((it) => it && it.name);
+  if (!cart.length) return null;
+  const off = Array.isArray(t.cartOff) ? t.cartOff : [], pick = t.cartPick && typeof t.cartPick === 'object' ? t.cartPick : {};
+  const items = cart.filter((it) => !off.includes(it.name)).slice(0, 40).map((it) => {
+    const op = pick[it.name] && Array.isArray(it.options) ? it.options.find((o) => o && o.name === pick[it.name]) : null;
+    const s = op || it;
+    return { name: s.name, qty: s.qty || undefined, price: s.price || undefined, url: s.url || undefined, swap: it.swap || undefined, food: typeof it.food === 'boolean' ? it.food : undefined };
+  });
+  const removed = cart.filter((it) => off.includes(it.name)).map((it) => it.name);
+  return { items, removed: removed.length ? removed : undefined };
 }
 // an inbox run (agent/runner.js mailRun): internships, and tasks about his mailbox itself (agent/mail-mcp.js tools)
 const MAILBOX_RE = /\b(inbox|gmail|outlook|unread|unsubscribe|my (e-?)?mails?|e-?mails? (from|about)|reply to|forward (the|this|that|my)|archive|label (my|the|these|all))\b/i;
@@ -159,6 +177,7 @@ function cleanCart(c) {
     if (txt(x.unit, 20)) it.unit = txt(x.unit, 20); // unit price ("$0.12/oz"), so he sees it's the best deal
     if (txt(x.swap, 120)) it.swap = txt(x.swap, 120);
     if (x.suggested) it.suggested = true; // an idea for the week: starts unselected
+    if (typeof x.food === 'boolean') it.food = x.food; // eaten or drunk: into the Kitchen pantry once it's bought (grocery-list.js keepLastOrder)
     if (txt(x.why, 100)) it.why = txt(x.why, 100); // what an idea goes with, or why this size/brand was picked
     // the other sizes/brands it found for this item: he can switch to one on the card before checkout
     const opts = (Array.isArray(x.options) ? x.options : []).slice(0, 6).map((o) => {
@@ -173,6 +192,25 @@ function cleanCart(c) {
     }).filter(Boolean);
     if (opts.length) it.options = opts;
     return it;
+  }).filter(Boolean);
+  return out.length ? out : undefined;
+}
+/* Orders he placed himself that a run found in his store account's order history (the groceries skill's
+   "Orders he placed himself"): [{store, id, date, total, items: [{name, qty, price, image, url, food}]}].
+   The app puts their food into the Kitchen pantry, once per order (renderer/js/grocery-list.js stockOrdered) */
+function cleanOrdered(list) {
+  if (!Array.isArray(list)) return undefined;
+  const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+  const out = list.slice(0, 6).map((o) => {
+    if (!o || typeof o !== 'object' || !txt(o.store, 40)) return null;
+    const items = cleanCart(o.items);
+    if (!items) return null;
+    const ord = { store: txt(o.store, 40), items: items.map((it) => ({ name: it.name, qty: it.qty, price: it.price, image: it.image, url: it.url, food: it.food })) };
+    if (txt(o.id, 60)) ord.id = txt(o.id, 60);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.date || ''))) ord.date = String(o.date);
+    const total = Number(String(o.total == null ? '' : o.total).replace(/[^0-9.]/g, ''));
+    if (total > 0 && total < 100000) ord.total = Math.round(total * 100) / 100;
+    return ord;
   }).filter(Boolean);
   return out.length ? out : undefined;
 }
@@ -218,4 +256,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks };
+  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks };

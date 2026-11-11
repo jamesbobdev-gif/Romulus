@@ -400,6 +400,7 @@ function buildPanel(t){
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.showtimes&&Array.isArray(t.showtimes.days))panel.appendChild(showtimesCard(t)); // seat-map.js: tap a day, then a time
   if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&t.theaters&&Array.isArray(t.theaters.theaters))panel.appendChild(theatersCard(t)); // seat-map.js: the theaters on a map, tap one
   if(hasEmail(t))panel.appendChild(emailBox(t)); // agent-email.js: the email it wrote, sent only by his Send
+  else if(taskWs(t)==='agent'&&!t.done&&t.status!=='needs-you'&&Array.isArray(t.cart)&&t.cart.length&&cartKeptItems(t).length)panel.appendChild(cartWorkingStrip(t)); // grocery-list.js: the order he answered stays up while it works
   else if(wantsYes(t))panel.appendChild(Array.isArray(t.cart)&&t.cart.length?cartStrip(t):hasDraft(t)?draftBox(t):yesButton(t)); // agent-draft.js: the words it will post, editable // grocery-list.js: one tap answers "Reply yes to…"; an order shows its items, all selected
   if(taskWs(t)==='agent'&&!t.done){
     const rb=el('div','agent-reply');
