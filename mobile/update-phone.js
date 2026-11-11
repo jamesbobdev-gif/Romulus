@@ -8,7 +8,9 @@
    Update hands the APK to the system browser, which downloads it; tapping the finished download installs
    it over this copy (the phone asks once to allow installs from the browser). Tasks and settings stay.
    "Later" hides the banner for that version until the next one. A check that fails (offline, or GitHub's hourly
-   limit for the carrier's shared address) is tried again in five minutes, not six hours, and Settings → Updates
+   limit for the carrier's shared address) is tried again in five minutes, not six hours. A release goes up before
+   its APK does (the Android build runs after the desktop ones, which can wait a while for a Mac machine), so a
+   newer release with no APK yet shows nothing and is looked at again in 20 minutes. Settings → Updates
    says which version this phone runs with a Check for updates that looks right now, past any Later or Not now.
    The answer is shared with his other devices (renderer/js/update-sync.js): Update here makes the computers
    update too, and an Update said on a computer shows this banner even after a Later here (Android still
@@ -16,7 +18,7 @@
 (function () {
   var cap = window.Capacitor;
   var version = window.ROMULUS_VERSION, releases = window.ROMULUS_RELEASES;
-  var CHECK_EVERY_MS = 6 * 60 * 60 * 1000, RETRY_MS = 5 * 60 * 1000;
+  var CHECK_EVERY_MS = 6 * 60 * 60 * 1000, RETRY_MS = 5 * 60 * 1000, APK_WAIT_MS = 20 * 60 * 1000;
   var LAST_KEY = 'tasks.update.lastCheck', SKIP_KEY = 'tasks.update.skip';
 
   // 1.0.10 is newer than 1.0.9; a 'v' in front is ignored
@@ -38,7 +40,12 @@
   }
   // the "last check" to remember after one: now when it answered; five minutes short of the next check when it failed
   function lastCheckAfter(ok, now) { return ok ? now : now - CHECK_EVERY_MS + RETRY_MS; }
-  window.phoneUpdate = { isNewer: isNewer, pickRelease: pickRelease, lastCheckAfter: lastCheckAfter };
+  // what to do with the newest release: 'offer' it, 'wait' for its APK to be uploaded, or 'none'
+  function decide(rel, current) {
+    if (!rel || !isNewer(rel.version, current)) return 'none';
+    return rel.apkUrl ? 'offer' : 'wait';
+  }
+  window.phoneUpdate = { isNewer: isNewer, pickRelease: pickRelease, lastCheckAfter: lastCheckAfter, decide: decide, APK_WAIT_MS: APK_WAIT_MS };
 
   if (!cap || typeof cap.isNativePlatform !== 'function' || !cap.isNativePlatform() || !version || !releases) return;
   var store = window.ROMULUS_STORE;
@@ -60,7 +67,9 @@
       status.textContent = 'Looking…'; btn.disabled = true;
       fetchLatest().then(function (rel) {
         try { localStorage.setItem(LAST_KEY, String(lastCheckAfter(true, Date.now()))); } catch (e) {}
-        if (isNewer(rel.version, version)) { status.textContent = 'Romulus ' + rel.version + ' is out.'; show(rel, null, true); }
+        var what = decide(rel, version);
+        if (what === 'offer') { status.textContent = 'Romulus ' + rel.version + ' is out.'; show(rel, null, true); }
+        else if (what === 'wait') status.textContent = 'Romulus ' + rel.version + ' is out, but its phone download is still being built. Try again in a few minutes.';
         else status.textContent = 'Up to date.';
       }).catch(function () { status.textContent = 'Couldn’t reach GitHub. Try again in a minute.'; })
         .then(function () { btn.disabled = false; });
@@ -114,7 +123,12 @@
     if (Date.now() - last < CHECK_EVERY_MS) return;
     try { localStorage.setItem(LAST_KEY, String(Date.now())); } catch (e) {}
     fetchLatest()
-      .then(function (rel) { if (isNewer(rel.version, version)) sharedAnswer(rel.version).then(function (answer) { show(rel, answer); }); })
+      .then(function (rel) {
+        var what = decide(rel, version);
+        if (what === 'offer') sharedAnswer(rel.version).then(function (answer) { show(rel, answer); });
+        // its APK isn't uploaded yet: look again in 20 minutes rather than six hours
+        else if (what === 'wait') { try { localStorage.setItem(LAST_KEY, String(Date.now() - CHECK_EVERY_MS + APK_WAIT_MS)); } catch (e) {} }
+      })
       .catch(function () { try { localStorage.setItem(LAST_KEY, String(lastCheckAfter(false, Date.now()))); } catch (e) {} }); // again in five minutes
   }
 
