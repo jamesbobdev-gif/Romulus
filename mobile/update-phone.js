@@ -8,13 +8,16 @@
    Update hands the APK to the system browser, which downloads it; tapping the finished download installs
    it over this copy (the phone asks once to allow installs from the browser). Tasks and settings stay.
    "Later" hides the banner for that version until the next one.
+   A release goes up before its APK does (the Android build runs after the desktop ones, which can wait a
+   while for a Mac machine), so a newer release with no APK yet shows nothing and is looked at again in 20
+   minutes rather than in 6 hours.
    The answer is shared with his other devices (renderer/js/update-sync.js): Update here makes the computers
    update too, and an Update said on a computer shows this banner even after a Later here (Android still
    needs his tap to install). A Not now said elsewhere keeps the banner away. */
 (function () {
   var cap = window.Capacitor;
   var version = window.ROMULUS_VERSION, releases = window.ROMULUS_RELEASES;
-  var CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+  var CHECK_EVERY_MS = 6 * 60 * 60 * 1000, APK_WAIT_MS = 20 * 60 * 1000;
   var LAST_KEY = 'tasks.update.lastCheck', SKIP_KEY = 'tasks.update.skip';
 
   // 1.0.10 is newer than 1.0.9; a 'v' in front is ignored
@@ -34,7 +37,12 @@
     var apk = (rel.assets || []).filter(function (a) { return /\.apk$/i.test(a.name || ''); })[0];
     return { version: String(rel.tag_name).replace(/^v/i, ''), apkUrl: apk ? apk.browser_download_url : null, page: rel.html_url };
   }
-  window.phoneUpdate = { isNewer: isNewer, pickRelease: pickRelease };
+  // what to do with the newest release: 'offer' it, 'wait' for its APK to be uploaded, or 'none'
+  function decide(rel, current) {
+    if (!rel || !isNewer(rel.version, current)) return 'none';
+    return rel.apkUrl ? 'offer' : 'wait';
+  }
+  window.phoneUpdate = { isNewer: isNewer, pickRelease: pickRelease, decide: decide };
 
   if (!cap || typeof cap.isNativePlatform !== 'function' || !cap.isNativePlatform() || !version || !releases) return;
   // only the APK from the releases page updates itself; a store build is updated by its store (store.js)
@@ -79,8 +87,13 @@
     fetch('https://api.github.com/repos/' + releases + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) {
-        var rel = pickRelease(json);
-        if (rel && isNewer(rel.version, version)) sharedAnswer(rel.version).then(function (answer) { show(rel, answer); });
+        var rel = pickRelease(json), what = decide(rel, version);
+        if (what === 'offer') sharedAnswer(rel.version).then(function (answer) { show(rel, answer); });
+        else if (what === 'wait') {
+          // count this check as made 20 minutes before the next one is due, and look again then if the app is still open
+          try { localStorage.setItem(LAST_KEY, String(Date.now() - CHECK_EVERY_MS + APK_WAIT_MS)); } catch (e) {}
+          setTimeout(check, APK_WAIT_MS + 1000);
+        }
       })
       .catch(function () {}); // offline: next time
   }
