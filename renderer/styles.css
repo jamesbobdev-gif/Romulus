@@ -250,6 +250,20 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .conv-toggle .conv-spin{margin:0 0 0 8px;color:var(--accent)}
 .conv-msg.conv-typing{color:var(--muted);font-style:italic}
 .lane-slider .lane-word.on .spin{color:var(--accent)}
+/* the one "it's going" line in an Agent task's status card (busy-line.js): a turning star, what it's doing in a
+   shimmer, and the time it's been at it */
+.busy-line{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-size:14px;font-weight:600;line-height:1.35;white-space:normal}
+.busy-star{flex:none;width:15px;height:15px;stroke:var(--accent);stroke-width:2.4;stroke-linecap:round;animation:busyStar 2.4s ease-in-out infinite}
+.chip .busy-star{width:10px;height:10px;margin-right:4px;vertical-align:-1px;stroke-width:2.8}
+@keyframes busyStar{0%{transform:rotate(0) scale(.8)}50%{transform:rotate(90deg) scale(1.08)}100%{transform:rotate(180deg) scale(.8)}}
+.busy-verb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);
+  background:linear-gradient(90deg,var(--accent) 0%,var(--accent) 38%,color-mix(in srgb,var(--accent) 30%,var(--surface)) 50%,var(--accent) 62%,var(--accent) 100%);
+  background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:busyShimmer 2.2s linear infinite}
+.busy-verb.swap{animation:busyShimmer 2.2s linear infinite,busySwap .35s ease-out}
+@keyframes busyShimmer{from{background-position:100% 0}to{background-position:-150% 0}}
+@keyframes busySwap{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.busy-meta{flex:none;font-family:var(--mono);font-size:11px;font-weight:400;color:var(--faint);font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.busy-star{animation-duration:6s}.busy-verb,.busy-verb.swap{animation:none;-webkit-text-fill-color:var(--accent)}}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
 .tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */

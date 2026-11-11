@@ -65,7 +65,7 @@ function buildRow(t,canDrag){
   if(isAgentTask&&!t.done){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?(t.goalWait?['','next up']:t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?['working','in steps']:t.trigger&&t.trigger.kind?['','watching']:['ready','finished']):(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
-    if(t.status==='working')sc.insertBefore(el('span','spin'),sc.firstChild); // a spinner so you can see it's going
+    if(t.status==='working')sc.insertBefore(busyStar(),sc.firstChild); // the same turning star as the open card (busy-line.js)
     sc.title=t.status==='needs-you'&&t.parked?'You parked this — the Agent’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'The Agent got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?(t.goalWait?'Waits for the step before it to finish':t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?'Its steps are running one after another':t.trigger&&t.trigger.kind?'Waiting for it to happen: starts '+triggerText(t.trigger):'Claude finished — check it off when you’re happy with it'):'Queued for Claude’s next run';
     // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
     if(t.status==='needs-you'){
@@ -141,15 +141,13 @@ function buildPanel(t){
   panel.addEventListener('pointerdown',function(){ lastPanelId=t.id; });
   panel.addEventListener('focusin',function(){ lastPanelId=t.id; });
 
-  // a model is answering right now (or it's being handed to one): spinners on the toggle, the pill and the conversation
-  const spinning=taskWs(t)==='agent'&&!t.done&&(t.status==='working'||(t.status==='queued'&&!(t.waitUntil&&t.waitUntil>Date.now())))
-    &&!(t.lane==='local'&&localStat&&localStat.configured&&!localStat.online);
+  // while a model is answering (or it's being handed to one), only the status card below moves (busy-line.js):
+  // not the conversation toggle, the conversation or the pill
   // the whole back-and-forth on this task, collapsed until tapped
   if(taskWs(t)==='agent'&&Array.isArray(t.history)&&t.history.length){
     const hist=t.history, open=convOpen.has(t.id);
     const tg=el('button','conv-toggle',(open?'\u25BE':'\u25B8')+' Conversation ('+hist.length+')');
     tg.setAttribute('aria-expanded',String(open));
-    if(spinning)tg.appendChild(el('span','spin conv-spin'));
     tg.addEventListener('click',function(){ if(convOpen.has(t.id))convOpen.delete(t.id); else convOpen.add(t.id); render(); });
     panel.appendChild(tg);
     if(open){
@@ -172,13 +170,7 @@ function buildPanel(t){
         if(who==='claude'&&h.text&&typeof aiReportControl==='function')b.appendChild(aiReportControl(t,h)); // ai-report.js: flag an offensive reply
         th.appendChild(b);
       });
-      if(spinning){ // a "typing" line at the bottom while the answer is coming
-        const w=el('div','conv-msg claude conv-typing');
-        w.appendChild(el('span','spin'));
-        w.appendChild(document.createTextNode((t.lane==='local'?'The local model':cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
-        th.appendChild(w);
-      }
-      panel.appendChild(th);
+      panel.appendChild(th); // while it's going, the status card below is the one moving line (busy-line.js)
       requestAnimationFrame(function(){ th.scrollTop=th.scrollHeight; }); // newest at the bottom, like a chat
     }
   }
@@ -194,8 +186,11 @@ function buildPanel(t){
     if(t.status==='working')sb.classList.add('running');
     // queued: it's being handed to a model (no lane yet = routing hasn't picked one)
     const routing=t.status==='queued'&&!outOfUsage&&!offline;
-    const hd=sb.appendChild(el('b',null,local?(offline?'The local model isn’t reachable':t.status==='working'?'The local model is on it':'Routing to the local model'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
-    if((t.status==='working'||routing)&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
+    // going (working, or being handed over): the one moving line, Claude-style (busy-line.js). Stalled: a plain heading
+    if((t.status==='working'||routing)&&!offline){
+      const who=local?'The local model':cloudName;
+      sb.appendChild(busyLine(t,t.status==='working'?'working':(local||t.lane)?'routing':'picking',who));
+    } else sb.appendChild(el('b',null,offline?'The local model isn’t reachable':cloudName+' is out of usage'));
     sb.appendChild(document.createTextNode(local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
@@ -243,11 +238,9 @@ function buildPanel(t){
     cw.title=onCloud?LANE_NAMES[now]+' has this task. Pick another cloud AI to switch (asks first)':(now?'Switch this task to a cloud AI (asks first)':'Send this task to a cloud AI');
     pick.addEventListener('click',function(e){ e.stopPropagation(); });
     pick.addEventListener('change',function(e){ e.stopPropagation(); if(pick.value&&pick.value!==now)setLane(t,pick.value); });
-    if(spinning&&onCloud)cw.appendChild(el('span','spin'));
     cw.appendChild(pick); cw.appendChild(el('span','lane-caret','▾'));
     tg.appendChild(cw);
     const lw=el('button','lane-word'+(now==='local'?' on':''),localModelName());
-    if(spinning&&now==='local')lw.insertBefore(el('span','spin'),lw.firstChild);
     lw.setAttribute('role','radio'); lw.setAttribute('aria-checked',String(now==='local'));
     lw.title=now==='local'?'The local model ('+localModelName()+') has this task':(now?'Switch this task to the local model (asks first)':'Send this task to the local model');
     lw.addEventListener('click',function(e){ e.stopPropagation(); if(now!=='local')setLane(t,'local'); });
