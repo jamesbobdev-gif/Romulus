@@ -1,6 +1,7 @@
 /* The Kitchen tab's "what to aim for" box (Ideas from your pantry, kitchen.js kDrawIdeas): a list of suggestions
    drops down under it as he types, like a search box's. They come from what he asked for before (newest first),
    a few common aims sized to his Food plan when he has one, and "Something with ..." for each pantry food.
+   Below the box, a row of bubbles shows the first few of them without typing.
    Arrow keys move through them, Enter or a click picks one and asks for ideas right away, Escape closes the list.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists
    them. kAimSuggest has no DOM in it, so test/kitchen-aim.test.js can load it in Node. */
@@ -58,6 +59,17 @@ if(typeof module!=='undefined'&&module.exports)module.exports={kAimSuggest,kAimR
 const KAIM_KEY='kitchen.aims.v1'; // this device's recent aims
 function kAimRecent(){ try{ const a=JSON.parse(localStorage.getItem(KAIM_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
 function kAimSave(aim){ try{ localStorage.setItem(KAIM_KEY,JSON.stringify(kAimRemember(kAimRecent(),aim))); }catch(e){} }
+
+// the bubbles under the box: his recent aims, then common ones; a tap fills the box and asks. ctx: {pantry, plan}
+function kAimChips(ctx,onPick){
+  const row=el('div','kit-aim-chips');
+  kAimSuggest('',{recent:kAimRecent(),plan:(ctx||{}).plan}).slice(0,6).forEach(function(s){
+    const b=el('button','kit-aim-chip',s.text); b.type='button';
+    b.addEventListener('click',function(){ onPick(s.text); });
+    row.appendChild(b);
+  });
+  return row;
+}
 
 // input: the aim box, already in the page. getCtx() → {pantry, plan}. onPick(text): he chose or pressed Enter.
 function kAimBox(input,getCtx,onPick){

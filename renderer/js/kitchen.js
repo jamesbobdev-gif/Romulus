@@ -665,8 +665,9 @@ function kDrawIdeas(){
   field.appendChild(aim); form.appendChild(field); form.appendChild(go); box.appendChild(form);
   if(typing){ aim.focus(); aim.setSelectionRange(caret,caret); } // before the drop-down listens, so it stays shut
   const plan=kPlan();
-  if(typeof kAimBox==='function')kAimBox(aim,function(){ return {pantry:state.kitchen.items.map(function(i){ return i.name; }),plan:plan}; },
-    function(text){ kitchenUI.aim=String(text||'').slice(0,300); if(state.kitchen.items.length)kAskIdeas(); });
+  const pickAim=function(text){ kitchenUI.aim=String(text||'').slice(0,300); aim.value=kitchenUI.aim; if(state.kitchen.items.length)kAskIdeas(); };
+  if(typeof kAimBox==='function')kAimBox(aim,function(){ return {pantry:state.kitchen.items.map(function(i){ return i.name; }),plan:plan}; },pickAim);
+  if(typeof kAimChips==='function')box.appendChild(kAimChips({plan:plan},pickAim));
   if(!state.kitchen.items.length){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
   box.appendChild(el('div','kit-hint',(plan?'Sized to your Food plan: '+macroPlanSay(plan,healthYmd(new Date()))+'.':'Set a Food plan on the Health tab and these are sized to it.')+
     ' Uses your pantry, its amounts and what you’ve told the Agent (foods you avoid, goals).'+(kitchenUI.ideasVia?' Last ideas from '+kitchenUI.ideasVia+'.':'')));
