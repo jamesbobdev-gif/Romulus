@@ -99,6 +99,16 @@ test('"we\'re out of eggs" takes eggs out of the pantry, and an exact name keeps
   assert.deepStrictEqual(k.pantryRanOut(kt, ['egg noodles'], 6), []);
 });
 
+test('an ordered item brings its picture and count into the pantry, and the picture survives a sync', () => {
+  const kt = kitchen(['rice'], []);
+  k.stockPantry(kt, [{ name: 'Bananas, 3 ct', image: 'https://img.example/bananas.jpg' }, { name: 'Rice, 2 lb', image: 'https://img.example/rice.jpg' }], 1, id);
+  const ban = kt.items.find((i) => i.name === 'Bananas');
+  assert.deepStrictEqual([ban.qty, ban.image], [3, 'https://img.example/bananas.jpg']);
+  assert.strictEqual(kt.items.find((i) => i.name === 'rice').image, 'https://img.example/rice.jpg'); // fills in a picture it didn't have
+  assert.strictEqual(k.normKitchen({ items: [ban] }).items[0].image, 'https://img.example/bananas.jpg');
+  assert.strictEqual(k.normKitchen({ items: [{ id: 'x', name: 'x', image: 'javascript:alert(1)' }] }).items[0].image, undefined);
+});
+
 test('two devices merge: newer copy wins, a delete beats an older copy', () => {
   const a = { items: [{ id: 'e', name: 'eggs', qty: 6, updatedAt: 5 }, { id: 'm', name: 'milk', updatedAt: 1 }], recipes: [], tombstones: [] };
   const b = { items: [{ id: 'e', name: 'eggs', qty: 3, updatedAt: 9 }], recipes: [{ id: 'r', name: 'Omelet', ingredients: ['2 eggs'], updatedAt: 2 }], tombstones: [{ id: 'm', deletedAt: 4 }] };

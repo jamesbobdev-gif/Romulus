@@ -100,8 +100,11 @@ const fmtIngredient=function(i){ return (i.qty!=null?kFmtQty(i.qty,i.unit)+' ':'
 function kItem(x){
   if(!x||!x.id||!String(x.name||'').trim())return null;
   const q=x.qty==null||x.qty===''?null:Number(x.qty);
-  return {id:String(x.id),name:String(x.name).trim().slice(0,80),qty:q!=null&&isFinite(q)&&q>0?kRound(q):null,unit:kUnit(x.unit)||'',updatedAt:x.updatedAt||0};
+  const it={id:String(x.id),name:String(x.name).trim().slice(0,80),qty:q!=null&&isFinite(q)&&q>0?kRound(q):null,unit:kUnit(x.unit)||'',updatedAt:x.updatedAt||0};
+  if(kPic(x.image))it.image=String(x.image).slice(0,600); // the product picture from the order it came on
+  return it;
 }
+function kPic(s){ return !!s&&/^https:\/\//i.test(String(s)); }
 function kRecipe(x){
   if(!x||!x.id||!String(x.name||'').trim())return null;
   const ings=(Array.isArray(x.ingredients)?x.ingredients:[]).map(function(i){
@@ -217,24 +220,26 @@ function shoppingList(k){
   });
   return out.sort(function(a,b){ return a.name.localeCompare(b.name); });
 }
-/* Groceries the Agent bought ("Rice, 20 lb", "Eggs") go into the pantry. A known size adds to what's there;
-   with no size the amount isn't known any more, so it's just "some". → the names added */
+/* Groceries the Agent bought ("Rice, 20 lb", "Eggs", or {name, image} from a placed order) go into the
+   pantry. A known size adds to what's there; with no size the amount isn't known any more, so it's just
+   "some". The order's product picture comes along (and fills in one the pantry item didn't have). → the names added */
 function stockPantry(k,names,now,newId){
   now=now||Date.now();
   const added=[];
-  (Array.isArray(names)?names:[]).forEach(function(n){
+  (Array.isArray(names)?names:[]).forEach(function(e){
+    const n=e&&typeof e==='object'?e.name:e, pic=e&&typeof e==='object'&&kPic(e.image)?String(e.image).slice(0,600):null;
     const parts=String(n||'').split(','), base=parts[0].trim();
     if(!base)return;
     const size=parts.length>1?parseIngredient(parts.slice(1).join(',')+' x'):null; // "20 lb" → 20 lb (the x stands in for the name)
     const qty=size&&size.qty!=null?size.qty:null, unit=size&&size.qty!=null?size.unit:'';
     const p=pantryFind(k.items,base);
-    if(!p){ k.items.push({id:newId(),name:base.slice(0,80),qty:qty,unit:unit,updatedAt:now}); added.push(base); return; }
+    if(!p){ const it={id:newId(),name:base.slice(0,80),qty:qty,unit:unit,updatedAt:now}; if(pic)it.image=pic; k.items.push(it); added.push(base); return; }
     const more=qty==null||p.qty==null?null:kConvert(qty,unit,p.unit);
     p.qty=more==null?null:kRound(p.qty+more); p.updatedAt=now; added.push(p.name);
+    if(pic&&!p.image)p.image=pic;
   });
   return added;
 }
-
 /* "We're out of eggs" (grocery-list.js addToGroceries): that food leaves the pantry. A pantry item with
    exactly that name goes; only when there's none does a looser match go ("eggs" → "Large eggs"), so
    "out of milk" doesn't also take the almond milk. → the pantry names taken out */
@@ -548,6 +553,12 @@ function kDrawPantry(){
   if(!items.length){ box.appendChild(kEmpty('The pantry is empty. Add what you have above; groceries the Agent buys come in here on their own.')); return; }
   items.forEach(function(p){
     const row=el('div','kit-row');
+    if(p.image){ // the picture from the order it came on
+      const pic=el('span','kit-pic'), im=document.createElement('img');
+      im.src=p.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+      im.addEventListener('error',function(){ pic.remove(); });
+      pic.appendChild(im); row.appendChild(pic);
+    }
     row.appendChild(el('span','kit-row-name',p.name));
     const q=el('input','sm kit-qty'); q.value=p.qty!=null?kFmtQty(p.qty,p.unit):''; q.placeholder='some'; q.setAttribute('aria-label','How much '+p.name);
     q.title='How much you have, like 2 lb or 6';
