@@ -58,3 +58,51 @@ test('an unmarked order from a store that sells more than food stays out of the 
   ctx.keepLastOrder({ ws: 'agent', title: 'Buy a lamp', cart: [{ name: 'Desk lamp', url: 'https://www.target.com/p/1' }] });
   assert.deepStrictEqual(stocked, []);
 });
+
+/* orders he placed himself, found in his store account by a run (stockOrdered), and the cart check that looks for them */
+test('an order he placed himself goes into the pantry once, food only, and joins the task\'s orders', () => {
+  const { ctx, stocked } = load();
+  const t = { ws: 'agent', title: 'Groceries', cart: [{ name: 'Eggs, 12 ct' }] };
+  ctx.state.tasks.push(t);
+  const found = [{ store: 'Aldi (Instacart)', id: 'A-123', date: '2026-11-08', total: 41.5, items: [
+    { name: 'Large Eggs, 12 ct', url: 'https://www.instacart.com/products/1', food: true },
+    { name: 'Paper Towels, 6 rolls', url: 'https://www.instacart.com/products/2', food: false },
+    { name: 'Bananas', qty: 3, url: 'https://www.instacart.com/products/3', food: true },
+  ] }];
+  const out = ctx.stockOrdered(t, found);
+  assert.deepStrictEqual(names(stocked), ['Large Eggs, 12 ct', 'Bananas, 3 ct']);
+  assert.deepStrictEqual(Array.from(out, (s) => s.n), [2]);
+  assert.strictEqual(t.orders.length, 1);
+  assert.strictEqual(t.orders[0].store, 'instacart');
+  assert.strictEqual(t.orders[0].total, 41.5);
+  assert.strictEqual(t.orders[0].self, true);
+  // the next run sees the same order again: nothing more goes in
+  assert.deepStrictEqual([...ctx.stockOrdered(t, found)], []);
+  assert.strictEqual(stocked.length, 2);
+  assert.strictEqual(t.orders.length, 1);
+  assert.match(ctx.orderedLine(out[0]), /^Into your pantry from your Aldi \(Instacart\) order of Nov 8: 2 items$/);
+});
+
+test('an unmarked order he placed himself goes in whole from a grocery task, not from a lamp task', () => {
+  const { ctx, stocked } = load();
+  const items = [{ name: 'Rice, 5 lb', url: 'https://www.walmart.com/ip/1' }];
+  ctx.stockOrdered({ ws: 'agent', title: 'Groceries' }, [{ store: 'Walmart', id: '1', items }]);
+  assert.deepStrictEqual(names(stocked), ['Rice, 5 lb']);
+  ctx.stockOrdered({ ws: 'agent', title: 'Buy a lamp' }, [{ store: 'Walmart', id: '2', items }]);
+  assert.strictEqual(stocked.length, 1);
+});
+
+test('a waiting cart is looked at a day after it came and again at 3 days, then no more', () => {
+  const { ctx } = load();
+  const day = 864e5, at = 1e12;
+  const t = { ws: 'agent', status: 'needs-you', cart: [{ name: 'Milk' }], cartAt: at };
+  assert.strictEqual(ctx.cartLookDue(t, at + day / 2), false);
+  assert.strictEqual(ctx.cartLookDue(t, at + day), true);
+  t.cartLooks = 1;
+  assert.strictEqual(ctx.cartLookDue(t, at + 2 * day), false);
+  assert.strictEqual(ctx.cartLookDue(t, at + 3 * day), true);
+  t.cartLooks = 2;
+  assert.strictEqual(ctx.cartLookDue(t, at + 30 * day), false);
+  assert.strictEqual(ctx.cartLookDue({ ...t, cartLooks: 0, status: 'queued' }, at + 3 * day), false); // already going
+  assert.strictEqual(ctx.cartLookDue({ ...t, cartLooks: 0, done: true }, at + 3 * day), false);
+});

@@ -102,6 +102,30 @@ function runGroceryTimer(){
   touch();
 }
 if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runGroceryTimer,15*1000); setInterval(runGroceryTimer,60*1000); }
+/* a cart waiting on his yes that he may have ordered himself in the store's own app: a day after it came,
+   and again 3 days after, the Agent looks at that store's order history (t.cartCheck; the groceries skill's
+   "Orders he placed himself"), and an order it finds goes into the pantry (stockOrdered). Any store's cart,
+   not only groceries. t.cartAt is when the cart came (agent-results.js); an older cart counts from now */
+const CART_LOOK_DAYS=[1,3];
+function cartLookDue(t,now){
+  if(taskWs(t)!=='agent'||t.done||t.status!=='needs-you'||!Array.isArray(t.cart)||!t.cart.length||!t.cartAt)return false;
+  const n=t.cartLooks||0;
+  return n<CART_LOOK_DAYS.length&&now>=t.cartAt+CART_LOOK_DAYS[n]*864e5;
+}
+function runCartCheck(){
+  if(!window.desktop||!window.desktop.onAgentResults)return;
+  const now=Date.now(); let changed=false;
+  state.tasks.forEach(function(t){
+    if(taskWs(t)==='agent'&&!t.done&&Array.isArray(t.cart)&&t.cart.length&&!t.cartAt){ t.cartAt=now; changed=true; return; }
+    if(!cartLookDue(t,now))return;
+    t.cartLooks=(t.cartLooks||0)+1; t.cartCheck=true;
+    t.status='queued'; t.reply=null;
+    agentSay(t,'sys','Checking whether you ordered this yourself');
+    changed=true;
+  });
+  if(changed)touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runCartCheck,60*1000); setInterval(runCartCheck,10*60*1000); }
 // one line in a grocery task's panel: when the next order opens
 function groceryNextLine(){
   const at=nextGroceryAt();
@@ -251,6 +275,42 @@ function orderFood(t,items,bought){
   },[]);
   return {stock:stock,covered:covered};
 }
+/* orders he placed himself, outside the app, that a run found in his store account (the answer's `ordered`,
+   agent/task-context.js cleanOrdered): each one's food goes into the Kitchen pantry once, and the order joins
+   t.orders with its number, so no later run stocks it again and the Finance tab can match its charge.
+   → [{store, date, n: how many went into the pantry}] for the orders that were new */
+const orderKey=function(o){ return String(o.store||'').toLowerCase()+'|'+(o.id?String(o.id).toLowerCase():String(o.date||'')+'|'+((o.items||[]).length)); };
+function knownOrderKeys(){
+  const keys=[];
+  state.tasks.forEach(function(x){ (Array.isArray(x.orders)?x.orders:[]).forEach(function(o){ if(o&&o.store&&(o.id||o.date))keys.push(orderKey(o)); }); });
+  return keys;
+}
+function stockOrdered(t,orders){
+  if(!Array.isArray(orders)||!orders.length)return [];
+  const known=knownOrderKeys(), out=[];
+  orders.forEach(function(o){
+    if(!o||!o.store||!Array.isArray(o.items)||!o.items.length)return;
+    const items=o.items.slice(0,60).filter(function(it){ return it&&it.name; }).map(function(it){
+      return {name:String(it.name),qty:it.qty||undefined,price:it.price||undefined,image:it.image||undefined,url:it.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
+    });
+    const store=orderStore(items,o.store)||String(o.store).toLowerCase();
+    const rec={store:store,id:o.id||undefined,date:o.date||undefined,items:items};
+    if(!items.length||known.indexOf(orderKey(rec))!==-1)return;
+    known.push(orderKey(rec));
+    // unmarked items count as food on a grocery task or from a food-only store, as on an order placed here
+    const food=orderFood({ws:'agent',title:String(t.title||'')+' '+o.store,list:t.list},items,null);
+    if(typeof kitchenBought==='function'&&food.stock.length)kitchenBought(food.stock);
+    const at=o.date?new Date(o.date+'T12:00:00').getTime():Date.now();
+    rec.at=isNaN(at)?Date.now():at; rec.self=true;
+    if(o.total)rec.total=o.total;
+    t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([rec]).slice(-12);
+    if(!t.lastOrder||!(t.lastOrder.at>=rec.at))t.lastOrder={at:rec.at,items:items};
+    out.push({store:String(o.store),date:o.date||'',n:food.stock.length});
+  });
+  return out;
+}
+function orderedLine(s){ return 'Into your pantry from your '+s.store+' order'+(s.date?' of '+new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')+': '+(s.n?s.n+' item'+(s.n===1?'':'s'):'nothing marked as food'); };
+
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){
   const gone=Array.isArray(ch.remove)?ch.remove:[];

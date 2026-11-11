@@ -170,3 +170,18 @@ test('cleanDraft: the words to post, kept whole; where is one line; empty is not
   assert.strictEqual(ctx.cleanDraft({ text: '  ' }), undefined);
   assert.strictEqual(ctx.cleanDraft(null), undefined);
 });
+
+test('cleanOrdered: orders he placed himself, with their items, store and number', () => {
+  const out = ctx.cleanOrdered([
+    { store: 'Aldi (Instacart)', id: 'A-1', date: '2026-11-08', total: '$41.50', items: [{ name: 'Eggs, 12 ct', qty: 2, image: 'http://x/y.jpg', url: 'https://www.instacart.com/p/1', food: true, options: [{ name: 'other' }] }] },
+    { store: '', items: [{ name: 'x' }] },          // no store
+    { store: 'Walmart', items: [] },               // no items
+    { store: 'Kroger', date: 'last week', items: [{ name: 'Milk' }] },
+  ]);
+  assert.strictEqual(out.length, 2);
+  assert.deepStrictEqual(out[0], { store: 'Aldi (Instacart)', id: 'A-1', date: '2026-11-08', total: 41.5,
+    items: [{ name: 'Eggs, 12 ct', qty: 2, price: undefined, image: undefined, url: 'https://www.instacart.com/p/1', food: true }] });
+  assert.strictEqual(out[1].date, undefined);
+  assert.strictEqual(ctx.cleanOrdered(null), undefined);
+  assert.strictEqual(ctx.cleanOrdered([{ store: 'x' }]), undefined);
+});

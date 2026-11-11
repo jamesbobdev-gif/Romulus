@@ -133,8 +133,13 @@ if(window.desktop&&window.desktop.onAgentResults){
       let stocked=null; // his list's names the order already put in the pantry, pictures and sizes included
       const co=cartOutcome(t,u,reviewNote,answered);
       if(co.placed)stocked=keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''),u.list&&u.list.bought);
-      if(co.cart==='new'){ t.cart=u.cart; delete t.cartOff; }
-      else if(co.cart==='clear'){ t.cart=null; delete t.cartOff; delete t.cartPick; }
+      // orders he placed himself that it found in his store account: their food goes into the pantry, once
+      // each (grocery-list.js stockOrdered). One that finishes the task is the cart it was holding
+      const self=typeof stockOrdered==='function'?stockOrdered(t,u.ordered):[];
+      self.forEach(function(s){ agentSay(t,'sys',orderedLine(s)); });
+      delete t.cartCheck;
+      if(co.cart==='new'){ t.cart=u.cart; delete t.cartOff; t.cartAt=Date.now(); delete t.cartLooks; } // grocery-list.js runCartCheck counts from here
+      else if(co.cart==='clear'||(self.length&&u.status==='done')){ t.cart=null; delete t.cartOff; delete t.cartPick; delete t.cartAt; delete t.cartLooks; }
       // agent-draft.js: the words waiting on his yes, in full and editable (his edits start over with each answer)
       t.draft=u.draft&&typeof u.draft.text==='string'&&u.draft.text.trim()?{text:u.draft.text,where:String(u.draft.where||'')}:null; if(typeof draftEdits!=='undefined')delete draftEdits[t.id];
       // agent-email.js: an email it wrote, sent only by his Send (fresh with each answer)

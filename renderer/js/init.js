@@ -43,7 +43,9 @@ store.load().then(async function(data){
         if(out.status==='suggested'&&(t.suggest==='look-ahead'||t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'))out.suggest=t.suggest; // a card on the Human tab (lists.js drawSuggestions)
         // an open order's cards (and his picks on them) stay until it is placed, also while a follow-up about it
         // is queued or running (cart-keep.js): dropping them here lost the pictures after a restart mid-run
-        if(!out.done&&Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick; }
+        if(!out.done&&Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick;
+          // when the cart came and how often the Agent looked whether he ordered it himself (grocery-list.js runCartCheck)
+          if(t.cartAt)out.cartAt=Number(t.cartAt)||null; if(t.cartLooks)out.cartLooks=Number(t.cartLooks)||0; if(t.cartCheck&&(out.status==='queued'||out.status==='working'))out.cartCheck=true; }
         // what a waiting answer brought: tap questions, and ◉ Watch's page
         if(out.status==='needs-you'){
           if(Array.isArray(t.ask)&&t.ask.length)out.ask=t.ask;
@@ -54,6 +56,7 @@ store.load().then(async function(data){
         }
         if(Array.isArray(t.cards)&&t.cards.length)out.cards=t.cards; // small cards to look at (his grocery list)
         if(t.lastOrder&&Array.isArray(t.lastOrder.items))out.lastOrder=t.lastOrder; // what he got, for "what's on my list?"
+        if(Array.isArray(t.orders)&&t.orders.length)out.orders=t.orders.slice(-12); // its orders (grocery-list.js): Finance matches charges to them, and an order found twice goes into the pantry once
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
         if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)

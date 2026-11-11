@@ -76,6 +76,21 @@ function ebtBrief(settings, tasks, now = Date.now()) {
     note: 'Worked out by the app from his last known balance minus your EBT orders since; checkout shows the real one.' };
 }
 const isGroceryRun = (t, tasks) => !!groceryListFor(t, tasks) || (t && t.ws === 'agent' && GROCERY_WORDS.test(String(t.title || '')));
+/* the store orders the app already knows (placed by the Agent or found in his account before), newest first:
+   [{store, id, date}]. A run looking at his order history reports only orders not on this
+   (the groceries skill's "Orders he placed himself"); the app skips repeats anyway */
+function knownOrders(tasks) {
+  const out = [];
+  (Array.isArray(tasks) ? tasks : []).forEach((x) => {
+    if (!x || x.ws !== 'agent') return;
+    (Array.isArray(x.orders) ? x.orders : []).forEach((o) => {
+      if (!o || !o.store) return;
+      const at = Number(o.at) || 0;
+      out.push({ store: String(o.store).slice(0, 40), id: o.id ? String(o.id).slice(0, 60) : undefined, date: /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || '')) ? o.date : new Date(at).toISOString().slice(0, 10), at });
+    });
+  });
+  return out.sort((a, b) => b.at - a.at).slice(0, 20).map((o) => ({ store: o.store, id: o.id, date: o.date }));
+}
 
 /* his macro plan (the Health tab's Food plan, renderer/js/health.js: the agent list's ':macros' row holds it
    as JSON text) as a grocery run sees it, or undefined when there is none or it has run out. Per day, for him
@@ -134,4 +149,4 @@ function foodBrief(t, tasks, kitchen) {
   return { usualGroceries: usual.length ? usual : undefined, pantry: pantry.length ? pantry : undefined, recipes: recipes.length ? recipes : undefined };
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, isFoodTask, foodBrief };
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, isFoodTask, foodBrief };

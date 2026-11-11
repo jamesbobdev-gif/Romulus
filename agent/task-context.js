@@ -195,6 +195,25 @@ function cleanCart(c) {
   }).filter(Boolean);
   return out.length ? out : undefined;
 }
+/* Orders he placed himself that a run found in his store account's order history (the groceries skill's
+   "Orders he placed himself"): [{store, id, date, total, items: [{name, qty, price, image, url, food}]}].
+   The app puts their food into the Kitchen pantry, once per order (renderer/js/grocery-list.js stockOrdered) */
+function cleanOrdered(list) {
+  if (!Array.isArray(list)) return undefined;
+  const txt = (x, n) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+  const out = list.slice(0, 6).map((o) => {
+    if (!o || typeof o !== 'object' || !txt(o.store, 40)) return null;
+    const items = cleanCart(o.items);
+    if (!items) return null;
+    const ord = { store: txt(o.store, 40), items: items.map((it) => ({ name: it.name, qty: it.qty, price: it.price, image: it.image, url: it.url, food: it.food })) };
+    if (txt(o.id, 60)) ord.id = txt(o.id, 60);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.date || ''))) ord.date = String(o.date);
+    const total = Number(String(o.total == null ? '' : o.total).replace(/[^0-9.]/g, ''));
+    if (total > 0 && total < 100000) ord.total = Math.round(total * 100) / 100;
+    return ord;
+  }).filter(Boolean);
+  return out.length ? out : undefined;
+}
 /* The same claim when the list is end-to-end encrypted (a.v2): the server can't read the task, so the worker
    opens the list, stamps the task and writes it back compare-and-swap. Two workers racing both read the same
    version, and the database takes only the first write back (sync_put's p_prev), so still only one wins.
@@ -237,4 +256,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks };
+  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks };
