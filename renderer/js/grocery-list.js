@@ -23,7 +23,8 @@ const isGroceryTask=function(t){ return taskWs(t)==='agent'&&(GROCERY_WORDS.test
 
 // the agent's changes: {add:[{name,every}], bought:[names], remove:[names]}. Never a whole new list,
 // so what he added or removed while it worked stays as he left it
-function applyListUpdate(t,ch){
+// covered: bought names the placed order already put in the pantry, with pictures and sizes (keepLastOrder)
+function applyListUpdate(t,ch,covered){
   if(!ch||typeof ch!=='object')return;
   if(!normList(t.list).length){ const k=groceryTask(); if(k&&k!==t)t.list=normList(k.list); } // a new grocery task starts from his list
   const list=normList(t.list), today=new Date().toISOString().slice(0,10);
@@ -31,7 +32,8 @@ function applyListUpdate(t,ch){
   (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const it=listItem(a); if(it&&!list.some(function(x){ return sameItem(x.name,it.name); }))list.push(it); });
   (Array.isArray(ch.bought)?ch.bought:[]).forEach(function(n){ list.forEach(function(x){ if(sameItem(x.name,n)){ x.last=today; x.out=false; } }); });
   t.list=list.length?list:null;
-  if(typeof kitchenBought==='function')kitchenBought(ch.bought); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
+  const skip=Array.isArray(covered)?covered:[];
+  if(typeof kitchenBought==='function'&&Array.isArray(ch.bought))kitchenBought(ch.bought.filter(function(n){ return skip.indexOf(n)===-1; })); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
   if(typeof famCheckOff==='function')famCheckOff(ch.bought); // and off the group's shared Groceries list (family.js)
 }
 
@@ -213,7 +215,8 @@ function keepLastOrder(t,note,bought){
     return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
   });
   if(!items.length)return;
-  if(typeof kitchenBought==='function')kitchenBought(orderFood(t,items,bought));
+  const food=orderFood(t,items,bought);
+  if(typeof kitchenBought==='function')kitchenBought(food.stock);
   t.lastOrder={at:Date.now(),items:items};
   const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
   // the EBT part, for the Finance tab's EBT wallet (finance-ebt.js): what went on EBT, and the balance left
@@ -221,25 +224,32 @@ function keepLastOrder(t,note,bought){
   const ebt=e1.ebt||e2.ebt, left=e1.left!=null?e1.left:e2.left;
   t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{},
     ebt?{ebt:ebt}:{},left!=null&&left>=0?{ebtLeft:left}:{})]).slice(-12);
+  return food.covered;
 }
-/* what on a placed order goes into the Kitchen pantry (kitchen.js kitchenBought) → names ("Name, 18 ct"):
+/* what on a placed order goes into the Kitchen pantry (kitchen.js kitchenBought) →
+   {stock:[{name:"Name, 18 ct", image}], covered:[his list's names these stand for]}:
    the items the Agent marked food; on a cart from before it marked them, everything on a grocery task or
-   from a food-only store (Instacart, Kroger, Aldi). Never what's already on bought (his list's names for
-   the same things), so nothing is counted twice */
+   from a food-only store (Instacart, Kroger, Aldi). Each goes in with its picture and how many he got.
+   A name on bought (his list's word for the same thing, "Eggs") that a cart item stands for is in covered,
+   so applyListUpdate doesn't stock it a second time without its size */
 const FOOD_STORES=['instacart','kroger','aldi'];
 function orderFood(t,items,bought){
   const marked=items.some(function(it){ return typeof it.food==='boolean'; });
   const all=!marked&&(isGroceryTask(t)||FOOD_STORES.indexOf(orderStore(items,t.title))!==-1);
-  const done=(Array.isArray(bought)?bought:[]).map(function(n){ return String(n||'').split(',')[0]; });
   const same=typeof sameFood==='function'?sameFood:sameItem;
-  return items.filter(function(it){ return marked?it.food===true:all; })
-    .filter(function(it){ const base=it.name.split(',')[0]; return !done.some(function(n){ return same(base,n); }); })
-    .reduce(function(out,it){ // ×2 of "Rice, 20 lb" is 40 lb: once per one bought, so the sizes add up
-      if(!(it.qty>1))out.push(it.name);
-      else if(it.name.indexOf(',')===-1)out.push(it.name+', '+it.qty+' ct');
-      else for(let i=0;i<it.qty;i++)out.push(it.name);
-      return out;
-    },[]);
+  const food=items.filter(function(it){ return marked?it.food===true:all; });
+  const covered=(Array.isArray(bought)?bought:[]).filter(function(n){
+    const b=String(n||'').split(',')[0];
+    return food.some(function(it){ return same(it.name.split(',')[0],b); });
+  });
+  const stock=food.reduce(function(out,it){ // ×2 of "Rice, 20 lb" is 40 lb: once per one bought, so the sizes add up
+    const pic=it.image&&/^https:\/\//i.test(String(it.image))?String(it.image):undefined;
+    const n=it.qty>1?it.qty:1;
+    if(it.name.indexOf(',')===-1)out.push({name:it.name+', '+n+' ct',image:pic});
+    else for(let i=0;i<n;i++)out.push({name:it.name,image:pic});
+    return out;
+  },[]);
+  return {stock:stock,covered:covered};
 }
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){

@@ -130,8 +130,9 @@ if(window.desktop&&window.desktop.onAgentResults){
       // the order went through (it marked what was bought, or finished right after his yes to it): its cards
       // are his last order, pictures and all, and its cart goes. Any other answer keeps the cart and his
       // picks as they were, so the next run (whichever AI) still has them (cart-keep.js)
+      let stocked=null; // his list's names the order already put in the pantry, pictures and sizes included
       const co=cartOutcome(t,u,reviewNote,answered);
-      if(co.placed)keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''),u.list&&u.list.bought);
+      if(co.placed)stocked=keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''),u.list&&u.list.bought);
       if(co.cart==='new'){ t.cart=u.cart; delete t.cartOff; }
       else if(co.cart==='clear'){ t.cart=null; delete t.cartOff; delete t.cartPick; }
       // agent-draft.js: the words waiting on his yes, in full and editable (his edits start over with each answer)
@@ -147,7 +148,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       else if(Array.isArray(t.cards)&&t.cards.length&&!t.cart&&u.list)t.cards=listCardsChanged(t.cards,u.list);
       // suggestions for the week start unselected: he taps the ones he wants
       if(co.cart==='new'){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
-      if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
+      if(u.list)applyListUpdate(t,u.list,stocked); // grocery-list.js: what it bought, added or removed
       // a meal plan's per-day targets: his Food plan (health.js) is set to them, and grocery orders buy for it
       if(u.macros&&typeof healthSetPlan==='function'){ const line=healthSetPlan(u.macros,t.title); if(line)agentSay(t,'sys','Food plan (Health tab): '+line); }
       // the class sweep's finds go on his School list (wiring.js importClassItems)
