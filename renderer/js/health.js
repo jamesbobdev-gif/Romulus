@@ -470,44 +470,31 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
   // the top: this week's exercise as a ring, and today's steps, exercise and last night's sleep as three pills
   const NS='http://www.w3.org/2000/svg';
   const svg=function(tag,attrs,parent){ const n=document.createElementNS(NS,tag); Object.keys(attrs).forEach(function(k){ n.setAttribute(k,attrs[k]); }); if(parent)parent.appendChild(n); return n; };
-  const ICON={ // 24x24 line drawings
-    steps:'M4 16c0-3 1-5 2-7l3 1c1 2 3 3 6 3h3c2 0 3 1 3 2v1H4z M4 19h17',
-    exercise:'M14 4.5a1.5 1.5 0 1 0 0 .01 M6 21l3-6 3 2v4 M9 15l1-5 4-1 3 3h3 M10 10l-4 1-1 3',
-    sleep:'M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5z'
-  };
-  const icon=function(kind){
-    const s=svg('svg',{viewBox:'0 0 24 24','aria-hidden':'true'});
-    svg('path',{d:ICON[kind]},s); return s;
-  };
   const ring=function(week,todayMin,target){
-    const pct=healthPct(week,target), box=el('div','health-ring');
-    box.setAttribute('role','img'); box.setAttribute('aria-label','Weekly exercise: '+week+' of '+target+' minutes, '+pct+' percent');
-    const s=svg('svg',{viewBox:'0 0 200 200'},box), R=78, C=2*Math.PI*R;
-    svg('circle',{cx:100,cy:100,r:R,class:'health-ring-track'},s);
-    // from the bottom, clockwise; a sliver even at 0 so the "+today" badge has somewhere to sit
-    const frac=Math.max(0.03,Math.min(1,week/(target||1)));
-    svg('circle',{cx:100,cy:100,r:R,class:'health-ring-arc','stroke-dasharray':(frac*C)+' '+C,transform:'rotate(90 100 100)'},s);
-    const a=Math.PI/2+frac*2*Math.PI, bx=100+R*Math.cos(a), by=100+R*Math.sin(a);
-    svg('circle',{cx:bx,cy:by,r:13,class:'health-ring-badge'},s);
-    svg('text',{x:bx,y:by,class:'health-ring-badge-t'},s).textContent='+'+todayMin;
-    // the title follows the top of the inner circle
-    svg('path',{id:'healthRingTitle',d:'M 50 100 A 50 50 0 0 1 150 100',fill:'none'},s);
-    const title=svg('text',{class:'health-ring-title'},s), tp=svg('textPath',{href:'#healthRingTitle',startOffset:'50%'},title);
-    tp.textContent='Weekly exercise';
-    svg('text',{x:100,y:112,class:'health-ring-pct'},s).textContent=pct+'%';
-    svg('text',{x:100,y:136,class:'health-ring-of'},s).textContent=week+' of '+target+' min';
-    return box;
+    const pct=healthPct(week,target), card=el('div','health-tile health-ring-card');
+    card.appendChild(el('div','health-tile-k','This week'));
+    const box=el('div','health-ring');
+    box.setAttribute('role','img'); box.setAttribute('aria-label','Exercise this week: '+week+' of '+target+' minutes, '+pct+' percent');
+    const s=svg('svg',{viewBox:'0 0 120 120'},box), R=52, C=2*Math.PI*R;
+    svg('circle',{cx:60,cy:60,r:R,class:'health-ring-track'},s);
+    if(week>0)svg('circle',{cx:60,cy:60,r:R,class:'health-ring-arc','stroke-dasharray':(Math.min(1,week/(target||1))*C)+' '+C,transform:'rotate(-90 60 60)'},s);
+    const mid=el('div','health-ring-mid');
+    mid.appendChild(el('div','health-tile-v',pct+'%'));
+    mid.appendChild(el('div','health-tile-s',week+' of '+target+' min'));
+    box.appendChild(mid);
+    card.appendChild(box);
+    card.appendChild(el('div','health-tile-s health-ring-today',todayMin?'+'+todayMin+' min today':'Exercise since Monday'));
+    return card;
   };
   const pill=function(kind,label,value,sub,pct){
-    const p=el('div','health-pill health-pill-'+kind);
-    p.style.setProperty('--p',pct+'%');
-    const ic=el('span','health-pill-ic'); ic.appendChild(icon(kind)); p.appendChild(ic);
-    const txt=el('div','health-pill-txt');
-    if(label)txt.appendChild(el('div','health-pill-k',label));
-    txt.appendChild(el('div','health-pill-v',value));
-    if(sub)txt.appendChild(el('div','health-pill-s',sub));
-    p.appendChild(txt);
-    return p;
+    const c=el('div','health-tile health-pill');
+    const head=el('div','health-pill-head');
+    head.appendChild(el('div','health-tile-k',label));
+    if(sub)head.appendChild(el('div','health-tile-s',sub));
+    c.appendChild(head);
+    c.appendChild(el('div','health-tile-v',value));
+    if(pct!==null){ const bar=el('div','health-bar'), fill=el('div','health-fill'); fill.style.width=pct+'%'; bar.appendChild(fill); c.appendChild(bar); }
+    return c;
   };
   const drawTop=function(t){
     const tk=today(), w=healthWeek(state.health.days,Date.now());
@@ -518,10 +505,9 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     top.appendChild(ring(w.week,w.today,exDaily?exDaily*7:150));
     const pills=el('div','health-pills');
     const steps=t&&t.steps, ex=t&&t.exerciseMin, sl=t&&t.sleepMin;
-    pills.appendChild(pill('steps','Steps',fmt('steps',steps),'',healthPct(steps,stepGoal)));
-    pills.appendChild(pill('exercise','Exercise',fmt('exercise',ex),'',healthPct(ex,exGoal)));
-    const word=healthSleepWord(sl,sleepGoal);
-    pills.appendChild(pill('sleep','',fmt('sleep',sl),word?'Last night · '+word:'Last night',100));
+    pills.appendChild(pill('steps','Steps today',fmt('steps',steps),'of '+fmt('steps',stepGoal),healthPct(steps,stepGoal)));
+    pills.appendChild(pill('exercise','Exercise today',fmt('exercise',ex),'of '+fmt('exercise',exGoal),healthPct(ex,exGoal)));
+    pills.appendChild(pill('sleep','Sleep last night',fmt('sleep',sl),healthSleepWord(sl,sleepGoal),healthPct(sl,sleepGoal)));
     top.appendChild(pills);
     return top;
   };
