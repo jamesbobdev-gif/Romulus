@@ -81,3 +81,32 @@ test('a food store charge no order explains starts one look at that store', () =
   const before = [{ ws: 'agent', orderLook: 'instacart', created: now - 3 * DAY, done: true }];
   assert.deepStrictEqual(storesToCheck(txs.slice(0, 1), {}, before, now), ['instacart']);
 });
+
+test('a finished look (status done, not checked off) lets the next charge start one', () => {
+  const { storesToCheck } = require('../renderer/js/order-match');
+  const now = AT + 10 * DAY;
+  const txs = [{ id: 'i1', amount: -41.5, posted: sec(now - DAY), description: 'INSTACART*ALDI' }];
+  const finished = [{ ws: 'agent', orderLook: 'instacart', created: now - 3 * DAY, done: false, status: 'done' }];
+  assert.deepStrictEqual(storesToCheck(txs, {}, finished, now), ['instacart']);
+  // run again since the charge (lookAt): covered
+  const rerun = [{ ...finished[0], lookAt: now - 12 * 3600000 }];
+  assert.deepStrictEqual(storesToCheck(txs, {}, rerun, now), []);
+});
+
+test('once he uses Instacart, its orders get a look every 3 days', () => {
+  const { regularLooks } = require('../renderer/js/order-match');
+  const now = AT + 10 * DAY;
+  assert.deepStrictEqual(regularLooks([], now), []);
+  assert.deepStrictEqual(regularLooks([{ ws: 'personal', title: 'Instacart coupon' }], now), []);
+  // an order from it, a task about it, or an earlier look all count
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Groceries', orders: [{ store: 'aldi (instacart)', at: now - 9 * DAY }] }], now), ['instacart']);
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Order eggs on Instacart' }], now), ['instacart']);
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Eggs', history: [{ who: 'me', text: 'got it on instacart' }] }], now), ['instacart']);
+  // a line the app wrote itself doesn't
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Eggs', history: [{ who: 'sys', text: 'Instacart' }] }], now), []);
+  const look = { ws: 'agent', title: 'Check my Instacart orders for the pantry', orderLook: 'instacart', done: false };
+  assert.deepStrictEqual(regularLooks([{ ...look, created: now - 2 * DAY, status: 'done' }], now), []);
+  assert.deepStrictEqual(regularLooks([{ ...look, created: now - 4 * DAY, status: 'done' }], now), ['instacart']);
+  assert.deepStrictEqual(regularLooks([{ ...look, created: now - 9 * DAY, lookAt: now - DAY, status: 'done' }], now), []);
+  assert.deepStrictEqual(regularLooks([{ ...look, created: now - 4 * DAY, status: 'working' }], now), []);
+});

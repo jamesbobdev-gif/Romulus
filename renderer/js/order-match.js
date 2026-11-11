@@ -110,14 +110,21 @@ function matchOrders(txs,orders,now){
    → ['instacart', ...] */
 const LOOK_STORES=['instacart','walmart','target','costco','kroger','aldi'];
 const LOOK_DAYS=4, LOOK_GAP_DAYS=2;
-function storesToCheck(txs,bought,tasks,now){
-  now=now||Date.now();
+/* the looks so far, per store: when the last one started (t.lookAt when a look task was run again,
+   grocery-list.js runRegularLooks, else when it was made) and whether one is still going. A finished Agent
+   task keeps done:false and has status 'done', so that's what ends a look */
+function orderLooks(tasks){
   const last={}, open={};
   (tasks||[]).forEach(function(t){
     if(!t||t.ws!=='agent'||!t.orderLook)return;
-    last[t.orderLook]=Math.max(last[t.orderLook]||0,t.created||0);
-    if(!t.done)open[t.orderLook]=true;
+    last[t.orderLook]=Math.max(last[t.orderLook]||0,t.lookAt||0,t.created||0);
+    if(!t.done&&t.status!=='done')open[t.orderLook]=true;
   });
+  return {last:last,open:open};
+}
+function storesToCheck(txs,bought,tasks,now){
+  now=now||Date.now();
+  const looks=orderLooks(tasks), last=looks.last, open=looks.open;
   const out=[];
   (txs||[]).forEach(function(t){
     if(!t||!(t.amount<0)||(bought&&bought[t.id]))return;
@@ -132,5 +139,26 @@ function storesToCheck(txs,bought,tasks,now){
   });
   return out;
 }
+/* Instacart orders he places in its own app don't always leave a bank charge the Finance tab can see (no bank
+   linked, or paid with EBT), so once he uses Instacart the Agent also looks at his Instacart orders every 3
+   days, whatever the bank shows, and their food goes into the pantry. "Uses Instacart": an order from it on a
+   task, an earlier look at it, or an Agent task that talks about it. None while a look is going.
+   → ['instacart'] or [] */
+const REGULAR_LOOKS=[['instacart',/instacart/i]], REGULAR_LOOK_DAYS=3;
+function regularLooks(tasks,now){
+  now=now||Date.now();
+  const looks=orderLooks(tasks), out=[];
+  REGULAR_LOOKS.forEach(function(r){
+    const s=r[0], re=r[1];
+    if(looks.open[s]||now-(looks.last[s]||0)<REGULAR_LOOK_DAYS*ORDER_DAY)return;
+    const uses=looks.last[s]||(tasks||[]).some(function(t){
+      if(!t||t.ws!=='agent')return false;
+      if((Array.isArray(t.orders)?t.orders:[]).some(function(o){ return o&&re.test(String(o.store||'')); }))return true;
+      return re.test(String(t.title||''))||(Array.isArray(t.history)?t.history:[]).some(function(h){ return h&&h.who!=='sys'&&re.test(String(h.text||'')); });
+    });
+    if(uses)out.push(s);
+  });
+  return out;
+}
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={orderTotalFrom:orderTotalFrom,orderEbtFrom:orderEbtFrom,orderStore:orderStore,agentOrders:agentOrders,emailOrders:emailOrders,matchOrders:matchOrders,storesToCheck:storesToCheck}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={orderTotalFrom:orderTotalFrom,orderEbtFrom:orderEbtFrom,orderStore:orderStore,agentOrders:agentOrders,emailOrders:emailOrders,matchOrders:matchOrders,storesToCheck:storesToCheck,regularLooks:regularLooks}; }
