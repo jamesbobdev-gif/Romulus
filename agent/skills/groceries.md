@@ -259,6 +259,12 @@ belongs in his Kitchen pantry, so look at his order history (signed in, only loo
   them in `ordered`, status done. None (it was in the store, or the page wants a sign-in): status
   done, and say so in one line.
 - he says he ordered it himself ("I already ordered it", "got it on Instacart").
+- the task has `pantryFill`: he asked in his own words for an order to go into his pantry ("check my
+  Instacart orders for the pantry", "put it into the pantry"). Do it now, without asking which items:
+  every food item on the order goes in. Open the order's own page and send it in `ordered`, status done.
+  An order you already told him about on this task still goes in `ordered` (unless it's in `knownOrders`).
+Writing "added to your pantry" in the note changes nothing: the pantry only fills from `ordered` (and
+from `list.bought` or a placed cart). Never say food went into his pantry unless you sent it there.
 - a new grocery task, before you build the order: the stores he used lately (`lastOrder`, `knownOrders`),
   for orders since `lastOrder` that aren't in `knownOrders`. One look per store, from one page; skip a
   store whose orders page wants a sign-in.

@@ -51,7 +51,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, foodBrief } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, foodBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -251,7 +251,9 @@ async function startAgentRun() {
     // orders the app already has, so a look at his order history reports only new ones (groceries skill)
     // a Finance charge at this store that no order explains (grocery-list.js lookForOwnOrders): only the store's name comes
     orderLook: typeof t.orderLook === 'string' ? t.orderLook.slice(0, 20) : undefined,
-    knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook ? knownOrders(allTasks) : undefined,
+    // he asked in his own words for an order to go into his pantry (agent/grocery.js asksPantryFill): send it in `ordered`
+    pantryFill: !t.orderLook && asksPantryFill(t) ? true : undefined,
+    knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook || asksPantryFill(t) ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
     macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
@@ -467,6 +469,12 @@ async function startAgentRun() {
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
     u.ordered = sawMail ? null : (cleanOrdered(u.ordered) || null); // orders he placed himself: their food goes into the pantry
+    // "added to your pantry" with nothing that puts it there: the pantry didn't change, so it doesn't say it did
+    if (emptyPantryClaim(u)) {
+      agentLog('pantry: ' + u.id + ' said it added food but sent no items');
+      u.status = 'needs-you';
+      u.note = 'Nothing went into your pantry yet: the answer said it did, but it didn\'t send the order\'s items. Reply "try again" to have it look at the order and send them.';
+    }
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
     u.email = u.status === 'needs-you' ? (mailSend.cleanEmail(u.email) || null) : null; // an email he sends with his Send (agent/mail-send.js)
     // a case waiting on someone else: when to look again (agent/triggers.js followUp). A run that saw his
