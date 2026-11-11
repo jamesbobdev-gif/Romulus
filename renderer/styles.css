@@ -499,7 +499,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .idea-group:hover .idea-gsize::after,.idea-gsize.on::after{opacity:.6}
 body.idea-sizing,body.idea-sizing *{cursor:ew-resize!important;user-select:none}
 @media(max-width:520px),(pointer:coarse){.idea-gsize{display:none}}
-.idea-groups{display:grid;grid-template-columns:repeat(auto-fit,min(var(--idea-w,280px),100%));justify-content:center;gap:14px;align-items:start}
+.idea-groups{display:grid;grid-template-columns:repeat(auto-fit,min(var(--idea-w,280px),100%));grid-auto-rows:1px;justify-content:center;column-gap:14px;row-gap:0;align-items:start} /* rows are 1px: ideaPack() stacks each group in its column */
 .idea-group{position:relative;background:color-mix(in srgb,var(--g,var(--chip)) 30%,var(--surface));border:1px solid var(--hairline);border-radius:14px;padding:8px 10px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
 .idea-ghead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -564,6 +564,7 @@ body.gdragging,body.gdragging *{cursor:grabbing!important;user-select:none}
   box-shadow:0 1px 2px rgba(60,64,67,.18),0 1px 4px 1px rgba(60,64,67,.08)}
 .idea-addb:hover{color:var(--ink)}
 .idea-empty{color:var(--faint);font-size:13px;padding:6px 2px}
+.idea-groups>.idea-empty{grid-column:1/-1;grid-row:span 40}
 @media(max-width:520px){.idea-groups{grid-template-columns:1fr}}
 /* the header and tabs stay in the usual column; only the board spreads wider, centred under it, so bigger boxes still sit side by side */
 body.ideas-mode #ideasView{width:min(1600px,calc(100vw - 40px));margin-left:calc((100% - min(1600px,calc(100vw - 40px)))/2)}
