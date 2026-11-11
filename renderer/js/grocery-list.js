@@ -126,6 +126,22 @@ function runCartCheck(){
   if(changed)touch();
 }
 if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runCartCheck,60*1000); setInterval(runCartCheck,10*60*1000); }
+/* an order he placed himself with no task here at all: the Finance tab saw a charge at that store that no
+   order explains (order-match.js storesToCheck), so an Agent task looks at the store's order history
+   (t.orderLook; the groceries skill's "Orders he placed himself") and what it finds goes into the pantry.
+   The task carries only the store's name: nothing from the bank goes to the Agent */
+const LOOK_NAMES={instacart:'Instacart',walmart:'Walmart',target:'Target',costco:'Costco',kroger:'Kroger',aldi:'Aldi'};
+function lookForOwnOrders(stores){
+  if(!Array.isArray(stores)||!stores.length)return;
+  stores.forEach(function(s){
+    const name=LOOK_NAMES[s]||s;
+    const t={id:uid(),title:'Check my '+name+' orders for the pantry',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+      created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],orderLook:s};
+    agentSay(t,'sys','Looking at your recent '+name+' orders for food to add to your pantry');
+    state.tasks.push(t);
+  });
+  touch();
+}
 // one line in a grocery task's panel: when the next order opens
 function groceryNextLine(){
   const at=nextGroceryAt();

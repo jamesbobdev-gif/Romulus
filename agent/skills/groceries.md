@@ -253,6 +253,11 @@ He sometimes orders on the store's own site or app instead of saying yes here. W
 belongs in his Kitchen pantry, so look at his order history (signed in, only looking) when:
 - the task has `cartCheck`: the app started this run because the cart has waited a day or more. Open
   the orders page of the store the cart is at.
+- the task has `orderLook` (a store: "instacart", "walmart"...): the app saw he bought something there
+  that no order here explains. Open that store's orders page and look at the last few days' orders not
+  in `knownOrders`. That's the whole task: don't build a cart or ask what to order. Found some: send
+  them in `ordered`, status done. None (it was in the store, or the page wants a sign-in): status
+  done, and say so in one line.
 - he says he ordered it himself ("I already ordered it", "got it on Instacart").
 - a new grocery task, before you build the order: the stores he used lately (`lastOrder`, `knownOrders`),
   for orders since `lastOrder` that aren't in `knownOrders`. One look per store, from one page; skip a

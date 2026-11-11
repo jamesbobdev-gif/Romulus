@@ -249,7 +249,9 @@ async function startAgentRun() {
     // the app started this run to see whether he placed that cart's order himself (grocery-list.js runCartCheck)
     cartCheck: t.cartCheck && cartBrief(t) ? true : undefined,
     // orders the app already has, so a look at his order history reports only new ones (groceries skill)
-    knownOrders: isGroceryRun(t, allTasks) || t.cartCheck ? knownOrders(allTasks) : undefined,
+    // a Finance charge at this store that no order explains (grocery-list.js lookForOwnOrders): only the store's name comes
+    orderLook: typeof t.orderLook === 'string' ? t.orderLook.slice(0, 20) : undefined,
+    knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
     macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
