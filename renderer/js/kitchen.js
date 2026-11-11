@@ -484,7 +484,7 @@ function kBuild(view){
       '<button type="button" class="kit-tab" data-v="shop" role="tab">Shopping list</button>'+
     '</div>'+
     '<div id="kitSyncNote" class="kit-note" hidden></div>'+
-    '<section id="kit-meals"><div id="kitAfter"></div><div id="kitPhotoMeal"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
+    '<section id="kit-meals"><div id="kitAfter"></div><div id="kitPhotoMeal"></div><div id="kitWeek"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
     '<section id="kit-pantry" hidden>'+
       '<div class="kit-undo-bar" hidden><button id="kitUndo" type="button" class="ghost kit-undo" hidden>Undo</button></div>'+
       '<div class="kit-form"><input id="kitAddItem" class="sm kit-grow" placeholder="Add food you have: 2 lb chicken, eggs, 1 bag rice" aria-label="Add food">'+
@@ -602,6 +602,8 @@ function kDrawAfter(){
 function kDrawMeals(){
   kDrawAfter();
   if(typeof kpDraw==='function')kpDraw('meal',$('kitPhotoMeal')); // kitchen-photo.js
+  if(typeof kWeekDraw==='function'&&$('kitWeek'))kWeekDraw($('kitWeek'),{items:state.kitchen.items,recipes:state.kitchen.recipes,plan:kPlan(),
+    aim:kitchenUI.aim,redraw:renderKitchen,toGroceries:kitchenToGroceries}); // kitchen-week.js
   kDrawIdeas();
   const box=$('kitMeals'); box.innerHTML='';
   if(!state.kitchen.recipes.length){ box.appendChild(kEmpty('No recipes yet. Add the meals you make under Recipes, and what food you have under Pantry: this shows what you can make.')); return; }

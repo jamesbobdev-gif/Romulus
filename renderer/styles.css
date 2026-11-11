@@ -1309,6 +1309,17 @@ body.review-open .top-right{display:none!important}
 .kit-aim-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 2px 0}
 .kit-aim-chip{border:1px solid var(--hairline);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--ink);cursor:pointer}
 .kit-aim-chip:hover{background:var(--chip)}
+.kit-aim-chip.on{background:color-mix(in srgb,var(--accent) 22%,transparent);border-color:var(--accent)}
+.kit-week-form .kit-week-slots{margin:0;flex:1}
+.kit-week{padding:4px 12px}
+.kit-week-day{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--hairline)}
+.kit-week-day:first-child{border-top:0}
+.kit-week-label{font-family:var(--mono);font-size:11.5px;color:var(--muted);width:76px;flex:none;padding-top:2px}
+.kit-week-meals{flex:1;min-width:0}
+.kit-week-meal{display:flex;gap:8px;font-size:13.5px;color:var(--ink);padding:1px 0}
+.kit-week-slot-name{color:var(--muted);width:72px;flex:none}
+.kit-week-buy{margin:0;padding-left:18px;font-size:13.5px;color:var(--ink);columns:2;column-gap:24px}
+@media(max-width:520px){.kit-week-buy{columns:1}.kit-week-label{width:56px}}
 .kit-aim-wrap{position:relative}
 .kit-aim-wrap input{width:100%;box-sizing:border-box}
 .kit-aim-list{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;list-style:none;margin:0;padding:4px 0;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);max-height:320px;overflow-y:auto}
