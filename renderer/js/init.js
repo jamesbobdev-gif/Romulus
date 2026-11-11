@@ -9,7 +9,7 @@ function claimIsMine(t,host){
   if(String(t.claimedBy).split('@').slice(1).join('@')===host)return true;
   return !!t.claimedAt&&Date.now()-t.claimedAt>3*60*60*1000;
 }
-$('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+$('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
 $('stamp').addEventListener('click',function(){ switchTab('calendar'); });
 store.load().then(async function(data){
   // desktop: the sync settings come from config.json (sync.js started reading them; nothing is kept in localStorage)

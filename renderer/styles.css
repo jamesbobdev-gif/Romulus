@@ -2,6 +2,7 @@
   --bg:#FBFBFA;--surface:#FFFFFF;--ink:#161616;--muted:#71716C;--faint:#9A9A94;
   --hairline:#E9E9E5;--chip:#F1F1EE;--accent:#2742C8;--accent-dim:#1F36AC;
   --late:#C03B2B;--late-bg:#FAEBE8;--late-line:#F1D2CC;
+  --edge:transparent;--check-line:#C9C9C3; /* --edge: a hairline that only shows in the dark, where a shadow can't lift a card off the page */
   --display:'Schibsted Grotesk',system-ui,-apple-system,sans-serif;
   --mono:'Spline Sans Mono',ui-monospace,'SF Mono',Menlo,monospace;
 }
@@ -14,8 +15,9 @@
     --bg:#15161A;--surface:#1E1F24;--ink:#E8E8EA;--muted:#A3A3AB;--faint:#75757E;
     --hairline:#2F3037;--chip:#282930;--accent:#6E86F5;--accent-dim:#5A72E6;
     --late:#FF8B7B;--late-bg:#3A201C;--late-line:#5C2F28;
+    --edge:#2F3037;--check-line:#4A4D57;
   }
-  :root:not([data-theme="light"]) .chip.ws,:root:not([data-theme="light"]) .conv-msg.you{background:#252B45}
+  :root:not([data-theme="light"]) .conv-msg.you{background:#252B45}
   :root:not([data-theme="light"]) .chip.st.needs,:root:not([data-theme="light"]) .cart-tag{background:#3A2E12;border-color:#5C4719;color:#F0C766}
   :root:not([data-theme="light"]) .chip.st.ready{background:#173222;border-color:#265238;color:#7BD69E}
 }
@@ -24,8 +26,9 @@
   --bg:#15161A;--surface:#1E1F24;--ink:#E8E8EA;--muted:#A3A3AB;--faint:#75757E;
   --hairline:#2F3037;--chip:#282930;--accent:#6E86F5;--accent-dim:#5A72E6;
   --late:#FF8B7B;--late-bg:#3A201C;--late-line:#5C2F28;
+  --edge:#2F3037;--check-line:#4A4D57;
 }
-:root[data-theme="dark"] .chip.ws,:root[data-theme="dark"] .conv-msg.you{background:#252B45}
+:root[data-theme="dark"] .conv-msg.you{background:#252B45}
 :root[data-theme="dark"] .chip.st.needs,:root[data-theme="dark"] .cart-tag{background:#3A2E12;border-color:#5C4719;color:#F0C766}
 :root[data-theme="dark"] .chip.st.ready{background:#173222;border-color:#265238;color:#7BD69E}
 .theme-modes{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
@@ -39,11 +42,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--display);-webkit-fo
 main{max-width:620px;margin:0 auto;padding:60px 20px 100px}
 
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
+h1{font-size:28px;font-weight:600;letter-spacing:-.025em;margin:0}
 .mono{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.09em}
-.stamp{color:var(--muted);background:transparent;border:0;cursor:pointer;padding:2px 4px;border-radius:5px;transition:background .15s,color .15s}
+.stamp{font-family:var(--display);font-size:13px;color:var(--muted);background:transparent;border:0;cursor:pointer;padding:6px 10px;border-radius:8px;transition:background .15s,color .15s}
 .stamp:hover{background:var(--chip);color:var(--ink)}
-.counts{color:var(--muted);margin-top:7px;min-height:13px}
+.counts{font-size:13px;color:var(--muted);margin-top:6px;min-height:13px}
 .counts .warn{color:var(--late)}
 .connect-card{margin:28px auto 0;max-width:420px;text-align:center;padding:22px 20px;border:1px dashed var(--hairline);border-radius:12px}
 .connect-card[hidden]{display:none}
@@ -82,14 +85,15 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .nudge.sync-nudge button{flex:none;padding:6px 12px;font-size:13px}
 #agentSyncHint a{color:var(--accent)}
 .settings-inp.flash,.settings-label.flash{outline:2px solid var(--accent);outline-offset:2px}
-.needs-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;margin-top:6px;overflow:hidden;white-space:nowrap}
+/* one quiet pill: a dot, "Needs you", then the task (or tasks) by name */
+.needs-bar{display:inline-flex;align-self:flex-start;max-width:100%;flex-wrap:nowrap;align-items:center;gap:8px;margin-top:10px;padding:5px 12px 5px 10px;background:var(--surface);border:1px solid var(--hairline);border-radius:999px;overflow:hidden;white-space:nowrap;font-size:12.5px}
 .needs-bar[hidden]{display:none}
-.needs-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:2px;flex:none}
-.needs-chip{flex:none;display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;line-height:1;background:var(--chip);border:1px solid var(--hairline);color:var(--ink);border-radius:999px;padding:3px 8px 3px 6px;cursor:pointer}
-.needs-chip::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent)}
-.needs-chip.more{color:var(--muted);padding:3px 8px}
-.needs-chip.more::before{display:none}
-.needs-chip:hover,.needs-chip.on{border-color:var(--muted)}
+.needs-bar::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.needs-label{color:var(--muted);flex:none}
+.needs-chip{flex:none;display:inline-flex;align-items:center;font:inherit;font-weight:500;line-height:1;background:transparent;border:0;color:var(--ink);padding:0;cursor:pointer;border-radius:4px}
+.needs-chip+.needs-chip::before{content:"\00B7";color:var(--faint);margin-right:8px}
+.needs-chip.more{color:var(--muted);font-weight:400}
+.needs-chip:hover,.needs-chip.on{color:var(--accent)}
 .stuck{display:grid;gap:4px;white-space:normal}
 .stuck-fix{color:var(--muted)}
 /* "What it did" on the left, Retry on the right */
@@ -176,10 +180,11 @@ select option,select optgroup{color:var(--ink);background:var(--surface)}
 .lane-slider .lane-word:not(.on):hover{color:var(--ink)}
 .rule{margin:18px 0 22px;height:3px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
 
-.composer{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:6px 8px 8px;box-shadow:0 1px 2px rgba(20,20,20,.03);transition:border-color .15s,box-shadow .15s}
-.composer:focus-within{border-color:#B9C2F2;box-shadow:0 0 0 3px rgba(39,66,200,.07)}
+/* the composer floats on a soft shadow rather than sitting in a bordered box (in the dark, --edge draws its line) */
+.composer{background:var(--surface);border:1px solid var(--edge);border-radius:14px;padding:4px 8px 6px 10px;box-shadow:0 1px 2px rgba(20,20,20,.04),0 6px 20px rgba(20,20,20,.05);transition:border-color .15s,box-shadow .15s}
+.composer:focus-within{border-color:var(--edge);box-shadow:0 1px 2px rgba(20,20,20,.04),0 6px 20px rgba(20,20,20,.05),0 0 0 3px rgba(39,66,200,.08)}
 .composer-line{display:flex;align-items:center;gap:6px;padding-right:4px}
-#newTitle{flex:1;min-width:0;width:auto;border:0;outline:0;background:transparent;font-family:var(--display);font-size:15.5px;font-weight:500;padding:10px 8px;color:var(--ink)}
+#newTitle{flex:1;min-width:0;width:auto;border:0;outline:0;background:transparent;font-family:var(--display);font-size:15.5px;font-weight:500;padding:12px 8px;color:var(--ink)}
 #newTitle::placeholder{color:#A9A9A3}
 .composer-meta{display:flex;gap:8px;align-items:center;padding:2px 8px 4px;flex-wrap:wrap}
 /* one line until it's in use: the row shows while you're in the box, or while it holds something (a title, a tag, photos, words being spoken) */
@@ -194,12 +199,28 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .btn-accent{margin-left:auto;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:7px 15px;font-family:var(--display);font-weight:600;font-size:12.5px;cursor:pointer}
 .btn-accent:hover{background:var(--accent-dim)}
 
-.filters{display:flex;gap:6px;flex-wrap:wrap;margin:18px 2px 0}
-.fchip{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border:1px solid var(--hairline);border-radius:999px;background:transparent;color:var(--muted);cursor:pointer}
-.fchip:hover{border-color:#CFCFC9;color:var(--ink)}
-.fchip.active{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+/* one row under the composer: All / Personal / Work as a segmented control on the left, the tag menu and search on the right */
+.filter-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 0;min-height:30px}
+.filter-row[hidden]{display:none}
+.filters{display:inline-flex;gap:2px;padding:3px;background:var(--chip);border-radius:999px}
+.fchip{font-family:var(--display);font-size:12.5px;font-weight:500;padding:4px 12px;border:0;border-radius:999px;background:transparent;color:var(--muted);cursor:pointer;transition:color .15s}
+.fchip:hover{color:var(--ink)}
+.fchip.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.filter-tools{display:flex;align-items:center;gap:4px;margin-left:auto}
+/* the tag menu: a word and a chevron sized to the word; the real <select> lies over it, invisible, so a click opens the native menu */
+.tag-wrap{position:relative;display:inline-flex;align-items:center;gap:7px;font-family:var(--display);font-size:12.5px;font-weight:500;color:var(--muted);padding:6px 10px;border-radius:8px;transition:background .15s,color .15s}
+.tag-wrap[hidden]{display:none}
+.tag-wrap:hover,.tag-wrap.on{color:var(--ink);background:var(--chip)}
+.tag-wrap:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.tag-pick-label{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag-wrap::after{content:"";width:5px;height:5px;margin-top:-3px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);flex:none}
+.tag-pick{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;font:inherit}
+.icon-btn{width:30px;height:30px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;padding:0;border-radius:8px;cursor:pointer;transition:background .15s,color .15s}
+.icon-btn:hover,.icon-btn.on{color:var(--ink);background:var(--chip)}
 
-.search{display:block;width:100%;margin:14px 0 0;border:1px solid var(--hairline);border-radius:9px;padding:8px 11px;font-family:var(--display);font-size:13.5px;background:var(--surface);color:var(--ink);outline:0;transition:border-color .15s,box-shadow .15s}
+/* the search box shows only while it's open (the search button or Ctrl+F) or holding something */
+.search{display:none;width:100%;margin:10px 0 0;border:1px solid var(--hairline);border-radius:10px;padding:8px 11px;font-family:var(--display);font-size:13.5px;background:var(--surface);color:var(--ink);outline:0;transition:border-color .15s,box-shadow .15s}
+body.search-open .search,.search:not(:placeholder-shown){display:block}
 .search[hidden]{display:none}
 .search::placeholder{color:#A9A9A3}
 .search:focus{border-color:#B9C2F2;box-shadow:0 0 0 3px rgba(39,66,200,.07)}
@@ -211,18 +232,11 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .task.flash{animation:taskflash 1.4s ease-out}
 @keyframes taskflash{0%,35%{background:rgba(39,66,200,.14);box-shadow:0 0 0 4px rgba(39,66,200,.14)}}
 .task.leaving{opacity:.3}
-.task.dragging{opacity:.35}
-.task.drop-above{box-shadow:inset 0 2px 0 var(--accent)}
-.task.drop-below{box-shadow:inset 0 -2px 0 var(--accent)}
-.row{display:flex;align-items:center;gap:12px;padding:13px 4px 13px 0}
-.grip{width:12px;flex:none;color:#C9C9C3;opacity:0;cursor:grab;display:grid;place-items:center;padding:6px 0;user-select:none;-webkit-user-select:none;transition:opacity .12s}
-.row:hover .grip{opacity:1}
-.grip:active{cursor:grabbing}
-@media (hover:none){.grip{opacity:.45}}
-.check{width:19px;height:19px;border-radius:50%;border:1.5px solid #BCBCB6;background:transparent;cursor:pointer;flex:none;display:grid;place-items:center;color:transparent;padding:0;transition:background .15s,border-color .15s,color .15s}
+.row{display:flex;align-items:center;gap:12px;padding:15px 4px 15px 0}
+.check{width:20px;height:20px;border-radius:50%;border:1.25px solid var(--check-line);background:transparent;cursor:pointer;flex:none;display:grid;place-items:center;color:transparent;padding:0;transition:background .15s,border-color .15s,color .15s}
 .check:hover{border-color:var(--ink)}
 .check.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
-.title{font-size:15px;flex:1 1 14em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
+.title{font-size:15.5px;flex:1 1 14em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
 .task.done .title{color:var(--muted);text-decoration:line-through;text-decoration-color:#C9C9C3}
 .title-edit{flex:1;min-width:0;font-family:var(--display);font-size:15px;border:0;outline:0;background:transparent;border-bottom:1px solid var(--accent);padding:2px 0;color:var(--ink)}
 .meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0}
@@ -236,13 +250,15 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .progress{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .progress.sub-late{color:var(--late)}
 .chip{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:6px;white-space:nowrap}
-.chip.tag{background:var(--chip);color:#5F5F5A;cursor:pointer;border:0}
+/* the tag, list and class marks: a dot and a word in sentence case, no box. Status chips (.chip.st) keep their boxes: they carry a state */
+.chip.tag,.chip.ws,.chip.school,.chip.later,.chip.recur{display:inline-flex;align-items:center;gap:6px;font-family:var(--display);font-size:12px;font-weight:400;text-transform:none;letter-spacing:0;padding:0;border:0;background:transparent;color:var(--muted)}
+.chip.tag::before,.chip.ws::before,.chip.school::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.chip.tag{cursor:pointer}
 .chip.tag:hover{color:var(--ink)}
-.chip.ws{background:#E8EDFB;color:var(--accent);border:0}
-.chip.school{background:#EAF4EC;color:#2A7A3B;border:0}
-.chip.later{border:1px dashed var(--hairline);color:var(--faint)}
+.chip.ws::before{background:var(--accent)}
+.chip.school::before{background:#3FA35B}
+.chip.later{color:var(--faint)}
 .chip.st{border:1px solid var(--hairline);color:var(--muted)}
-.chip.recur{border:1px solid var(--hairline);color:var(--muted)} /* repeating to-do */
 .chip.st.working{border-color:var(--accent);color:var(--accent)}
 /* "it's working" spinner: in the chip, the "is on it" box, and a dot on the Agent tab */
 .spin{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
@@ -252,8 +268,8 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .lane-slider .lane-word.on .spin{color:var(--accent)}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
-.tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */
-.tab.busy::after{content:'';position:absolute;top:50%;right:5px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
+.tab.busy{position:relative;padding-right:12px} /* room for the dot after the word */
+.tab.busy::after{content:'';position:absolute;top:50%;right:0;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
 @keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tab.busy::after{animation:none}}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
@@ -372,10 +388,12 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .goal-plan .goal-step{margin:3px 0}.goal-plan .goal-needs,.goal-plan .goal-total,.goal-plan .goal-hint{font-family:var(--mono);font-size:10.5px;color:var(--muted)}.goal-plan .goal-total{margin-top:6px}.goal-plan .goal-hint{margin-left:8px}
 .trigger-row{flex-wrap:wrap}.trigger-row .what{flex:1 1 180px;min-width:0}.trigger-row .url{flex:1 1 100%;min-width:0}.trigger-row .hours{width:62px}
 .agent-note b{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:500;display:block;margin-bottom:3px}
-.chip.date{border:1px solid var(--hairline);color:var(--muted)}
-.chip.date.today{background:var(--accent);border-color:var(--accent);color:#fff}
-.chip.date.soon{border-color:var(--accent);color:var(--accent)}
-.chip.date.late{background:var(--late-bg);border-color:var(--late-line);color:var(--late)}
+/* the date is plain text in its own column; only today and overdue get a color */
+.chip.date{font-family:var(--display);font-size:12.5px;text-transform:none;letter-spacing:0;padding:0;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.chip.date:hover{color:var(--ink)}
+.chip.date.today{color:var(--accent);font-weight:600}
+.chip.date.late{color:var(--late);font-weight:600}
+.task.done .chip.date{color:var(--faint);font-weight:400} /* finished: the date no longer needs to shout */
 .icon{opacity:0;border:0;background:transparent;color:var(--faint);cursor:pointer;padding:4px;border-radius:6px;line-height:0;transition:opacity .12s,color .12s,background .12s,transform .15s}
 .row:hover .icon,.sub:hover .icon{opacity:1}
 .icon:hover{color:var(--ink);background:var(--chip)}
@@ -406,7 +424,11 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .subadd-row .icon:hover{opacity:1}
 .tag-inp{width:96px}
 
-.done-head{display:flex;align-items:center;justify-content:space-between;margin-top:26px}
+.done-head{display:flex;align-items:center;justify-content:space-between;margin-top:22px}
+.done-head .ghost{font-family:var(--display);font-size:12.5px;color:var(--faint);padding:4px 0}
+.done-toggle{display:inline-flex;align-items:center;gap:6px}
+.done-toggle svg{transition:transform .15s}
+.done-toggle.closed svg{transform:rotate(-90deg)}
 .ghost{border:0;background:transparent;cursor:pointer;color:var(--muted);padding:6px 4px;border-radius:6px}
 .ghost:hover{color:var(--ink)}
 .ghost.danger:hover{color:var(--late)}
@@ -422,13 +444,12 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 #newTitle:focus-visible,.subadd:focus-visible,.title-edit:focus-visible{outline:none}
 @media(max-width:520px){main{padding:36px 16px 80px}.row{gap:10px}
   /* phones: the title gets the whole line; chips and buttons wrap onto a second line under it
-     (indented past the grip + checkbox: 12px + 10px + 19px + 10px) */
+     (indented past the checkbox: 20px + the 10px gap) */
   .row{flex-wrap:wrap;row-gap:6px}
   .row .title{flex:1 1 0}
-  .row .meta{flex:1 1 100%;padding-left:51px}
+  .row .meta{flex:1 1 100%;padding-left:30px}
   .row .chips{flex:1 1 auto;justify-content:flex-start}
   .row .acts{margin-left:auto}
-  .list.donelist .row .meta{padding-left:29px}
   .row .meta .icon{padding:6px}
   /* phones: a compact calendar; tap a day for its full list. (.cal-grid prefix: these must beat
      the base calendar rules, which come later in this file) */
@@ -450,17 +471,17 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 /* ── tabs ── */
 /* one row that scrolls sideways when the tabs don't fit, its scrollbar hidden: the bar fades at whichever edge has
    more (wiring.js tabsEdge), and the tab you pick is scrolled into view (calendar-view.js switchTab) */
-.tabs{display:flex;gap:0;border-bottom:2px solid var(--hairline);margin:18px 0 22px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--hairline);margin:26px 0 22px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .tabs::-webkit-scrollbar{display:none}
 .tabs.more-right{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
 .tabs.more-left{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px);mask-image:linear-gradient(90deg,transparent,#000 36px)}
 .tabs.more-left.more-right{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
-.tab{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap;flex:none}
+.tab{font-family:var(--display);font-size:13px;font-weight:500;padding:8px 0 10px;border:0;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;white-space:nowrap;flex:none}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 .tab.tab-off{display:none} /* switched off in Settings > Tabs (tab-picker.js) */
-@media(max-width:520px){.tab{padding:8px 9px}}
-@media(max-width:430px){.tab{padding:8px 6px;letter-spacing:.04em}} /* a phone: tighter tabs, so more fit before it scrolls */
+@media(max-width:520px){.tabs{gap:16px}}
+@media(max-width:430px){.tabs{gap:13px}} /* a phone: tighter tabs, so more fit before it scrolls */
 
 /* ── ideas: note cards you sort into groups ── */
 :root{
@@ -611,8 +632,8 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .day-pop-row.done .day-pop-title{color:var(--muted);text-decoration:line-through;text-decoration-color:#C9C9C3}
 
 /* ── settings panel ── */
-.top-right{display:flex;align-items:center;gap:10px}.settings-btn{font-size:14px;border:0;background:transparent;cursor:pointer;padding:4px 6px;border-radius:6px;color:var(--faint);line-height:1;transition:color .15s}
-.settings-btn:hover,.settings-btn.active{color:var(--ink)}
+.top-right{display:flex;align-items:center;gap:10px}.settings-btn{width:32px;height:32px;border:1px solid var(--hairline);background:var(--surface);cursor:pointer;padding:0;display:grid;place-items:center;border-radius:50%;color:var(--muted);line-height:1;transition:color .15s,border-color .15s}
+.settings-btn:hover,.settings-btn.active{color:var(--ink);border-color:var(--muted)}
 .settings-panel{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:18px;margin-bottom:20px;box-shadow:0 1px 3px rgba(20,20,20,.04)}
 .settings-label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);display:block;margin-bottom:12px}
 .settings-collapse>summary{cursor:pointer;list-style:none;user-select:none}
@@ -1224,3 +1245,29 @@ body.review-open .top-right{display:none!important}
 .ai-report-row .doc-dl{margin-top:0}
 .ai-report-reason{max-width:100%;min-width:0;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--hairline);border-radius:6px;background:var(--surface);color:var(--ink)}
 .ai-report-done{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+
+/* ── Sentence-case labels across the tabs: the To do tab's finish, carried over.
+   Small headings and marks drop the mono uppercase voice for the display face in sentence case; numbers stay mono. ── */
+.hours-week-k,.hours-day-k,.health-tile-k,.fam-k,.fam-by,.fin-label,.fin-col-label,.fin-stmt th,.cal-dow,.cal-more,
+.cart-head,.draft-head,.seat-head,.ask-count,.subs-label,.agent-note b,.repeat-row .lbl,.conv-who,.conv-toggle,.log-kind,.yes-who,
+.ai-report-link,.ai-report-done,.idea-card .idea-sechead,.idea-card .idea-pinned,.idea-movebar .mono,.idea-edit-foot .mono,.idea-card .x,
+.lane-switch,.cart-opt-n,.cart-tag,.lb-hint,.lupa-files summary,.fin-fold>summary,.fin-sort,
+#financeView .mono,#ideasView .mono,#hoursView .mono,#healthView .mono,#familyView .mono,#calView .mono,.yr-panel .mono{
+  font-family:var(--display);font-size:12px;font-weight:500;text-transform:none;letter-spacing:0}
+.hours-week-k,.health-tile-k,.fam-k,.cart-head,.draft-head,.seat-head,.conv-toggle{font-size:12.5px}
+.fin-label,.fin-stmt th,.cal-dow,.log-kind,.conv-who,.yes-who,.ask-count,.subs-label,.agent-note b,.repeat-row .lbl{font-size:11.5px}
+.fin-stmt th{font-weight:500}
+.cart-tag{font-size:10px}
+/* a lowercase label from the scripts reads as a sentence: first letter up (block boxes and flex items, where ::first-letter applies) */
+.fin-label::first-letter,.fin-stmt th::first-letter,.fin-col-label::first-letter,.conv-toggle::first-letter,.subs-label::first-letter,.agent-note b::first-letter,
+.repeat-row .lbl::first-letter,.cart-head::first-letter,.draft-head::first-letter,.ask-count::first-letter,.ai-report-link::first-letter,.ai-report-done::first-letter,
+.idea-card .idea-sechead::first-letter,.idea-card .idea-pinned::first-letter,.lupa-files summary::first-letter,.fin-fold>summary::first-letter,
+#financeView summary.mono::first-letter,#ideasView .mono::first-letter,.yr-panel .fin-label::first-letter,.chip.st::first-letter,.fin-kind::first-letter,
+.cart-opt-n::first-letter,.lane-switch::first-letter{text-transform:uppercase}
+/* status and kind chips keep their box and colour, in the display face */
+.chip.st,.hours-kind,.fin-kind{font-family:var(--display);font-size:11.5px;font-weight:500;text-transform:none;letter-spacing:0}
+.chip.st{display:inline-block;padding:3px 8px;border-radius:6px}
+.hours-kind{padding:3px 9px}
+.fin-kind{padding:1px 8px}
+/* dates, counts and bank text keep the mono face */
+.fin-date,.fin-bank,.idea-gcount,.cal-num,.cal-chip-time{font-family:var(--mono)}

@@ -34,6 +34,12 @@ test('claimableWhileDown leaves a task to a computer that reaches the mini PC, t
   assert.ok(!held.has('a'));
 });
 
+test('waitingForLocal: what a missing local model leaves waiting; legions run on the cloud AIs instead', () => {
+  const bank = { id: 'a', title: 'my bank statement' }, research = { id: 'b', title: 'compare laptops #legion' };
+  assert.deepStrictEqual(lane.waitingForLocal([bank, research]), [bank]);
+  assert.deepStrictEqual(lane.waitingForLocal([]), []);
+});
+
 test('cleanStuck trims and fills in the missing half', () => {
   assert.strictEqual(lane.cleanStuck(null), null);
   assert.strictEqual(lane.cleanStuck({}), null);

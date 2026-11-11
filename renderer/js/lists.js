@@ -3,16 +3,10 @@
 'use strict';
 
 /* ── main task row ── */
-function buildRow(t,canDrag){
+function buildRow(t){
   const li=el('li','task'+(t.done?' done':'')+(t.id===state.selectedId?' selected':''));
   li.dataset.id=t.id;
   const row=el('div','row');
-  if(canDrag){
-    const grip=el('div','grip'); grip.innerHTML=I.grip; grip.title='Drag to reorder'; grip.setAttribute('aria-hidden','true');
-    grip.addEventListener('mousedown',function(){ li.draggable=true; });
-    grip.addEventListener('mouseup',function(){ li.draggable=false; });
-    row.appendChild(grip); makeDraggable(li,t);
-  }
   const check=el('button','check'+(t.done?' on':'')); check.innerHTML=I.check;
   check.setAttribute('aria-label',t.done?'Mark as not done':'Mark as done');
   check.addEventListener('click',function(e){ e.stopPropagation(); toggleDone(t,li,check); });
@@ -77,7 +71,7 @@ function buildRow(t,canDrag){
     }
     chips.appendChild(sc);
     // which worker it's assigned to (Claude on this computer, or your own model on the mini PC)
-    if(t.lane==='local'){ const lc=el('span','chip st','The local model'); lc.title='Your own model on the local model handles this task'; chips.appendChild(lc); } // Claude is the usual case: no chip
+    if(t.lane==='local'){ const led=cloudLedLegion(t); const lc=el('span','chip st',led?'Legion':'The local model'); lc.title=led?'A legion of cloud AIs, led by the first in your order (no local model is set up)':'Your own model on the local model handles this task'; chips.appendChild(lc); } // Claude is the usual case: no chip
   }
   // the row's buttons stay together on one line, so they never split around a wrapped chip
   const acts=el('span','acts');
@@ -143,7 +137,7 @@ function buildPanel(t){
 
   // a model is answering right now (or it's being handed to one): spinners on the toggle, the pill and the conversation
   const spinning=taskWs(t)==='agent'&&!t.done&&(t.status==='working'||(t.status==='queued'&&!(t.waitUntil&&t.waitUntil>Date.now())))
-    &&!(t.lane==='local'&&localStat&&localStat.configured&&!localStat.online);
+    &&!(t.lane==='local'&&localStat&&localStat.configured&&!localStat.online)&&!(noLocalWait[t.id]&&localStat&&!localStat.configured);
   // the whole back-and-forth on this task, collapsed until tapped
   if(taskWs(t)==='agent'&&Array.isArray(t.history)&&t.history.length){
     const hist=t.history, open=convOpen.has(t.id);
@@ -175,7 +169,7 @@ function buildPanel(t){
       if(spinning){ // a "typing" line at the bottom while the answer is coming
         const w=el('div','conv-msg claude conv-typing');
         w.appendChild(el('span','spin'));
-        w.appendChild(document.createTextNode((t.lane==='local'?'The local model':cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
+        w.appendChild(document.createTextNode((t.lane==='local'?(cloudLedLegion(t)?'The legion':'The local model'):cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
         th.appendChild(w);
       }
       panel.appendChild(th);
@@ -190,13 +184,19 @@ function buildPanel(t){
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
     const local=t.lane==='local';
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
+    // only the local model may do it, and none is set up (agent/local-lane.js tellNoLocal): why, or null
+    const noLocal=t.status==='queued'&&localStat&&!localStat.configured&&noLocalWait[t.id]||null;
     const cloudName=cloudNameOf(t);
     if(t.status==='working')sb.classList.add('running');
     // queued: it's being handed to a model (no lane yet = routing hasn't picked one)
-    const routing=t.status==='queued'&&!outOfUsage&&!offline;
-    const hd=sb.appendChild(el('b',null,local?(offline?'The local model isn’t reachable':t.status==='working'?'The local model is on it':'Routing to the local model'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
+    const routing=t.status==='queued'&&!outOfUsage&&!offline&&!noLocal;
+    const hd=sb.appendChild(el('b',null,noLocal?'This task needs your local model, and none is set up':local?(offline?'The local model isn’t reachable':t.status==='working'?'The local model is on it':'Routing to the local model'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
     if((t.status==='working'||routing)&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
-    sb.appendChild(document.createTextNode(local
+    sb.appendChild(document.createTextNode(noLocal
+      ?(/money|finances/i.test(noLocal)?'Questions about your money are answered only by your own model, from Finance on this computer. Set one up in Settings → Local model.'
+        :/^private/.test(noLocal)?'Tasks with private words only ever go to your own model. Set one up in Settings → Local model, or put #claude in the title to let a cloud AI have it.'
+        :'Set one up in Settings → Local model, or send this task to a cloud AI below.')
+      :local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
         :'It starts within a few seconds while your computer has Tasks running.')
@@ -792,7 +792,7 @@ function render(){
   $('counts').innerHTML=cHtml;
   // one chip per task that needs you; tapping it opens that task on the Agent tab
   const nb=$('needsBar'); nb.innerHTML=''; nb.hidden=!needing.length;
-  if(needing.length)nb.appendChild(el('span','needs-label','needs you:'));
+  if(needing.length)nb.appendChild(el('span','needs-label','Needs you'));
   const shortNames=uniqueShortNames(needing.map(function(t){ return t.title; }));
   needing.forEach(function(t,i){
     const c=el('button','needs-chip'+(state.activeTab==='agent'&&state.selectedId===t.id?' on':''));
@@ -817,16 +817,17 @@ function render(){
     });
   } else { wsf.hidden=true; if(!workConfigured()&&state.wsFilter)state.wsFilter=null; }
 
+  // the tag menu: "Tag" until one is picked, then that tag's name (a tag chip on a row picks it too)
   const fl=$('filters'); fl.innerHTML='';
+  $('tagWrap').hidden=!tags.length;
   if(tags.length){
-    fl.hidden=false;
-    const all=el('button','fchip'+(state.filter===null?' active':''),'All');
-    all.addEventListener('click',function(){ state.filter=null; render(); }); fl.appendChild(all);
-    tags.forEach(function(tg){
-      const b=el('button','fchip'+(state.filter===tg?' active':''),tg);
-      b.addEventListener('click',function(){ state.filter=(state.filter===tg)?null:tg; render(); }); fl.appendChild(b);
-    });
-  } else { fl.hidden=true; }
+    const all=document.createElement('option'); all.value=''; all.textContent=state.filter===null?'Tag':'All tags'; fl.appendChild(all);
+    tags.forEach(function(tg){ const o=document.createElement('option'); o.value=tg; o.textContent=tg; fl.appendChild(o); });
+    fl.value=state.filter===null?'':state.filter;
+    $('tagPickLabel').textContent=state.filter===null?'Tag':state.filter;
+    $('tagWrap').classList.toggle('on',state.filter!==null);
+  }
+  $('filterRow').hidden=unconnected;
 
   const q=state.search;
   const visible=function(t){
@@ -846,7 +847,7 @@ function render(){
   drawYesPrompts(tab==='list'?needing:[]);
   drawSuggestions(tab==='list');
   const ol=$('openList'); ol.innerHTML='';
-  openVis.forEach(function(t){ ol.appendChild(buildRow(t,true)); });
+  openVis.forEach(function(t){ ol.appendChild(buildRow(t)); });
   ol.classList.toggle('has-dates',openVis.some(function(t){ return !!t.due; })); // the date column is only there while a row has one
 
   const es=$('emptyState');
@@ -863,10 +864,10 @@ function render(){
   const ds=$('doneSection');
   if(doneVis.length){
     ds.hidden=false;
-    $('doneToggle').textContent=(state.showDone?'\u25BE':'\u25B8')+' done \u00B7 '+doneVis.length;
-    $('clearDone').textContent=state.confirmClear?'sure?':'clear';
+    const dt=$('doneToggle'); dt.innerHTML=I.chev; dt.appendChild(document.createTextNode('Done \u00B7 '+doneVis.length)); dt.classList.toggle('closed',!state.showDone);
+    $('clearDone').textContent=state.confirmClear?'Sure?':'Clear';
     const dlst=$('doneList'); dlst.hidden=!state.showDone; dlst.innerHTML='';
-    if(state.showDone)doneVis.forEach(function(t){ dlst.appendChild(buildRow(t,false)); });
+    if(state.showDone)doneVis.forEach(function(t){ dlst.appendChild(buildRow(t)); });
     dlst.classList.toggle('has-dates',state.showDone&&doneVis.some(function(t){ return !!t.due; }));
   } else { ds.hidden=true; state.confirmClear=false; }
 }

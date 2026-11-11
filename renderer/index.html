@@ -18,11 +18,11 @@
   <header class="top">
     <h1>Romulus</h1>
     <div class="top-right">
-      <button class="mono stamp" id="stamp" title="Calendar view" aria-label="Open calendar view"></button>
+      <button class="stamp" id="stamp" title="Calendar view" aria-label="Open calendar view"></button>
       <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     </div>
   </header>
-  <div class="mono counts" id="counts"></div>
+  <div class="counts" id="counts"></div>
   <div class="needs-bar" id="needsBar" hidden></div>
 
   <!-- Settings page (hidden by default; replaces the lists while open) -->
@@ -495,7 +495,7 @@
         <button id="welcomeImportBtn" class="ghost">Bring tasks from another app</button>
       </div>
       <ul class="welcome-tips">
-        <li><b>Drag</b> a task to reorder it; <b>tags</b> group tasks and become filter chips.</li>
+        <li>Tasks sort themselves: overdue, today, then by date; <b>tags</b> group tasks and fill the Tag menu.</li>
         <li>The <b>Agent</b> tab hands tasks to an AI; the pill on each task picks which one.</li>
         <li><b>School</b> and <b>Work</b> are separate lists; <b>Calendar</b>, <b>Notes</b> and <b>Hours</b> are extra views of the same tasks.</li>
         <li id="welcomeTrayTip">Closing the window hides Romulus in the tray. On Windows it sits under the ^ by the clock until you drag it onto the taskbar; right-click the icon to quit.</li>
@@ -532,9 +532,15 @@
     </div>
     <!-- Agent tasks are waiting but nothing can run them (welcome.js) -->
     <div id="agentNudge" class="nudge" hidden><span id="agentNudgeText"></span> <button id="agentNudgeBtn" class="ghost mono">Connect an AI</button></div>
-    <input id="searchBox" class="search" placeholder="Search tasks… (Ctrl+F)" aria-label="Search tasks" autocomplete="off">
-    <div id="wsFilters" class="filters" hidden></div>
-    <div id="filters" class="filters" hidden></div>
+    <!-- one row: All / Personal / Work on the left; the tag menu and the search button on the right. The search box opens under it (wiring.js) -->
+    <div id="filterRow" class="filter-row" hidden>
+      <div id="wsFilters" class="filters" hidden></div>
+      <div class="filter-tools">
+        <span class="tag-wrap" id="tagWrap" hidden><span class="tag-pick-label" id="tagPickLabel" aria-hidden="true">Tag</span><select id="filters" class="tag-pick" aria-label="Filter by tag"></select></span>
+        <button id="searchBtn" class="icon-btn" type="button" aria-label="Search tasks (Ctrl+F)" title="Search (Ctrl+F)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+      </div>
+    </div>
+    <input id="searchBox" class="search" placeholder="Search tasks…" aria-label="Search tasks" autocomplete="off">
     <!-- a local task it stopped on: the local model's browser, live (agent-live-view.js drawLupaStuck) -->
     <div id="lupaStuck" class="lupa-stuck" hidden></div>
     <details id="lupaFiles" class="lupa-files" hidden></details>
@@ -566,8 +572,8 @@
 
     <section id="doneSection" hidden>
       <div class="done-head">
-        <button id="doneToggle" class="ghost mono"></button>
-        <button id="clearDone" class="ghost mono danger"></button>
+        <button id="doneToggle" class="ghost done-toggle"></button>
+        <button id="clearDone" class="ghost danger"></button>
       </div>
       <ul id="doneList" class="list donelist" hidden></ul>
     </section>

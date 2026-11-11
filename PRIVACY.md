@@ -82,7 +82,11 @@ To count space and stop abuse, the Romulus server keeps, for each sync account: 
 of your sync key's id (not the key), how much space you use and how often you write, when you last ran out of
 space, and, if you paid, which plan, until when and the Stripe ids above. To limit how many new accounts one network can
 make, it keeps a hash of your IP address for a day. Supabase hosts it, and handles that data under its own
-privacy policy. None of it is sold or shared, and none of it is used for anything but running sync.
+privacy policy. None of it is sold or shared, and none of it is used for anything but running sync. What the
+developer looks at is counts over those rows, never a row: how many accounts, how many wrote this week, how many
+pay, how much space in all. The exact queries are public, in
+[supabase/sync-usage.sql](https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/sync-usage.sql) and, for the
+website's tally, [supabase/site-counts.sql](https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/site-counts.sql).
 
 With a paid plan it also keeps:
 
