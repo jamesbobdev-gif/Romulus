@@ -1160,6 +1160,23 @@ body.review-open .top-right{display:none!important}
 .health-tile-v{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:2px 0 0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .health-tile-s{font-size:11.5px;color:var(--muted);margin-top:2px}
 @media(max-width:520px){.health-tiles{gap:8px}.health-tile{padding:10px 10px 8px}.health-tile-v{font-size:19px}}
+/* the top: the week's exercise as a ring, and today's three numbers (health.js drawTop) */
+.health-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px;margin:4px 0 14px}
+.health-ring-card{display:flex;flex-direction:column}
+.health-ring{position:relative;width:100%;max-width:150px;margin:8px auto 4px;flex:1;display:grid;place-items:center}
+.health-ring svg{display:block;width:100%;height:auto}
+.health-ring-track{fill:none;stroke:var(--hairline);stroke-width:8}
+.health-ring-arc{fill:none;stroke:var(--accent);stroke-width:8;stroke-linecap:round}
+.health-ring-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.health-ring-mid .health-tile-v{margin:0}
+.health-ring-today{text-align:center}
+.health-pills{display:flex;flex-direction:column;gap:10px;min-width:0}
+.health-pill{display:flex;flex-direction:column;gap:4px}
+.health-pill-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.health-pill-head .health-tile-s{margin:0;white-space:nowrap}
+.health-pill .health-tile-v{margin:0}
+.health-pill .health-bar{margin-top:2px}
+@media(max-width:520px){.health-top{gap:8px}.health-pills{gap:8px}.health-pill .health-tile-v{font-size:19px}}
 .health-goals{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .health-goal{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:baseline;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px}
 .health-goal-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
