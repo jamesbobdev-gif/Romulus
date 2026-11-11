@@ -21,8 +21,8 @@ const supabase = require('./supabase');
 const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
-const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanDraft, claimAgentTasks } = require('./task-context');
+const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -51,7 +51,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, foodBrief } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, foodBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -245,6 +245,13 @@ async function startAgentRun() {
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
     lastOrder: groceryListFor(t, allTasks) ? lastOrderFor(allTasks) : undefined, // what he got last time, with pictures
+    cart: cartBrief(t) || undefined, // the order so far on this task, his picks included (it stays until the order is placed)
+    // the app started this run to see whether he placed that cart's order himself (grocery-list.js runCartCheck)
+    cartCheck: t.cartCheck && cartBrief(t) ? true : undefined,
+    // orders the app already has, so a look at his order history reports only new ones (groceries skill)
+    // a Finance charge at this store that no order explains (grocery-list.js lookForOwnOrders): only the store's name comes
+    orderLook: typeof t.orderLook === 'string' ? t.orderLook.slice(0, 20) : undefined,
+    knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
     macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
@@ -459,6 +466,7 @@ async function startAgentRun() {
     u.macros = sawMail ? undefined : macroChanges(u.macros); // a meal plan's per-day targets: the app sets his Food plan to them
     u.ask = cleanAsk(u.ask) || null; // questions he taps through, one at a time
     u.cart = sawMail ? null : (cleanCart(u.cart) || null); // the order, as cards he can deselect
+    u.ordered = sawMail ? null : (cleanOrdered(u.ordered) || null); // orders he placed himself: their food goes into the pantry
     u.draft = u.status === 'needs-you' ? (cleanDraft(u.draft) || null) : null; // the words waiting on his yes, in full: he can edit them
     u.email = u.status === 'needs-you' ? (mailSend.cleanEmail(u.email) || null) : null; // an email he sends with his Send (agent/mail-send.js)
     // a case waiting on someone else: when to look again (agent/triggers.js followUp). A run that saw his

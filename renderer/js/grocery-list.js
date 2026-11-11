@@ -23,7 +23,8 @@ const isGroceryTask=function(t){ return taskWs(t)==='agent'&&(GROCERY_WORDS.test
 
 // the agent's changes: {add:[{name,every}], bought:[names], remove:[names]}. Never a whole new list,
 // so what he added or removed while it worked stays as he left it
-function applyListUpdate(t,ch){
+// covered: bought names the placed order already put in the pantry, with pictures and sizes (keepLastOrder)
+function applyListUpdate(t,ch,covered){
   if(!ch||typeof ch!=='object')return;
   if(!normList(t.list).length){ const k=groceryTask(); if(k&&k!==t)t.list=normList(k.list); } // a new grocery task starts from his list
   const list=normList(t.list), today=new Date().toISOString().slice(0,10);
@@ -31,7 +32,8 @@ function applyListUpdate(t,ch){
   (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const it=listItem(a); if(it&&!list.some(function(x){ return sameItem(x.name,it.name); }))list.push(it); });
   (Array.isArray(ch.bought)?ch.bought:[]).forEach(function(n){ list.forEach(function(x){ if(sameItem(x.name,n)){ x.last=today; x.out=false; } }); });
   t.list=list.length?list:null;
-  if(typeof kitchenBought==='function')kitchenBought(ch.bought); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
+  const skip=Array.isArray(covered)?covered:[];
+  if(typeof kitchenBought==='function'&&Array.isArray(ch.bought))kitchenBought(ch.bought.filter(function(n){ return skip.indexOf(n)===-1; })); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
   if(typeof famCheckOff==='function')famCheckOff(ch.bought); // and off the group's shared Groceries list (family.js)
 }
 
@@ -60,8 +62,11 @@ function addToGroceries(text){
     const hit=list.find(function(x){ return sameItem(x.name,n)||sameItem(x.name.split(',')[0],n); });
     if(hit)hit.out=true; else list.push({name:n.charAt(0).toUpperCase()+n.slice(1),every:1,last:null,out:true});
   });
-  t.list=list; touch();
-  return {task:t,names:names};
+  t.list=list;
+  // "we're out of eggs" (not "add eggs to groceries"): eggs leave the Kitchen pantry too (kitchen.js)
+  const pantry=!/^\s*(?:add|put)\s/i.test(text)&&typeof kitchenRanOut==='function'?kitchenRanOut(names):[];
+  touch();
+  return {task:t,names:names,pantry:pantry};
 }
 
 /* ── the 2-week grocery order ──
@@ -97,6 +102,62 @@ function runGroceryTimer(){
   touch();
 }
 if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runGroceryTimer,15*1000); setInterval(runGroceryTimer,60*1000); }
+/* a cart waiting on his yes that he may have ordered himself in the store's own app: a day after it came,
+   and again 3 days after, the Agent looks at that store's order history (t.cartCheck; the groceries skill's
+   "Orders he placed himself"), and an order it finds goes into the pantry (stockOrdered). Any store's cart,
+   not only groceries. t.cartAt is when the cart came (agent-results.js); an older cart counts from now */
+const CART_LOOK_DAYS=[1,3];
+function cartLookDue(t,now){
+  if(taskWs(t)!=='agent'||t.done||t.status!=='needs-you'||!Array.isArray(t.cart)||!t.cart.length||!t.cartAt)return false;
+  const n=t.cartLooks||0;
+  return n<CART_LOOK_DAYS.length&&now>=t.cartAt+CART_LOOK_DAYS[n]*864e5;
+}
+function runCartCheck(){
+  if(!window.desktop||!window.desktop.onAgentResults)return;
+  const now=Date.now(); let changed=false;
+  state.tasks.forEach(function(t){
+    if(taskWs(t)==='agent'&&!t.done&&Array.isArray(t.cart)&&t.cart.length&&!t.cartAt){ t.cartAt=now; changed=true; return; }
+    if(!cartLookDue(t,now))return;
+    t.cartLooks=(t.cartLooks||0)+1; t.cartCheck=true;
+    t.status='queued'; t.reply=null;
+    agentSay(t,'sys','Checking whether you ordered this yourself');
+    changed=true;
+  });
+  if(changed)touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runCartCheck,60*1000); setInterval(runCartCheck,10*60*1000); }
+/* an order he placed himself with no task here at all: the Finance tab saw a charge at that store that no
+   order explains (order-match.js storesToCheck), so an Agent task looks at the store's order history
+   (t.orderLook; the groceries skill's "Orders he placed himself") and what it finds goes into the pantry.
+   The task carries only the store's name: nothing from the bank goes to the Agent */
+const LOOK_NAMES={instacart:'Instacart',walmart:'Walmart',target:'Target',costco:'Costco',kroger:'Kroger',aldi:'Aldi'};
+function lookForOwnOrders(stores){
+  if(!Array.isArray(stores)||!stores.length)return;
+  stores.forEach(function(s){
+    const name=LOOK_NAMES[s]||s;
+    const t={id:uid(),title:'Check my '+name+' orders for the pantry',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+      created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],orderLook:s};
+    agentSay(t,'sys','Looking at your recent '+name+' orders for food to add to your pantry');
+    state.tasks.push(t);
+  });
+  touch();
+}
+/* the regular look at his Instacart orders (order-match.js regularLooks): every 3 days once he uses it. The
+   last finished look task runs again (t.lookAt), so the Agent list doesn't fill up with them; with none, a new one */
+function runRegularLooks(){
+  if(!window.desktop||!window.desktop.onAgentResults||typeof regularLooks!=='function')return;
+  const stores=regularLooks(state.tasks,Date.now()); if(!stores.length)return;
+  const fresh=[];
+  stores.forEach(function(s){
+    const old=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&t.orderLook===s&&!t.done; })
+      .sort(function(a,b){ return (b.lookAt||b.created||0)-(a.lookAt||a.created||0); })[0];
+    if(!old){ fresh.push(s); return; }
+    old.lookAt=Date.now(); old.status='queued'; old.reply=null; old.note=null;
+    agentSay(old,'sys','Looking at your recent '+(LOOK_NAMES[s]||s)+' orders for food to add to your pantry');
+  });
+  if(fresh.length)lookForOwnOrders(fresh); else touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runRegularLooks,2*60*1000); setInterval(runRegularLooks,60*60*1000); }
 // one line in a grocery task's panel: when the next order opens
 function groceryNextLine(){
   const at=nextGroceryAt();
@@ -200,15 +261,18 @@ function yesButton(t){
 // Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor). The last dozen stay in
 // t.orders, with the store and total, so the Finance tab can show what a charge was for (order-match.js).
 // note: what the Agent said about it (its total), when t.note has already moved on
-function keepLastOrder(t,note){
+// bought: his list names it marked bought on this answer (applyListUpdate puts those in the pantry itself)
+function keepLastOrder(t,note,bought){
   if(!Array.isArray(t.cart)||!t.cart.length)return;
   const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
   const items=t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).slice(0,40).map(function(it){
     const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; }); // the size he switched to
     const s=op||it;
-    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined};
+    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
   });
   if(!items.length)return;
+  const food=orderFood(t,items,bought);
+  if(typeof kitchenBought==='function')kitchenBought(food.stock);
   t.lastOrder={at:Date.now(),items:items};
   const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
   // the EBT part, for the Finance tab's EBT wallet (finance-ebt.js): what went on EBT, and the balance left
@@ -216,7 +280,69 @@ function keepLastOrder(t,note){
   const ebt=e1.ebt||e2.ebt, left=e1.left!=null?e1.left:e2.left;
   t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{},
     ebt?{ebt:ebt}:{},left!=null&&left>=0?{ebtLeft:left}:{})]).slice(-12);
+  return food.covered;
 }
+/* what on a placed order goes into the Kitchen pantry (kitchen.js kitchenBought) →
+   {stock:[{name:"Name, 18 ct", image}], covered:[his list's names these stand for]}:
+   the items the Agent marked food; on a cart from before it marked them, everything on a grocery task or
+   from a food-only store (Instacart, Kroger, Aldi). Each goes in with its picture and how many he got.
+   A name on bought (his list's word for the same thing, "Eggs") that a cart item stands for is in covered,
+   so applyListUpdate doesn't stock it a second time without its size */
+const FOOD_STORES=['instacart','kroger','aldi'];
+function orderFood(t,items,bought){
+  const marked=items.some(function(it){ return typeof it.food==='boolean'; });
+  const all=!marked&&(isGroceryTask(t)||FOOD_STORES.indexOf(orderStore(items,t.title))!==-1);
+  const same=typeof sameFood==='function'?sameFood:sameItem;
+  const food=items.filter(function(it){ return marked?it.food===true:all; });
+  const covered=(Array.isArray(bought)?bought:[]).filter(function(n){
+    const b=String(n||'').split(',')[0];
+    return food.some(function(it){ return same(it.name.split(',')[0],b); });
+  });
+  const stock=food.reduce(function(out,it){ // ×2 of "Rice, 20 lb" is 40 lb: once per one bought, so the sizes add up
+    const pic=it.image&&/^https:\/\//i.test(String(it.image))?String(it.image):undefined;
+    const n=it.qty>1?it.qty:1;
+    if(it.name.indexOf(',')===-1)out.push({name:it.name+', '+n+' ct',image:pic});
+    else for(let i=0;i<n;i++)out.push({name:it.name,image:pic});
+    return out;
+  },[]);
+  return {stock:stock,covered:covered};
+}
+/* orders he placed himself, outside the app, that a run found in his store account (the answer's `ordered`,
+   agent/task-context.js cleanOrdered): each one's food goes into the Kitchen pantry once, and the order joins
+   t.orders with its number, so no later run stocks it again and the Finance tab can match its charge.
+   → [{store, date, n: how many went into the pantry}] for the orders that were new */
+const orderKey=function(o){ return String(o.store||'').toLowerCase()+'|'+(o.id?String(o.id).toLowerCase():String(o.date||'')+'|'+((o.items||[]).length)); };
+function knownOrderKeys(){
+  const keys=[];
+  state.tasks.forEach(function(x){ (Array.isArray(x.orders)?x.orders:[]).forEach(function(o){ if(o&&o.store&&(o.id||o.date))keys.push(orderKey(o)); }); });
+  return keys;
+}
+function stockOrdered(t,orders){
+  if(!Array.isArray(orders)||!orders.length)return [];
+  const known=knownOrderKeys(), out=[];
+  orders.forEach(function(o){
+    if(!o||!o.store||!Array.isArray(o.items)||!o.items.length)return;
+    const items=o.items.slice(0,60).filter(function(it){ return it&&it.name; }).map(function(it){
+      return {name:String(it.name),qty:it.qty||undefined,price:it.price||undefined,image:it.image||undefined,url:it.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
+    });
+    const store=orderStore(items,o.store)||String(o.store).toLowerCase();
+    const rec={store:store,id:o.id||undefined,date:o.date||undefined,items:items};
+    if(!items.length||known.indexOf(orderKey(rec))!==-1)return;
+    known.push(orderKey(rec));
+    // unmarked items count as food on a grocery task or from a food-only store, as on an order placed here
+    const food=orderFood({ws:'agent',title:String(t.title||'')+' '+o.store,list:t.list},items,null);
+    if(typeof kitchenBought==='function'&&food.stock.length)kitchenBought(food.stock);
+    const at=o.date?new Date(o.date+'T12:00:00').getTime():Date.now();
+    rec.at=isNaN(at)?Date.now():at; rec.self=true;
+    if(o.total)rec.total=o.total;
+    t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([rec]).slice(-12);
+    if(!t.lastOrder||!(t.lastOrder.at>=rec.at))t.lastOrder={at:rec.at,items:items};
+    out.push({store:String(o.store),date:o.date||'',n:food.stock.length});
+  });
+  return out;
+}
+function orderedLine(s){ return 'Into your pantry from your '+s.store+' order'+(s.date?' of '+new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')+': '+(s.n?s.n+' item'+(s.n===1?'':'s'):'nothing marked as food'); };
+
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){
   const gone=Array.isArray(ch.remove)?ch.remove:[];
@@ -226,9 +352,9 @@ function listCardsChanged(cards,ch){
   return out.length?out:null;
 }
 // things to look at, not pick (his grocery list): small picture cards, each opening its product page
-function cardsStrip(t){
+function cardsStrip(t,list){
   const box=el('div','mini-cards');
-  t.cards.slice(0,40).forEach(function(it){
+  (list||t.cards).slice(0,40).forEach(function(it){
     const c=el(it.url?'a':'div','mini-card');
     if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
@@ -241,6 +367,23 @@ function cardsStrip(t){
     if(it.price||it.qty>1)c.appendChild(el('div','mini-price',(it.qty>1?'×'+it.qty+' · ':'')+(it.price||'')));
     box.appendChild(c);
   });
+  return box;
+}
+// while the Agent works on the order he answered (Done, Place order): what he kept, with his size
+// switches, stays on screen as small cards so he can see it until the next answer brings the new cart
+function cartKeptItems(t){
+  const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
+  return t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).map(function(it){
+    const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; });
+    return op||it;
+  });
+}
+function cartWorkingStrip(t){
+  const items=cartKeptItems(t);
+  const box=el('div','cart-box');
+  const total=items.reduce(function(s,it){ return s+cartPrice(it.price); },0);
+  box.appendChild(el('div','cart-head','Your order · '+items.length+' items'+(total?' · about $'+total.toFixed(2):'')));
+  box.appendChild(cardsStrip(t,items));
   return box;
 }
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }

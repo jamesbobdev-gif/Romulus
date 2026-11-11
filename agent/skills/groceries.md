@@ -247,3 +247,24 @@ The EBT rules below are for when he pays with EBT/SNAP.
   EBT PIN and tap Place order. Open Walmart ↗ (the cart is also in the Walmart app on your
   phone)." Leave the cart as it is, and send `list.bought` for its list items, since he's finishing
   the order himself.
+
+## Orders he placed himself
+He sometimes orders on the store's own site or app instead of saying yes here. What he got still
+belongs in his Kitchen pantry, so look at his order history (signed in, only looking) when:
+- the task has `cartCheck`: the app started this run because the cart has waited a day or more. Open
+  the orders page of the store the cart is at.
+- the task has `orderLook` (a store: "instacart", "walmart"...): the app saw he bought something there
+  that no order here explains, or it's the regular look at his Instacart orders (every 3 days). Open
+  that store's orders page and look at the last week's orders not in `knownOrders`. That's the whole task: don't build a cart or ask what to order. Found some: send
+  them in `ordered`, status done. None (it was in the store, or the page wants a sign-in): status
+  done, and say so in one line.
+- he says he ordered it himself ("I already ordered it", "got it on Instacart").
+- a new grocery task, before you build the order: the stores he used lately (`lastOrder`, `knownOrders`),
+  for orders since `lastOrder` that aren't in `knownOrders`. One look per store, from one page; skip a
+  store whose orders page wants a sign-in.
+Send each order you find in `ordered`: the store ("Aldi (Instacart)"), its order number, the day it was
+placed, the total, and its items from the order's own page (name with brand and size, qty, price,
+picture, product link, and `food`: true for what he eats or drinks). Only orders that went through or
+were delivered; a cancelled one stays out. Also send `list.bought` for his list items in it. If the
+order is the cart this task was holding, the task is done: status done, and say in the note how many
+items went into his pantry.

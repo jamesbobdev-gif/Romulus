@@ -128,6 +128,9 @@ if(window.desktop&&window.desktop.onAgentResults){
       delete liveText[t.id]; delete t.runFrom;
       // "done" = finished: the task stays in the Agent tab until the user checks it off himself
       const reviewNote=t.note; // the order's review ("total … Reply yes"), for its total once it's placed
+      // the reply this answer answered (not ones he wrote while it worked): his yes to the order, or not
+      const seenYou=(t.history||[]).filter(function(h){ return h.who==='you'&&late.indexOf(h)===-1; }).slice(-1)[0];
+      const answered=(t.status!=='queued'&&t.reply)||(seenYou&&seenYou.text)||'';
       t.status=u.status; t.done=false; t.note=u.note||null; delete t.parked;
       if(u.financeSeen)t.financeSeen=true; // The local model read his Finance for it: it never goes to a cloud AI (agent/routing.js) // a fresh answer needs a fresh look
       // it stopped for something in its way: why, what to do, and what its browser showed
@@ -139,10 +142,19 @@ if(window.desktop&&window.desktop.onAgentResults){
       if('options' in u)t.options=u.options;
       // questions to tap through, and an order to deselect from: each answer brings its own (or none)
       t.ask=Array.isArray(u.ask)&&u.ask.length?u.ask:null; if(typeof askDrafts!=='undefined')delete askDrafts[t.id];
-      // the order went through (it marked what was bought): its cards are his last order, pictures and all
-      // and an order placed after his yes (Amazon): done, and its cart gone
-      if((u.list&&Array.isArray(u.list.bought)&&u.list.bought.length)||(u.status==='done'&&Array.isArray(t.cart)&&t.cart.length&&!(Array.isArray(u.cart)&&u.cart.length)))keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''));
-      t.cart=Array.isArray(u.cart)&&u.cart.length?u.cart:null; delete t.cartOff;
+      // the order went through (it marked what was bought, or finished right after his yes to it): its cards
+      // are his last order, pictures and all, and its cart goes. Any other answer keeps the cart and his
+      // picks as they were, so the next run (whichever AI) still has them (cart-keep.js)
+      let stocked=null; // his list's names the order already put in the pantry, pictures and sizes included
+      const co=cartOutcome(t,u,reviewNote,answered);
+      if(co.placed)stocked=keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''),u.list&&u.list.bought);
+      // orders he placed himself that it found in his store account: their food goes into the pantry, once
+      // each (grocery-list.js stockOrdered). One that finishes the task is the cart it was holding
+      const self=typeof stockOrdered==='function'?stockOrdered(t,u.ordered):[];
+      self.forEach(function(s){ agentSay(t,'sys',orderedLine(s)); });
+      delete t.cartCheck;
+      if(co.cart==='new'){ t.cart=u.cart; delete t.cartOff; t.cartAt=Date.now(); delete t.cartLooks; } // grocery-list.js runCartCheck counts from here
+      else if(co.cart==='clear'||(self.length&&u.status==='done')){ t.cart=null; delete t.cartOff; delete t.cartPick; delete t.cartAt; delete t.cartLooks; }
       // agent-draft.js: the words waiting on his yes, in full and editable (his edits start over with each answer)
       t.draft=u.draft&&typeof u.draft.text==='string'&&u.draft.text.trim()?{text:u.draft.text,where:String(u.draft.where||'')}:null; if(typeof draftEdits!=='undefined')delete draftEdits[t.id];
       // agent-email.js: an email it wrote, sent only by his Send (fresh with each answer)
@@ -155,8 +167,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(Array.isArray(u.cards)&&u.cards.length)t.cards=u.cards;
       else if(Array.isArray(t.cards)&&t.cards.length&&!t.cart&&u.list)t.cards=listCardsChanged(t.cards,u.list);
       // suggestions for the week start unselected: he taps the ones he wants
-      if(t.cart){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
-      if(u.list)applyListUpdate(t,u.list); // grocery-list.js: what it bought, added or removed
+      if(co.cart==='new'){ const sg=t.cart.filter(function(it){ return it.suggested; }).map(function(it){ return it.name; }); if(sg.length)t.cartOff=sg; }
+      if(u.list)applyListUpdate(t,u.list,stocked); // grocery-list.js: what it bought, added or removed
       // a meal plan's per-day targets: his Food plan (health.js) is set to them, and grocery orders buy for it
       if(u.macros&&typeof healthSetPlan==='function'){ const line=healthSetPlan(u.macros,t.title); if(line)agentSay(t,'sys','Food plan (Health tab): '+line); }
       // the class sweep's finds go on his School list (wiring.js importClassItems)

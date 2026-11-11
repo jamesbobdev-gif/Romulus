@@ -1390,6 +1390,8 @@ function drawFinMain(v){
   // what the Agent bought with it (order-match.js), and everything a search can find in a row
   const agentBought=agentOrders(state.tasks);
   const bought=matchOrders(all.map(function(x){ return x.t; }),agentBought.concat(emailOrders(d.receipts,agentBought)));
+  // a food store's charge nothing explains: he ordered in the store's own app, so the Agent looks (grocery-list.js)
+  if(typeof lookForOwnOrders==='function')lookForOwnOrders(storesToCheck(all.map(function(x){ return x.t; }),bought,state.tasks));
   const findable=function(x){
     const m=bought[x.t.id];
     return [x.t.description,x.t.bank,x.t.memo].concat(m?[m.order.title].concat(m.order.items.map(function(it){ return it.name; })):[]).join('\n').toLowerCase();
