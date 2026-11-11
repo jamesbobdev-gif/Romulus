@@ -118,3 +118,67 @@ test('two devices merge: newer copy wins, a delete beats an older copy', () => {
   assert.ok(r.changedLocal);
   assert.ok(!k.mergeKitchenDocs(r.merged, r.merged, 10).changedRemote);
 });
+
+test('a meal photo takes the sure foods out and leaves the guesses to ask about', () => {
+  const kk = kitchen(['2 lb chicken breast', '4 cups rice', 'soy sauce', '6 eggs'], []);
+  const r = k.usePantry(kk, [
+    { name: 'chicken breast', qty: 8, unit: 'oz', sure: true },
+    { name: 'rice', qty: 1, unit: 'cup', sure: true },
+    { name: 'soy sauce', qty: 1, unit: 'tbsp', sure: true }, // no amount in the pantry: ask
+    { name: 'eggs', qty: 2, unit: '', sure: false }, // a guess: ask, don't take out
+    { name: 'broccoli', qty: 1, unit: 'cup', sure: true }, // not in the pantry
+  ], 1000);
+  assert.deepStrictEqual(r.used.sort(), ['chicken breast', 'rice']);
+  assert.deepStrictEqual(r.unsure.sort(), ['eggs', 'soy sauce']);
+  assert.deepStrictEqual(r.missing, ['broccoli']);
+  const find = (n) => kk.items.find((i) => i.name === n);
+  assert.strictEqual(find('chicken breast').qty, 1.5);
+  assert.strictEqual(find('rice').qty, 3);
+  assert.strictEqual(find('eggs').qty, 6);
+});
+
+test('the to-do asks about the guesses, and a checked one takes that food out', () => {
+  const kk = kitchen(['soy sauce', '6 eggs', '1 onion'], []);
+  const todo = k.pantryAskTodo(kk, ['soy sauce', 'eggs', 'not there'], 'Fried rice', id);
+  assert.match(todo.title, /Fried rice/);
+  assert.deepStrictEqual(todo.subs.map((s) => s.title), ['Soy sauce is used up', 'Eggs is used up']);
+  assert.strictEqual(k.pantryAskTodo(kk, ['not there'], 'x', id), null);
+  assert.deepStrictEqual(k.pantryAnswers(kk, [todo], 5), []); // nothing checked yet
+  todo.subs[0].done = true;
+  const gone = k.pantryAnswers(kk, [todo, { id: 'other', subs: [{ id: 'plain', done: true }] }], 5);
+  assert.deepStrictEqual(gone.map((g) => g.name), ['soy sauce']);
+  assert.deepStrictEqual(kk.items.map((i) => i.name).sort(), ['eggs', 'onion']);
+  assert.ok(kk.tombstones.some((t) => t.id === gone[0].id));
+  assert.deepStrictEqual(k.pantryAnswers(kk, [todo], 6), []); // once only
+});
+
+test('cooking a recipe still takes its ingredients out', () => {
+  const kk = kitchen(['2 lb ground beef', 'onion'], [{ id: 'r1', name: 'Chili', ings: [k.parseIngredient('1 lb ground beef'), k.parseIngredient('1 onion')] }]);
+  const r = k.cookRecipe(kk, 'r1', 1000);
+  assert.deepStrictEqual(r.used, ['ground beef']);
+  assert.deepStrictEqual(r.unsure, ['onion']);
+  assert.strictEqual(kk.recipes[0].made.length, 1);
+});
+
+test('a phone photo ask syncs, moves only forward, and is read by one other computer', () => {
+  const ask = { id: 'a1', mode: 'meal', url: 'https://x.supabase.co/storage/v1/object/public/agent-attachments/tk_agent_att_ab/p.jpg', from: 'phone', at: 100, updatedAt: 100, state: 'waiting' };
+  const phone = k.normKitchen({ items: [], asks: [ask, { id: 'bad', mode: 'meal', url: 'http://evil' }] });
+  assert.deepStrictEqual(phone.asks.map((a) => a.id), ['a1']);
+  assert.strictEqual(k.askToServe(phone, 'phone', 200), null); // not its own
+  const pc = k.normKitchen({ items: [], asks: [ask] });
+  const mine = k.askToServe(pc, 'pc', 200);
+  assert.strictEqual(mine.id, 'a1');
+  Object.assign(mine, { state: 'reading', reader: 'PC', readAt: 200, updatedAt: 200 });
+  assert.strictEqual(k.askToServe(pc, 'lupa', 300), null); // taken a moment ago
+  assert.ok(k.askToServe(pc, 'lupa', 200 + 6 * 60000)); // the reader went quiet
+  // done on the computer, applied on the phone: a later "done" from a second reader can't undo the applied
+  const done = k.mergeKitchenDocs(pc, { items: [], asks: [Object.assign({}, ask, { state: 'done', updatedAt: 400, result: { meal: 'x', used: [] } })] }, 500).merged;
+  assert.strictEqual(done.asks[0].state, 'done');
+  const applied = k.mergeKitchenDocs({ items: [], asks: [Object.assign({}, ask, { state: 'applied', updatedAt: 450 })] }, { items: [], asks: [Object.assign({}, ask, { state: 'done', updatedAt: 900 })] }, 1000);
+  assert.strictEqual(applied.merged.asks[0].state, 'applied');
+  assert.ok(applied.changedRemote);
+  // a day after it was applied it leaves the doc, and stays gone after a merge
+  const kk = applied.merged;
+  assert.strictEqual(k.pruneAsks(kk, 450 + 2 * 864e5), 1);
+  assert.deepStrictEqual(k.mergeKitchenDocs(kk, { items: [], asks: [ask] }, 450 + 2 * 864e5).merged.asks, []);
+});
