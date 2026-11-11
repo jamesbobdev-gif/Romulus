@@ -94,6 +94,11 @@ function parseIngredient(line){
   if(unit==='dozen'){ qty=qty*12; unit=''; }
   return {name:name,qty:qty!=null&&qty>0?kRound(qty):null,unit:unit};
 }
+/* what he types in the pantry's Add box: one food per comma, line or semicolon ("2 lb chicken, eggs, 1 bag rice",
+   as its hint shows). A recipe line keeps "1 onion, diced" as one */
+function kPantryLines(text){
+  return String(text||'').split(/[\n;,]/).map(parseIngredient).filter(Boolean);
+}
 const fmtIngredient=function(i){ return (i.qty!=null?kFmtQty(i.qty,i.unit)+' ':'')+i.name; };
 
 /* ── the data ── */
@@ -324,7 +329,7 @@ function pantryRanOut(k,names,now){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={parseIngredient:parseIngredient,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
+  module.exports={parseIngredient:parseIngredient,kPantryLines:kPantryLines,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
     shoppingList:shoppingList,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks};
 }
@@ -464,7 +469,7 @@ function kBuild(view){
   view.querySelectorAll('.kit-tab').forEach(function(b){ b.addEventListener('click',function(){ kitchenUI.view=b.dataset.v; renderKitchen(); }); });
   view.querySelectorAll('.kit-chip').forEach(function(b){ b.addEventListener('click',function(){ kitchenUI.recipeFilter=b.dataset.f; renderKitchen(); }); });
   const addItem=function(){
-    const inp=$('kitAddItem'), lines=inp.value.split(/\n|;/).map(parseIngredient).filter(Boolean);
+    const inp=$('kitAddItem'), lines=kPantryLines(inp.value);
     if(!lines.length){ inp.focus(); return; }
     const now=Date.now();
     lines.forEach(function(i){

@@ -182,3 +182,15 @@ test('a phone photo ask syncs, moves only forward, and is read by one other comp
   assert.strictEqual(k.pruneAsks(kk, 450 + 2 * 864e5), 1);
   assert.deepStrictEqual(k.mergeKitchenDocs(kk, { items: [], asks: [ask] }, 450 + 2 * 864e5).merged.asks, []);
 });
+
+test('kPantryLines: the Add box takes one food per comma, as its hint shows', () => {
+  const k = require('../renderer/js/kitchen.js');
+  const got = k.kPantryLines('2.39 lb tomatoes, 12 kiwis, 2 bag avocados, 10.2 lb bananas, salmon, orange peppers, 4.29 lb chicken breast, 1 pack chicken breast, 2 ground turkey, 10.11 lb yams, spring mix, hummus, russet potatoes, raspberries, baby spinach');
+  assert.strictEqual(got.length, 15);
+  assert.deepStrictEqual(got[0], { name: 'tomatoes', qty: 2.39, unit: 'lb' });
+  assert.deepStrictEqual(got[1], { name: 'kiwis', qty: 12, unit: '' });
+  assert.strictEqual(got[14].name, 'baby spinach');
+  assert.deepStrictEqual(k.kPantryLines('2 lb chicken, eggs, 1 bag rice').map((i) => i.name), ['chicken', 'eggs', 'rice']);
+  assert.deepStrictEqual(k.kPantryLines('eggs\nmilk; bread').map((i) => i.name), ['eggs', 'milk', 'bread']);
+  assert.deepStrictEqual(k.kPantryLines(' , ,'), []);
+});
