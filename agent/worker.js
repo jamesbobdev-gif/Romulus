@@ -58,15 +58,24 @@ function mergeActions(local, doc) {
 }
 
 // written compare-and-swap like every row; a write that lost a race reads again and tries once more
+let beatErr = ''; // why the last heartbeat didn't go out ('' when it did), for the log
 async function beat(a, info) {
-  if (!a) return false;
+  if (!a) { beatErr = 'sync isn’t set up on this computer'; return false; }
   for (let i = 0; i < 2; i++) {
-    let prev = null;
-    try { const row = await supabase.readRow(a, SUFFIX); prev = row ? row.updated_at : null; } catch (e) { return false; }
-    try { if (await supabase.writeRow(a, SUFFIX, heartbeat(info), prev)) return true; } catch (e) { return false; }
+    try {
+      const row = await supabase.readRow(a, SUFFIX);
+      if (await supabase.writeRow(a, SUFFIX, heartbeat(info), row ? row.updated_at : null)) { beatErr = ''; return true; }
+      beatErr = 'the row changed while it was being written';
+    } catch (e) { beatErr = String((e && e.message) || e); return false; }
   }
   return false;
 }
+const lastBeatError = () => beatErr;
+/* When the next heartbeat goes (pure, for tests). One that went: in BEAT_MS. One that didn't (the network
+   dropped for a moment, the server was slow): soon, 15 s then 30 s then a minute, so one lost request doesn't
+   cost two minutes of the six his other computers wait before calling it quiet. */
+const BEAT_RETRY_MS = 15 * 1000;
+const nextBeatIn = (ok, fails) => (ok ? BEAT_MS : Math.min(BEAT_MS, BEAT_RETRY_MS * Math.pow(2, Math.max(0, (fails || 1) - 1))));
 
 // the other computers' view, read at most once a minute: the fresh worker, or null
 let seen = { at: 0, doc: null };
@@ -100,6 +109,8 @@ function stateNotice(was, doc, now = Date.now()) {
 }
 const lastDoc = () => seen.doc;
 const forget = () => { seen = { at: 0, doc: null }; };
+// the next present() reads the row again instead of answering from the last minute's copy (which it keeps meanwhile)
+const lookAgain = () => { seen = { at: 0, doc: seen.doc }; };
 
 /* Which queued local-lane tasks this computer should start (pure, for tests):
    - the worker: all of them, except money questions (no Finance here), which it leaves for MONEY_WAIT_MS
@@ -112,4 +123,4 @@ function share(tasks, { worker, workerUp, isMoney, now = Date.now() }) {
   return tasks;
 }
 
-module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, present, lastSeen, forget, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };
+module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, lastBeatError, nextBeatIn, BEAT_RETRY_MS, present, lastSeen, forget, lookAgain, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };

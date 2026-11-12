@@ -57,6 +57,8 @@ store.load().then(async function(data){
         if(Array.isArray(t.cards)&&t.cards.length)out.cards=t.cards; // small cards to look at (his grocery list)
         if(t.lastOrder&&Array.isArray(t.lastOrder.items))out.lastOrder=t.lastOrder; // what he got, for "what's on my list?"
         if(Array.isArray(t.orders)&&t.orders.length)out.orders=t.orders.slice(-12); // its orders (grocery-list.js): Finance matches charges to them, and an order found twice goes into the pantry once
+        if(typeof t.orderLook==='string'&&t.orderLook)out.orderLook=t.orderLook.slice(0,20); // a look at a store's orders (grocery-list.js lookForOwnOrders): also spaces the next one
+        if(t.orderLook&&t.lookAt)out.lookAt=Number(t.lookAt)||null; // when that look last ran again (grocery-list.js runRegularLooks)
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
         if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)

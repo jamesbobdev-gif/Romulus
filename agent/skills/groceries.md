@@ -253,7 +253,18 @@ He sometimes orders on the store's own site or app instead of saying yes here. W
 belongs in his Kitchen pantry, so look at his order history (signed in, only looking) when:
 - the task has `cartCheck`: the app started this run because the cart has waited a day or more. Open
   the orders page of the store the cart is at.
+- the task has `orderLook` (a store: "instacart", "walmart"...): the app saw he bought something there
+  that no order here explains, or it's the regular look at his Instacart orders (every 3 days). Open
+  that store's orders page and look at the last week's orders not in `knownOrders`. That's the whole task: don't build a cart or ask what to order. Found some: send
+  them in `ordered`, status done. None (it was in the store, or the page wants a sign-in): status
+  done, and say so in one line.
 - he says he ordered it himself ("I already ordered it", "got it on Instacart").
+- the task has `pantryFill`: he asked in his own words for an order to go into his pantry ("check my
+  Instacart orders for the pantry", "put it into the pantry"). Do it now, without asking which items:
+  every food item on the order goes in. Open the order's own page and send it in `ordered`, status done.
+  An order you already told him about on this task still goes in `ordered` (unless it's in `knownOrders`).
+Writing "added to your pantry" in the note changes nothing: the pantry only fills from `ordered` (and
+from `list.bought` or a placed cart). Never say food went into his pantry unless you sent it there.
 - a new grocery task, before you build the order: the stores he used lately (`lastOrder`, `knownOrders`),
   for orders since `lastOrder` that aren't in `knownOrders`. One look per store, from one page; skip a
   store whose orders page wants a sign-in.

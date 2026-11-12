@@ -116,3 +116,24 @@ test('knownOrders: the orders the app has, newest first, so a run reports only n
   assert.deepStrictEqual(knownOrders(tasks), [{ store: 'instacart', id: 'A-1', date: '2026-11-08' }, { store: 'walmart', id: undefined, date: '2026-11-01' }]);
   assert.deepStrictEqual(knownOrders(null), []);
 });
+
+test('asksPantryFill: his own words asking for an order to go into the pantry', () => {
+  const { asksPantryFill } = require('../agent/grocery');
+  assert.strictEqual(asksPantryFill({ ws: 'agent', title: 'Check my Instacart orders for the pantry.' }), true);
+  assert.strictEqual(asksPantryFill({ ws: 'agent', title: 'What did I get on Instacart', history: [{ who: 'you', text: 'put it into the pantry' }] }), true);
+  // the AI saying "pantry" doesn't count, only his lines
+  assert.strictEqual(asksPantryFill({ ws: 'agent', title: 'Meal ideas for tonight', history: [{ who: 'claude', text: 'Your pantry has eggs; want me to order more?' }] }), false);
+  assert.strictEqual(asksPantryFill({ ws: 'agent', title: 'What can I cook from my pantry' }), false);
+  assert.strictEqual(asksPantryFill({ ws: 'personal', title: 'Check my Instacart orders for the pantry' }), false);
+  assert.strictEqual(asksPantryFill(null), false);
+});
+
+test('emptyPantryClaim: "added to your pantry" with no items to put there', () => {
+  const { emptyPantryClaim } = require('../agent/grocery');
+  const note = 'Added all 15 items from today’s Giant Eagle delivery to your pantry, as you requested.';
+  assert.strictEqual(emptyPantryClaim({ status: 'done', note, ordered: null }), true);
+  assert.strictEqual(emptyPantryClaim({ status: 'done', note, ordered: [{ store: 'Giant Eagle (Instacart)', items: [{ name: 'Kiwis', qty: 12, food: true }] }] }), false);
+  assert.strictEqual(emptyPantryClaim({ status: 'done', note, list: { bought: ['Kiwis'] } }), false);
+  assert.strictEqual(emptyPantryClaim({ status: 'done', note: 'Your pantry has 3 eggs left.' }), false);
+  assert.strictEqual(emptyPantryClaim(null), false);
+});

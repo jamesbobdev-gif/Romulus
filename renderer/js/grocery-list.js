@@ -126,6 +126,38 @@ function runCartCheck(){
   if(changed)touch();
 }
 if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runCartCheck,60*1000); setInterval(runCartCheck,10*60*1000); }
+/* an order he placed himself with no task here at all: the Finance tab saw a charge at that store that no
+   order explains (order-match.js storesToCheck), so an Agent task looks at the store's order history
+   (t.orderLook; the groceries skill's "Orders he placed himself") and what it finds goes into the pantry.
+   The task carries only the store's name: nothing from the bank goes to the Agent */
+const LOOK_NAMES={instacart:'Instacart',walmart:'Walmart',target:'Target',costco:'Costco',kroger:'Kroger',aldi:'Aldi'};
+function lookForOwnOrders(stores){
+  if(!Array.isArray(stores)||!stores.length)return;
+  stores.forEach(function(s){
+    const name=LOOK_NAMES[s]||s;
+    const t={id:uid(),title:'Check my '+name+' orders for the pantry',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+      created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],orderLook:s};
+    agentSay(t,'sys','Looking at your recent '+name+' orders for food to add to your pantry');
+    state.tasks.push(t);
+  });
+  touch();
+}
+/* the regular look at his Instacart orders (order-match.js regularLooks): every 3 days once he uses it. The
+   last finished look task runs again (t.lookAt), so the Agent list doesn't fill up with them; with none, a new one */
+function runRegularLooks(){
+  if(!window.desktop||!window.desktop.onAgentResults||typeof regularLooks!=='function')return;
+  const stores=regularLooks(state.tasks,Date.now()); if(!stores.length)return;
+  const fresh=[];
+  stores.forEach(function(s){
+    const old=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&t.orderLook===s&&!t.done; })
+      .sort(function(a,b){ return (b.lookAt||b.created||0)-(a.lookAt||a.created||0); })[0];
+    if(!old){ fresh.push(s); return; }
+    old.lookAt=Date.now(); old.status='queued'; old.reply=null; old.note=null;
+    agentSay(old,'sys','Looking at your recent '+(LOOK_NAMES[s]||s)+' orders for food to add to your pantry');
+  });
+  if(fresh.length)lookForOwnOrders(fresh); else touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runRegularLooks,2*60*1000); setInterval(runRegularLooks,60*60*1000); }
 // one line in a grocery task's panel: when the next order opens
 function groceryNextLine(){
   const at=nextGroceryAt();
@@ -153,7 +185,7 @@ async function loadGroceryEbt(){
 // once every page script has run (finance-ebt.js loads after this one)
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadGroceryEbt); else setTimeout(loadGroceryEbt,0);
 if(window.desktop&&window.desktop.onFinanceUpdated)window.desktop.onFinanceUpdated(function(what){ if(what==='ebt')loadGroceryEbt(); });
-/* Settings → EBT: most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
+/* Finance → EBT (finance.js finEbtCard): most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
    Never set: on when there's a sign he uses it (a wallet, an order paid partly with EBT, a grocery task
    that talks about EBT), else off. Off hides the Finance card and the grocery list's EBT lines, and on the
    computer grocery runs get no balance (main/finance.js finance:setEbtOn → config.ebtOff) */
@@ -171,15 +203,6 @@ function setEbtOn(on){
   if(window.desktop&&window.desktop.financeSetEbtOn)window.desktop.financeSetEbtOn(on).catch(function(){});
   if(typeof render==='function')render();
 }
-function wireEbtSetting(){
-  const box=$('ebtOn'); if(!box)return;
-  const sec=$('ebtSection');
-  // the balance boxes (finance.js drawEbtSettingsForm), filled fresh each time the section opens
-  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; if(typeof drawEbtSettingsForm==='function')drawEbtSettingsForm(); };
-  show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
-  box.addEventListener('change',function(){ setEbtOn(box.checked); show(); });
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireEbtSetting); else setTimeout(wireEbtSetting,0);
 // → the wallet (finance-ebt.js ebtWallet) when he's set one up and EBT is on, else null
 function groceryWallet(){
   if(typeof ebtWallet!=='function'||!ebtOn())return null;

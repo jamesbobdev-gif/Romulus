@@ -1,7 +1,7 @@
-/* EBT alerts, on every device while Settings → EBT is on (grocery-list.js ebtOn):
+/* EBT alerts, on every device while Finance → EBT is on (grocery-list.js ebtOn):
    - deposit day: "EBT deposit today"
    - each Agent grocery order that put money on EBT: how much, and about what's left
-   - under his low mark (Settings → EBT, $25 to start): once per deposit cycle
+   - under his low mark (Finance → EBT, $25 to start): once per deposit cycle
    What's due comes from finance-ebt.js ebtAlertsDue, on the wallet's settings the grocery list already has
    (groceryEbt: Finance's sealed copy on the computer, this device's copy elsewhere), so it works while
    Finance is locked. Each alert is told once per device ('ebt.alerted').
@@ -55,15 +55,11 @@ function ebtAlertCheck(){
 setTimeout(ebtAlertCheck,6000);
 setInterval(ebtAlertCheck,5*60*1000);
 
-// Settings → EBT: the low mark
-function wireEbtLow(){
-  const i=$('ebtLow'); if(!i)return;
-  i.value=String(ebtLow());
-  i.addEventListener('change',function(){
-    const n=Number(String(i.value).replace(/[$,\s]/g,''));
-    if(!(n>=0)){ i.value=String(ebtLow()); return; }
-    try{ localStorage.setItem(EBT_LOW_KEY,String(n)); }catch(e){}
-    ebtAlertCheck();
-  });
+// Finance → EBT (finance.js finEbtCard): the low mark, typed like "$25". → false when it isn't an amount
+function setEbtLow(text){
+  const n=Number(String(text).replace(/[$,\s]/g,''));
+  if(String(text).trim()===''||!(n>=0))return false;
+  try{ localStorage.setItem(EBT_LOW_KEY,String(n)); }catch(e){}
+  ebtAlertCheck();
+  return true;
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireEbtLow); else setTimeout(wireEbtLow,0);

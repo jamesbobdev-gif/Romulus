@@ -73,6 +73,11 @@ test('delete sends every key the Romulus server holds these lists under, and the
     const body = await h.hostedDeleteBody(cfg, rowKeyOf);
     assert.deepStrictEqual(body.keys, ['tk_abc', 'tk_LOOKUP', 'tk_work_abc', 'tk_work_LOOKUP', 'tk_agent_abc', 'tk_agent_LOOKUP']);
     assert.deepStrictEqual(body.agentKeys, ['tk_agent_abc']);
+    // plain lists: the sealed health row sits under the personal lookup id, so that goes too
+    const plain = { personal: { url: 'https://romulus.supabase.co', key: 'pk', syncKey: 'tk_abc' } };
+    const b2 = await h.hostedDeleteBody(plain, async (p) => p.syncKey, async (k) => k.replace(/abc$/, 'LOOKUP'));
+    assert.deepStrictEqual(b2.keys, ['tk_abc', 'tk_LOOKUP']);
+    assert.deepStrictEqual((await h.hostedDeleteBody(cfg, rowKeyOf, async (k) => k.replace(/abc$/, 'LOOKUP'))).keys, body.keys);
   } finally { global.window = saved; }
 });
 

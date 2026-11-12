@@ -5,6 +5,9 @@
    Pairing: the computer's Finance tab shows a QR code (main/finance.js finance:pairCode) with the SimpleFIN
    link and his fixed/variable corrections; this phone scans it, then downloads from SimpleFIN and Yahoo
    Finance itself (the shared code in renderer/js/finance-core.js, through the plugin's http call).
+   Or, with no code: the SimpleFIN link a computer keeps in the :finance sync row, opened with his Finance
+   passphrase (renderer/js/finance-share.js). A phone paired with a code can make that row's copy itself under a
+   passphrase he picks, so his computers connect without a new setup token.
    Locking: everything is kept encrypted (AES-GCM) under a random key that the plugin hands out only after
    his fingerprint. The key lives in memory while Finance is open and is dropped when he leaves the app,
    after 30 minutes without use, or when he taps lock. Purchase emails stay on the computer. */
@@ -91,7 +94,59 @@
     Object.keys((o.k && typeof o.k === 'object') ? o.k : {}).slice(0, 2000).forEach(function (p) { if (['fixed', 'variable', 'skip', 'income'].indexOf(o.k[p]) !== -1) kinds[String(p).slice(0, 80)] = o.k[p]; });
     return { accessUrl: o.u, kinds: kinds };
   }
+  // the same text, from this phone, for another phone or computer (main/finance.js pairPayload)
+  function makePairing() {
+    var enc = function (o) { return PREFIX + b64(new TextEncoder().encode(JSON.stringify(o))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    var withKinds = enc({ u: vault.accessUrl, k: vault.kinds || {} });
+    return withKinds.length <= 1600 ? withKinds : enc({ u: vault.accessUrl, k: {} });
+  }
   var why = function (e) { return (e && (e.message || e.errorMessage)) || String(e); };
+  // a pairing text in hand (scanned, or opened from a typed code): his fingerprint, then the first download
+  async function join(text) {
+    var p = readPairing(text);
+    if (!p) return { ok: false, error: 'That isn’t a Finance code. On your other device, open Finance → add another device → Show a code.' };
+    var a = await call('available');
+    if (!a.ok) return { ok: false, error: a.reason };
+    var raw;
+    try { raw = (await withNative(call('create'))).key; }
+    catch (e) { return e && e.code === 'CANCELLED' ? { ok: false, cancelled: true } : { ok: false, error: why(e) }; }
+    key = await useKey(raw);
+    vault = { accessUrl: p.accessUrl, kinds: p.kinds, cache: { fetchedAt: 0, accounts: [], errors: [] } };
+    await save();
+    await takePendingEbt(); // a balance he saved before pairing
+    stillHere();
+    try { await refresh(false); } catch (e) { return { ok: true, warning: why(e) }; }
+    return { ok: true };
+  }
+  /* the link his computer keeps in the :finance sync row (renderer/js/finance-share.js opens it with his Finance
+     passphrase); the box itself is kept in the vault, so this phone can put it back if the row goes empty */
+  var wrong = 0, waitUntil = 0;
+  async function joinShared(box, passphrase) {
+    var S = window.FinShare;
+    if (!S || !S.ok(box)) return { ok: false, error: 'The connection your computer shared can’t be read. Use a code from your computer instead.' };
+    if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + Math.ceil((waitUntil - Date.now()) / 1000) + ' seconds.' };
+    var a = await call('available');
+    if (!a.ok) return { ok: false, error: a.reason };
+    var u;
+    try { u = await S.open(box, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
+    if (!u) {
+      wrong++; if (wrong >= 3) waitUntil = Date.now() + Math.min(300, Math.pow(2, wrong - 3) * 5) * 1000;
+      return { ok: false, error: 'Wrong passphrase. Use the Finance passphrase from your computer.' };
+    }
+    var x = core().checkSimplefinUrl(u);
+    if (!x || !x.username || !x.password) return { ok: false, error: 'The shared connection isn’t a SimpleFIN link. Use a code from your computer instead.' };
+    wrong = 0; waitUntil = 0;
+    var raw;
+    try { raw = (await withNative(call('create'))).key; }
+    catch (e) { return e && e.code === 'CANCELLED' ? { ok: false, cancelled: true } : { ok: false, error: why(e) }; }
+    key = await useKey(raw);
+    vault = { accessUrl: u, kinds: {}, shared: box, cache: { fetchedAt: 0, accounts: [], errors: [] } };
+    await save();
+    await takePendingEbt();
+    stillHere();
+    try { await refresh(false); } catch (e) { return { ok: true, warning: why(e) }; }
+    return { ok: true };
+  }
 
   window.phoneFinance = {
     phone: true,
@@ -106,18 +161,36 @@
       var text;
       try { text = (await withNative(call('scan'))).text; }
       catch (e) { return e && e.code === 'CANCELLED' ? { ok: false, cancelled: true } : { ok: false, error: why(e) }; }
-      var p = readPairing(text);
-      if (!p) return { ok: false, error: 'That isn’t the Finance pairing code. On the computer, open Finance → pair your phone → Show the code.' };
-      var raw;
-      try { raw = (await withNative(call('create'))).key; }
+      if (!readPairing(text)) return { ok: false, error: 'That isn’t the Finance pairing code. On the computer, open Finance → pair your phone → Show the code.' };
+      return join(text);
+    },
+    // the scanner alone: the page decides what the code is (a pairing code goes through renderer/js/pair.js first)
+    financeScan: async function () {
+      try { return { ok: true, text: String((await withNative(call('scan'))).text || '').trim() }; }
       catch (e) { return e && e.code === 'CANCELLED' ? { ok: false, cancelled: true } : { ok: false, error: why(e) }; }
-      key = await useKey(raw);
-      vault = { accessUrl: p.accessUrl, kinds: p.kinds, cache: { fetchedAt: 0, accounts: [], errors: [] } };
-      await save();
-      await takePendingEbt(); // a balance he saved before pairing
+    },
+    financeJoin: function (text) { return join(text); },
+    financeSharePayload: async function () {
+      if (!key) return { ok: false, error: 'locked' };
       stillHere();
-      try { await refresh(false); } catch (e) { return { ok: true, warning: why(e) }; }
-      return { ok: true };
+      return { ok: true, text: makePairing() };
+    },
+    // the :finance sync row (renderer/js/finance.js finShareUp): this phone's copy, or none if it was paired with a code
+    financeShareBox: async function () {
+      if (!key) return { ok: false, error: 'locked' };
+      return vault.shared ? { ok: true, box: vault.shared } : { ok: false, none: true };
+    },
+    financeSetupShared: function (box, passphrase) { return joinShared(box, passphrase); },
+    // a phone paired with a code has no passphrase: he picks one here so his computers can connect by themselves
+    financeMakeShareBox: async function (passphrase) {
+      if (!key || !window.FinShare) return { ok: false, error: 'locked' };
+      stillHere();
+      var k = key, box;
+      try { box = await window.FinShare.make(vault.accessUrl, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
+      if (key !== k) return { ok: false, error: 'locked' };
+      vault.shared = box;
+      await save();
+      return { ok: true, box: box };
     },
     financeUnlock: async function () {
       if (key) { stillHere(); return { ok: true }; }

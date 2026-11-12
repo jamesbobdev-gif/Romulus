@@ -5,7 +5,7 @@
    rules live next to the agent list (doc {v, rules:[{words, lane}], default}) and are edited in Settings
    on any device.
    'auto' looks at what is up right now (main.js keeps noteSituation current: is the mini PC answering, is
-   any cloud AI connected, is Claude near its limit) and at what the task needs: the inbox, the open web
+   any cloud AI connected, how much usage the connected cloud AIs have left) and at what the task needs: the inbox, the open web
    and shopping go to the cloud; writing and forms go to the mini PC; anything else to the cloud (faster).
    With auto on, a rule that names a lane that's down hands the task to the other one instead of waiting.
    d1 (agent/decider.js, a small decision model on the mini PC) looks at each new task first: it adds to the
@@ -42,7 +42,8 @@ function useRouting(d) {
   if (!(routing.v >= 2) && (routing.default == null || routing.default === 'ask')) routing = Object.assign({}, routing, { default: 'auto' });
 }
 // what auto knows about right now: null = not checked yet (counted as up)
-let situation = { localUp: null, cloudUp: null, claudeTight: false };
+// cloudTight / cloudOut: every connected cloud AI is under 10% / out of usage (cloudLeft: the most any has left, 0..1)
+let situation = { localUp: null, cloudUp: null, cloudTight: false, cloudOut: false, cloudLeft: null };
 function noteSituation(s) { situation = Object.assign({}, situation, s); }
 const up = (lane) => (lane === 'local' ? situation.localUp : situation.cloudUp) !== false;
 const other = (lane) => (lane === 'local' ? 'claude' : 'local');
@@ -56,12 +57,17 @@ const LOCAL_WORDS = ['write', 'rewrite', 'draft', 'essay', 'letter', 'cover lett
 function autoRoute(text, t) {
   if (!up('local')) return { lane: 'claude', reason: 'auto: The local model isn’t answering' };
   if (!up('claude')) return { lane: 'local', reason: 'auto: no cloud AI is connected' };
-  const d1 = t && decider.laneFor(t);
-  if (d1) return { lane: d1, reason: d1 === 'local' ? 'auto: d1 says the local model can do this without the web' : 'auto: d1 says this needs the web' };
   const cloudHit = wordHit(text, CLOUD_WORDS), localHit = !cloudHit && wordHit(text, LOCAL_WORDS);
-  if (cloudHit) return { lane: 'claude', reason: 'auto: needs the web or inbox (' + cloudHit + ')' };
+  /* usage left on the cloud AIs: when all of them are low, only a task that needs the web or inbox spends
+     what's left; when all are out, everything else goes to the local model rather than waiting for the reset */
+  const low = situation.cloudOut ? 'auto: every cloud AI is out of usage' : situation.cloudTight
+    ? 'auto: the cloud AIs are low on usage (' + Math.round((situation.cloudLeft || 0) * 100) + '% left)' : null;
+  const d1 = t && decider.laneFor(t);
+  // d1's cloud pick means the task needs the web, which is worth what usage is left
+  if (d1) return { lane: d1, reason: d1 === 'local' ? 'auto: d1 says the local model can do this without the web' : 'auto: d1 says this needs the web' };
+  if (cloudHit) return { lane: 'claude', reason: 'auto: needs the web or inbox (' + cloudHit + ')' + (low ? ', even with usage low' : '') };
   if (localHit) return { lane: 'local', reason: 'auto: writing/forms suit the local model (' + localHit + ')' };
-  if (situation.claudeTight) return { lane: 'local', reason: 'auto: Claude is near its limit' };
+  if (low) return { lane: 'local', reason: low };
   return { lane: 'claude', reason: 'auto: quickest for everyday tasks' };
 }
 // with auto on, a lane that's down hands over to the other one (only if that one is up)

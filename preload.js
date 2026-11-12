@@ -139,6 +139,8 @@ contextBridge.exposeInMainWorld('desktop', {
   kitchenPhoto: (req) => ipcRenderer.invoke('kitchen:photo', req),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
+  financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),
+  financeSetupFromPair: (text, passphrase) => ipcRenderer.invoke('finance:setupFromPair', text, passphrase),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),
   financeSetupShared: (box, passphrase) => ipcRenderer.invoke('finance:setupShared', box, passphrase),
   financeBills: () => ipcRenderer.invoke('finance:bills'),

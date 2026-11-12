@@ -91,6 +91,26 @@ function knownOrders(tasks) {
   });
   return out.sort((a, b) => b.at - a.at).slice(0, 20).map((o) => ({ store: o.store, id: o.id, date: o.date }));
 }
+/* he asked, in his own words, for an order to go into his pantry ("check my Instacart orders for the pantry",
+   "put it into the pantry"): the run gets knownOrders and sends what it finds in `ordered`, the same as an
+   orderLook the app started. His title, his reply and his own lines in the task's conversation count */
+const PANTRY_WORD = /\bpantry\b/i;
+const ORDER_WORDS = /\b(orders?|ordered|deliver(y|ies|ed)|bought|instacart|walmart|aldi|kroger|costco|target|receipt)\b/i;
+function asksPantryFill(t) {
+  if (!t || t.ws !== 'agent') return false;
+  const his = [t.title, t.reply].concat((Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'you').map((h) => h.text));
+  const text = his.map((s) => String(s || '')).join('\n');
+  return PANTRY_WORD.test(text) && (ORDER_WORDS.test(text) || /\b(put|add)\b[^.\n]{0,40}\b(in|into|to)\b[^.\n]{0,12}\bpantry\b/i.test(text));
+}
+/* an answer that says food went into his pantry but sends nothing that puts it there (`ordered` with food,
+   a placed cart, or `list.bought`): the words alone change nothing, so the app says so instead of letting it stand */
+const PANTRY_CLAIM = /\b(added|put|went|moved|stocked|placed)\b[^.\n]{0,80}\b(to|in|into)\b[^.\n]{0,15}\bpantry\b/i;
+function emptyPantryClaim(u) {
+  if (!u || !PANTRY_CLAIM.test(String(u.note || ''))) return false;
+  const food = Array.isArray(u.ordered) && u.ordered.some((o) => o && Array.isArray(o.items) && o.items.some((it) => it && it.food !== false));
+  const bought = u.list && Array.isArray(u.list.bought) && u.list.bought.length;
+  return !food && !bought && !(Array.isArray(u.cart) && u.cart.length);
+}
 
 /* his macro plan (the Health tab's Food plan, renderer/js/health.js: the agent list's ':macros' row holds it
    as JSON text) as a grocery run sees it, or undefined when there is none or it has run out. Per day, for him
@@ -149,4 +169,4 @@ function foodBrief(t, tasks, kitchen) {
   return { usualGroceries: usual.length ? usual : undefined, pantry: pantry.length ? pantry : undefined, recipes: recipes.length ? recipes : undefined };
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, isFoodTask, foodBrief };
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, isFoodTask, foodBrief };

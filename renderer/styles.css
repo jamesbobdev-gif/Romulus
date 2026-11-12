@@ -250,6 +250,20 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .conv-toggle .conv-spin{margin:0 0 0 8px;color:var(--accent)}
 .conv-msg.conv-typing{color:var(--muted);font-style:italic}
 .lane-slider .lane-word.on .spin{color:var(--accent)}
+/* the one "it's going" line in an Agent task's status card (busy-line.js): a turning star, what it's doing in a
+   shimmer, and the time it's been at it */
+.busy-line{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-size:14px;font-weight:600;line-height:1.35;white-space:normal}
+.busy-star{flex:none;width:15px;height:15px;stroke:var(--accent);stroke-width:2.4;stroke-linecap:round;animation:busyStar 2.4s ease-in-out infinite}
+.chip .busy-star{width:10px;height:10px;margin-right:4px;vertical-align:-1px;stroke-width:2.8}
+@keyframes busyStar{0%{transform:rotate(0) scale(.8)}50%{transform:rotate(90deg) scale(1.08)}100%{transform:rotate(180deg) scale(.8)}}
+.busy-verb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);
+  background:linear-gradient(90deg,var(--accent) 0%,var(--accent) 38%,color-mix(in srgb,var(--accent) 30%,var(--surface)) 50%,var(--accent) 62%,var(--accent) 100%);
+  background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:busyShimmer 2.2s linear infinite}
+.busy-verb.swap{animation:busyShimmer 2.2s linear infinite,busySwap .35s ease-out}
+@keyframes busyShimmer{from{background-position:100% 0}to{background-position:-150% 0}}
+@keyframes busySwap{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.busy-meta{flex:none;font-family:var(--mono);font-size:11px;font-weight:400;color:var(--faint);font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.busy-star{animation-duration:6s}.busy-verb,.busy-verb.swap{animation:none;-webkit-text-fill-color:var(--accent)}}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
 .tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */
@@ -662,6 +676,9 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .switch input:checked+.track{background:var(--accent)}
 .switch input:checked+.track::after{transform:translateX(14px)}
 .switch input:focus-visible+.track{outline:2px solid var(--accent);outline-offset:2px}
+/* Settings > Tabs: each group a column, the columns side by side; they wrap under each other on a narrow screen (tab-picker.js) */
+#tabPicker{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 24px;align-items:start}
+.tab-kind{min-width:0}
 .gcal-ok{font-family:var(--mono);font-size:11px;color:#2A7A3B;flex:1}
 .cal-acct{border-top:1px solid var(--hairline);padding:12px 0 4px;margin-top:12px}
 .cal-acct-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -1314,3 +1331,21 @@ body.review-open .top-right{display:none!important}
 .kp-row .kit-hint{margin:0}
 .kp-item{justify-content:flex-start}
 .kp-item .kit-hint{margin:0;white-space:nowrap}
+/* pantry as picture cards (kitchen.js kDrawPantry): lit = have some, tapped dark = none left */
+.kit-undo-bar{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;margin-bottom:6px;pointer-events:none}
+.kit-undo-bar[hidden]{display:none}
+.kit-undo{pointer-events:auto;background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:12.5px;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+.kit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:0 0 6px}
+.kit-tile{position:relative;display:flex;flex-direction:column;gap:4px;background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:6px;cursor:pointer;color:var(--ink);transition:opacity .2s,border-color .2s,filter .2s,transform .1s;user-select:none}
+.kit-tile:active{transform:scale(.97)}
+.kit-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kit-tile.off{border-color:var(--hairline);opacity:.4;filter:grayscale(1)}
+.kit-tile.off .kit-tile-name{text-decoration:line-through}
+.kit-tile-pic{height:100px;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:26px;color:var(--faint);overflow:hidden}
+.kit-tile-pic img{max-width:100%;max-height:100%;object-fit:contain}
+.kit-tile-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;line-height:20px;text-align:center}
+.kit-tile.off .kit-tile-check{background:var(--chip);color:transparent;border:1px solid var(--hairline)}
+.kit-tile-name{font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kit-tile .kit-qty{margin-top:auto;width:100%;text-align:center;padding:3px 4px;font-size:12px}
+.kit-tile-del{position:absolute;top:2px;left:2px;width:22px;height:22px;background:var(--surface);border-radius:50%;opacity:.5}
+.kit-tile:hover .kit-tile-del,.kit-tile-del:focus-visible{opacity:1}

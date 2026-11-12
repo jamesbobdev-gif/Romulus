@@ -41,6 +41,14 @@ test('a check that failed is tried again in five minutes, one that answered in s
   assert.equal(lastCheckAfter(false, now), now - 6 * 60 * 60 * 1000 + 5 * 60 * 1000);
 });
 
+test('a newer release whose APK is not uploaded yet is waited for, not offered', () => {
+  const { decide } = load();
+  assert.equal(decide({ version: '1.3.11', apkUrl: 'https://x/apk' }, '1.3.9'), 'offer');
+  assert.equal(decide({ version: '1.3.11', apkUrl: null }, '1.3.9'), 'wait');
+  assert.equal(decide({ version: '1.3.9', apkUrl: null }, '1.3.9'), 'none');
+  assert.equal(decide(null, '1.3.9'), 'none');
+});
+
 // with Capacitor present: does the check get as far as scheduling itself?
 function scheduled(store) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'update-phone.js'), 'utf8');
