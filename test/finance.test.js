@@ -248,6 +248,33 @@ test('another computer connects with the shared link and the same passphrase', a
   await h['finance:forget']();
 });
 
+test('a code from his phone or other computer: the link and corrections, under a new passphrase here', async () => {
+  const fetchOk = async (url, opts) => opts.method === 'POST' ? { ok: true, status: 200, text: async () => ACCESS }
+    : { ok: true, status: 200, json: async () => ({ accounts: [{ id: 'a1', name: 'Checking', balance: '5', transactions: [] }] }) };
+  const d1 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  finance.init({ userData: () => d1, agentLog: () => {}, sendToRenderer: () => {}, fetch: fetchOk });
+  assert.strictEqual((await h['finance:sharePayload']()).ok, false, 'nothing while not set up');
+  await h['finance:setup'](null, token, 'correct horse battery');
+  await h['finance:setKind'](null, 'Shell Oil', 'fixed');
+  const text = (await h['finance:sharePayload']()).text;
+  assert.ok(text.startsWith('tasks-finance:1:'));
+  h['finance:lock']();
+  assert.strictEqual((await h['finance:sharePayload']()).ok, false, 'nothing while locked');
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  const posts = [];
+  finance.init({ userData: () => d2, agentLog: () => {}, sendToRenderer: () => {}, fetch: async (u, o) => { if (o.method === 'POST') posts.push(u); return fetchOk(u, o); } });
+  assert.strictEqual((await h['finance:setupFromPair'](null, text, 'short')).ok, false, 'a real passphrase');
+  assert.strictEqual((await h['finance:setupFromPair'](null, 'tasks-finance:1:' + Buffer.from(JSON.stringify({ u: 'https://u:p@evil.example/x' })).toString('base64url'), 'another good passphrase')).ok, false, 'only a SimpleFIN link');
+  const r = await h['finance:setupFromPair'](null, text, 'another good passphrase');
+  assert.strictEqual(r.ok, true, r.error);
+  assert.strictEqual(posts.length, 0, 'no setup token claimed');
+  assert.deepStrictEqual(h['finance:data']().kinds, { 'Shell Oil': 'fixed' });
+  h['finance:lock']();
+  assert.strictEqual((await h['finance:unlock'](null, 'another good passphrase')).ok, true, 'its own passphrase');
+  assert.strictEqual((await h['finance:setupFromPair'](null, text, 'another good passphrase')).ok, false, 'already connected');
+  await h['finance:forget']();
+});
+
 test('Settings → EBT off: kept in the config so grocery runs get no balance', async () => {
   let cfg = { other: 1 };
   finance.init({ userData: () => dir, agentLog: () => {}, sendToRenderer: () => {}, readConfig: () => JSON.parse(JSON.stringify(cfg)), writeConfig: async (c) => { cfg = c; } });

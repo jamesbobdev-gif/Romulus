@@ -142,4 +142,9 @@ async function fetchPublic(url, opts = {}) {
   }
 }
 
-module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, fetchPublic, trimRunLog };
+/* a try that never reached its AI: this computer was offline (DNS, Wi-Fi, a dropped connection), not the AI
+   failing. r = a runner result {why, text, log}; only the error side and the log's end are looked at, not
+   the pages a run read */
+const OFFLINE_RE = /\b(ENOTFOUND|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT)\b|Can.t reach the API|getaddrinfo|fetch failed|network (error|is unreachable)/i;
+const offline = (r) => !!r && OFFLINE_RE.test([r.why, String(r.text || '').slice(-2000), String(r.log || '').slice(-4000)].join('\n'));
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, fetchPublic, trimRunLog, offline };

@@ -24,7 +24,13 @@ const fresh = (safeStorage) => {
   store.init({ userData: () => dir, safeStorage });
   return dir;
 };
-const disk = (dir) => JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
+// the same, as a Windows computer whatever the tests run on (CI runs them on Linux and Mac too)
+const windows = (safeStorage) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-store-'));
+  store.init({ userData: () => dir, safeStorage, platform: 'win32' });
+  return dir;
+};
+const disk =(dir) => JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
 
 test('secrets are sealed on disk and opened on read', async () => {
   const dir = fresh(asyncSafe());
@@ -178,4 +184,81 @@ test('agentLog appends a timestamped line', () => {
   const dir = fresh(syncSafe);
   store.agentLog('hello');
   assert.match(fs.readFileSync(path.join(dir, 'agent-runner.log'), 'utf8'), /^\d{4}-\d\d-\d\dT.* hello\n$/);
+});
+
+/* The local model's own computer (Linux, localModel.worker): its secrets go under the app's own key file, so
+   they open the same however the app was started. */
+const linux = (safeStorage) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-store-'));
+  store.init({ userData: () => dir, safeStorage, platform: 'linux' });
+  return dir;
+};
+// a keyring that stopped opening what it sealed (the app was started another way)
+const lockedSafe = { isAsyncEncryptionAvailable: async () => true, encryptStringAsync: async (s) => Buffer.from(rev(s)),
+  decryptStringAsync: async () => { throw new Error('keyring locked'); } };
+const workerCfg = { localModel: { worker: true }, sync: { personal: { url: 'https://x', key: 'anon-key', syncKey: 'tk_abc' } } };
+
+test('the worker computer seals with its own key file, and a start with a locked keyring still opens it', async () => {
+  const dir = linux(asyncSafe());
+  await store.load();
+  await store.writeConfig(workerCfg);
+  const d = disk(dir);
+  assert.match(d.sync.personal.key, /^enc:v2:/);
+  assert.match(d.sync.personal.syncKey, /^enc:v2:/);
+  assert.ok(!JSON.stringify(d).includes('anon-key'));
+  assert.strictEqual(Buffer.from(fs.readFileSync(path.join(dir, 'config.key'), 'utf8'), 'base64').length, 32);
+  // the next start: the keyring opens nothing, the key file does
+  store.init({ userData: () => dir, safeStorage: lockedSafe, platform: 'linux' });
+  await store.load();
+  assert.deepStrictEqual(store.readConfig(), workerCfg);
+  // and the key file is never replaced by a later write
+  const key = fs.readFileSync(path.join(dir, 'config.key'), 'utf8');
+  await store.writeConfig(Object.assign({}, workerCfg, { theme: 'dark' }));
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'config.key'), 'utf8'), key);
+  assert.strictEqual(store.readConfig().sync.personal.key, 'anon-key');
+});
+
+test('secrets the worker sealed the old way move under its own key at the next start', async () => {
+  const dir = linux(asyncSafe());
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ localModel: { worker: true },
+    sync: { personal: { url: 'https://x', key: 'enc:v1:' + Buffer.from(rev('anon-key')).toString('base64') } } }));
+  await store.load();
+  await store.flush();
+  assert.match(disk(dir).sync.personal.key, /^enc:v2:/);
+  assert.strictEqual(store.readConfig().sync.personal.key, 'anon-key');
+});
+
+test('a secret sealed with no keyring opens on Linux even when safeStorage will not; a keyring one stays sealed', async () => {
+  const crypto = require('crypto');
+  const c = crypto.createCipheriv('aes-128-cbc', crypto.pbkdf2Sync('peanuts', 'saltysalt', 1, 16, 'sha1'), Buffer.alloc(16, ' '));
+  const basic = 'enc:v1:' + Buffer.concat([Buffer.from('v10'), c.update('anon-key', 'utf8'), c.final()]).toString('base64');
+  const keyring = 'enc:v1:' + Buffer.concat([Buffer.from('v11'), crypto.randomBytes(32)]).toString('base64');
+  const dir = linux(lockedSafe);
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ localModel: { worker: true }, sync: { personal: { url: 'https://x', key: basic }, agent: { url: 'https://y', key: keyring } } }));
+  await store.load();
+  await store.flush();
+  const cfg = store.readConfig();
+  assert.strictEqual(cfg.sync.personal.key, 'anon-key');
+  assert.strictEqual(cfg.sync.agent.key, keyring, 'still sealed: never sent as a key (agent/supabase.js keyLocked)');
+  assert.ok(store.isSealed(cfg.sync.agent.key));
+  const d = disk(dir);
+  assert.match(d.sync.personal.key, /^enc:v2:/); // rescued, and now under the app's own key
+  assert.strictEqual(d.sync.agent.key, keyring); // left as it was, for a start that can open it
+  // not Linux: nothing is guessed at
+  const win = windows(lockedSafe);
+  fs.writeFileSync(path.join(win, 'config.json'), JSON.stringify({ sync: { personal: { url: 'https://x', key: basic } } }));
+  await store.load();
+  assert.strictEqual(store.readConfig().sync.personal.key, basic);
+});
+
+test('a Linux computer that is not the worker, and every other system, keep the system keyring', async () => {
+  const dir = linux(asyncSafe());
+  await store.load();
+  await store.writeConfig({ sync: { personal: { url: 'https://x', key: 'anon-key' } } });
+  assert.match(disk(dir).sync.personal.key, /^enc:v1:/);
+  assert.ok(!fs.existsSync(path.join(dir, 'config.key')));
+  const win = windows(asyncSafe());
+  await store.load();
+  await store.writeConfig(workerCfg);
+  assert.match(disk(win).sync.personal.key, /^enc:v1:/);
 });

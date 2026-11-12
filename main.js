@@ -24,7 +24,6 @@ const agentLogMod = require('./main/agent-log');
 const usage = require('./agent/usage-limit');
 const routingMod = require('./agent/routing');
 const ai = require('./agent/ai-connections');
-const usageMeter = require('./agent/usage-meter');
 const agentBrowser = require('./agent/agent-browser');
 const linkWallet = require('./agent/link-wallet');
 const taskContext = require('./agent/task-context');
@@ -103,7 +102,6 @@ let workerWas = null; // the local model's computer as last seen from here: 'non
 async function refreshSituation() {
   const was = JSON.stringify(situationNow);
   const local = await localLane.localStatus().catch(() => ({ online: false }));
-  const claude = usageMeter.snapshot().claude || {};
   // the local model's own computer (agent/worker.js) routes as if the cloud lane is up: his other computer runs
   // it, and the two must send the same tasks to the local model, or a task could wait for a lane nobody runs here
   const workerMod = require('./agent/worker');
@@ -114,8 +112,10 @@ async function refreshSituation() {
     if (workerWas !== null && n.title && Notification.isSupported()) new Notification({ title: n.title, body: n.body }).show();
     workerWas = n.is;
   }
+  // how much usage the connected cloud AIs have left (the local model's own computer doesn't run them, so never tight there)
+  const room = here ? { left: null, tight: false, out: false } : ai.cloudRoomNow();
   situationNow = { localUp: !!(local.configured && local.online), cloudUp: here || ai.cloudOrder().length > 0,
-    claudeTight: !here && (!!claude.out || claude.pct >= 0.9 || claude.week >= 0.95) };
+    cloudTight: room.tight, cloudOut: room.out, cloudLeft: room.left == null ? null : Math.round(room.left * 100) / 100 };
   routingMod.noteSituation(situationNow);
   if (was !== JSON.stringify(situationNow)) { scheduleAgentRun(); scheduleLocalRun(); } // a waiting task may have a new home
 }
@@ -182,9 +182,23 @@ if (!gotLock) {
     setTimeout(() => scheduleLocalRun(), 20 * 1000);
     // the local model's own computer says it's there, for his other devices (agent/worker.js), and what its
     // browser downloaded goes up for them (agent/worker-files.js)
-    const beat = () => localLane.workerBeat().catch((e) => agentLog('worker heartbeat failed: ' + (e && e.message || e)));
+    // One that doesn't go out is tried again within seconds, not at the next two-minute mark, and the log says
+    // why once (and when it's back), so "it went quiet" has a reason to read afterwards.
+    const workerMod = require('./agent/worker');
+    let beatFails = 0, beatTimer = null;
+    const beat = async () => {
+      clearTimeout(beatTimer);
+      if (!workerMod.isWorker(readConfig())) { beatFails = 0; beatTimer = setTimeout(beat, workerMod.BEAT_MS); return; }
+      const ok = await localLane.workerBeat().catch(() => false);
+      if (ok && beatFails) agentLog('worker heartbeat: back after ' + beatFails + ' missed');
+      if (!ok && !beatFails) agentLog('worker heartbeat failed: ' + (workerMod.lastBeatError() || 'no reason given') + ' (trying again shortly)');
+      beatFails = ok ? 0 : beatFails + 1;
+      beatTimer = setTimeout(beat, workerMod.nextBeatIn(ok, beatFails));
+    };
     setTimeout(beat, 5 * 1000);
-    setInterval(beat, require('./agent/worker').BEAT_MS);
+    // waking from sleep: say it's there now (the local model's computer), or look for it now (the others),
+    // rather than up to two minutes later
+    powerMonitor.on('resume', () => { setTimeout(() => { beat(); workerMod.lookAgain(); refreshSituation(); }, 3000); });
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);
     setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000);

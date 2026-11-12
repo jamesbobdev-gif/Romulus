@@ -705,7 +705,12 @@ async function compatCall(id, key, model, content, timeoutMs, browser, onProc) {
   };
   const base = browser ? { model, tools: loop.chatTools(browser.tools) } : { model };
   const api = loop.chatApi({ base, content, fail,
-    post: (body, ms) => postJson(ep.base + '/chat/completions', { Authorization: 'Bearer ' + ep.token, 'Content-Type': 'application/json' }, body, ms, p.name) });
+    post: async (body, ms) => {
+      const x = await postJson(ep.base + '/chat/completions', { Authorization: 'Bearer ' + ep.token, 'Content-Type': 'application/json' }, body, ms, p.name);
+      // Groq says how many requests are left today on every reply, a 429 included
+      if (id === 'groq' && x.r && x.r.headers && typeof x.r.headers.get === 'function') meter.noteRate(id, (h) => x.r.headers.get(h));
+      return x;
+    } });
   const r = await loop.runLoop(api, browser || { tools: [] }, { timeoutMs: timeoutMs || 600000, onProc: browser && onProc });
   if (r.text) { meter.noteCall(id, { tokens: r.tokens }); return withLog({ text: String(r.text), model: r.model || model }, r); }
   r.log = loopLog(r);

@@ -20,7 +20,8 @@ const FINDING_CHARS = 2500; // per piece, so every answer fits in Lupa's 16k con
 const DIGEST_MS = 5 * 60 * 1000; // Lupa boiling one long answer down
 const GAP_PIECES = 4; // the second wave, at most
 const TAG = /(^|\s)#(legion|research)\b/i;
-const LEAD_IN = /^\s*(deep research|legion|research legion)\s*[:\-–]\s*/i;
+// "Legion: …", or just "legion I need to…" as the first word (said or typed without the colon)
+const LEAD_IN = /^\s*(deep research|legion|research legion)(\s*[:\-–]\s*|\s+(?=\S))/i;
 
 const isLegion = (t) => !!t && (TAG.test(String(t.title || '')) || LEAD_IN.test(String(t.title || '')));
 // "#legion best e-bikes under $1500" → "best e-bikes under $1500"

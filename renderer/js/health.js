@@ -7,8 +7,9 @@
    The phone keeps one line per day in state.health:
      {days: {'YYYY-MM-DD': {steps, exerciseMin, sleepMin, at}}}   a kind he didn't allow is left out, not 0
    Sleep counts toward the morning it ended. The days sync through their own row next to the personal list
-   (syncKey+':health') so the computer can tick tasks off too, but only when the lists are end-to-end
-   encrypted; otherwise they stay on the phone. They are never put in front of any AI.
+   (syncKey+':health') so the computer can tick tasks off and show them too. That row always goes up sealed
+   (sync-crypto.js), whether or not the lists themselves are end-to-end encrypted, so the server never holds a
+   health number it can read. They are never put in front of any AI.
    The Health tab shows today's numbers, the goals and how far along each is, and, everywhere, the Food plan: his
    per-day macros (calories, protein, carbs, fat) for a week, two weeks, a month or until he changes it, which the
    Agent builds grocery orders to add up to (agent/grocery.js macroBrief, groceries skill). It's kept on this device
@@ -163,18 +164,21 @@ function macroPlanSay(p,todayYmd){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={healthGoal:healthGoal,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
+  module.exports={healthProfileOf:healthProfileOf,healthGoal:healthGoal,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
     healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
     macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay};
 }
 
 /* ── the page: sync row, the phone's reads, ticking tasks off, Settings → Health, the Health tab ── */
-// end-to-end encrypted lists only: health totals never go up in the clear
+// health totals never go up in the clear: the row is sealed with the personal list's key under its lookup id
+// even when the lists are plain, which is also where it sits once they are encrypted. A device that can't
+// encrypt keeps them to itself
+function healthProfileOf(p,cryptoOk){
+  return p&&p.url&&p.key&&p.syncKey&&cryptoOk?{url:p.url,key:p.key,syncKey:p.syncKey+':health',v2:true}:null;
+}
 function healthProfile(){
   const p=syncState.cfg&&syncState.cfg.personal;
-  if(!validProfile(p))return null;
-  const hp={url:p.url,key:p.key,syncKey:p.syncKey+':health'};
-  return syncV2(hp)?hp:null;
+  return validProfile(p)?healthProfileOf(p,syncCryptoOk()):null;
 }
 function healthDoc(){ return {v:1,days:state.health.days}; }
 function mergeHealth(remoteDoc){
@@ -275,7 +279,7 @@ if(typeof document!=='undefined')(function(){
       const some=['steps','exercise','sleep'].filter(function(k){ return s[k]; });
       return say(some.length?'Reading '+some.join(' and ')+' only. Allow the rest in '+STORE+'.':'Romulus isn’t allowed to read '+STORE+'.');
     }
-    say((healthProfile()?'Reading steps, exercise and sleep. Your computer sees the daily totals, encrypted.':'Reading steps, exercise and sleep. They stay on this phone until your lists use end-to-end encryption.')+
+    say((healthProfile()?'Reading steps, exercise and sleep. Your computer sees the daily totals, encrypted.':'Reading steps, exercise and sleep. They stay on this phone until sync is on.')+
       (healthIos()?' A number that stays blank wasn’t allowed: the Health app, Sharing, Apps, Romulus.':''));
   }
   function refresh(){ cap.nativePromise('Health','status',{}).then(show).catch(function(){ show(null); }); }
@@ -359,7 +363,7 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       }
       wrap.appendChild(head);
       if(msg)wrap.appendChild(el('p','settings-hint',msg));
-      else if(!healthOn())wrap.appendChild(el('p','settings-hint','Not connected. Steps, exercise and sleep stay on this phone; with end-to-end sync the daily totals reach your computer too.'));
+      else if(!healthOn())wrap.appendChild(el('p','settings-hint','Not connected. Once connected, the daily totals of steps, exercise and sleep reach your computer too, encrypted.'));
     }
     if(t||(cap&&healthOn())){
       const tiles=el('div','health-tiles');
@@ -373,7 +377,7 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       // Apple Health never says which reads were allowed: a kind said no to simply comes back empty
       if(cap&&healthIos()&&(!t||typeof t.steps!=='number'||typeof t.exerciseMin!=='number'||typeof t.sleepMin!=='number'))
         wrap.appendChild(el('p','settings-hint','A blank number means nothing logged yet, or not allowed: the Health app, Sharing, Apps, Romulus.'));
-    } else if(!cap)wrap.appendChild(el('p','settings-hint','Steps, exercise and sleep come from Romulus on your phone (Settings → Health there), and reach this computer once your lists use end-to-end encryption.'));
+    }
     return wrap;
   };
   // the goal to-dos due today or undated, ticked today or still open, with how far along each is
@@ -382,8 +386,8 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     const goals=state.tasks.filter(function(t){
       return taskWs(t)!=='agent'&&(!t.due||t.due===tk)&&(!t.done||(t.doneAt&&healthYmd(new Date(t.doneAt))===tk))&&healthGoal(t.title);
     });
+    if(!goals.length)return wrap;
     wrap.appendChild(el('h3','settings-subhead','Goals'));
-    if(!goals.length){ wrap.appendChild(el('p','settings-hint','Add a to-do like “Walk 8,000 steps” or “Gym #exercise 30” and it ticks itself off.')); return wrap; }
     const ul=el('div','health-goals'), day=state.health.days[tk]||{};
     goals.forEach(function(t){
       const gl=healthGoal(t.title), v=day[HEALTH_FIELD[gl.kind]];

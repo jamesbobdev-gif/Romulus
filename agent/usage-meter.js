@@ -1,7 +1,8 @@
 /* How much of each cloud AI is used up, for the usage bars in Settings → AI connections.
    Claude: the real 5-hour and weekly percentages Claude Code reports (rate_limit_event in stream-json).
    Gemini: calls per Google day (midnight Pacific); its daily limit is learned from the 429 that says so.
-   ChatGPT, OpenRouter, Grok, Groq: calls and tokens this month (OpenRouter's credit comes from its /key check).
+   ChatGPT, OpenRouter, Grok, Groq: calls and tokens this month (OpenRouter's credit comes from its /key check;
+   Groq's requests left today come from the rate-limit headers on each reply).
    Kept in userData/ai-usage.json on this computer only. No Electron here, so it can be tested on its own. */
 const fs = require('fs');
 const path = require('path');
@@ -85,6 +86,28 @@ function noteCodex(r, now) {
   m.codex = { at: now || Date.now(), primary: win(r.primary), secondary: win(r.secondary), reached: !!r.reached, plan: r.plan || null };
   save();
 }
+/* Groq's rate-limit headers, sent with every reply: requests are per day, tokens per minute.
+   Resets come as durations like "2m59.56s", "7.66s", "1h2m3s" or "120ms" → ms from now */
+function parseDuration(s) {
+  const t = String(s || '').trim(); if (!t) return null;
+  let ms = 0, hit = false;
+  for (const [, n, u] of t.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)) { hit = true; ms += Number(n) * { h: 3600000, m: 60000, s: 1000, ms: 1 }[u]; }
+  if (!hit && /^\d+(\.\d+)?$/.test(t)) return Number(t) * 1000; // a bare number is seconds (retry-after)
+  return hit ? Math.round(ms) : null;
+}
+function noteRate(id, get, now) { // get(name) → a header's value (a fetch Headers' .get)
+  if (typeof get !== 'function') return;
+  now = now || Date.now();
+  const num = (h) => { const v = get(h); return v == null || v === '' || isNaN(Number(v)) ? null : Number(v); };
+  const reqLimit = num('x-ratelimit-limit-requests'), reqLeft = num('x-ratelimit-remaining-requests');
+  if (reqLimit == null || reqLeft == null) return; // no headers on this reply (an error page, a proxy)
+  const after = (h) => { const d = parseDuration(get(h)); return d == null ? null : now + d; };
+  const m = load();
+  m[id] = Object.assign({ month: month(now), calls: 0, tokens: 0 }, m[id], { rate: { at: now, reqLimit, reqLeft,
+    reqReset: after('x-ratelimit-reset-requests'), tokLimit: num('x-ratelimit-limit-tokens'), tokLeft: num('x-ratelimit-remaining-tokens'),
+    tokReset: after('x-ratelimit-reset-tokens') } });
+  save();
+}
 function noteCredit(usage, limit, now) { // OpenRouter's /key: dollars used, and the key's limit if it has one
   const m = load();
   m.openrouter = Object.assign({ month: month(now), calls: 0, tokens: 0 }, m.openrouter, { credit: { usage, limit, at: now || Date.now() } });
@@ -113,6 +136,13 @@ function snapshot(now) {
       res[id].credit = o.credit;
       if (o.credit.limit) res[id].pct = Math.min(1, (o.credit.usage || 0) / o.credit.limit);
     }
+    const rt = m[id] && m[id].rate;
+    if (rt && rt.reqLimit > 0) { // Groq's own count of requests left today; once its reset time passes, it's full again
+      const fresh = !rt.reqReset || rt.reqReset > now, left = fresh ? rt.reqLeft : rt.reqLimit;
+      res[id].rate = { left, limit: rt.reqLimit, resetsAt: fresh ? rt.reqReset : null, at: rt.at };
+      res[id].pct = Math.min(1, Math.max(0, 1 - left / rt.reqLimit));
+      if (fresh && left <= 0) res[id].out = rt.reqReset || true;
+    }
   }
   if (m.codex) { // his ChatGPT plan's real limit windows; one that's reset since reads as empty
     const live = (w) => w && (!w.resetsAt || w.resetsAt > now) ? w : (w ? Object.assign({}, w, { used: 0, resetsAt: null }) : null);
@@ -124,7 +154,17 @@ function snapshot(now) {
   res.gemini.tokensText = fmtT(res.gemini.tokens);
   return res;
 }
+/* how much of one AI is left, for auto routing: 0..1, or null when there's no limit to measure against
+   (a pay-as-you-go key, a daily limit not learned yet), which counts as plenty. Out of usage = 0 */
+function roomLeft(id, snap) {
+  const u = (snap || {})[id];
+  if (!u) return null;
+  if (u.out || (u.plan && u.plan.out)) return 0;
+  if (id === 'claude') return Math.max(0, Math.min(1 - (u.pct || 0), 1 - (u.week || 0)));
+  if (u.plan && u.plan.windows && u.plan.windows.length) return Math.max(0, 1 - Math.max(...u.plan.windows.map((w) => w.used || 0)));
+  return typeof u.pct === 'number' ? Math.max(0, 1 - u.pct) : null;
+}
 const claudeCheckedAt = () => (load().claude || {}).at || 0;
 const codexCheckedAt = () => (load().codex || {}).at || 0;
 
-module.exports = { init, noteClaude, readClaudeStream, geminiDailyLimit, noteCall, noteCredit, noteCodex, snapshot, claudeCheckedAt, codexCheckedAt, pacificDay, nextPacificMidnight };
+module.exports = { init, noteClaude, readClaudeStream, geminiDailyLimit, noteCall, noteCredit, noteCodex, noteRate, parseDuration, snapshot, roomLeft, claudeCheckedAt, codexCheckedAt, pacificDay, nextPacificMidnight };

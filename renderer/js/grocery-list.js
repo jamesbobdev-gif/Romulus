@@ -185,7 +185,7 @@ async function loadGroceryEbt(){
 // once every page script has run (finance-ebt.js loads after this one)
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadGroceryEbt); else setTimeout(loadGroceryEbt,0);
 if(window.desktop&&window.desktop.onFinanceUpdated)window.desktop.onFinanceUpdated(function(what){ if(what==='ebt')loadGroceryEbt(); });
-/* Settings → EBT: most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
+/* Finance → EBT (finance.js finEbtCard): most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
    Never set: on when there's a sign he uses it (a wallet, an order paid partly with EBT, a grocery task
    that talks about EBT), else off. Off hides the Finance card and the grocery list's EBT lines, and on the
    computer grocery runs get no balance (main/finance.js finance:setEbtOn → config.ebtOff) */
@@ -203,15 +203,6 @@ function setEbtOn(on){
   if(window.desktop&&window.desktop.financeSetEbtOn)window.desktop.financeSetEbtOn(on).catch(function(){});
   if(typeof render==='function')render();
 }
-function wireEbtSetting(){
-  const box=$('ebtOn'); if(!box)return;
-  const sec=$('ebtSection');
-  // the balance boxes (finance.js drawEbtSettingsForm), filled fresh each time the section opens
-  const show=function(){ box.checked=ebtOn(); const lr=$('ebtLowRow'); if(lr)lr.hidden=!box.checked; if(typeof drawEbtSettingsForm==='function')drawEbtSettingsForm(); };
-  show(); if(sec)sec.addEventListener('toggle',show); // the tasks may not have loaded yet when the page starts
-  box.addEventListener('change',function(){ setEbtOn(box.checked); show(); });
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireEbtSetting); else setTimeout(wireEbtSetting,0);
 // → the wallet (finance-ebt.js ebtWallet) when he's set one up and EBT is on, else null
 function groceryWallet(){
   if(typeof ebtWallet!=='function'||!ebtOn())return null;
