@@ -31,7 +31,7 @@ function backupFileName(now){
 // the text of a chosen file → {ok:true, at, doc} or {ok:false, error}
 function backupRead(text){
   let b=null;
-  try{ b=JSON.parse(String(text||'').replace(/^﻿/,'')); }catch(e){}
+  try{ b=JSON.parse(String(text||'').replace(/^\uFEFF/,'')); }catch(e){}
   if(!b||typeof b!=='object')return {ok:false,error:'That file couldn’t be read. Choose a file saved with Save a backup file.'};
   if(b.kind!==BACKUP_KIND||!b.doc||!Array.isArray(b.doc.tasks))return {ok:false,error:'That isn’t a Romulus backup file. To bring tasks from another app, use Import tasks.'};
   if(Number(b.v)>1)return {ok:false,error:'That backup was made by a newer Romulus. Update this one first.'};
