@@ -98,3 +98,36 @@ test('the heartbeat carries the worker browser actions, trimmed, and other compu
   assert.strictEqual(worker.mergeActions(merged.slice(0, 1).map((l) => Object.assign({}, l, { where: undefined })), doc).length, 2, 'a line it already has is not added twice');
   assert.deepStrictEqual(worker.mergeActions(own, null), own);
 });
+
+test('a heartbeat that did not go out is tried again in seconds, and says why', async (t) => {
+  assert.strictEqual(worker.nextBeatIn(true, 0), worker.BEAT_MS);
+  assert.strictEqual(worker.nextBeatIn(false, 1), 15 * 1000);
+  assert.strictEqual(worker.nextBeatIn(false, 2), 30 * 1000);
+  assert.strictEqual(worker.nextBeatIn(false, 3), 60 * 1000);
+  assert.strictEqual(worker.nextBeatIn(false, 9), worker.BEAT_MS, 'never slower than the usual pace');
+  // three tries fit well inside the time his other computers wait before calling it quiet
+  assert.ok(worker.nextBeatIn(false, 1) + worker.nextBeatIn(false, 2) + worker.nextBeatIn(false, 3) < worker.FRESH_MS - worker.BEAT_MS);
+  const real = global.fetch; t.after(() => { global.fetch = real; worker.forget(); });
+  global.fetch = async () => ({ ok: false, status: 401, json: async () => ({ message: 'Invalid API key' }) });
+  assert.strictEqual(await worker.beat(a, { name: 'Lupa' }), false);
+  assert.match(worker.lastBeatError(), /HTTP 401.*refused this computer/);
+  global.fetch = async (url) => ({ ok: true, status: 200, json: async () => (url.endsWith('/sync_get') ? [] : true) });
+  assert.strictEqual(await worker.beat(a, { name: 'Lupa' }), true);
+  assert.strictEqual(worker.lastBeatError(), '');
+});
+
+test('lookAgain reads the row afresh but keeps what was last heard', async (t) => {
+  const real = global.fetch; t.after(() => { global.fetch = real; worker.forget(); });
+  const b = Object.assign({}, a, { syncKey: 'tk_agent_lookagain123456' });
+  let reads = 0;
+  const doc = worker.heartbeat({ name: 'Lupa' });
+  global.fetch = async () => { reads++; return { ok: true, status: 200, json: async () => [{ doc, updated_at: 't1' }] }; };
+  worker.forget();
+  assert.ok(await worker.present(b)); assert.ok(await worker.present(b));
+  assert.strictEqual(reads, 1);
+  worker.lookAgain();
+  assert.ok(worker.lastSeen(), 'still known meanwhile');
+  global.fetch = async () => { reads++; throw new Error('fetch failed'); }; // just woke: the network isn't back yet
+  assert.ok(await worker.present(b), 'a failed read keeps the last heartbeat');
+  assert.strictEqual(reads, 2);
+});

@@ -42,7 +42,8 @@ async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
   if (!r.ok) {
     // a download limit on the Romulus server (supabase/migrations/20261111_sync_read_limits.sql) clears by itself
     let msg = ''; try { msg = String((await r.json()).message || ''); } catch (e) {}
-    throw new Error(msg === 'read_limit' ? 'read_limit: the sync server limits downloads; trying again later' : 'HTTP ' + r.status);
+    throw new Error(msg === 'read_limit' ? 'read_limit: the sync server limits downloads; trying again later'
+      : r.status === 401 ? 'HTTP 401: the sync server refused this computer’s key' : 'HTTP ' + r.status);
   }
   return r.json();
 }
