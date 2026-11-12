@@ -22,7 +22,7 @@ const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks } = require('./task-context');
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -449,8 +449,9 @@ async function startAgentRun() {
         : (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean)) : [];
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
-    // (and so does each other size/brand on its menu)
-    if (u.cart || u.cards) await Promise.all((u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80).map(async (it) => {
+    // (and so does each other size/brand on its menu, and each item of an order he placed himself, so the
+    // pantry gets its picture)
+    await Promise.all(missingPictures(u).map(async (it) => {
       const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; }));
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
