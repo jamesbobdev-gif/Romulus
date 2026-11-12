@@ -505,9 +505,11 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     top.appendChild(ring(w.week,w.today,exDaily?exDaily*7:150));
     const pills=el('div','health-pills');
     const steps=t&&t.steps, ex=t&&t.exerciseMin, sl=t&&t.sleepMin;
-    pills.appendChild(pill('steps','Steps today',fmt('steps',steps),'of '+fmt('steps',stepGoal),healthPct(steps,stepGoal)));
-    pills.appendChild(pill('exercise','Exercise today',fmt('exercise',ex),'of '+fmt('exercise',exGoal),healthPct(ex,exGoal)));
-    pills.appendChild(pill('sleep','Sleep last night',fmt('sleep',sl),healthSleepWord(sl,sleepGoal),healthPct(sl,sleepGoal)));
+    // which apps wrote each number: the phone itself, a watch, Samsung Health, Garmin, Oura...
+    const from=function(p,kind,v){ const f=t&&t.from&&t.from[kind]; if(f&&f.length&&typeof v==='number'){ const x=el('div','health-tile-s',f.join(', ')); x.title='From '+f.join(', '); p.appendChild(x); } return p; };
+    pills.appendChild(from(pill('steps','Steps today',fmt('steps',steps),'of '+fmt('steps',stepGoal),healthPct(steps,stepGoal)),'steps',steps));
+    pills.appendChild(from(pill('exercise','Exercise today',fmt('exercise',ex),'of '+fmt('exercise',exGoal),healthPct(ex,exGoal)),'exercise',ex));
+    pills.appendChild(from(pill('sleep','Sleep last night',fmt('sleep',sl),healthSleepWord(sl,sleepGoal),healthPct(sl,sleepGoal)),'sleep',sl));
     top.appendChild(pills);
     return top;
   };
