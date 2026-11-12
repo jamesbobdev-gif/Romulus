@@ -286,14 +286,16 @@ function retryButton(t){
 }
 function setLane(t,to,ok){
   const from=laneNow(t);
-  if(from===to){ delete laneAsks[t.id]; render(); return; }
+  // picking who already has it keeps it: the choice is settled and the pill goes (lists.js)
+  if(from===to){ delete laneAsks[t.id]; if(!t.laneOk){ t.laneOk=true; touch(); } else render(); return; }
   // switching (not a first pick) asks first — in the panel, not window.confirm: on Windows a native
   // dialog leaves Electron's page deaf to the keyboard afterwards, so the reply box wouldn't type
   const name=LANE_NAMES[to];
   if(from&&!ok){ laneAsks[t.id]=to; render(); return; }
   delete laneAsks[t.id];
+  t.laneOk=true;
   // a pick sticks, over whoever answered last
-  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
+  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; if(!t.routedLane)t.routedLane=t.lane; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
   t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
   agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
   buzz('tap'); touch();

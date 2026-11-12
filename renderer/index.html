@@ -94,7 +94,6 @@
           <span style="font-size:13.5px">When no rule matches:</span>
           <select id="routingDefault" class="settings-inp" style="width:auto">
             <option value="auto">Auto (picks for you)</option>
-            <option value="ask">Ask me</option>
             <option value="claude">Claude</option>
             <option value="local">The local model</option>
           </select>
@@ -520,6 +519,8 @@
       <button id="addBtn" class="btn-accent">Add</button>
     </div>
     <div id="newAtts" class="att-thumbs" style="padding:2px 8px 6px" hidden></div>
+    <!-- asked this already this week: go to that task instead of a second one (task-actions.js showSameAsk) -->
+    <div id="sameAsk" class="nudge same-ask" role="status" aria-live="polite" hidden><span id="sameAskText"></span> <button id="sameAskOpen" class="btn-accent" type="button">Open it</button><button id="sameAskAdd" class="ghost mono" type="button">Add anyway</button></div>
   </section>
   <!-- nothing syncing yet: recommend it, on every tab, until it is set up or put off (welcome.js drawSyncNudge) -->
   <div id="syncNudge" class="nudge sync-nudge" hidden><span id="syncNudgeText"></span> <button id="syncNudgeBtn" class="btn-accent">Set up sync</button><button id="syncNudgeLater" class="ghost mono">Not now</button></div>
@@ -671,6 +672,7 @@
 <script src="js/school-overdue.js"></script>
 <script src="js/quick-add.js"></script>
 <script src="js/order-match.js"></script>
+<script src="js/same-ask.js"></script>
 <script src="js/task-actions.js"></script>
 <script src="js/agent-chat.js"></script>
 <script src="js/ai-report.js"></script>

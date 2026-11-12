@@ -141,6 +141,8 @@ contextBridge.exposeInMainWorld('desktop', {
   kitchenPicture: (url) => ipcRenderer.invoke('kitchen:picture', url),
   // the Kitchen tab's Plan your week (main/kitchen-ai.js): {pantry, recipes, aim, plan, slots} → {week, via} or {why}
   kitchenWeek: (req) => ipcRenderer.invoke('kitchen:week', req),
+  // a pantry item's picture looked up on Instacart by its name (agent/previews.js): name → image url or null
+  kitchenPictureFor: (name) => ipcRenderer.invoke('kitchen:pictureFor', name),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),

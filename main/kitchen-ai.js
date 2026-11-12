@@ -51,19 +51,21 @@ async function ideas(_e, req) {
   } finally { asking = false; }
 }
 
-// {mode: 'food'|'shop'|'meal', image: {mime, b64}, pantry} → food: {items, via}; meal: {meal, used, via}; or {why}
+/* {mode: 'food'|'shop'|'meal', image: {mime, b64}, pantry} → food: {items, via}; meal: {meal, used, via}; or {why}.
+   shop: {items, via}, what to put on the shopping list. A meal can come as words instead of a picture: {mode: 'meal', said: 'chicken and rice', pantry} */
 async function photo(_e, req) {
-  if (reading) return { why: 'Still reading the last picture.' };
+  if (reading) return { why: 'Still reading the last one.' };
   req = req || {};
   const mode = req.mode === 'meal' || req.mode === 'shop' ? req.mode : 'food', pic = req.image || {};
+  const said = mode === 'meal' && typeof req.said === 'string' ? req.said.trim().slice(0, 300) : '';
   const mime = /^image\/(jpeg|png|webp)$/.test(pic.mime) ? pic.mime : null;
   const b64 = typeof pic.b64 === 'string' && /^[A-Za-z0-9+/=]+$/.test(pic.b64) ? pic.b64 : null;
-  if (!mime || !b64 || b64.length > 8 * 1024 * 1024) return { why: 'That picture can’t be read.' };
+  if (!said && (!mime || !b64 || b64.length > 8 * 1024 * 1024)) return { why: 'That picture can’t be read.' };
   const pantry = Array.isArray(req.pantry) ? req.pantry : [];
   if (mode === 'meal' && !pantry.length) return { why: 'The pantry is empty, so there is nothing to take out.' };
   reading = true;
   try {
-    const r = await ctx.readPicture(pantryPhoto.prompt(mode, pantry), { mime, b64 });
+    const r = await ctx.readPicture(pantryPhoto.prompt(mode, pantry, said), said ? null : { mime, b64 });
     if (!r || !r.text) { ctx.agentLog('pantry photo: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
     const out = pantryPhoto.parse(mode, r.text);
     const n = mode === 'meal' ? out.used.length : out.items.length;

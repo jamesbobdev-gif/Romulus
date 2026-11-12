@@ -8,7 +8,7 @@ test('ppSources: pantry items without a picture get one from the order they came
     { id: 'a', name: 'Large eggs' },
     { id: 'b', name: 'Whole milk' },
     { id: 'c', name: 'Rice', image: 'https://x.com/rice.jpg' }, // has one already
-    { id: 'd', name: 'Onions' }, // typed in, on no order
+    { id: 'd', name: 'Onions' }, // typed in, on no order: looked up by name, since he shops on Instacart
   ];
   const tasks = [
     { orders: [{ store: 'instacart', items: [{ name: 'Large eggs, 18 ct', url: 'https://www.instacart.com/products/1' }, { name: 'Whole milk, 1 gal', url: 'https://x.com/milk-page' }] }] },
@@ -18,7 +18,40 @@ test('ppSources: pantry items without a picture get one from the order they came
   assert.deepStrictEqual(ppSources(items, tasks, sameFood), [
     { id: 'a', image: 'https://x.com/eggs.jpg' }, // a picture beats a page to fetch
     { id: 'b', url: 'https://x.com/milk-page' },
+    { id: 'd', find: 'Onions' },
   ]);
   assert.deepStrictEqual(ppSources(items, [], sameFood), []);
   assert.deepStrictEqual(ppSources(null, null, sameFood), []);
+});
+
+test('ppSources: with an Instacart order, what no order pictures is looked up by name; without one it keeps its letter', () => {
+  const items = [{ id: 'a', name: 'Bananas' }, { id: 'b', name: 'Sweet potatoes' }, { id: 'c', name: 'Pier33 Atlantic Salmon' }];
+  const order = { store: 'instacart', self: true, items: [{ name: 'Bananas (10.2 lb)' }, { name: 'Pier33 Atlantic Salmon, Boneless, Skin On Portions (2 lb)', url: 'https://x.com/salmon' }] };
+  assert.deepStrictEqual(ppSources(items, [{ orders: [order] }], sameFood), [
+    { id: 'a', find: 'Bananas' }, { id: 'b', find: 'Sweet potatoes' }, { id: 'c', url: 'https://x.com/salmon' },
+  ]);
+  assert.deepStrictEqual(ppSources(items, [{ orders: [Object.assign({}, order, { store: 'walmart' })] }], sameFood), [{ id: 'c', url: 'https://x.com/salmon' }]);
+});
+
+test('ppAmounts: an item with no amount gets the size on its newest order, times how many he got', () => {
+  const { ppAmounts } = require('../renderer/js/pantry-pictures');
+  const { kSized } = require('../renderer/js/kitchen');
+  const items = [{ id: 'a', name: 'Pier33 Atlantic Salmon', qty: null }, { id: 'b', name: 'Lean Ground Turkey', qty: null }, { id: 'c', name: 'Eggs', qty: 6 }, { id: 'd', name: 'Onions', qty: null }];
+  const tasks = [{ orders: [
+    { at: 1, items: [{ name: 'Lean Ground Turkey (16 oz)' }] },
+    { at: 2, items: [{ name: 'Pier33 Atlantic Salmon, Boneless, Skin On Portions (2 lb)' }, { name: 'Lean Ground Turkey (16 oz)', qty: 2 }, { name: 'Large Eggs, 12 ct' }, { name: 'Onions' }] },
+  ] }];
+  assert.deepStrictEqual(ppAmounts(items, tasks, sameFood, kSized), [{ id: 'a', qty: 2, unit: 'lb' }, { id: 'b', qty: 32, unit: 'oz' }]);
+});
+
+test('instacartPick: the search result closest to the name, the food itself above the brand', () => {
+  const { instacartPick } = require('../agent/previews');
+  const card = (file, alt) => '<a href="/products/1-x"><img srcSet="https://www.instacart.com/image-server/197x197/filters:fill(FFFFFF,true):format(jpg)/d2lnr5mha7bycj.cloudfront.net/product-image/file/large_' + file + '.jpg, https://www.instacart.com/image-server/296x296/x 1.5x" alt="' + alt + '"/></a>';
+  const page = card('syrup', 'Bruce&#x27;s Yams Cut Sweet Potatoes in Syrup') + card('yam', 'Sweet Potato (Yam)') + card('turkey', 'Lean Ground Turkey Tray') + card('hummus', 'Example Brand Classic Hummus');
+  const pic = (f) => 'https://www.instacart.com/image-server/394x394/filters:fill(FFFFFF,true):format(jpg)/d2lnr5mha7bycj.cloudfront.net/product-image/file/large_' + f + '.jpg';
+  assert.strictEqual(instacartPick(page, 'Yams'), pic('yam')); // the plain one, not the can in syrup
+  assert.strictEqual(instacartPick(page, 'Store Brand Original Hummus'), pic('hummus'));
+  assert.strictEqual(instacartPick(page, 'Sweet potatoes'), pic('yam'));
+  assert.strictEqual(instacartPick(page, 'Dish soap'), null);
+  assert.strictEqual(instacartPick('', 'Yams'), null);
 });

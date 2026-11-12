@@ -2,7 +2,7 @@
    (tray counts, the Agent lanes, "Buy this" emails, calendar sync). */
 const fs = require('fs');
 const path = require('path');
-const { askForRoutes } = require('../agent/routing');
+const { learnFrom } = require('../agent/routing');
 const { processBuyEmails } = require('./buy-emails');
 const { performSync } = require('./gcal-sync');
 
@@ -98,7 +98,7 @@ handle('tasks:save', async (_event, raw) => {
     ctx.refreshTrayStatus(raw);
     ctx.scheduleAgentRun(raw);
     ctx.scheduleLocalRun(raw);
-    askForRoutes(raw);
+    learnFrom(raw); // routing learns which lane each type of task goes well on
     processBuyEmails(raw).catch((e) => console.error('buy email error:', e.message));
     clearTimeout(syncDebounce);
     syncDebounce = setTimeout(() => { performSync().catch((e) => console.error('gcal sync failed:', e.message)); }, 3000);

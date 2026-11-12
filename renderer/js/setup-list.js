@@ -2,7 +2,8 @@
    away. A private model (optional, and listed only where the hardware can run one: Local model → Set it up
    for me, local-model.js), calendar and email (the picker in
    connect-accounts.js), the Agent using websites (its browser is built in; it needs an AI to drive it), and
-   running in the background (start at login, main/tray.js). The list goes away once everything on it is done.
+   running in the background (start at login, main/tray.js). Once the first AI key is saved, a fifth row says the
+   keys are passwords and what to do if one gets out, until "Got it". The list goes away once everything on it is done.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 const SETUP_ROWS=[
@@ -28,6 +29,16 @@ const SETUP_ROWS=[
     btn:'Connect an AI',
     check:async function(){ return !!window.agentAiReady; },
     go:function(){ openSettingsAt('agentGroup','aiSection'); } },
+  // shows once the first AI key is in, and stays until it has been read
+  { id:'keys', title:'Keep your keys private',
+    todo:'Your AI and sync keys are passwords. Don’t share them. If one gets out, make a new AI key on its website, or use Rotate sync key under Device sync.',
+    done:'You know what to do if a key gets out.',
+    btn:'Got it',
+    check:async function(){
+      if(!window.agentAiReady)return null;
+      try{ return localStorage.getItem('setupKeysRead')==='1'; }catch(e){ return true; }
+    },
+    go:function(){ try{ localStorage.setItem('setupKeysRead','1'); }catch(e){} } },
   { id:'bg', title:'Run in the background',
     todo:'Start when you log in and keep working from the tray, so tasks set to start on an email, a calendar event or a date run on time.',
     done:'Starts when you log in. Closing the window keeps it running in the tray.',

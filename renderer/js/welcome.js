@@ -12,7 +12,8 @@ const isDesktopApp=!!(window.desktop&&window.desktop.aiStatus);
 function openSettingsAt(groupId,panelId){
   setSettingsOpen(true);
   const g=groupId&&$(groupId); if(g&&'open' in g)g.open=true;
-  const p=panelId&&$(panelId); if(p&&'open' in p)p.open=true;
+  const p=panelId&&$(panelId);
+  for(let d=p&&p.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true; // the panel and every fold it sits in
   if(p&&p.classList.contains('adv')&&typeof setAdvanced==='function')setAdvanced(true); // a link straight to an advanced panel
   requestAnimationFrame(function(){ const n=p||g; if(n)n.scrollIntoView({block:'start',behavior:'smooth'}); });
 }

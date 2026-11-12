@@ -23,6 +23,16 @@ test('a heartbeat counts while it is fresh, and not once three are missed', () =
   assert.strictEqual(worker.freshWorker({ v: 1 }, now), null);
 });
 
+test('a worker quiet for a few minutes is returning, not gone; what it is doing rides along', () => {
+  const now = 1_000_000_000;
+  const doc = worker.heartbeat({ name: 'Lupa', model: 'holo4', busy: true, doing: { what: 'running a task', title: 'Draft the essay', step: 3 } }, now);
+  assert.deepStrictEqual(worker.freshWorker(doc, now).doing, { what: 'running a task', title: 'Draft the essay' });
+  assert.strictEqual(worker.returningWorker(doc, now), null); // fresh: not "returning"
+  const r = worker.returningWorker(doc, now + worker.FRESH_MS + 1);
+  assert.strictEqual(r.quiet, true); assert.strictEqual(r.name, 'Lupa');
+  assert.strictEqual(worker.returningWorker(doc, now + worker.GRACE_MS + 1), null); // too long: it's off
+});
+
 test('share: the worker takes all but money questions, which it answers after a wait', () => {
   const now = 10_000_000;
   const plain = { id: 'p', updatedAt: now }, money = { id: 'm', updatedAt: now, money: true }, oldMoney = { id: 'o', updatedAt: now - worker.MONEY_WAIT_MS - 1, money: true };

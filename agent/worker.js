@@ -17,14 +17,26 @@ const FRESH_MS = 6 * 60 * 1000; // three heartbeats missed: it's off, asleep or 
 // computer that can, then says so on the task instead of leaving it queued
 const MONEY_WAIT_MS = 5 * 60 * 1000;
 
+/* gone quiet for less than this: most likely restarting (a reboot, an app update, a crash it comes back from).
+   His other computers keep routing to it and hold its tasks instead of trying an address it no longer has */
+const GRACE_MS = 15 * 60 * 1000;
+
 const isWorker = (cfg) => !!((cfg && cfg.localModel) || {}).worker;
 // a heartbeat doc → the worker it describes while it's fresh, else null (pure, for tests)
-function freshWorker(doc, now = Date.now()) {
+function freshWorker(doc, now = Date.now(), within = FRESH_MS) {
   if (!doc || typeof doc !== 'object' || !doc.at) return null;
   const age = now - Number(doc.at);
-  if (!(age >= -60 * 1000 && age < FRESH_MS)) return null; // a clock a minute ahead is fine
+  if (!(age >= -60 * 1000 && age < within)) return null; // a clock a minute ahead is fine
+  const d = doc.doing && typeof doc.doing === 'object' ? doc.doing : null;
   return { name: String(doc.name || doc.host || 'the local model').slice(0, 60), model: String(doc.model || '').slice(0, 80),
-    host: String(doc.host || '').slice(0, 60), busy: !!doc.busy, at: Number(doc.at) };
+    host: String(doc.host || '').slice(0, 60), busy: !!doc.busy, at: Number(doc.at),
+    ...(d ? { doing: { what: String(d.what || '').slice(0, 60), title: String(d.title || '').slice(0, 80) } } : {}) };
+}
+// quiet, but heard from within GRACE_MS: {…the worker, quiet: true}, else null (pure, for tests)
+function returningWorker(doc, now = Date.now()) {
+  if (freshWorker(doc, now)) return null;
+  const w = freshWorker(doc, now, GRACE_MS);
+  return w ? Object.assign(w, { quiet: true }) : null;
 }
 // stats: how its runs went lately (agent/run-log.js summary), so his other computers can see it
 // doing: what it's on right now (agent/local-lane.js nowDoing); version: the app it runs
@@ -123,4 +135,4 @@ function share(tasks, { worker, workerUp, isMoney, now = Date.now() }) {
   return tasks;
 }
 
-module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, lastBeatError, nextBeatIn, BEAT_RETRY_MS, present, lastSeen, forget, lookAgain, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };
+module.exports = { SUFFIX, BEAT_MS, FRESH_MS, GRACE_MS, MONEY_WAIT_MS, isWorker, freshWorker, returningWorker, heartbeat, beat, lastBeatError, nextBeatIn, BEAT_RETRY_MS, present, lastSeen, forget, lookAgain, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };

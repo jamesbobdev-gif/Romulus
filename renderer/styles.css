@@ -30,8 +30,6 @@
 :root[data-theme="dark"] .chip.st.ready{background:#173222;border-color:#265238;color:#7BD69E}
 .theme-modes{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 button.chip{background:var(--chip)} /* not the browser's button grey, which goes dark-on-dark */
-body:not(.show-adv) #settingsPanel .adv{display:none!important}
-.settings-adv-switch{margin:22px 0 4px}
 *{box-sizing:border-box}
 [hidden]{display:none!important} /* beats a class's own display (.filters, .yes-prompts, .att-thumbs and .settings-row are flex or grid): hidden and empty, they kept their margins */
 html,body{margin:0;padding:0}
@@ -54,6 +52,7 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 .connect-card.welcome>b{font-size:17px}
 .welcome-choices{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;margin:0 0 16px}
 .welcome-choices button{margin:0}
+.connect-card.welcome .welcome-sync-note{font-size:12.5px;color:var(--muted);margin-top:-4px}
 /* the other choices read as buttons too, not loose text: outlined, same size as the filled one */
 .welcome-choices .ghost{border:1.5px solid var(--accent);color:var(--ink);background:transparent;border-radius:8px;padding:6px 14px;font-family:var(--display);font-weight:600;font-size:12.5px;transition:background .15s,color .15s}
 .welcome-choices .ghost:hover{background:var(--accent);color:#fff}
@@ -80,6 +79,10 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 /* no device sync yet: a recommendation, not a warning */
 .nudge.sync-nudge{border-color:var(--accent);margin:10px 0 6px}
 .nudge.sync-nudge button{flex:none;padding:6px 12px;font-size:13px}
+/* asked this already this week: inside the add box, under the line (task-actions.js showSameAsk) */
+.nudge.same-ask{border-color:var(--accent);margin:4px 8px 8px;flex-wrap:wrap}
+.nudge.same-ask span{min-width:180px}
+.nudge.same-ask button{flex:none;padding:6px 12px;font-size:13px}
 #agentSyncHint a{color:var(--accent)}
 .settings-inp.flash,.settings-label.flash{outline:2px solid var(--accent);outline-offset:2px}
 .needs-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;margin-top:6px;overflow:hidden;white-space:nowrap}
@@ -127,6 +130,9 @@ h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
 select option,select optgroup{color:var(--ink);background:var(--surface)}
 .lane-slider .lane-caret{font-size:10px;opacity:.7;pointer-events:none}
 .lane-slider .lane-cloud:focus-within{color:var(--ink)}
+.lane-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.lane-keep{background:none;border:1px solid var(--hairline);border-radius:999px;padding:6px 12px;font-family:var(--sans,inherit);font-size:12px;font-weight:500;color:var(--ink);cursor:pointer}
+.lane-keep:hover{border-color:var(--ink)}
 .lane-ask{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 12px;padding:9px 12px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);font-size:12.5px;line-height:1.4}
 .lane-ask span{flex:1 1 220px}
 .lane-ask .btn-accent{margin-left:0}
@@ -143,6 +149,7 @@ select option,select optgroup{color:var(--ink);background:var(--surface)}
 .live-dot.on{background:#C03B2B;animation:tabpulse 1.4s ease-in-out infinite}
 .live-where{flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
 .live-tabs{max-width:200px;font-size:12px;padding:4px 6px;border:1px solid var(--hairline);border-radius:6px;background:var(--surface);color:var(--ink)}
+.live-tabs option.live-tab-now{font-weight:700;color:var(--accent)}
 .live-bar .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;font-family:var(--display);font-weight:600;color:var(--ink);cursor:pointer;font-size:12px;padding:5px 10px;white-space:nowrap}
 .live-bar .btn-ghost:hover{border-color:var(--ink)}
 .live-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#1b1b1b;overflow:hidden}
@@ -400,6 +407,10 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .panel{margin:0 0 14px 31px;padding:10px 0 4px 14px;border-left:2px solid var(--hairline)}
 .panel-meta{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
 .subs-label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);display:block;margin-bottom:4px}
+.task-opts{margin-bottom:10px}
+.task-opts>summary{padding:4px 0}
+.task-opts[open]>summary{margin-bottom:8px}
+.task-opts .opts-sum{text-transform:none;letter-spacing:0;color:var(--muted,var(--faint))}
 .subs{list-style:none;margin:0;padding:0}
 .sub{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid transparent}
 .sub:last-child{border-bottom:none}
@@ -600,7 +611,12 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .agent-plan .plan-now .plan-mark{color:var(--accent);animation:plan-pulse 1.2s ease-in-out infinite}
 @keyframes plan-pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.agent-plan .plan-now .plan-mark{animation:none}}
-.agent-live{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;background:#16181d;color:#d8dbe2;border-radius:10px;font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere} /* the mini PC's model, live */
+.agent-live{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;border:1px solid var(--hairline);border-radius:10px;color:var(--muted);font-family:inherit;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere} /* what it's doing / did, in the checklist's look */
+/* its chain of thought while it works, one box: the checklist, then what it's doing under it (lists.js) */
+.agent-steps{margin:10px 0 0;padding:10px 12px;border:1px solid var(--hairline);border-radius:10px}
+.agent-steps .agent-plan{margin:0;padding:0;border:0;border-radius:0}
+.agent-steps .agent-live{margin:0;padding:0;border:0;border-radius:0;max-height:200px}
+.agent-steps .agent-plan+.agent-live{margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline)}
 .lane-switch{display:block;margin:8px 0 0;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--hairline);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
 .lane-switch:hover{color:var(--ink);border-color:#CFCFC9}
 .cal-cell.has-tasks:hover{border-color:#CFCFC9}
@@ -972,6 +988,7 @@ textarea.ask-other{min-height:70px}
 .fin-qr{margin:10px 0;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
 .fin-qr[hidden]{display:none}
 .fin-qr svg{width:260px;height:260px;background:#fff;border-radius:8px}
+.fin-code{font-size:26px;letter-spacing:3px;user-select:all}
 .fin-holdings-fold{border-top:1px solid var(--hairline);margin-top:6px;padding-top:8px}
 .fin-holdings-fold>.fin-fold-title h3{font-size:14px}
 .fin-stocks-body[hidden]{display:none}
@@ -1098,6 +1115,9 @@ textarea.ask-other{min-height:70px}
 .doc-dl{display:inline-block;margin-top:8px;background:none;border:1px solid var(--hairline);border-radius:8px;padding:5px 12px;font-family:var(--display);font-weight:600;font-size:12px;color:var(--ink);cursor:pointer;white-space:nowrap}
 .doc-dl:hover{border-color:var(--ink)}
 .doc-dl:disabled{opacity:.6;cursor:default}
+/* What the Agent did, folded under the Agent tab's tasks (index.html #actionsSection) */
+.agent-log{margin:18px 0 0;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 16px}
+.agent-log[open]>summary{margin-bottom:8px}.agent-log>summary.settings-subhead{margin:0}
 .lupa-files{margin:0 0 12px;background:var(--chip);border-radius:8px;padding:8px 11px;font-size:13px}
 .lupa-files summary{cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--muted)}
 .lupa-file-list{list-style:none;margin:8px 0 2px;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -1365,6 +1385,12 @@ body.review-open .top-right{display:none!important}
 .kit-after{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:12px;padding:8px 12px;margin-bottom:10px}
 .kit-after-head{display:flex;align-items:center;justify-content:space-between}
 .kit-after-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
+/* pantry photos (kitchen-photo.js) */
+.kp-row{align-items:center;margin:6px 0}
+.kp-plus{width:34px;height:34px;padding:0;border-radius:999px;font-size:20px;line-height:1;margin:8px 0}
+.kp-row .kit-hint{margin:0}
+.kp-item{justify-content:flex-start}
+.kp-item .kit-hint{margin:0;white-space:nowrap}
 @media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
 .kit-idea-more{margin-top:6px}
 .kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
@@ -1376,6 +1402,18 @@ body.review-open .top-right{display:none!important}
 .kp-row .kit-hint{margin:0}
 .kp-item{justify-content:flex-start}
 .kp-item .kit-hint{margin:0;white-space:nowrap}
+.kit-find{width:100%;margin:10px 0 0}
+.kit-filter{flex-wrap:wrap;align-items:center}
+.kit-filter .kit-find{flex:1;min-width:150px;width:auto;margin:0}
+.kit-serv{width:54px}
+.kit-portion{color:var(--muted);font-size:12.5px;margin-left:auto}
+.kit-amt{display:inline-flex;align-items:center;gap:3px;flex:none}
+.kit-amt .kit-qty{width:74px;text-align:center}
+.kit-step{flex:none;width:26px;height:26px;padding:0;border:1px solid var(--hairline);background:none;border-radius:999px;color:var(--muted);font-size:15px;line-height:1;cursor:pointer}
+.kit-step:hover:not(:disabled){color:var(--ink);border-color:var(--muted)}
+.kit-step:disabled{opacity:.35;cursor:default}
+.kit-where{flex:none;border:0;background:none;color:var(--faint);font-size:11.5px;font-family:var(--display);cursor:pointer;padding:2px}
+@media(max-width:520px){.kit-row{flex-wrap:wrap;row-gap:4px}.kit-row-name{flex-basis:55%}.kit-amt{margin-left:auto}.kit-step{width:32px;height:32px}}
 /* pantry as picture cards (kitchen.js kDrawPantry): lit = have some, tapped dark = none left */
 .kit-undo-bar{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;margin-bottom:6px;pointer-events:none}
 .kit-undo-bar[hidden]{display:none}
@@ -1391,6 +1429,8 @@ body.review-open .top-right{display:none!important}
 .kit-tile-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;line-height:20px;text-align:center}
 .kit-tile.off .kit-tile-check{background:var(--chip);color:transparent;border:1px solid var(--hairline)}
 .kit-tile-name{font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.kit-tile .kit-qty{margin-top:auto;width:100%;text-align:center;padding:3px 4px;font-size:12px}
+.kit-tile-amt{display:flex;align-items:center;gap:3px;margin-top:auto}
+.kit-tile-amt .kit-qty{flex:1;min-width:0;width:auto;text-align:center;padding:3px 4px;font-size:12px}
+.kit-tile .kit-where{align-self:flex-start;padding:0}
 .kit-tile-del{position:absolute;top:2px;left:2px;width:22px;height:22px;background:var(--surface);border-radius:50%;opacity:.5}
 .kit-tile:hover .kit-tile-del,.kit-tile-del:focus-visible{opacity:1}

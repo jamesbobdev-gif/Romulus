@@ -6,10 +6,13 @@
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them.
    The top half has no DOM in it, so test/kitchen.test.js can load it in Node.
 
-   state.kitchen = {items, recipes, extra, tombstones}
+   state.kitchen = {items, recipes, asks, ideas, extra, tombstones}
      extra:  what he put on the shopping list himself, shaped like an item
-     item:   {id, name, qty (number, or null = "some, amount not known"), unit, updatedAt}
-     recipe: {id, name, ingredients:[{name, qty|null, unit}], liked, planned, made:['YYYY-MM-DD'], updatedAt}
+     item:   {id, name, qty (number, or null = "some, amount not known"), unit, where? (fridge, freezer or cupboard), updatedAt}
+     recipe: {id, name, ingredients:[{name, qty|null, unit}], servings? (how many the ingredients make, when more than 1),
+              liked, planned, made:['YYYY-MM-DD'], updatedAt}
+     ideas:  the last meals his AIs suggested {at, via, aim, meals}, or null: kept so they're still there after a
+             restart, and synced so the phone shows them too
    It syncs through its own row next to the personal list (syncKey+':kitchen'), merged like the Hours log:
    per id the newer updatedAt wins, a tombstone beats older copies. */
 'use strict';
@@ -109,7 +112,41 @@ function kItem(x){
   const q=x.qty==null||x.qty===''?null:Number(x.qty);
   const it={id:String(x.id),name:String(x.name).trim().slice(0,80),qty:q!=null&&isFinite(q)&&q>0?kRound(q):null,unit:kUnit(x.unit)||'',updatedAt:x.updatedAt||0};
   if(kPic(x.image))it.image=String(x.image).slice(0,600); // the product picture from the order it came on
+  if(KITCHEN_PLACES.indexOf(x.where)>=0)it.where=x.where; // where he said it's kept; without one the name decides (kPlaceOf)
   return it;
+}
+/* where food is kept. He can say per item; until he does it's a guess from the name, so a pantry filled by
+   grocery orders is grouped without him sorting it. */
+const KITCHEN_PLACES=['fridge','freezer','cupboard'];
+const KITCHEN_PLACE_NAMES={fridge:'Fridge',freezer:'Freezer',cupboard:'Cupboard'};
+const K_SHELF=/\b(peanut butter|almond butter|nut butter|canned|can|soup|broth|stock|powder|powdered|dried|dry|evaporated|condensed|coconut milk|cracker|chip|cereal|sauce|oil|jerky)\b/;
+const K_FREEZER=/\b(frozen|ice cream|popsicle|sorbet|gelato)\b/;
+const K_FRIDGE=/\b(milk|egg|butter|margarine|cheese|yogurt|yoghurt|cream|creamer|chicken|beef|pork|turkey|bacon|sausage|ham|steak|fish|salmon|tilapia|shrimp|tofu|lettuce|spinach|kale|salad|carrot|celery|cucumber|broccoli|cauliflower|zucchini|mushroom|berry|strawberry|blueberry|raspberry|grape|juice|hummus|mayo|mayonnaise|deli|hot dog|lunch meat|leftover)\b/;
+function kPlaceOf(item){
+  if(item&&KITCHEN_PLACES.indexOf(item.where)>=0)return item.where;
+  const n=foodKey(item&&item.name);
+  if(K_FREEZER.test(n))return 'freezer';
+  if(K_SHELF.test(n)||isStaple(n))return 'cupboard';
+  return K_FRIDGE.test(n)?'fridge':'cupboard';
+}
+/* the − and + beside an amount: one step down or up → the new amount (0 = none left). The step fits the size:
+   a count goes by ones, 2 lb by halves, 500 g by fifties. Food with no amount starts at 1. */
+function kNudge(qty,unit,dir){
+  if(qty==null)return dir>0?1:null;
+  const base=KITCHEN_BASE[unit||''], at=dir>0?qty:qty-1e-9;
+  const step=!unit||!base||base[0]==='n'?1:at<5?0.5:at<20?1:at<100?5:at<1000?50:100;
+  const n=kRound(qty+dir*step);
+  return n>0.001?n:0;
+}
+// every word he typed is somewhere in the text ("chick ri" finds "Chicken and rice")
+function kMatch(text,q){
+  const t=String(text||'').toLowerCase();
+  return String(q||'').toLowerCase().split(/\s+/).filter(Boolean).every(function(w){ return t.indexOf(w)>=0; });
+}
+// a recipe's ingredients for f times what it's written for
+function kScale(ings,f){
+  if(!(f>0)||f===1)return ings;
+  return ings.map(function(i){ return i.qty==null?i:Object.assign({},i,{qty:kRound(i.qty*f)}); });
 }
 function kPic(s){ return !!s&&/^https:\/\//i.test(String(s)); }
 function kRecipe(x){
@@ -121,15 +158,32 @@ function kRecipe(x){
     return {name:String(i.name).trim().slice(0,80),qty:q!=null&&isFinite(q)&&q>0?kRound(q):null,unit:kUnit(i.unit)||''};
   }).filter(Boolean).slice(0,60);
   const made=(Array.isArray(x.made)?x.made:[]).filter(function(d){ return /^\d{4}-\d{2}-\d{2}$/.test(d); }).slice(-30);
-  return {id:String(x.id),name:String(x.name).trim().slice(0,100),ingredients:ings,liked:!!x.liked,planned:!!x.planned,made:made,updatedAt:x.updatedAt||0};
+  const r={id:String(x.id),name:String(x.name).trim().slice(0,100),ingredients:ings,liked:!!x.liked,planned:!!x.planned,made:made,updatedAt:x.updatedAt||0};
+  const sv=Math.round(Number(x.servings));
+  if(sv>1&&sv<100)r.servings=sv; // how many the ingredients make; 1 when it doesn't say
+  return r;
+}
+// the meals his AIs suggested last (agent/meal-ideas.js parse) → {at, via, aim, meals}, or null
+function kIdeas(x){
+  if(!x||typeof x!=='object'||!Array.isArray(x.meals))return null;
+  const s=function(v,n){ return String(v==null?'':v).trim().slice(0,n); };
+  const lines=function(a,each,max){ return (Array.isArray(a)?a:[]).map(function(v){ return s(v,each); }).filter(Boolean).slice(0,max); };
+  const meals=x.meals.map(function(m){
+    return m&&typeof m==='object'?{name:s(m.name,80),why:s(m.why,160),ingredients:lines(m.ingredients,80,25),steps:lines(m.steps,240,10)}:null;
+  }).filter(function(m){ return m&&m.name&&m.ingredients.length; }).slice(0,8);
+  return meals.length?{at:Number(x.at)||0,via:s(x.via,60),aim:s(x.aim,300),meals:meals}:null;
 }
 /* A phone's pantry photo waiting for a computer to read it (kitchen-photo.js): the phone uploads the picture and
-   adds one of these; a computer with AI connections (or Lupa) reads it and writes the result back; the phone
-   that asked (from) uses the result and marks it applied. */
+   adds one of these (or, for a meal he typed, just his words in said, no picture); a computer with AI connections (or Lupa) reads it and writes the result back; the phone
+   that asked (from) uses the result and marks it applied.
+   mode 'ideas' is the phone asking for meal ideas (said = what to aim for, which may be nothing): the computer
+   that answers puts them in ideas, where every device sees them, and marks the ask applied itself. */
 const KITCHEN_ASK_STATES=['waiting','reading','failed','done','applied'];
 function kAsk(x){
-  if(!x||!x.id||(x.mode!=='food'&&x.mode!=='meal'&&x.mode!=='shop')||!kPic(x.url))return null;
-  const a={id:String(x.id),mode:x.mode,url:String(x.url).slice(0,600),from:String(x.from||'').slice(0,80),at:Number(x.at)||0,updatedAt:Number(x.updatedAt)||0,
+  const ideas=!!x&&x.mode==='ideas';
+  const said=x&&(x.mode==='meal'||ideas)&&typeof x.said==='string'?x.said.trim().slice(0,300):'';
+  if(!x||!x.id||(x.mode!=='food'&&x.mode!=='meal'&&x.mode!=='shop'&&!ideas)||(!ideas&&!said&&!kPic(x.url)))return null;
+  const a={id:String(x.id),mode:x.mode,url:said||ideas?'':String(x.url).slice(0,600),said:said,from:String(x.from||'').slice(0,80),at:Number(x.at)||0,updatedAt:Number(x.updatedAt)||0,
     state:KITCHEN_ASK_STATES.indexOf(x.state)>=0?x.state:'waiting',reader:String(x.reader||'').slice(0,60),readAt:Number(x.readAt)||0,why:String(x.why||'').slice(0,200)};
   if(x.result&&typeof x.result==='object'&&JSON.stringify(x.result).length<20000)a.result=x.result;
   return a;
@@ -140,13 +194,14 @@ function normKitchen(raw){
     items:(Array.isArray(r.items)?r.items:[]).map(kItem).filter(Boolean).slice(0,500),
     recipes:(Array.isArray(r.recipes)?r.recipes:[]).map(kRecipe).filter(Boolean).slice(0,500),
     asks:(Array.isArray(r.asks)?r.asks:[]).map(kAsk).filter(Boolean).slice(-20),
+    ideas:kIdeas(r.ideas),
     extra:(Array.isArray(r.extra)?r.extra:[]).map(kItem).filter(Boolean).slice(0,200), // things he put on the shopping list himself, not for a meal
     tombstones:(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; })
   };
 }
-function kitchenDoc(k){ return {v:1,items:k.items,recipes:k.recipes,asks:k.asks||[],extra:k.extra||[],tombstones:k.tombstones}; }
+function kitchenDoc(k){ return {v:1,items:k.items,recipes:k.recipes,asks:k.asks||[],ideas:k.ideas||null,extra:k.extra||[],tombstones:k.tombstones}; }
 const kStable=function(v){ return Array.isArray(v)?'['+v.map(kStable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(function(x){ return JSON.stringify(x)+':'+kStable(v[x]); }).join(',')+'}':JSON.stringify(v); };
-const kCanon=function(k){ const by=function(a,b){ return a.id<b.id?-1:1; }; return kStable([k.items.slice().sort(by),k.recipes.slice().sort(by),(k.asks||[]).slice().sort(by),(k.extra||[]).slice().sort(by)]); };
+const kCanon=function(k){ const by=function(a,b){ return a.id<b.id?-1:1; }; return kStable([k.items.slice().sort(by),k.recipes.slice().sort(by),(k.asks||[]).slice().sort(by),k.ideas||null,(k.extra||[]).slice().sort(by)]); };
 // → {merged, changedLocal, changedRemote}
 function mergeKitchenDocs(localRaw,remoteRaw,now){
   const local=normKitchen(localRaw), remote=normKitchen(remoteRaw);
@@ -165,6 +220,7 @@ function mergeKitchenDocs(localRaw,remoteRaw,now){
     return Object.keys(by).map(function(id){ return by[id]; }).filter(function(it){ return !tombs[it.id]; }).sort(function(x,y){ return x.at-y.at; });
   };
   const merged={items:pick(local.items,remote.items),recipes:pick(local.recipes,remote.recipes),asks:pickAsks(local.asks,remote.asks),
+    ideas:!remote.ideas||(local.ideas&&local.ideas.at>=remote.ideas.at)?local.ideas:remote.ideas, // the newer set of ideas
     extra:pick(local.extra,remote.extra),
     tombstones:Object.keys(tombs).filter(function(id){ return tombs[id]>cutoff; }).map(function(id){ return {id:id,deletedAt:tombs[id]}; })};
   return {merged:merged,changedLocal:kCanon(merged)!==kCanon(local),
@@ -184,11 +240,12 @@ function ingredientStatus(items,ing){
   return {have:false,need:kRound(ing.qty-avail),unit:ing.unit};
 }
 /* every recipe with what's missing for it: the ones he can make now first, liked before the rest,
-   then the one he made longest ago → [{recipe, missing:[{name, need, unit}]}] */
-function suggestMeals(k){
+   then the one he made longest ago → [{recipe, missing:[{name, need, unit}]}].
+   portions: {recipe id: servings he means to make}, for the ones he's making more or less of than written */
+function suggestMeals(k,portions){
   return k.recipes.filter(function(r){ return r.ingredients.length; }).map(function(r){
-    const missing=[];
-    r.ingredients.forEach(function(i){ const s=ingredientStatus(k.items,i); if(!s.have)missing.push({name:i.name,need:s.need,unit:s.unit}); });
+    const missing=[], want=portions&&portions[r.id];
+    kScale(r.ingredients,want>0?want/(r.servings||1):1).forEach(function(i){ const s=ingredientStatus(k.items,i); if(!s.have)missing.push({name:i.name,need:s.need,unit:s.unit}); });
     return {recipe:r,missing:missing};
   }).sort(function(a,b){
     return a.missing.length-b.missing.length||(b.recipe.liked-a.recipe.liked)||
@@ -196,15 +253,30 @@ function suggestMeals(k){
   });
 }
 /* He made it: take what it used out of the pantry. Something with no amount (or one that can't be compared)
-   stays, and is listed so he can say whether it ran out → {used, ranOut, unsure, missing} (names) */
-function cookRecipe(k,recipeId,now){
+   stays, and is listed so he can say whether it ran out → {used, ranOut, unsure, missing} (names), and before:
+   what it changed as it was, for uncookRecipe. servings: how many he made, when not what the recipe is written for */
+function cookRecipe(k,recipeId,now,servings){
   now=now||Date.now();
   const r=k.recipes.find(function(x){ return x.id===recipeId; });
   if(!r)return {used:[],ranOut:[],unsure:[],missing:[]};
-  const out=usePantry(k,r.ingredients,now);
+  const was=k.items.map(function(i){ return Object.assign({},i); });
+  const out=usePantry(k,kScale(r.ingredients,servings>0?servings/(r.servings||1):1),now);
+  out.before={recipeId:r.id,made:r.made.slice(),planned:r.planned,items:was.filter(function(b){
+    const a=k.items.find(function(x){ return x.id===b.id; }); return !a||a.qty!==b.qty; })};
   const d=new Date(now), day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   r.made=r.made.concat([day]).slice(-30); r.planned=false; r.updatedAt=now;
   return out;
+}
+/* Undo a "Made it" (cookRecipe's before): the food it took goes back as it was, newer than the deletes so a
+   sync keeps it, and the recipe isn't marked made. Anything else he changed since stays. */
+function uncookRecipe(k,before,now){
+  if(!before)return;
+  now=now||Date.now();
+  const ids={};
+  before.items.forEach(function(i){ ids[i.id]=true; });
+  k.items=k.items.filter(function(i){ return !ids[i.id]; }).concat(before.items.map(function(i){ return Object.assign({},i,{updatedAt:now}); }));
+  const r=k.recipes.find(function(x){ return x.id===before.recipeId; });
+  if(r){ r.made=before.made.slice(); r.planned=before.planned; r.updatedAt=now; }
 }
 /* Take these ingredients ({name, qty, unit, sure?}) out of the pantry. One with no amount, an amount that can't
    be compared, or sure:false (a meal photo's guess) stays, and is listed → {used, ranOut, unsure, missing} (names) */
@@ -328,18 +400,47 @@ function dropFromShop(k,names,now){
   k.extra=(k.extra||[]).filter(function(x){ return gone.indexOf(x)<0; });
   return gone.length;
 }
-/* Groceries the Agent bought ("Rice, 20 lb", "Eggs", or {name, image} from a placed order) go into the
-   pantry. A known size adds to what's there; with no size the amount isn't known any more, so it's just
+/* A store's name for a product, with its size → {base, qty|null, unit}. The size is after a comma
+   ("Rice, 20 lb") or in brackets at the end, the way Instacart writes it ("Bananas (10.2 lb)", "Kiwi (1 each)").
+   "93% lean" and "frozen" aren't sizes. */
+function kSizeText(t){
+  t=String(t||'').trim();
+  if(!/^[\d.½¼¾⅓⅔⅛]/.test(t)||/^[\d.\s\/]+%/.test(t))return null;
+  const i=parseIngredient(t+' x'); // the x stands in for the name
+  return i&&i.qty!=null?{qty:i.qty,unit:i.unit}:null;
+}
+function kSized(name){
+  let s=String(name||'').trim(), size=null;
+  const par=/\(([^()]*)\)\s*$/.exec(s);
+  if(par&&kSizeText(par[1])){ size=kSizeText(par[1]); s=s.slice(0,par.index).trim(); }
+  const parts=s.split(',');
+  for(let i=parts.length-1;i>0&&!size;i--)size=kSizeText(parts[i]);
+  return {base:parts[0].trim(),qty:size?size.qty:null,unit:size?size.unit:''};
+}
+/* Pantry items that went in with the size still in their name ("Bananas (10.2 lb)", from before sizes in
+   brackets were read): the name loses it and the amount gets it. One that was counted ("2" of a 16 oz pack)
+   becomes that many times the size. → how many changed */
+function kFixSized(k,now){
+  let n=0;
+  (k&&Array.isArray(k.items)?k.items:[]).forEach(function(p){
+    if(!/\([^()]*\)\s*$/.test(p.name)||(p.qty!=null&&p.unit))return;
+    const s=kSized(p.name);
+    if(s.qty==null||!s.base)return;
+    p.name=s.base.slice(0,80); p.qty=kRound(s.qty*(p.qty!=null?p.qty:1)); p.unit=s.unit; p.updatedAt=now||Date.now(); n++;
+  });
+  return n;
+}
+/* Groceries the Agent bought ("Rice, 20 lb", "Bananas (10.2 lb)", "Eggs", or {name, image} from a placed order)
+   go into the pantry. A known size adds to what's there; with no size the amount isn't known any more, so it's just
    "some". The order's product picture comes along (and fills in one the pantry item didn't have). → the names added */
 function stockPantry(k,names,now,newId){
   now=now||Date.now();
   const added=[];
   (Array.isArray(names)?names:[]).forEach(function(e){
     const n=e&&typeof e==='object'?e.name:e, pic=e&&typeof e==='object'&&kPic(e.image)?String(e.image).slice(0,600):null;
-    const parts=String(n||'').split(','), base=parts[0].trim();
+    const size=kSized(n), base=size.base;
     if(!base)return;
-    const size=parts.length>1?parseIngredient(parts.slice(1).join(',')+' x'):null; // "20 lb" → 20 lb (the x stands in for the name)
-    const qty=size&&size.qty!=null?size.qty:null, unit=size&&size.qty!=null?size.unit:'';
+    const qty=size.qty, unit=size.unit;
     const p=pantryFind(k.items,base);
     if(!p){ const it={id:newId(),name:base.slice(0,80),qty:qty,unit:unit,updatedAt:now}; if(pic)it.image=pic; k.items.push(it); added.push(base); return; }
     const more=qty==null||p.qty==null?null:kConvert(qty,unit,p.unit);
@@ -367,13 +468,16 @@ function pantryRanOut(k,names,now){
 if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kPantryLines:kPantryLines,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
-    shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks};
+    shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
+    uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized};
 }
 
 /* ══ the page ══ */
 if(typeof document!=='undefined'){
 
-const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideas:null,ideasBusy:false,ideasWhy:'',ideasVia:'',aim:'',undo:[],going:{},autoAsked:false}; // undo: foods he marked out, last first; going: ids tapped dark, about to leave
+// portions: {recipe id: servings he's making this time}; findItem, findRec: what he typed in the two Find boxes
+// undo: foods he marked out, last first; going: pantry ids tapped dark, waiting a moment before they leave
+const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideasBusy:false,ideasWhy:'',aim:'',portions:{},findItem:'',findRec:'',undo:[],going:{},autoAsked:false};
 function kSave(){ persist(); renderKitchen(); }
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
 
@@ -491,17 +595,20 @@ function kBuild(view){
       '<button id="kitAddItemBtn" class="btn-accent">Add</button></div>'+
       '<div class="kit-hint">Put an amount in to have it go down when you cook. Food with no amount counts as there until you mark it out.</div>'+
       '<div id="kitPhotoFood"></div>'+
+      '<input id="kitFindItem" class="sm kit-find" type="search" placeholder="Find in the pantry" aria-label="Find in the pantry" hidden>'+
       '<div id="kitPantry"></div></section>'+
     '<section id="kit-recipes" hidden>'+
       '<div class="kit-form kit-recipe-form">'+
         '<input id="kitRecName" class="sm kit-grow" placeholder="Recipe name" aria-label="Recipe name">'+
         '<textarea id="kitRecIngs" class="sm" rows="5" placeholder="Ingredients, one per line:&#10;1 lb ground beef&#10;1 can kidney beans&#10;1 onion" aria-label="Ingredients"></textarea>'+
         '<label class="kit-check"><input id="kitRecLiked" type="checkbox"> I like this one</label>'+
+        '<label class="kit-check">Makes <input id="kitRecServ" class="sm kit-serv" type="number" min="1" max="99" inputmode="numeric" placeholder="1" aria-label="How many servings it makes"> servings</label>'+
         '<div class="kit-form-btns"><button id="kitRecCancel" class="ghost" hidden>Cancel</button><button id="kitRecSave" class="btn-accent">Save recipe</button></div>'+
       '</div>'+
       '<div class="kit-filter" role="radiogroup" aria-label="Which recipes">'+
         '<button type="button" class="kit-chip" data-f="all" role="radio">All</button>'+
         '<button type="button" class="kit-chip" data-f="liked" role="radio">Liked</button>'+
+        '<input id="kitFindRec" class="sm kit-find" type="search" placeholder="Find a recipe or an ingredient" aria-label="Find a recipe">'+
       '</div>'+
       '<div id="kitRecipes"></div></section>'+
     '<section id="kit-shop" hidden>'+
@@ -535,6 +642,9 @@ function kBuild(view){
   };
   $('kitAddShopBtn').addEventListener('click',addShop);
   $('kitAddShop').addEventListener('keydown',function(e){ if(e.key==='Enter')addShop(); });
+  // only the list is redrawn, so the box he's typing in keeps its place
+  $('kitFindItem').addEventListener('input',function(){ kitchenUI.findItem=$('kitFindItem').value; kDrawPantry(); });
+  $('kitFindRec').addEventListener('input',function(){ kitchenUI.findRec=$('kitFindRec').value; kDrawRecipes(); });
   $('kitRecSave').addEventListener('click',kSaveRecipe);
   $('kitRecCancel').addEventListener('click',function(){ kEditRecipe(null); });
   $('kitRecName').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); $('kitRecIngs').focus(); } });
@@ -552,12 +662,27 @@ function kPlanBtn(r){
   b.addEventListener('click',function(){ r.planned=!r.planned; r.updatedAt=Date.now(); kSave(); });
   return b;
 }
+// how many servings he's making: what he picked on the card, or what the recipe is written for
+function kPortion(r){ return kitchenUI.portions[r.id]||r.servings||1; }
+function kPortionBox(r){
+  const l=el('label','kit-check kit-portion','Servings');
+  const i=el('input','sm kit-serv'); i.type='number'; i.min='1'; i.max='99'; i.inputMode='numeric'; i.value=kPortion(r);
+  i.title='How many servings you’re making. What it needs, and what Made it takes out, follow this.';
+  i.addEventListener('change',function(){
+    const n=Math.round(Number(i.value));
+    if(n>=1&&n<100&&n!==(r.servings||1))kitchenUI.portions[r.id]=n; else delete kitchenUI.portions[r.id];
+    renderKitchen();
+  });
+  l.appendChild(i);
+  return l;
+}
 function kMadeBtn(r){
   const b=el('button','btn-accent','Made it');
   b.title='Take what it used out of the pantry';
   b.addEventListener('click',function(){
-    const res=cookRecipe(state.kitchen,r.id);
-    kitchenUI.afterCook={name:r.name,ranOut:res.ranOut,unsure:res.unsure};
+    const res=cookRecipe(state.kitchen,r.id,Date.now(),kPortion(r));
+    kitchenUI.afterCook={name:r.name,ranOut:res.ranOut,unsure:res.unsure,before:res.before};
+    delete kitchenUI.portions[r.id];
     kSave();
     voiceToast(r.name+': pantry updated'+(res.ranOut.length?'. Used up: '+res.ranOut.join(', '):''));
   });
@@ -568,16 +693,25 @@ function kLastMade(r){
   const p=d.split('-').map(Number), days=Math.round((todayStart()-new Date(p[0],p[1]-1,p[2]))/864e5);
   return 'made '+(days<=0?'today':days===1?'yesterday':days+' days ago')+(r.made.length>1?' · '+r.made.length+' times':'');
 }
-// after "Made it": what ran out can go on the grocery list, and what had no amount can be marked out
+// after "Made it": it can be undone, what ran out can go on the grocery list, and what had no amount can be marked out
 function kDrawAfter(){
   const box=$('kitAfter'); box.innerHTML='';
   const a=kitchenUI.afterCook; if(!a)return;
   const still=a.unsure.filter(function(n){ return pantryFind(state.kitchen.items,n); });
-  if(!a.ranOut.length&&!still.length){ kitchenUI.afterCook=null; return; }
+  if(!a.before&&!a.ranOut.length&&!still.length){ kitchenUI.afterCook=null; return; }
   const card=el('div','kit-after');
   const head=el('div','kit-after-head'); head.appendChild(el('span','kit-k','After '+a.name));
   const x=iconBtn(I.x,'Close'); x.addEventListener('click',function(){ kitchenUI.afterCook=null; renderKitchen(); }); head.appendChild(x);
   card.appendChild(head);
+  if(a.before){
+    const row=el('div','kit-after-row'); row.appendChild(el('span',null,'What it used is out of the pantry.'));
+    const undo=el('button','ghost','Undo'); undo.title='Put the pantry back the way it was';
+    undo.addEventListener('click',function(){
+      uncookRecipe(state.kitchen,a.before);
+      kitchenUI.afterCook=null; kSave(); voiceToast('Put back the way it was');
+    });
+    row.appendChild(undo); card.appendChild(row);
+  }
   if(a.ranOut.length){
     const row=el('div','kit-after-row'); row.appendChild(el('span',null,'Used up: '+a.ranOut.join(', ')));
     const g=el('button','ghost','Add to grocery list');
@@ -607,7 +741,7 @@ function kDrawMeals(){
   kDrawIdeas();
   const box=$('kitMeals'); box.innerHTML='';
   if(!state.kitchen.recipes.length){ box.appendChild(kEmpty('No recipes yet. Add the meals you make under Recipes, and what food you have under Pantry: this shows what you can make.')); return; }
-  const all=suggestMeals(state.kitchen);
+  const all=suggestMeals(state.kitchen,kitchenUI.portions);
   const now=all.filter(function(s){ return !s.missing.length; }), close=all.filter(function(s){ return s.missing.length&&s.missing.length<=3; });
   const sec=function(title,list,empty){
     box.appendChild(el('div','kit-k kit-sec',title));
@@ -616,7 +750,7 @@ function kDrawMeals(){
       const r=s.recipe, card=el('div','kit-card');
       const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',r.name)); top.appendChild(kLikeBtn(r)); card.appendChild(top);
       card.appendChild(el('div','kit-card-sub',s.missing.length?'Need: '+s.missing.map(function(m){ return (m.need!=null?kFmtQty(m.need,m.unit)+' ':'')+m.name; }).join(', '):kLastMade(r)));
-      const btns=el('div','kit-card-btns'); if(!s.missing.length)btns.appendChild(kMadeBtn(r)); btns.appendChild(kPlanBtn(r)); card.appendChild(btns);
+      const btns=el('div','kit-card-btns'); if(!s.missing.length)btns.appendChild(kMadeBtn(r)); btns.appendChild(kPlanBtn(r)); btns.appendChild(kPortionBox(r)); card.appendChild(btns);
       box.appendChild(card);
     });
   };
@@ -624,7 +758,9 @@ function kDrawMeals(){
   if(close.length)sec('A few things short',close,'');
 }
 /* ── Ideas from your pantry: his AIs suggest meals from what he has (main/kitchen-ai.js, agent/meal-ideas.js).
-   Desktop only (the phone has no AI of its own). What each idea is missing is worked out here against the pantry.
+   The last ideas are kept in state.kitchen.ideas, so they're there after a restart and on his other devices.
+   The phone has no AI of its own: it leaves an ask in the synced kitchen row and a computer answers it
+   (kitchen-photo.js kpServe). What each idea is missing is worked out here against the pantry.
    They're asked for on their own the first time he opens Meals, sized to his Food plan (health.js); the box above
    them is for a different aim this time, with suggestions dropping down as he types (kitchen-aim.js). */
 // his Food plan while it runs ({kcal, protein, carbs, fat} per day, from the Health tab), or null
@@ -634,8 +770,24 @@ function kPlan(){
   const left=typeof macroPlanDaysLeft==='function'?macroPlanDaysLeft(p,healthYmd(new Date())):null; // null: until he changes it
   return left!=null&&left<=0?null:p;
 }
+function kIdeasLocal(){ return !!(window.desktop&&window.desktop.kitchenIdeas); }
+function kIdeasRemote(){ return !kIdeasLocal()&&!!kitchenProfile()&&typeof kpMe==='function'&&typeof kpMyAsks==='function'; }
+function kIdeasWaiting(){ return kIdeasRemote()&&kpMyAsks().some(function(a){ return a.mode==='ideas'&&(a.state==='waiting'||a.state==='reading'); }); }
+function kIdeasAgo(at){
+  const d=new Date(at); d.setHours(0,0,0,0);
+  const days=Math.round((todayStart()-d)/864e5);
+  return days<=0?'today':days===1?'yesterday':days+' days ago';
+}
 async function kAskIdeas(){
   if(kitchenUI.ideasBusy)return;
+  if(!kIdeasLocal()){
+    if(!kIdeasRemote()||kIdeasWaiting())return;
+    const now=Date.now();
+    if(!Array.isArray(state.kitchen.asks))state.kitchen.asks=[];
+    state.kitchen.asks.push({id:uid(),mode:'ideas',url:'',said:kitchenUI.aim.trim().slice(0,300),from:kpMe(),at:now,updatedAt:now,state:'waiting',reader:'',readAt:0,why:''});
+    kitchenUI.ideasWhy=''; kSave(); voiceToast('Sent to your computer to think of meals');
+    return;
+  }
   kitchenUI.ideasBusy=true; kitchenUI.ideasWhy=''; renderKitchen();
   if(kitchenUI.aim.trim()&&typeof kAimSave==='function')kAimSave(kitchenUI.aim);
   try{
@@ -644,7 +796,7 @@ async function kAskIdeas(){
       pantry:k.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
       recipes:k.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),
       aim:kitchenUI.aim, plan:kPlan()});
-    if(r&&r.meals&&r.meals.length){ kitchenUI.ideas=r.meals; kitchenUI.ideasVia=r.via||''; }
+    if(r&&r.meals&&r.meals.length){ state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:kitchenUI.aim.trim().slice(0,300),meals:r.meals}; persist(); }
     else kitchenUI.ideasWhy=(r&&r.why)||'No ideas came back. Try again.';
   }catch(e){ kitchenUI.ideasWhy='Couldn’t ask your AIs: '+(e&&e.message||e); }
   kitchenUI.ideasBusy=false; renderKitchen();
@@ -652,33 +804,36 @@ async function kAskIdeas(){
 function kIdeaSaved(m){ return state.kitchen.recipes.some(function(r){ return r.name.toLowerCase()===m.name.toLowerCase(); }); }
 function kDrawIdeas(){
   const box=$('kitIdeas'); if(!box)return;
-  if(!(window.desktop&&window.desktop.kitchenIdeas)){ box.innerHTML=''; return; }
+  const ideas=state.kitchen.ideas, can=kIdeasLocal()||kIdeasRemote(), waiting=kIdeasWaiting();
+  if(!can&&!ideas){ box.innerHTML=''; return; }
   const old=$('kitAim'), typing=!!old&&document.activeElement===old; // a redraw mid-typing keeps his place
   const caret=typing?old.selectionStart:0;
   box.innerHTML='';
   box.appendChild(el('div','kit-k kit-sec','Ideas from your pantry'));
-  const form=el('div','kit-form'), field=el('div','kit-aim-wrap kit-grow');
+  const form=el('div','kit-form'), field=el('div','kit-aim-wrap kit-grow'); form.hidden=!can;
   const aim=document.createElement('input'); aim.className='sm'; aim.id='kitAim'; aim.value=kitchenUI.aim;
   aim.placeholder='Want something else this time? Breakfast, quick, something with eggs'; aim.setAttribute('aria-label','What to aim for this time');
   aim.addEventListener('input',function(){ kitchenUI.aim=aim.value.slice(0,300); });
-  const go=el('button','btn-accent',kitchenUI.ideasBusy?'Thinking…':kitchenUI.ideas?'New ideas':'Suggest meals');
-  go.disabled=kitchenUI.ideasBusy||!state.kitchen.items.length;
+  const go=el('button','btn-accent',kitchenUI.ideasBusy?'Thinking…':waiting?'Asked your computer…':ideas?'New ideas':'Suggest meals');
+  go.disabled=kitchenUI.ideasBusy||waiting||!state.kitchen.items.length;
   go.addEventListener('click',kAskIdeas);
   field.appendChild(aim); form.appendChild(field); form.appendChild(go); box.appendChild(form);
   if(typing){ aim.focus(); aim.setSelectionRange(caret,caret); } // before the drop-down listens, so it stays shut
   const plan=kPlan();
   const pickAim=function(text){ kitchenUI.aim=String(text||'').slice(0,300); aim.value=kitchenUI.aim; if(state.kitchen.items.length)kAskIdeas(); };
-  if(typeof kAimBox==='function')kAimBox(aim,function(){ return {pantry:state.kitchen.items.map(function(i){ return i.name; }),plan:plan}; },pickAim);
-  if(typeof kAimChips==='function')box.appendChild(kAimChips({plan:plan},pickAim));
-  if(!state.kitchen.items.length){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
-  box.appendChild(el('div','kit-hint',(plan?'Sized to your Food plan: '+macroPlanSay(plan,healthYmd(new Date()))+'.':'Set a Food plan on the Health tab and these are sized to it.')+
-    ' Uses your pantry, its amounts and what you’ve told the Agent (foods you avoid, goals).'+(kitchenUI.ideasVia?' Last ideas from '+kitchenUI.ideasVia+'.':'')));
-  // the first time he opens Meals, ideas come on their own
-  if(!kitchenUI.autoAsked&&!kitchenUI.ideas&&!kitchenUI.ideasBusy&&state.activeTab==='kitchen'&&kitchenUI.view==='meals'){
+  if(can&&typeof kAimBox==='function')kAimBox(aim,function(){ return {pantry:state.kitchen.items.map(function(i){ return i.name; }),plan:plan}; },pickAim);
+  if(can&&typeof kAimChips==='function')box.appendChild(kAimChips({plan:plan},pickAim));
+  if(!state.kitchen.items.length&&!ideas){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
+  if(can)box.appendChild(el('div','kit-hint',(plan?'Sized to your Food plan: '+macroPlanSay(plan,healthYmd(new Date()))+'.':'Set a Food plan on the Health tab and these are sized to it.')+
+    ' Uses your pantry, its amounts and what you’ve told the Agent (foods you avoid, goals).'+(kIdeasRemote()?' Your computer thinks of them, so Romulus needs to be open there.':'')));
+  if(waiting)kpDrawWaiting('ideas',box); // kitchen-photo.js
+  // the first time he opens Meals with no ideas kept, they come on their own
+  if(can&&!kitchenUI.autoAsked&&!ideas&&!kitchenUI.ideasBusy&&!waiting&&state.kitchen.items.length&&state.activeTab==='kitchen'&&kitchenUI.view==='meals'){
     kitchenUI.autoAsked=true; setTimeout(kAskIdeas,0);
   }
   if(kitchenUI.ideasWhy)box.appendChild(kEmpty(kitchenUI.ideasWhy));
-  (kitchenUI.ideas||[]).forEach(function(m){
+  if(ideas)box.appendChild(el('div','kit-hint','These are from '+kIdeasAgo(ideas.at)+(ideas.via?', by '+ideas.via:'')+(ideas.aim?', aiming for: '+ideas.aim:'')+'.'));
+  (ideas?ideas.meals:[]).forEach(function(m){
     const ings=m.ingredients.map(parseIngredient).filter(Boolean);
     const missing=ings.filter(function(i){ return !ingredientStatus(state.kitchen.items,i).have; });
     const card=el('div','kit-card');
@@ -737,10 +892,19 @@ function kDrawPantry(){
   undo.hidden=!last; undo.parentNode.hidden=!last; undo.textContent=last?'Undo: '+last.item.name:'Undo';
   undo.title=last?'Put '+last.item.name+' back in the pantry and off the grocery list':'';
   if(typeof kpDraw==='function')kpDraw('food',$('kitPhotoFood')); // kitchen-photo.js
-  const items=state.kitchen.items.slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
-  if(!items.length){ box.appendChild(kEmpty('The pantry is empty. Add what you have above; groceries the Agent buys come in here on their own.')); return; }
-  const grid=el('div','kit-grid'); box.appendChild(grid);
-  items.forEach(function(p){
+  const find=kitchenUI.findItem.trim();
+  $('kitFindItem').hidden=state.kitchen.items.length<8&&!find; // a short list needs no search
+  if(!state.kitchen.items.length){ box.appendChild(kEmpty('The pantry is empty. Add what you have above; groceries the Agent buys come in here on their own.')); return; }
+  const items=state.kitchen.items.filter(function(p){ return !find||kMatch(p.name,find); }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+  if(!items.length){ box.appendChild(kEmpty('Nothing in the pantry matches that.')); return; }
+  const setQty=function(p,n){ p.qty=n; if(n==null)p.unit=''; p.updatedAt=Date.now(); kSave(); };
+  // grouped by where it's kept (kPlaceOf: what he picked, or a guess from the name)
+  KITCHEN_PLACES.forEach(function(place){
+   const group=items.filter(function(p){ return kPlaceOf(p)===place; });
+   if(!group.length)return;
+   box.appendChild(el('div','kit-k kit-sec',KITCHEN_PLACE_NAMES[place]+' · '+group.length));
+   const grid=el('div','kit-grid'); box.appendChild(grid);
+   group.forEach(function(p){
     // a card like the grocery order's: lit = we have some; tap it dark = none left, and after a moment it
     // leaves for the grocery list (tap again before then to keep it). Its own controls don't toggle it.
     const going=!!kitchenUI.going[p.id];
@@ -757,6 +921,13 @@ function kDrawPantry(){
     card.appendChild(el('span','kit-tile-check','✓'));
     card.appendChild(el('div','kit-tile-name',p.name));
     const stop=function(e){ e.stopPropagation(); };
+    const amt=el('div','kit-tile-amt');
+    const less=kNudge(p.qty,p.unit,-1);
+    const minus=el('button','kit-step','−'); minus.type='button'; minus.disabled=p.qty==null||going;
+    minus.setAttribute('aria-label','Less '+p.name); minus.title=less===0?'The last of it: takes it off and puts it on the grocery list':'A bit less';
+    minus.addEventListener('click',function(e){ stop(e); if(less===0)kOut(p); else if(less!=null)setQty(p,less); });
+    const plus=el('button','kit-step','+'); plus.type='button'; plus.disabled=going; plus.setAttribute('aria-label','More '+p.name); plus.title='A bit more';
+    plus.addEventListener('click',function(e){ stop(e); setQty(p,kNudge(p.qty,p.unit,1)); });
     const q=el('input','sm kit-qty'); q.value=p.qty!=null?kFmtQty(p.qty,p.unit):''; q.placeholder='some'; q.setAttribute('aria-label','How much '+p.name);
     q.title='How much you have, like 2 lb or 6'; q.disabled=going;
     const setQ=function(){
@@ -767,7 +938,13 @@ function kDrawPantry(){
     };
     q.addEventListener('click',stop); q.addEventListener('change',setQ);
     q.addEventListener('keydown',function(e){ stop(e); if(e.key==='Enter')q.blur(); });
-    card.appendChild(q);
+    amt.appendChild(minus); amt.appendChild(q); amt.appendChild(plus); card.appendChild(amt);
+    const w=document.createElement('select'); w.className='kit-where'; w.setAttribute('aria-label','Where '+p.name+' is kept'); w.title='Where it’s kept';
+    KITCHEN_PLACES.forEach(function(x){ const o=document.createElement('option'); o.value=x; o.textContent=KITCHEN_PLACE_NAMES[x]; w.appendChild(o); });
+    w.value=place; w.disabled=going;
+    w.addEventListener('click',stop); w.addEventListener('keydown',stop);
+    w.addEventListener('change',function(e){ stop(e); p.where=w.value; p.updatedAt=Date.now(); kSave(); });
+    card.appendChild(w);
     const del=iconBtn(I.x,'Remove '+p.name+' without adding it to the grocery list'); del.classList.add('kit-tile-del');
     del.addEventListener('click',function(e){ stop(e); state.kitchen.items=state.kitchen.items.filter(function(x){ return x.id!==p.id; }); kTomb(p.id); kSave(); });
     card.appendChild(del);
@@ -784,11 +961,13 @@ function kDrawPantry(){
     card.addEventListener('click',toggle);
     card.addEventListener('keydown',function(e){ if(e.target===card&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); toggle(); } });
     grid.appendChild(card);
+   });
   });
 }
 function kEditRecipe(r){
   kitchenUI.editing=r?r.id:null;
   $('kitRecName').value=r?r.name:''; $('kitRecIngs').value=r?r.ingredients.map(fmtIngredient).join('\n'):''; $('kitRecLiked').checked=!!(r&&r.liked);
+  $('kitRecServ').value=r&&r.servings?r.servings:'';
   $('kitRecSave').textContent=r?'Save changes':'Save recipe'; $('kitRecCancel').hidden=!r;
   if(r){ $('kitRecName').focus(); $('kitRecName').scrollIntoView({block:'nearest'}); }
 }
@@ -797,22 +976,28 @@ function kSaveRecipe(){
   if(!name){ $('kitRecName').classList.add('bad'); $('kitRecName').focus(); return; }
   $('kitRecName').classList.remove('bad');
   const ings=$('kitRecIngs').value.split('\n').map(parseIngredient).filter(Boolean).slice(0,60);
-  const now=Date.now(), r=kitchenUI.editing&&state.kitchen.recipes.find(function(x){ return x.id===kitchenUI.editing; });
+  const sv=Math.round(Number($('kitRecServ').value));
+  const now=Date.now();
+  let r=kitchenUI.editing&&state.kitchen.recipes.find(function(x){ return x.id===kitchenUI.editing; });
   if(r)Object.assign(r,{name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,updatedAt:now});
-  else state.kitchen.recipes.push({id:uid(),name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,planned:false,made:[],updatedAt:now});
+  else{ r={id:uid(),name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,planned:false,made:[],updatedAt:now}; state.kitchen.recipes.push(r); }
+  if(sv>1&&sv<100)r.servings=sv; else delete r.servings;
+  delete kitchenUI.portions[r.id];
   kEditRecipe(null); kSave();
 }
 function kDrawRecipes(){
   document.querySelectorAll('#kitchenView .kit-chip').forEach(function(b){ const on=b.dataset.f===kitchenUI.recipeFilter; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
   const box=$('kitRecipes'); box.innerHTML='';
+  const find=kitchenUI.findRec.trim();
   const list=state.kitchen.recipes.filter(function(r){ return kitchenUI.recipeFilter!=='liked'||r.liked; })
+    .filter(function(r){ return !find||kMatch(r.name+' '+r.ingredients.map(function(i){ return i.name; }).join(' '),find); })
     .sort(function(a,b){ return (b.liked-a.liked)||a.name.localeCompare(b.name); });
-  if(!list.length){ box.appendChild(kEmpty(kitchenUI.recipeFilter==='liked'?'No liked recipes yet. Tap Like on the ones you want again.':'No recipes yet. Add one above.')); return; }
+  if(!list.length){ box.appendChild(kEmpty(find?'No recipe matches that, by name or ingredient.':kitchenUI.recipeFilter==='liked'?'No liked recipes yet. Tap Like on the ones you want again.':'No recipes yet. Add one above.')); return; }
   list.forEach(function(r){
     const card=el('div','kit-card');
     const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',r.name)); top.appendChild(kLikeBtn(r)); card.appendChild(top);
     card.appendChild(el('div','kit-card-sub',r.ingredients.map(fmtIngredient).join(', ')||'No ingredients yet'));
-    card.appendChild(el('div','kit-card-meta',kLastMade(r)));
+    card.appendChild(el('div','kit-card-meta',(r.servings?'makes '+r.servings+' servings · ':'')+kLastMade(r)));
     const btns=el('div','kit-card-btns'); btns.appendChild(kPlanBtn(r));
     const ed=iconBtn(I.pen,'Edit '+r.name); ed.addEventListener('click',function(){ kEditRecipe(r); }); btns.appendChild(ed);
     const del=iconBtn(I.x,'Delete '+r.name); del.addEventListener('click',function(){
@@ -872,10 +1057,26 @@ function kDrawShop(){
   const td=el('button','ghost','Make a to-do');
   td.title='A to-do with each item to check off, for shopping yourself';
   td.addEventListener('click',function(){ kitchenToTodo(list,plan.map(function(r){ return r.name; })); voiceToast('Shopping list added to To do'); });
-  btns.appendChild(g); btns.appendChild(td); box.appendChild(btns);
+  btns.appendChild(g); btns.appendChild(td);
+  // to the people on his group plan (family.js): the shared Groceries list, or one person as a to-do
+  if(typeof famSendListBox==='function'&&typeof famOn==='function'&&famOn()){
+    const sg=el('button','ghost','Send to the group');
+    sg.title='Put these on the group’s shared Groceries list, or send them to someone as a to-do';
+    sg.addEventListener('click',function(){
+      const lines=list.map(function(e){ return e.name.charAt(0).toUpperCase()+e.name.slice(1)+(e.qty!=null?', '+kFmtQty(e.qty,e.unit):''); });
+      const meals=plan.map(function(r){ return r.name; });
+      const sb=famSendListBox(lines,'Shopping list'+(meals.length?' for '+meals.slice(0,3).join(', ')+(meals.length>3?' and more':''):''),function(){ sg.hidden=false; });
+      if(!sb)return;
+      sg.hidden=true; btns.after(sb);
+    });
+    btns.appendChild(sg);
+  }
+  box.appendChild(btns);
 }
 window.renderKitchen=renderKitchen;
 window.kitchenSync=kitchenSync;
 window.kitchenProfile=kitchenProfile;
 window.kitchenProfile=kitchenProfile;
+// kitchen-photo.js kpCollect: the computer couldn't come up with the meal ideas this phone asked for
+window.kitchenIdeasFailed=function(why){ kitchenUI.ideasWhy=String(why||'').slice(0,300); };
 }

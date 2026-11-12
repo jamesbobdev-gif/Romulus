@@ -27,7 +27,7 @@ const usage = require('./usage-limit');
 const { parseUsageLimit, holdForUsage } = usage;
 const siteNotes = require('./site-notes');
 const routing = require('./routing');
-const { laneOf, routeTask, privateMatch } = routing;
+const { laneOf, routeTask, routeInfo, privateMatch } = routing;
 const { cloudOrder, couldntDo } = require('./ai-connections');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText, cartBrief,
@@ -122,11 +122,15 @@ let localDownAt = 0;
 /* a computer the mini PC doesn't answer leaves its tasks to one it does: it claims a task only after it has
    seen it queued for LOCAL_HOLD_MS with no taker, then passes it on as before (the mini PC may really be off) */
 const LOCAL_HOLD_MS = 2 * 60 * 1000;
+/* the local model's own computer (agent/worker.js) has said it's there before: a quiet spell is most likely it
+   restarting, and the address here may be one it no longer has (it was a Tailscale one). Its tasks wait for it
+   that long before going on, and a private one or a legion never goes on: it waits for the worker */
+const WORKER_HOLD_MS = worker.GRACE_MS;
 const heldSince = new Map(); // task id → when this computer first held it back
-function claimableWhileDown(queued, held, now = Date.now()) {
+function claimableWhileDown(queued, held, now = Date.now(), { holdMs = LOCAL_HOLD_MS, waitsForWorker = () => false } = {}) {
   const ids = new Set(queued.map((t) => t.id));
   for (const id of held.keys()) if (!ids.has(id)) held.delete(id);
-  return queued.filter((t) => { if (!held.has(t.id)) held.set(t.id, now); return now - held.get(t.id) >= LOCAL_HOLD_MS; });
+  return queued.filter((t) => { if (!held.has(t.id)) held.set(t.id, now); return !waitsForWorker(t) && now - held.get(t.id) >= holdMs; });
 }
 // an answer saying something went out, and the buttons that send something
 const SUBMIT_CLAIM = /\b(was|were|has been|have been|is now|got|I)\s+(already\s+|successfully\s+)?(submitted|posted|sent|placed|published|turned in)\b|\bsuccessfully (submitted|posted|sent|placed)\b/i;
@@ -179,8 +183,13 @@ async function localStatus({ direct = false } = {}) {
   // another computer: the local model's own one says it's there (agent/worker.js), so it's answering, whether
   // or not this one could reach it directly
   const w = direct || worker.isWorker(readConfig()) ? null : await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
-  if (w) return { configured: true, online: true, via: 'worker', name: w.name, model: w.model || (c && c.model) || '', installed: true, loaded: true, busy: w.busy };
-  if (!c) return { configured: false };
+  if (w) return { configured: true, online: true, via: 'worker', name: w.name, model: w.model || (c && c.model) || '', installed: true, loaded: true, busy: w.busy, doing: w.doing };
+  // it went quiet a few minutes ago: most likely restarting, so it still counts as answering (its tasks wait for it)
+  const back = () => {
+    const r = direct || worker.isWorker(readConfig()) ? null : worker.returningWorker(worker.lastDoc());
+    return r && { configured: true, online: true, via: 'worker', quiet: true, at: r.at, name: r.name, model: r.model || (c && c.model) || '', installed: true, loaded: true, busy: false };
+  };
+  if (!c) return back() || { configured: false };
   try {
     // with every core busy on a task its replies can take a few seconds: 3 s showed "isn't reachable"
     // in the middle of a run that was going fine
@@ -188,7 +197,7 @@ async function localStatus({ direct = false } = {}) {
     return { configured: true, online: true, model: c.model, installed: (tags.models || []).some((m) => m.name === c.model), loaded: (ps.models || []).some((m) => m.name === c.model) };
   } catch (e) {
     if (Date.now() - localHeardAt < 3 * 60 * 1000) return { configured: true, online: true, model: c.model, installed: true, loaded: true };
-    return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
+    return back() || { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
   }
 }
 // his latest reply is a yes to submitting what the mini PC last asked about
@@ -382,14 +391,18 @@ async function startLocalRun() {
     let mine = queued;
     if (down) {
       const before = heldSince.size;
-      mine = claimableWhileDown(queued, heldSince);
-      if (heldSince.size > before) agentLog('local: the mini PC isn’t reachable from here: leaving ' + (heldSince.size - before) + ' task(s) for a computer that can reach it');
+      // the local model's own computer has been heard from: its tasks wait for it to come back
+      const known = !worker.isWorker(readConfig()) && worker.workerState(worker.lastDoc()) !== 'none';
+      mine = claimableWhileDown(queued, heldSince, Date.now(), known ? { holdMs: WORKER_HOLD_MS, waitsForWorker: (t) => !!privateMatch(t) || legion.isLegion(t) } : undefined);
+      if (heldSince.size > before) agentLog('local: the mini PC isn’t reachable from here: leaving ' + (heldSince.size - before) + ' task(s) for '
+        + (known ? 'it to come back (up to ' + Math.round(WORKER_HOLD_MS / 60000) + ' min; private ones wait for it)' : 'a computer that can reach it'));
       if (!mine.length) return;
     } else heldSince.clear();
     const tasks = await claimAgentTasks(mine, 'local');
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     tasks.forEach((t) => heldSince.delete(t.id));
-    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
+    types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'local')])) });
     // nobody took them in time: they all go to the cloud AIs at once
     if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
     for (const t of tasks) {
@@ -574,7 +587,7 @@ async function runLocalTask(c, t) {
   const dossier = {};
   // the weekly class sweep (agent/class-sweep.js): through every class, adding the work the calendar links miss
   const sweeping = !money && !coaching && classSweep.isSweep(t);
-  const found = [];
+  const found = [], doneFound = []; // the class sweep: work to add, and listed work he already turned in
   // a task that only names the work ("chapter 8", agent/find-out.js): which class and what it is first, then it
   const findingOut = !money && !coaching && !sweeping && findOut.isVague(t);
   const pinned = {};
@@ -603,7 +616,7 @@ async function runLocalTask(c, t) {
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
       coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
-      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, fileText.READ_FILE_TOOL] : [],
+      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, classSweep.DONE_TOOL, fileText.READ_FILE_TOOL] : [],
       findingOut && browser ? [findOut.PIN_TOOL, fileText.READ_FILE_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
@@ -789,6 +802,7 @@ async function runLocalTask(c, t) {
         else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
         else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
         else if (sweeping && name === 'add_class_item') { result = classSweep.addItem(found, args); show('\n' + result.split('. So far')[0] + '\n', true); }
+        else if (sweeping && name === 'mark_class_done') { result = classSweep.markDone(doneFound, args); show('\n' + result + '\n', true); }
         else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); if (pinned.item) findOut.remember(classLogFile(), pinned.item); show('\n' + result.split('. His task')[0] + '\n', true); }
         else if ((coaching || sweeping || findingOut) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
         else if (name === 'search_my_data') {
@@ -969,6 +983,7 @@ async function runLocalTask(c, t) {
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     school: sweeping && found.length ? found : undefined, // the class sweep's finds, for his School list (renderer/js/wiring.js importClassItems)
     macros: money ? undefined : macroChanges(final.macros), // a meal plan's per-day targets: the app sets his Food plan to them (renderer/js/health.js)
+    schoolDone: sweeping && doneFound.length ? doneFound : undefined, // listed work it saw turned in: checked off (wiring.js markClassDone)
     pinned: pinned.item || undefined, // what a "chapter 8" task turned out to be: his task is rewritten with it (agent-results.js applyPinned)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
@@ -999,4 +1014,4 @@ const isBusy = () => localBusy || howtoCompacting;
 let activity = null;
 function doing(a) { activity = a ? Object.assign({ since: Date.now() }, a, a.title ? { title: String(a.title).slice(0, 80) } : {}) : null; }
 const nowDoing = () => activity ? Object.assign({}, activity) : howtoCompacting ? { what: 'tidying how-to notes' } : null;
-module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };
+module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS, WORKER_HOLD_MS };

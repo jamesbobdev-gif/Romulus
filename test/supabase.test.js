@@ -84,3 +84,11 @@ test('a download limit on the server says so; other errors stay HTTP codes', asy
   await assert.rejects(supabase.rpc(a, 'sync_get', {}, { fetch: fakeFetch(400, { code: 'P0001', message: 'read_limit' }) }), /read_limit/);
   await assert.rejects(supabase.rpc(a, 'sync_get', {}, { fetch: fakeFetch(500, { message: 'boom' }) }), /^Error: HTTP 500$/);
 });
+
+test('a key the keyring could not open (still enc:v1:...) is never sent; the error says why', async () => {
+  let called = false;
+  const f = async () => { called = true; return { ok: true, json: async () => [] }; };
+  await assert.rejects(supabase.rpc(Object.assign({}, a, { key: 'enc:v1:djE0abc' }), 'sync_get', {}, { fetch: f }), /keyring/);
+  await assert.rejects(supabase.rpc(Object.assign({}, a, { syncKey: 'enc:v1:djE0abc' }), 'sync_get', {}, { fetch: f }), /keyring/);
+  assert.strictEqual(called, false);
+});

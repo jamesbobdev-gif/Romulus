@@ -34,6 +34,15 @@ test('claimableWhileDown leaves a task to a computer that reaches the mini PC, t
   assert.ok(!held.has('a'));
 });
 
+test('claimableWhileDown waits longer for a worker it has heard from, and never gives up a private task', () => {
+  const held = new Map(), a = { id: 'a' }, p = { id: 'p', private: true };
+  const opts = { holdMs: lane.WORKER_HOLD_MS, waitsForWorker: (t) => !!t.private };
+  assert.deepStrictEqual(lane.claimableWhileDown([a, p], held, 1000, opts), []);
+  assert.deepStrictEqual(lane.claimableWhileDown([a, p], held, 1000 + lane.LOCAL_HOLD_MS, opts), []); // the old 2 min isn't enough
+  assert.deepStrictEqual(lane.claimableWhileDown([a, p], held, 1000 + lane.WORKER_HOLD_MS, opts), [a]);
+  assert.deepStrictEqual(lane.claimableWhileDown([a, p], held, 1000 + 10 * lane.WORKER_HOLD_MS, opts), [a]); // p waits for the worker
+});
+
 test('cleanStuck trims and fills in the missing half', () => {
   assert.strictEqual(lane.cleanStuck(null), null);
   assert.strictEqual(lane.cleanStuck({}), null);
