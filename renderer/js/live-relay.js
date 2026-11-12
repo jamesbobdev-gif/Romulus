@@ -46,13 +46,17 @@ const liveRelay=(function(){
     return info;
   }
   function close(){
-    clearInterval(hb); clearTimeout(retry); joined=false;
+    clearInterval(hb); clearTimeout(retry); retry=null; joined=false;
     if(sock){ const s=sock; sock=null; try{ s.close(); }catch(e){} }
   }
   function connect(){
-    if(!info||sock||typeof WebSocket!=='function')return;
+    // retry: a try is already waiting its turn. tick() calls this every second, and without the wait a refused
+    // socket (a key that wasn't accepted, no network) was opened again about every three seconds, all day
+    if(!info||sock||retry||typeof WebSocket!=='function')return;
     const s=new WebSocket(info.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(info.key)+'&vsn=1.0.0');
     sock=s; joined=false; lastMsg=Date.now();
+    // never opened, or the join was never answered: start over rather than sit on a socket that carries nothing
+    setTimeout(function(){ if(sock===s&&!joined){ try{ s.close(); }catch(e){} } },15000);
     s.onopen=function(){
       ref++; s.send(JSON.stringify({topic:'realtime:'+info.topic,event:'phx_join',ref:String(ref),join_ref:String(ref),
         payload:{config:{broadcast:{self:false,ack:false},presence:{key:''},postgres_changes:[],private:false}}}));
@@ -65,6 +69,8 @@ const liveRelay=(function(){
       lastMsg=Date.now();
       let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
       if(m.event==='phx_reply'&&m.topic==='realtime:'+info.topic&&m.payload&&m.payload.status==='ok'){ joined=true; tries=0; return; }
+      // the join was refused (too many at once, a server restart): the socket stayed open and nothing ever arrived
+      if(m.event==='phx_reply'&&m.topic==='realtime:'+info.topic&&!joined&&m.payload&&m.payload.status==='error'){ try{ s.close(); }catch(e){} return; }
       if(m.event==='broadcast'&&m.payload&&m.payload.event==='m'){ const msg=await open(m.payload.payload); if(msg)onMessage(msg); }
       else if(m.event==='phx_error'||m.event==='phx_close'){ try{ s.close(); }catch(e){} }
     };
@@ -72,7 +78,7 @@ const liveRelay=(function(){
       clearInterval(hb);
       if(sock!==s)return; // closed on purpose
       sock=null; joined=false;
-      retry=setTimeout(connect,Math.min(30000,1000*Math.pow(2,tries++)));
+      retry=setTimeout(function(){ retry=null; connect(); },Math.min(60000,1000*Math.pow(2,tries++))); // 1s, 2s, 4s … up to a minute
     };
   }
   // one at a time, in order: sealing is async, and a mouse-up that overtakes its mouse-down is no click

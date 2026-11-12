@@ -2,9 +2,10 @@
    agent runner's diary. No Electron here: main.js passes in the folder and Electron's safeStorage. */
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
-let io = null; // { userData: () => folder, safeStorage }
-function init(opts) { io = opts; mem = null; stampOf = null; plainOf.clear(); sealedOf.clear(); asyncOk = null; }
+let io = null; // { userData: () => folder, safeStorage, platform? (tests) }
+function init(opts) { io = opts; mem = null; stampOf = null; plainOf.clear(); sealedOf.clear(); asyncOk = null; ownKeyBuf = null; }
 
 function dataFile() {
   return path.join(io.userData(), 'tasks.json');
@@ -19,6 +20,65 @@ function configFile() {
 const SECRET_KEYS = new Set(['access_token', 'refresh_token', 'id_token', 'clientSecret', 'appPassword', 'key', 'syncKey',
   'geminiKey', 'openaiKey', 'anthropicKey', 'openrouterKey', 'xaiKey', 'groqKey', 'cloudflareKey', 'nvidiaKey', 'buyEmailUrl', 'calendarFeeds']);
 const ENC = 'enc:v1:';
+
+/* A computer that runs the local model for every device (localModel.worker, on Linux) runs with nobody at it:
+   a service that starts before anyone signs in. The Linux keyring isn't dependable there. Which key store
+   Chromium picks depends on how the app was started, and a restart that picks another one leaves every key
+   unreadable: the app then can't sync, take tasks or say it's there until someone sits down at it. So on that
+   computer the secrets are sealed with a key the app keeps itself, in config.key next to config.json (readable
+   by that user only), as 'enc:v2:' + base64(iv, tag, text) under AES-256-GCM. It opens the same way however
+   the app was started. Secrets sealed the old way are opened once more and saved this way (load()). */
+const ENC2 = 'enc:v2:';
+const isSealed = (v) => typeof v === 'string' && (v.startsWith(ENC) || v.startsWith(ENC2));
+const platform = () => (io && io.platform) || process.platform;
+const keyFile = () => path.join(io.userData(), 'config.key');
+const ownKeyMode = (cfg) => platform() === 'linux' && !!((cfg && cfg.localModel) || {}).worker;
+let ownKeyBuf = null;
+function ownKey(make) {
+  if (ownKeyBuf) return ownKeyBuf;
+  try {
+    const k = Buffer.from(fs.readFileSync(keyFile(), 'utf8').trim(), 'base64');
+    if (k.length === 32) return (ownKeyBuf = k);
+  } catch (e) {}
+  if (!make) return null;
+  try {
+    const k = crypto.randomBytes(32);
+    fs.mkdirSync(path.dirname(keyFile()), { recursive: true });
+    fs.writeFileSync(keyFile(), k.toString('base64'), { mode: 0o600, flag: 'wx' }); // never over a key that's there
+    return (ownKeyBuf = k);
+  } catch (e) { return null; }
+}
+function sealOwn(v) {
+  const k = ownKey(true);
+  if (!k) return null;
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', k, iv);
+  const ct = Buffer.concat([c.update(v, 'utf8'), c.final()]);
+  return ENC2 + Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64');
+}
+function openOwn(v) { // the plain text, or null when the key file is gone or it wasn't sealed with it
+  const k = ownKey(false);
+  if (!k) return null;
+  try {
+    const b = Buffer.from(v.slice(ENC2.length), 'base64');
+    const d = crypto.createDecipheriv('aes-256-gcm', k, b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
+  } catch (e) { return null; }
+}
+/* Linux, when safeStorage can't open an old 'enc:v1:' secret: one sealed with no keyring (the "basic" store,
+   which is what a computer with nobody signed in used) is Chromium's 'v10' form, AES-128-CBC under a fixed
+   key, and can be opened here whatever store this start picked. One sealed with a keyring ('v11') can't.
+   → the text, or null */
+function openBasic(buf) {
+  if (platform() !== 'linux' || buf.length < 19 || buf.subarray(0, 3).toString('latin1') !== 'v10') return null;
+  try {
+    const d = crypto.createDecipheriv('aes-128-cbc', crypto.pbkdf2Sync('peanuts', 'saltysalt', 1, 16, 'sha1'), Buffer.alloc(16, ' '));
+    const out = Buffer.concat([d.update(buf.subarray(3)), d.final()]);
+    const text = out.toString('utf8');
+    // the wrong key now and then gives valid padding: what comes out must still be plain text
+    return Buffer.from(text, 'utf8').equals(out) && !/[\u0000-\u0008\u000e-\u001f�]/.test(text) ? text : null;
+  } catch (e) { return null; }
+}
 
 /* Electron 45 deprecates safeStorage's synchronous calls and 46 removes them, so encrypting and decrypting
    is asynchronous here, while readConfig/writeConfig stay synchronous for their hundreds of callers:
@@ -61,9 +121,13 @@ async function canEncryptAsync() {
   return asyncOk;
 }
 // one string; `keep` remembers it (config secrets: small, and seen again and again; not a whole file's text)
-async function sealText(v, keep) {
-  if (typeof v !== 'string' || !v || v.startsWith(ENC)) return v;
-  if (keep && sealedOf.has(v)) return sealedOf.get(v);
+async function sealText(v, keep, own) {
+  if (typeof v !== 'string' || !v || isSealed(v)) return v;
+  if (keep && sealedOf.has(v) && sealedOf.get(v).startsWith(own ? ENC2 : ENC)) return sealedOf.get(v);
+  if (own) { // the app's own key (the local model's computer); no key file to be had: the usual way
+    const out = sealOwn(v);
+    if (out) { if (keep) remember(out, v, true); return out; }
+  }
   if (!(await canEncryptAsync())) return v;
   const s = ss();
   const buf = hasAsync() ? await s.encryptStringAsync(v) : s.encryptString(v);
@@ -72,18 +136,29 @@ async function sealText(v, keep) {
   return out;
 }
 async function openText(v, keep) {
-  if (typeof v !== 'string' || !v.startsWith(ENC)) return v;
+  if (!isSealed(v)) return v;
   if (plainOf.has(v)) return plainOf.get(v);
+  if (v.startsWith(ENC2)) {
+    const plain = openOwn(v);
+    if (plain == null) return v;
+    if (keep) remember(v, plain, true);
+    return plain;
+  }
   const s = ss();
+  const buf = Buffer.from(v.slice(ENC.length), 'base64');
   try {
-    const buf = Buffer.from(v.slice(ENC.length), 'base64');
     let plain, again = false;
     if (hasAsync()) { const r = await s.decryptStringAsync(buf); plain = r.result; again = !!r.shouldReEncrypt; }
     else plain = s.decryptString(buf);
     // shouldReEncrypt: the key store moved on, so the next write seals it afresh rather than reusing this text
     if (keep) remember(v, plain, !again);
     return plain;
-  } catch (e) { return v; }
+  } catch (e) {
+    const plain = openBasic(buf);
+    if (plain == null) return v;
+    if (keep) remember(v, plain, false); // sealed afresh on the next write
+    return plain;
+  }
 }
 // a string or an array of them (nested arrays too), the way config secrets come
 const eachDeep = (v, fn) => (Array.isArray(v) ? Promise.all(v.map((x) => eachDeep(x, fn))) : fn(v));
@@ -95,7 +170,7 @@ const openAsync = (v) => eachDeep(v, (x) => openText(x, false));
    (sealed, as when Windows can't open it). */
 function sealValue(v) {
   if (Array.isArray(v)) return v.map(sealValue);
-  if (typeof v !== 'string' || !v || v.startsWith(ENC)) return v;
+  if (typeof v !== 'string' || !v || isSealed(v)) return v;
   if (sealedOf.has(v)) return sealedOf.get(v);
   const s = ss();
   try {
@@ -109,16 +184,25 @@ function sealValue(v) {
 }
 function openValue(v) {
   if (Array.isArray(v)) return v.map(openValue);
-  if (typeof v !== 'string' || !v.startsWith(ENC)) return v;
+  if (!isSealed(v)) return v;
   if (plainOf.has(v)) return plainOf.get(v);
-  const s = ss();
+  if (v.startsWith(ENC2)) {
+    const plain = openOwn(v);
+    if (plain == null) return v;
+    remember(v, plain, true);
+    return plain;
+  }
+  const s = ss(), buf = Buffer.from(v.slice(ENC.length), 'base64');
   try {
     if (s && typeof s.decryptString === 'function') {
-      const plain = s.decryptString(Buffer.from(v.slice(ENC.length), 'base64'));
+      const plain = s.decryptString(buf);
       remember(v, plain, true);
       return plain;
     }
-  } catch (e) {}
+  } catch (e) {
+    const plain = openBasic(buf);
+    if (plain != null) { remember(v, plain, false); return plain; }
+  }
   return v;
 }
 // fn applied to each secret value; calAccounts[].url is a private calendar link there (but not elsewhere)
@@ -139,7 +223,8 @@ function secretStrings(o) {
   return out;
 }
 async function sealAll(cfg) {
-  await Promise.all(secretStrings(cfg).map((v) => sealText(v, true)));
+  const own = ownKeyMode(cfg);
+  await Promise.all(secretStrings(cfg).map((v) => sealText(v, true, own)));
   const cached = (v) => (Array.isArray(v) ? v.map(cached) : (typeof v === 'string' && sealedOf.has(v) ? sealedOf.get(v) : v));
   return mapSecrets(cfg, cached);
 }
@@ -181,7 +266,7 @@ function readConfig() {
     const cfg = mapSecrets(raw, openValue);
     mem = clone(cfg); stampOf = st;
     // something else wrote secrets this process hasn't seen: open them, and the next read has them
-    if (secretStrings(cfg).some((v) => v.startsWith(ENC))) openAll(raw).then(() => { if (stampOf === st && !pending) mem = null; }).catch(() => {});
+    if (secretStrings(cfg).some(isSealed)) openAll(raw).then(() => { if (stampOf === st && !pending) mem = null; }).catch(() => {});
     return cfg;
   } catch (e) { return {}; }
 }
@@ -215,7 +300,10 @@ async function load() {
     await Promise.all([raw, bak].filter(Boolean).map(openAll));
     mem = null; // whatever was read before this, with secrets it couldn't open yet, is read again
     const cfg = readConfig();
-    if (raw && (await canEncryptAsync()) && secretStrings(raw).some((v) => v && !v.startsWith(ENC))) await writeConfig(cfg);
+    // on the local model's own computer, every secret this start could open goes under the app's own key
+    const opened = (v) => !isSealed(v) || plainOf.has(v);
+    const move = ownKeyMode(cfg) && secretStrings(raw || {}).some((v) => v && !v.startsWith(ENC2) && opened(v));
+    if (raw && (move || ((await canEncryptAsync()) && secretStrings(raw).some((v) => v && !isSealed(v))))) await writeConfig(cfg);
   } catch (e) { console.error('config: load failed: ' + e.message); }
 }
 const sealPlainSecrets = load;
@@ -230,4 +318,4 @@ function agentLog(msg) {
 }
 
 module.exports = { init, dataFile, configFile, readConfig, writeConfig, flush, writing, load, sealPlainSecrets, agentLog, mapSecrets,
-  sealValue, openValue, sealAsync, openAsync, SECRET_KEYS };
+  sealValue, openValue, sealAsync, openAsync, SECRET_KEYS, isSealed };

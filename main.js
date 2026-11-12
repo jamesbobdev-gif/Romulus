@@ -182,9 +182,23 @@ if (!gotLock) {
     setTimeout(() => scheduleLocalRun(), 20 * 1000);
     // the local model's own computer says it's there, for his other devices (agent/worker.js), and what its
     // browser downloaded goes up for them (agent/worker-files.js)
-    const beat = () => localLane.workerBeat().catch((e) => agentLog('worker heartbeat failed: ' + (e && e.message || e)));
+    // One that doesn't go out is tried again within seconds, not at the next two-minute mark, and the log says
+    // why once (and when it's back), so "it went quiet" has a reason to read afterwards.
+    const workerMod = require('./agent/worker');
+    let beatFails = 0, beatTimer = null;
+    const beat = async () => {
+      clearTimeout(beatTimer);
+      if (!workerMod.isWorker(readConfig())) { beatFails = 0; beatTimer = setTimeout(beat, workerMod.BEAT_MS); return; }
+      const ok = await localLane.workerBeat().catch(() => false);
+      if (ok && beatFails) agentLog('worker heartbeat: back after ' + beatFails + ' missed');
+      if (!ok && !beatFails) agentLog('worker heartbeat failed: ' + (workerMod.lastBeatError() || 'no reason given') + ' (trying again shortly)');
+      beatFails = ok ? 0 : beatFails + 1;
+      beatTimer = setTimeout(beat, workerMod.nextBeatIn(ok, beatFails));
+    };
     setTimeout(beat, 5 * 1000);
-    setInterval(beat, require('./agent/worker').BEAT_MS);
+    // waking from sleep: say it's there now (the local model's computer), or look for it now (the others),
+    // rather than up to two minutes later
+    powerMonitor.on('resume', () => { setTimeout(() => { beat(); workerMod.lookAgain(); refreshSituation(); }, 3000); });
     // weekly memory tidy: looked at a few minutes after start and every 6 hours; it runs only when due and idle
     setTimeout(() => maybeTidyMemory().catch(() => {}), 5 * 60 * 1000);
     setInterval(() => maybeTidyMemory().catch(() => {}), 6 * 60 * 60 * 1000);
