@@ -57,7 +57,7 @@ function buildRow(t,canDrag){
     }
   }
   const isAgentTask=taskWs(t)==='agent';
-  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; chips.appendChild(rc); }
+  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const sk=recurStreakText(t.recur); const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]+(sk?' · '+sk:'')); rc.title='Repeats: tick it off and the next one appears'+(sk?'. Ticked off on time '+sk+(t.recur.best>t.recur.streak?'; your longest run is '+t.recur.best:''):''); chips.appendChild(rc); }
   if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); chips.appendChild(rc); }
   if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st',TRIGGER_LABELS[t.trigger.kind]||'trigger'); tc.title='Starts '+triggerText(t.trigger); chips.appendChild(tc); }
   if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; chips.appendChild(gc); }
@@ -560,7 +560,9 @@ function buildPanel(t){
     rs.addEventListener('change',function(){
       if(!rs.value){ t.recur=null; touch(); return; }
       if(!t.due)t.due=formatDate(new Date()); // counts from its due date: an undated one starts today
-      t.recur={every:rs.value,dom:Number(t.due.slice(8)),series:(t.recur&&t.recur.series)||t.id};
+      const was=t.recur||{};
+      t.recur={every:rs.value,dom:Number(t.due.slice(8)),series:was.series||t.id};
+      if(was.best)t.recur.best=was.best; // a new rhythm starts a new run; the longest one stays
       touch();
     });
     pm.appendChild(rs);
@@ -733,6 +735,7 @@ function buildPanel(t){
 let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
   if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
+  if(typeof demoDraw==='function')demoDraw(); // demo.js: the example to-dos are on the list → say so
   // a background sync or Claude's answer re-renders the list; if you were typing an
   // answer, put the cursor back so your next keystrokes don't hit list shortcuts
   const ae=document.activeElement;

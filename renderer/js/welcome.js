@@ -33,6 +33,7 @@ function markWelcomed(){
   card.hidden=false;
   const done=function(){ try{ localStorage.setItem(WELCOME_KEY,String(Date.now())); }catch(e){} card.hidden=true; };
   $('welcomeTasksBtn').addEventListener('click',done);
+  $('welcomeDemoBtn').addEventListener('click',done); // demo.js puts the example to-dos on the list
   // the Agent tab, where "Pick an AI" leads with the free OpenRouter start (or, with an AI already
   // connected, the example tasks); the full list of AIs is a link away from there
   $('welcomeAiBtn').addEventListener('click',function(){ done(); switchTab('agent'); window.scrollTo(0,0); });

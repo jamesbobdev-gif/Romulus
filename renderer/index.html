@@ -418,6 +418,17 @@
       <p class="settings-hint">Bring tasks over from Todoist, TickTick, Google Tasks, Trello, Asana, Notion, a spreadsheet (CSV) or a pasted list.</p>
       <div class="settings-row"><button id="importOpenBtn" class="ghost mono">Import from another app</button></div>
     </details>
+    <details class="settings-panel settings-collapse" id="backupSection">
+      <summary class="settings-label">Backup file</summary>
+      <p class="settings-hint">Save everything in your lists to one file you keep: to-dos, Agent, School and Work tasks, notes, hours, health totals and the Kitchen tab. Finance, your keys and connected accounts, the Group list and Settings are not in it. Restoring adds back what is missing and keeps anything newer here.</p>
+      <div class="settings-row">
+        <button id="backupSaveBtn" class="ghost mono">Save a backup file</button>
+        <button id="backupPickBtn" class="ghost mono">Restore from a file</button>
+        <button id="backupRestoreBtn" class="btn-accent" hidden>Restore it</button>
+        <input id="backupFile" type="file" accept=".json,application/json" hidden>
+      </div>
+      <p id="backupStatus" class="settings-hint" role="status"></p>
+    </details>
     <details class="settings-panel settings-collapse" id="reviewSection">
       <summary class="settings-label">Year in review</summary>
       <p class="settings-hint">A look back at the year: what you got done and when, what the Agent did, your hours and, with Finance unlocked, your money. It opens with a card on January 1 and stays here through February.</p>
@@ -528,6 +539,7 @@
       <p>A to-do list that works on its own. Everything else is optional. What would you like?</p>
       <div class="welcome-choices">
         <button id="welcomeTasksBtn" class="btn-accent">Just tasks</button>
+        <button id="welcomeDemoBtn" class="ghost">Show me with examples</button>
         <button id="welcomeAiBtn" class="ghost">Add an AI assistant</button>
         <button id="welcomeSyncBtn" class="ghost">Sync with my phone</button>
         <button id="welcomeCalBtn" class="ghost">Connect my calendar and email</button>
@@ -541,6 +553,8 @@
       </ul>
       <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
     </div>
+    <!-- the example to-dos are on the list (demo.js): say so, and take them away in one click -->
+    <div id="demoBar" class="nudge sync-nudge" hidden><span>These to-dos are examples to try things on. Nothing here is real.</span> <button id="demoRemoveBtn" class="btn-accent">Remove the examples</button></div>
     <!-- bringing tasks over from Todoist, TickTick, Google Tasks, a spreadsheet… (task-import.js) -->
     <div id="importCard" class="connect-card welcome import-card" hidden>
       <b>Bring your tasks over</b>
@@ -703,12 +717,14 @@
 <script src="js/welcome.js"></script>
 <script src="js/setup-list.js"></script>
 <script src="js/task-import.js"></script>
+<script src="js/demo.js"></script>
 <script src="js/agent-results.js"></script>
 <script src="js/bill-reminders.js"></script>
 <script src="js/calendars.js"></script>
 <script src="js/connect-accounts.js"></script>
 <script src="js/health.js"></script>
 <script src="js/kitchen.js"></script>
+<script src="js/backup.js"></script>
 <script src="js/pantry-photo.js"></script>
 <script src="js/kitchen-photo.js"></script>
 <script src="js/look-ahead.js"></script>

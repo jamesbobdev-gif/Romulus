@@ -1,4 +1,7 @@
 /* Repeating to-dos: tick one off and the next copy appears with the next due date.
+   A streak is how many in a row were ticked off on time (on or before their due date). The count rides on the
+   next copy (recur.streak, and recur.best for the longest), so clearing finished tasks doesn't lose it; one
+   ticked off late starts over at nothing.
    (Agent tasks have their own schedule, t.repeat, in agent-chat.js; this is t.recur, for the other lists.)
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them.
    Also loaded by test/recur.test.js, so the date maths here uses no page globals. */
@@ -38,7 +41,16 @@ function nextRecurDue(r,due,today){
 // (one ticked it off, the other heard about it through sync) make the same task, and sync keeps one.
 function recurCopyId(r,seriesFallback,nextDue){ return 'r-'+(r.series||seriesFallback)+'-'+nextDue; }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={nextRecurDue:nextRecurDue,recurCopyId:recurCopyId}; }
+// what the next copy carries after one due on `due` was ticked off on `doneYmd`
+function recurStreakNext(r,due,doneYmd){
+  const onTime=!due||!doneYmd||doneYmd<=due;
+  const streak=onTime?(Number(r&&r.streak)||0)+1:0;
+  return {streak:streak,best:Math.max(Number(r&&r.best)||0,streak)};
+}
+// the chip's words: nothing until it's two in a row
+function recurStreakText(r){ const n=Number(r&&r.streak)||0; return n>=2?n+' in a row':''; }
+
+if(typeof module!=='undefined'&&module.exports){ module.exports={nextRecurDue:nextRecurDue,recurCopyId:recurCopyId,recurStreakNext:recurStreakNext,recurStreakText:recurStreakText}; }
 else {
   // make the next copy of a ticked-off repeating task (once: recurNext remembers it)
   window.spawnRecur=function(t){
@@ -50,7 +62,8 @@ else {
     if(state.tasks.some(function(x){ return x.id===id; }))return true;
     const c={id:id,title:t.title,done:false,due:nextDue,dueTime:t.dueTime||null,tag:t.tag||null,ws:taskWs(t),pin:null,
       subs:(t.subs||[]).map(function(s){ return {id:uid(),title:s.title,done:false,due:null}; }),
-      googleEventId:null,created:Date.now(),recur:Object.assign({},t.recur,{series:t.recur.series||t.id})};
+      googleEventId:null,created:Date.now(),
+      recur:Object.assign({},t.recur,{series:t.recur.series||t.id},recurStreakNext(t.recur,t.due,recurYmd(t.doneAt?new Date(t.doneAt):new Date())))};
     if(t.calRef)c.calRef=t.calRef;
     if(t.kind)c.kind=t.kind;
     if(t.notes)c.notes=t.notes;
