@@ -32,3 +32,12 @@ test('a meal answer keeps sure, and an unusable answer is empty', () => {
   assert.deepStrictEqual(pp.parse('meal', 'sorry, I can\'t see that'), { meal: '', used: [] });
   assert.deepStrictEqual(pp.parse('food', 'no'), { items: [] });
 });
+
+test('a shopping-list photo asks for things to buy and reads back like food', () => {
+  const q = pp.prompt('shop', [{ name: 'rice', qty: 4, unit: 'cup' }]);
+  assert.match(q, /shopping list/);
+  assert.match(q, /"items"/);
+  assert.doesNotMatch(q, /rice/);
+  assert.deepStrictEqual(pp.parse('shop', '{"items":[{"name":"Paper towels"},{"name":"milk","amount":"1 gal"}]}'),
+    { items: [{ name: 'Paper towels', amount: '' }, { name: 'milk', amount: '1 gal' }] });
+});

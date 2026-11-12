@@ -194,3 +194,20 @@ test('kPantryLines: the Add box takes one food per comma, as its hint shows', ()
   assert.deepStrictEqual(k.kPantryLines('eggs\nmilk; bread').map((i) => i.name), ['eggs', 'milk', 'bread']);
   assert.deepStrictEqual(k.kPantryLines(' , ,'), []);
 });
+
+test('things he adds himself go on the shopping list, with or without a meal planned', () => {
+  const kt = kitchen(['1 gal milk'], [{ name: 'Omelet', ings: ['3 eggs'], planned: true }]);
+  assert.deepStrictEqual(k.addToShop(kt, ['milk', '2 lb apples', 'eggs'], 1, id), ['milk', 'apples', 'eggs']);
+  k.addToShop(kt, ['1 lb apples'], 2, id); // the same food again adds to it
+  const list = k.shoppingList(kt);
+  // milk is in the pantry, but he asked for it, so it stays; eggs fold into the omelet's line
+  assert.deepStrictEqual(list.map((e) => [e.name, e.qty, e.unit, e.for]), [
+    ['apples', 3, 'lb', []], ['eggs', 3, '', ['Omelet']], ['milk', null, '', []]]);
+  assert.ok(list.every((e) => e.id));
+  // it syncs: the other device sees it, and a removal wins over the older add
+  const other = k.mergeKitchenDocs(k.normKitchen({}), kt, 3).merged;
+  assert.strictEqual(other.extra.length, 3);
+  assert.strictEqual(k.dropFromShop(kt, ['Apples, 3 lb'], 4), 1);
+  const back = k.mergeKitchenDocs(other, kt, 5).merged;
+  assert.deepStrictEqual(back.extra.map((e) => e.name).sort(), ['eggs', 'milk']);
+});

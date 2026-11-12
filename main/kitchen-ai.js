@@ -40,11 +40,11 @@ async function ideas(_e, req) {
   } finally { asking = false; }
 }
 
-// {mode: 'food'|'meal', image: {mime, b64}, pantry} → food: {items, via}; meal: {meal, used, via}; or {why}
+// {mode: 'food'|'shop'|'meal', image: {mime, b64}, pantry} → food: {items, via}; meal: {meal, used, via}; or {why}
 async function photo(_e, req) {
   if (reading) return { why: 'Still reading the last picture.' };
   req = req || {};
-  const mode = req.mode === 'meal' ? 'meal' : 'food', pic = req.image || {};
+  const mode = req.mode === 'meal' || req.mode === 'shop' ? req.mode : 'food', pic = req.image || {};
   const mime = /^image\/(jpeg|png|webp)$/.test(pic.mime) ? pic.mime : null;
   const b64 = typeof pic.b64 === 'string' && /^[A-Za-z0-9+/=]+$/.test(pic.b64) ? pic.b64 : null;
   if (!mime || !b64 || b64.length > 8 * 1024 * 1024) return { why: 'That picture can’t be read.' };
@@ -57,7 +57,7 @@ async function photo(_e, req) {
     const out = pantryPhoto.parse(mode, r.text);
     const n = mode === 'meal' ? out.used.length : out.items.length;
     ctx.agentLog('pantry photo (' + mode + '): ' + n + ' from ' + r.via);
-    if (!n) return { why: mode === 'meal' ? r.via + ' couldn’t match that meal to anything in the pantry.' : r.via + ' didn’t see any food in that picture or receipt.' };
+    if (!n) return { why: mode === 'meal' ? r.via + ' couldn’t match that meal to anything in the pantry.' : mode === 'shop' ? r.via + ' didn’t see anything to buy in that picture.' : r.via + ' didn’t see any food in that picture or receipt.' };
     return Object.assign(out, { via: r.via });
   } catch (e) {
     return { why: String(e && e.message || e).slice(0, 200) };

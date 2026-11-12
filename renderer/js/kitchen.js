@@ -1,11 +1,13 @@
 /* The Kitchen tab: what food he has (the pantry), the recipes he makes (and which ones he likes), meals he
-   could make from what's there, and a shopping list for the meals he plans to make.
+   could make from what's there, and a shopping list for the meals he plans to make plus anything he adds to it
+   himself (typed, or read from a photo of a list or an empty package: kitchen-photo.js).
    "Made it" takes a recipe's ingredients out of the pantry; what runs out can go on his grocery list.
    What the Agent buys on a grocery order goes back into the pantry (grocery-list.js applyListUpdate).
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them.
    The top half has no DOM in it, so test/kitchen.test.js can load it in Node.
 
-   state.kitchen = {items, recipes, tombstones}
+   state.kitchen = {items, recipes, extra, tombstones}
+     extra:  what he put on the shopping list himself, shaped like an item
      item:   {id, name, qty (number, or null = "some, amount not known"), unit, updatedAt}
      recipe: {id, name, ingredients:[{name, qty|null, unit}], liked, planned, made:['YYYY-MM-DD'], updatedAt}
    It syncs through its own row next to the personal list (syncKey+':kitchen'), merged like the Hours log:
@@ -126,7 +128,7 @@ function kRecipe(x){
    that asked (from) uses the result and marks it applied. */
 const KITCHEN_ASK_STATES=['waiting','reading','failed','done','applied'];
 function kAsk(x){
-  if(!x||!x.id||(x.mode!=='food'&&x.mode!=='meal')||!kPic(x.url))return null;
+  if(!x||!x.id||(x.mode!=='food'&&x.mode!=='meal'&&x.mode!=='shop')||!kPic(x.url))return null;
   const a={id:String(x.id),mode:x.mode,url:String(x.url).slice(0,600),from:String(x.from||'').slice(0,80),at:Number(x.at)||0,updatedAt:Number(x.updatedAt)||0,
     state:KITCHEN_ASK_STATES.indexOf(x.state)>=0?x.state:'waiting',reader:String(x.reader||'').slice(0,60),readAt:Number(x.readAt)||0,why:String(x.why||'').slice(0,200)};
   if(x.result&&typeof x.result==='object'&&JSON.stringify(x.result).length<20000)a.result=x.result;
@@ -138,12 +140,13 @@ function normKitchen(raw){
     items:(Array.isArray(r.items)?r.items:[]).map(kItem).filter(Boolean).slice(0,500),
     recipes:(Array.isArray(r.recipes)?r.recipes:[]).map(kRecipe).filter(Boolean).slice(0,500),
     asks:(Array.isArray(r.asks)?r.asks:[]).map(kAsk).filter(Boolean).slice(-20),
+    extra:(Array.isArray(r.extra)?r.extra:[]).map(kItem).filter(Boolean).slice(0,200), // things he put on the shopping list himself, not for a meal
     tombstones:(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; })
   };
 }
-function kitchenDoc(k){ return {v:1,items:k.items,recipes:k.recipes,asks:k.asks||[],tombstones:k.tombstones}; }
+function kitchenDoc(k){ return {v:1,items:k.items,recipes:k.recipes,asks:k.asks||[],extra:k.extra||[],tombstones:k.tombstones}; }
 const kStable=function(v){ return Array.isArray(v)?'['+v.map(kStable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(function(x){ return JSON.stringify(x)+':'+kStable(v[x]); }).join(',')+'}':JSON.stringify(v); };
-const kCanon=function(k){ const by=function(a,b){ return a.id<b.id?-1:1; }; return kStable([k.items.slice().sort(by),k.recipes.slice().sort(by),(k.asks||[]).slice().sort(by)]); };
+const kCanon=function(k){ const by=function(a,b){ return a.id<b.id?-1:1; }; return kStable([k.items.slice().sort(by),k.recipes.slice().sort(by),(k.asks||[]).slice().sort(by),(k.extra||[]).slice().sort(by)]); };
 // → {merged, changedLocal, changedRemote}
 function mergeKitchenDocs(localRaw,remoteRaw,now){
   const local=normKitchen(localRaw), remote=normKitchen(remoteRaw);
@@ -162,6 +165,7 @@ function mergeKitchenDocs(localRaw,remoteRaw,now){
     return Object.keys(by).map(function(id){ return by[id]; }).filter(function(it){ return !tombs[it.id]; }).sort(function(x,y){ return x.at-y.at; });
   };
   const merged={items:pick(local.items,remote.items),recipes:pick(local.recipes,remote.recipes),asks:pickAsks(local.asks,remote.asks),
+    extra:pick(local.extra,remote.extra),
     tombstones:Object.keys(tombs).filter(function(id){ return tombs[id]>cutoff; }).map(function(id){ return {id:id,deletedAt:tombs[id]}; })};
   return {merged:merged,changedLocal:kCanon(merged)!==kCanon(local),
     changedRemote:kCanon(merged)!==kCanon(remote)||merged.tombstones.length!==remote.tombstones.length};
@@ -282,7 +286,15 @@ function shoppingList(k){
     });
   });
   const out=[];
+  // what he added himself: on the list whatever the pantry says, and folded into a meal's line for the same food
+  (k.extra||[]).forEach(function(x){
+    const e=need.find(function(n){ return sameFood(n.name,x.name); });
+    if(!e){ out.push({name:x.name,qty:x.qty,unit:x.unit,for:[],id:x.id}); return; }
+    e.id=x.id; e.mine=true;
+    if(x.qty!=null){ const add=e.qty==null?null:kConvert(x.qty,x.unit,e.unit); if(e.qty==null){ e.qty=x.qty; e.unit=x.unit; } else if(add!=null)e.qty=kRound(e.qty+add); }
+  });
   need.forEach(function(e){
+    if(e.mine){ const c=Object.assign({},e); delete c.mine; out.push(c); return; }
     const p=pantryFind(k.items,e.name);
     if(!p){ out.push(e); return; }
     if(p.qty==null||e.qty==null)return; // he has some: count it as enough
@@ -291,6 +303,30 @@ function shoppingList(k){
     out.push(Object.assign({},e,{qty:kRound(e.qty-avail)}));
   });
   return out.sort(function(a,b){ return a.name.localeCompare(b.name); });
+}
+/* "milk; 2 lb apples" typed (or ticked from a photo) onto the shopping list → the names added. The same food
+   again adds to its amount rather than making a second line. */
+function addToShop(k,lines,now,newId){
+  now=now||Date.now();
+  if(!Array.isArray(k.extra))k.extra=[];
+  const added=[];
+  (Array.isArray(lines)?lines:[]).forEach(function(line){
+    const i=parseIngredient(String(line||'')); if(!i)return;
+    const x=k.extra.find(function(e){ return sameFood(e.name,i.name); });
+    if(!x){ k.extra.push({id:newId(),name:i.name.slice(0,80),qty:i.qty,unit:i.unit,updatedAt:now}); added.push(i.name); return; }
+    const more=i.qty==null||x.qty==null?null:kConvert(i.qty,i.unit,x.unit);
+    if(more!=null)x.qty=kRound(x.qty+more); else if(i.qty!=null&&x.qty==null){ x.qty=i.qty; x.unit=i.unit; }
+    x.updatedAt=now; added.push(x.name);
+  });
+  return added;
+}
+// off the shopping list (bought, or he took it off) → how many went
+function dropFromShop(k,names,now){
+  now=now||Date.now();
+  const gone=(k.extra||[]).filter(function(x){ return names.some(function(n){ return sameFood(x.name,String(n||'').split(',')[0]); }); });
+  gone.forEach(function(x){ k.tombstones.push({id:x.id,deletedAt:now}); });
+  k.extra=(k.extra||[]).filter(function(x){ return gone.indexOf(x)<0; });
+  return gone.length;
 }
 /* Groceries the Agent bought ("Rice, 20 lb", "Eggs", or {name, image} from a placed order) go into the
    pantry. A known size adds to what's there; with no size the amount isn't known any more, so it's just
@@ -331,7 +367,7 @@ function pantryRanOut(k,names,now){
 if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kPantryLines:kPantryLines,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
-    shoppingList:shoppingList,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks};
+    shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks};
 }
 
 /* ══ the page ══ */
@@ -405,7 +441,9 @@ function kitchenToTodo(entries,meals){
 // grocery-list.js applyListUpdate: what the Agent bought
 window.kitchenBought=function(names){
   if(!state.kitchen||!Array.isArray(names)||!names.length)return;
-  if(stockPantry(state.kitchen,names,Date.now(),uid).length)persist();
+  const now=Date.now(), stocked=stockPantry(state.kitchen,names,now,uid);
+  const dropped=dropFromShop(state.kitchen,names.map(function(e){ return e&&typeof e==='object'?e.name:e; }),now); // bought: off his own shopping list too
+  if(stocked.length||dropped)persist();
 };
 // "we're out of eggs" (grocery-list.js addToGroceries): out of the pantry too → the pantry names taken out
 window.kitchenRanOut=function(names){
@@ -466,7 +504,10 @@ function kBuild(view){
         '<button type="button" class="kit-chip" data-f="liked" role="radio">Liked</button>'+
       '</div>'+
       '<div id="kitRecipes"></div></section>'+
-    '<section id="kit-shop" hidden><div id="kitShop"></div></section>';
+    '<section id="kit-shop" hidden>'+
+      '<div class="kit-form"><input id="kitAddShop" class="sm kit-grow" placeholder="Add to the list: milk, 2 lb apples, paper towels" aria-label="Add to the shopping list">'+
+      '<button id="kitAddShopBtn" class="btn-accent">Add</button><span id="kitPhotoShop"></span></div>'+
+      '<div id="kitShop"></div></section>';
   view.querySelectorAll('.kit-tab').forEach(function(b){ b.addEventListener('click',function(){ kitchenUI.view=b.dataset.v; renderKitchen(); }); });
   view.querySelectorAll('.kit-chip').forEach(function(b){ b.addEventListener('click',function(){ kitchenUI.recipeFilter=b.dataset.f; renderKitchen(); }); });
   $('kitUndo').addEventListener('click',kUndoOut);
@@ -485,6 +526,15 @@ function kBuild(view){
   };
   $('kitAddItemBtn').addEventListener('click',addItem);
   $('kitAddItem').addEventListener('keydown',function(e){ if(e.key==='Enter')addItem(); });
+  const addShop=function(){
+    const inp=$('kitAddShop'), lines=inp.value.split(/\n|;|,/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if(!lines.length){ inp.focus(); return; }
+    const added=addToShop(state.kitchen,lines,Date.now(),uid);
+    inp.value=''; kSave(); $('kitAddShop').focus();
+    if(added.length)voiceToast('On the shopping list: '+added.join(', '));
+  };
+  $('kitAddShopBtn').addEventListener('click',addShop);
+  $('kitAddShop').addEventListener('keydown',function(e){ if(e.key==='Enter')addShop(); });
   $('kitRecSave').addEventListener('click',kSaveRecipe);
   $('kitRecCancel').addEventListener('click',function(){ kEditRecipe(null); });
   $('kitRecName').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); $('kitRecIngs').focus(); } });
@@ -753,7 +803,9 @@ function kDrawRecipes(){
 }
 function kDrawShop(){
   const box=$('kitShop'); box.innerHTML='';
+  if(typeof kpDraw==='function')kpDraw('shop',$('kitPhotoShop'),box); // kitchen-photo.js: the photo button, and what it read
   const plan=state.kitchen.recipes.filter(function(r){ return r.planned; });
+  const list=shoppingList(state.kitchen);
   box.appendChild(el('div','kit-k kit-sec','Meals you’re buying for'));
   if(!plan.length){
     box.appendChild(kEmpty('No meals planned. Tap Plan it on a recipe (your liked ones are a good start) and what it needs shows up here.'));
@@ -763,23 +815,27 @@ function kDrawShop(){
       b.addEventListener('click',function(){ const now=Date.now(); liked.forEach(function(r){ r.planned=true; r.updatedAt=now; }); kSave(); });
       box.appendChild(b);
     }
-    return;
+  } else {
+    const chips=el('div','kit-chips');
+    plan.forEach(function(r){
+      const c=el('span','kit-meal'+(r.liked?' liked':''),r.name);
+      const x=iconBtn(I.x,'Take '+r.name+' off the plan'); x.addEventListener('click',function(){ r.planned=false; r.updatedAt=Date.now(); kSave(); });
+      c.appendChild(x); chips.appendChild(c);
+    });
+    box.appendChild(chips);
   }
-  const chips=el('div','kit-chips');
-  plan.forEach(function(r){
-    const c=el('span','kit-meal'+(r.liked?' liked':''),r.name);
-    const x=iconBtn(I.x,'Take '+r.name+' off the plan'); x.addEventListener('click',function(){ r.planned=false; r.updatedAt=Date.now(); kSave(); });
-    c.appendChild(x); chips.appendChild(c);
-  });
-  box.appendChild(chips);
-  const list=shoppingList(state.kitchen);
   box.appendChild(el('div','kit-k kit-sec','To buy'));
-  if(!list.length){ box.appendChild(kEmpty('You have everything these meals need.')); return; }
+  if(!list.length){ box.appendChild(kEmpty(plan.length?'You have everything these meals need. Add anything else above.':'Nothing yet. Type what you need above, or add it from a photo of a list or an empty package.')); return; }
   list.forEach(function(e){
     const row=el('div','kit-row');
     row.appendChild(el('span','kit-row-qty',e.qty!=null?kFmtQty(e.qty,e.unit):''));
     row.appendChild(el('span','kit-row-name',e.name));
-    row.appendChild(el('span','kit-row-for','for '+e.for.join(', ')));
+    if(e.for.length)row.appendChild(el('span','kit-row-for','for '+e.for.join(', ')+(e.id?', and you added it':'')));
+    if(e.id){
+      const x=iconBtn(I.x,'Take '+e.name+' off the list');
+      x.addEventListener('click',function(){ dropFromShop(state.kitchen,[e.name],Date.now()); kSave(); });
+      row.appendChild(x);
+    }
     box.appendChild(row);
   });
   const btns=el('div','kit-card-btns kit-shop-btns');
