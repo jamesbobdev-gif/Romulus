@@ -137,6 +137,8 @@ contextBridge.exposeInMainWorld('desktop', {
   kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   // pantry photos (main/kitchen-ai.js): {mode: 'food'|'meal', image: {mime, b64}, pantry} → {items|meal, used, via} or {why}
   kitchenPhoto: (req) => ipcRenderer.invoke('kitchen:photo', req),
+  // a pantry item's picture from its product page (agent/previews.js): url → image url or null
+  kitchenPicture: (url) => ipcRenderer.invoke('kitchen:picture', url),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),

@@ -138,4 +138,11 @@ async function runBrowserPreview(urls, lane) {
   });
 }
 
-module.exports = { init, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption };
+// the Kitchen tab: the picture on a product page, for a pantry item from an order (renderer/js/pantry-pictures.js)
+async function kitchenPicture(_e, url) {
+  if (!/^https:\/\//i.test(String(url || ''))) return null;
+  return pagePreviewImage(String(url).slice(0, 500)).catch(() => null);
+}
+const handlers = { 'kitchen:picture': kitchenPicture };
+
+module.exports = { init, handlers, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption };
