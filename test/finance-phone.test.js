@@ -39,6 +39,7 @@ function load(opts) {
     nativePromise: async (p, m, o) => { const f = plugin[m]; if (!f) throw new Error('no ' + m); return f(o || {}); } };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-core.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-share.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../mobile/finance-phone.js'), 'utf8'), ctx);
   return { api: ctx.window.phoneFinance, store, calls, ctx, listeners };
 }
@@ -98,4 +99,72 @@ test('the phone keeps Finance out of screenshots and screen-reading assistants w
   ctx.window.Capacitor.nativePromise = async (p, m, o) => { if (m === 'secure') { seen.push(o.on); return {}; } return before(p, m, o); };
   await api.financeScreen(true); await api.financeScreen(false);
   assert.deepStrictEqual(seen, [true, false]);
+});
+
+test('a phone hands Finance on: its code text joins another phone, and the computer reads it too', async () => {
+  const { readPairPayload } = require('../main/finance');
+  const a = load({ scanned: pairPayload(ACCESS, { 'corner deli': 'variable' }) });
+  assert.strictEqual((await a.api.financeSharePayload()).ok, false, 'nothing to hand on while locked');
+  await a.api.financePair();
+  const r = await a.api.financeSharePayload();
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(readPairPayload(r.text), { accessUrl: ACCESS, kinds: { 'corner deli': 'variable' } }, 'the computer reads the phone’s text');
+  const b = load({});
+  assert.match((await b.api.financeJoin('tasks-finance:1:bm90IGpzb24')).error, /Finance code/);
+  const j = await b.api.financeJoin(r.text);
+  assert.strictEqual(j.ok, true, j.error);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify((await b.api.financeData()).kinds)), { 'corner deli': 'variable' });
+});
+
+/* the :finance sync row's box, as main/finance.js shareBox makes it and finance:setupShared opens it */
+const SHARE_AAD = Buffer.from('tasks-finance-share-v1');
+function computerBox(url, passphrase) {
+  const salt = crypto.randomBytes(16);
+  const k = crypto.scryptSync(passphrase.normalize('NFKC'), salt, 32, { N: 2 ** 17, r: 8, p: 1, maxmem: 256 * 1024 * 1024 });
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', k, iv);
+  c.setAAD(SHARE_AAD);
+  const data = Buffer.concat([c.update(JSON.stringify({ u: url }), 'utf8'), c.final()]);
+  return { v: 1, kdf: 'scrypt', N: 2 ** 17, r: 8, p: 1, salt: salt.toString('base64'), iv: iv.toString('base64'), tag: c.getAuthTag().toString('base64'), data: data.toString('base64') };
+}
+function computerOpens(box, passphrase) {
+  const k = crypto.scryptSync(passphrase.normalize('NFKC'), Buffer.from(box.salt, 'base64'), 32, { N: box.N, r: box.r, p: box.p, maxmem: 256 * 1024 * 1024 });
+  const d = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(box.iv, 'base64'));
+  d.setAAD(SHARE_AAD); d.setAuthTag(Buffer.from(box.tag, 'base64'));
+  return JSON.parse(Buffer.concat([d.update(Buffer.from(box.data, 'base64')), d.final()]).toString('utf8')).u;
+}
+
+test('the phone’s scrypt gives what Node’s does', async () => {
+  const S = require('../renderer/js/finance-share');
+  const salt = crypto.randomBytes(16);
+  for (const o of [{ N: 16, r: 1, p: 1 }, { N: 1024, r: 8, p: 2 }]) {
+    const mine = Buffer.from(await S.scrypt('Pass phrase é', salt, o));
+    assert.ok(mine.equals(crypto.scryptSync('Pass phrase é'.normalize('NFKC'), salt, 32, o)), 'N ' + o.N);
+  }
+});
+
+test('the phone connects with the computer’s shared link and its passphrase, and keeps the box', async () => {
+  const box = computerBox(ACCESS, 'correct horse battery');
+  const { api, store } = load({});
+  const bad = await api.financeSetupShared(box, 'wrong passphrase!');
+  assert.strictEqual(bad.ok, false);
+  assert.match(bad.error, /Wrong passphrase/);
+  assert.strictEqual(store.setUp, false, 'no fingerprint key made for a wrong passphrase');
+  const r = await api.financeSetupShared(box, 'correct horse battery');
+  assert.strictEqual(r.ok, true, r.error);
+  assert.strictEqual((await api.financeData()).accounts[0].name, 'Checking');
+  const got = await api.financeShareBox();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(got.box)), box, 'the same copy goes back to the row');
+  assert.strictEqual((await api.financeSetupShared({ ...box, N: 2 ** 30 }, 'x')).ok, false, 'a made-up box is refused before any scrypt');
+});
+
+test('a phone paired with a code has no box until he picks a passphrase; the computer opens what it makes', async () => {
+  const { api } = load({ scanned: pairPayload(ACCESS, {}) });
+  await api.financePair();
+  assert.strictEqual((await api.financeShareBox()).none, true);
+  assert.strictEqual((await api.financeMakeShareBox('short')).ok, false);
+  const r = await api.financeMakeShareBox('a long enough one');
+  assert.strictEqual(r.ok, true, r.error);
+  assert.strictEqual(computerOpens(r.box, 'a long enough one'), ACCESS);
+  assert.deepStrictEqual([r.box.v, r.box.kdf, r.box.N, r.box.r, r.box.p], [1, 'scrypt', 2 ** 17, 8, 1], 'the numbers the computer accepts');
+  assert.strictEqual((await api.financeShareBox()).ok, true);
 });
