@@ -214,6 +214,14 @@ function cleanOrdered(list) {
   }).filter(Boolean);
   return out.length ? out : undefined;
 }
+/* The items in an answer that came without a picture but have a product page to take one from (runner.js
+   fills them in): the cart, each other size/brand on its menu, the look-at cards, and each item of an order
+   he placed himself (so what goes into the Kitchen pantry has its picture). At most 80. */
+function missingPictures(u) {
+  const all = [].concat(u.cart || [], ...(u.cart || []).map((it) => it.options || []), u.cards || [],
+    ...(u.ordered || []).map((o) => o.items || []));
+  return all.filter((it) => it && !it.image && it.url).slice(0, 80);
+}
 /* The same claim when the list is end-to-end encrypted (a.v2): the server can't read the task, so the worker
    opens the list, stamps the task and writes it back compare-and-swap. Two workers racing both read the same
    version, and the database takes only the first write back (sync_put's p_prev), so still only one wins.
@@ -256,4 +264,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks };
+  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures };

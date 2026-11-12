@@ -22,7 +22,7 @@ const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks } = require('./task-context');
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -499,12 +499,11 @@ async function startAgentRun() {
         : (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean)) : [];
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
-    // (and so does each other size/brand on its menu)
+    // (and so does each other size/brand on its menu, and each item of an order he placed himself, so the
+    // pantry gets its picture)
     // a few at a time: each may open a hidden window, and 80 at once is a lot for one computer (or many users of one hub)
-    if (u.cart || u.cards) {
-      const need = (u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80);
-      await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
-    }
+    const need = missingPictures(u);
+    await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);

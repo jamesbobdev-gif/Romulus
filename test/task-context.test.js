@@ -185,3 +185,12 @@ test('cleanOrdered: orders he placed himself, with their items, store and number
   assert.strictEqual(ctx.cleanOrdered(null), undefined);
   assert.strictEqual(ctx.cleanOrdered([{ store: 'x' }]), undefined);
 });
+
+test('missingPictures: items of an order he placed himself get a picture from their page too', () => {
+  const u = {
+    cart: [{ name: 'Rice', url: 'https://x.com/rice', options: [{ name: 'Rice, 5 lb', url: 'https://x.com/r5' }] }, { name: 'Eggs', image: 'https://x.com/e.jpg', url: 'https://x.com/eggs' }],
+    ordered: [{ store: 'Aldi (Instacart)', items: [{ name: 'Milk', url: 'https://www.instacart.com/products/1' }, { name: 'Bread', image: 'https://x.com/b.jpg', url: 'https://x.com/b' }, { name: 'Apples' }] }],
+  };
+  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Rice', 'Rice, 5 lb', 'Milk']);
+  assert.deepStrictEqual(ctx.missingPictures({}), []);
+});
