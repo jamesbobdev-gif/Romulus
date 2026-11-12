@@ -24,7 +24,13 @@ const fresh = (safeStorage) => {
   store.init({ userData: () => dir, safeStorage });
   return dir;
 };
-const disk = (dir) => JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
+// the same, as a Windows computer whatever the tests run on (CI runs them on Linux and Mac too)
+const windows = (safeStorage) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-store-'));
+  store.init({ userData: () => dir, safeStorage, platform: 'win32' });
+  return dir;
+};
+const disk =(dir) => JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
 
 test('secrets are sealed on disk and opened on read', async () => {
   const dir = fresh(asyncSafe());
@@ -239,7 +245,7 @@ test('a secret sealed with no keyring opens on Linux even when safeStorage will 
   assert.match(d.sync.personal.key, /^enc:v2:/); // rescued, and now under the app's own key
   assert.strictEqual(d.sync.agent.key, keyring); // left as it was, for a start that can open it
   // not Linux: nothing is guessed at
-  const win = fresh(lockedSafe);
+  const win = windows(lockedSafe);
   fs.writeFileSync(path.join(win, 'config.json'), JSON.stringify({ sync: { personal: { url: 'https://x', key: basic } } }));
   await store.load();
   assert.strictEqual(store.readConfig().sync.personal.key, basic);
@@ -251,7 +257,7 @@ test('a Linux computer that is not the worker, and every other system, keep the 
   await store.writeConfig({ sync: { personal: { url: 'https://x', key: 'anon-key' } } });
   assert.match(disk(dir).sync.personal.key, /^enc:v1:/);
   assert.ok(!fs.existsSync(path.join(dir, 'config.key')));
-  const win = fresh(asyncSafe());
+  const win = windows(asyncSafe());
   await store.load();
   await store.writeConfig(workerCfg);
   assert.match(disk(win).sync.personal.key, /^enc:v1:/);

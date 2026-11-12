@@ -32,7 +32,8 @@ function load(opts) {
   const ctx = {
     window: {}, document: { hidden: false, addEventListener: (ev, f) => { listeners[ev] = f; } },
     crypto: globalThis.crypto, TextEncoder, TextDecoder, btoa, atob, clearTimeout,
-    setTimeout: (f, ms) => { const t = setTimeout(f, ms); t.unref(); return t; }, // the 10-minute lock mustn't keep the test running
+    // the 10-minute lock mustn't keep the test running; the short pauses inside scrypt must, or the loop can end mid-way
+    setTimeout: (f, ms) => { const t = setTimeout(f, ms); if (ms > 1000) t.unref(); return t; },
     URL, AbortSignal, console,
   };
   ctx.window.Capacitor = { isPluginAvailable: (n) => n === 'FinanceVault',
