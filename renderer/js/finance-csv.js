@@ -184,6 +184,14 @@
     if (was) lockedCbs.forEach((cb) => { try { cb(why || 'asked'); } catch (e) {} });
   }
   function stillHere() { clearTimeout(idleTimer); idleTimer = setTimeout(() => lock('idle'), IDLE_LOCK_MS); }
+  // EBT settings saved while locked (finance-ebt.js ebtPending) go into the vault once it's open
+  async function takePendingEbt() {
+    const e = typeof ebtPending === 'function' ? ebtPending() : null;
+    if (!e || !key || !vault) return;
+    vault.ebt = e;
+    await save();
+    ebtFinishPending(e);
+  }
   const lastAdded = () => (vault.accounts || []).reduce((m, a) => Math.max(m, a.addedAt || 0), 0);
 
   window.csvFinance = {
@@ -200,9 +208,11 @@
       if (file) {
         const r = await window.csvFinance.financeImport(file);
         if (!r.ok) { lock(); return r; }
+        await takePendingEbt(); // a balance he saved before setting up
         return r;
       }
       await save(); stillHere();
+      await takePendingEbt();
       return { ok: true };
     },
     financeUnlock: async function (pass) {
@@ -215,6 +225,7 @@
         vault = JSON.parse(dec.decode(plain)); key = k; salt = s;
       } catch (e) { return { ok: false, error: 'That passphrase didn’t open it.' }; }
       stillHere();
+      await takePendingEbt();
       return { ok: true };
     },
     financeLock: async function () { lock('asked'); return true; },
@@ -261,8 +272,9 @@
       return { ok: true, kinds };
     },
     // the EBT wallet (finance-ebt.js): kept in this vault with the CSV accounts
+    // locked (Settings → EBT): the plain copy, marked, until the next unlock (finance-ebt.js ebtKeepPending)
     financeSetEbt: async function (ebt) {
-      if (!key) return { ok: false, error: 'locked' };
+      if (!key) return ebtKeepPending(ebt) ? { ok: true, ebt: ebtClean(ebt), locked: true } : { ok: false, error: 'Couldn’t save that.' };
       stillHere();
       vault.ebt = ebtClean(ebt); await save();
       return { ok: true, ebt: vault.ebt };

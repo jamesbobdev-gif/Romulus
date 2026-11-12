@@ -63,9 +63,16 @@ test('corrections on the cost charts are kept in the vault', async () => {
   assert.deepStrictEqual(h['finance:data']().kinds, {});
   // the EBT wallet: kept sealed with the rest, and only the fields it uses
   assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291, pin: '1234' })).ok, true);
+  // saved while locked (Settings → EBT): the grocery list sees it at once, and the next unlock moves it into the vault
   h['finance:lock']();
-  assert.strictEqual((await h['finance:setEbt'](null, { balance: 1 })).ok, false);
+  const lk = await h['finance:setEbt'](null, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  assert.deepStrictEqual([lk.ok, lk.locked], [true, true]);
+  assert.deepStrictEqual(await h['finance:ebtNow'](), { balance: 98.4, at: 2000, day: 3, monthly: 291 });
   await h['finance:unlock'](null, 'correct horse battery');
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  h['finance:lock'](); await h['finance:unlock'](null, 'correct horse battery'); // taken once, then it's the vault's
+  assert.deepStrictEqual(h['finance:data']().ebt, { balance: 98.4, at: 2000, day: 3, monthly: 291 });
+  assert.strictEqual((await h['finance:setEbt'](null, { balance: 143.2, at: 1000, day: 3, monthly: 291 })).ok, true);
   assert.deepStrictEqual(h['finance:data']().ebt, { balance: 143.2, at: 1000, day: 3, monthly: 291 });
   // the vault never has it in the clear; the grocery list's copy is its own file (sealed by Windows in the app)
   assert.ok(!fs.readdirSync(d2).filter((f) => f !== 'finance-ebt.json').some((f) => /143\.2/.test(fs.readFileSync(path.join(d2, f), 'latin1'))));
@@ -238,6 +245,33 @@ test('another computer connects with the shared link and the same passphrase', a
   h['finance:lock']();
   assert.strictEqual((await h['finance:unlock'](null, 'correct horse battery')).ok, true);
   assert.deepStrictEqual((await h['finance:shareBox']()).box, box, 'it shares the same copy on from here');
+  await h['finance:forget']();
+});
+
+test('a code from his phone or other computer: the link and corrections, under a new passphrase here', async () => {
+  const fetchOk = async (url, opts) => opts.method === 'POST' ? { ok: true, status: 200, text: async () => ACCESS }
+    : { ok: true, status: 200, json: async () => ({ accounts: [{ id: 'a1', name: 'Checking', balance: '5', transactions: [] }] }) };
+  const d1 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  finance.init({ userData: () => d1, agentLog: () => {}, sendToRenderer: () => {}, fetch: fetchOk });
+  assert.strictEqual((await h['finance:sharePayload']()).ok, false, 'nothing while not set up');
+  await h['finance:setup'](null, token, 'correct horse battery');
+  await h['finance:setKind'](null, 'Shell Oil', 'fixed');
+  const text = (await h['finance:sharePayload']()).text;
+  assert.ok(text.startsWith('tasks-finance:1:'));
+  h['finance:lock']();
+  assert.strictEqual((await h['finance:sharePayload']()).ok, false, 'nothing while locked');
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-fin-'));
+  const posts = [];
+  finance.init({ userData: () => d2, agentLog: () => {}, sendToRenderer: () => {}, fetch: async (u, o) => { if (o.method === 'POST') posts.push(u); return fetchOk(u, o); } });
+  assert.strictEqual((await h['finance:setupFromPair'](null, text, 'short')).ok, false, 'a real passphrase');
+  assert.strictEqual((await h['finance:setupFromPair'](null, 'tasks-finance:1:' + Buffer.from(JSON.stringify({ u: 'https://u:p@evil.example/x' })).toString('base64url'), 'another good passphrase')).ok, false, 'only a SimpleFIN link');
+  const r = await h['finance:setupFromPair'](null, text, 'another good passphrase');
+  assert.strictEqual(r.ok, true, r.error);
+  assert.strictEqual(posts.length, 0, 'no setup token claimed');
+  assert.deepStrictEqual(h['finance:data']().kinds, { 'Shell Oil': 'fixed' });
+  h['finance:lock']();
+  assert.strictEqual((await h['finance:unlock'](null, 'another good passphrase')).ok, true, 'its own passphrase');
+  assert.strictEqual((await h['finance:setupFromPair'](null, text, 'another good passphrase')).ok, false, 'already connected');
   await h['finance:forget']();
 });
 

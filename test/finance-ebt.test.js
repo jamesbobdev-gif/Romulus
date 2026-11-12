@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { ebtWallet, ebtClean } = require('../renderer/js/finance-ebt');
+const { ebtWallet, ebtClean, ebtKeepPending, ebtPending, ebtFinishPending } = require('../renderer/js/finance-ebt');
 const { orderEbtFrom, agentOrders } = require('../renderer/js/order-match');
 
 const at = (m, d, h) => new Date(2026, m, d, h || 12).getTime();
@@ -95,4 +95,18 @@ test('alerts: deposit day, each EBT order, and low balance, each once', () => {
   const seen = {}; a.forEach((x) => { seen[x.key] = 1; });
   assert.deepStrictEqual(ebtAlertsDue(ebt, orders, seen, 25, dep), []);
   assert.deepStrictEqual(ebtAlertsDue({}, [], {}, 25, dep), []);
+});
+
+test('saved while Finance is locked (phone and CSV files): marked in the copy until the next unlock takes it', () => {
+  const store = {};
+  global.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } };
+  try {
+    assert.strictEqual(ebtPending(), null);
+    assert.strictEqual(ebtKeepPending({ balance: 98.4, at: 2000, day: 3, pin: '1234' }), true);
+    assert.deepStrictEqual(JSON.parse(store['finance.ebtCopy']), { balance: 98.4, at: 2000, day: 3, pending: true });
+    assert.deepStrictEqual(ebtPending(), { balance: 98.4, at: 2000, day: 3 });
+    ebtFinishPending(ebtPending());
+    assert.strictEqual(ebtPending(), null);
+    assert.deepStrictEqual(JSON.parse(store['finance.ebtCopy']), { balance: 98.4, at: 2000, day: 3 });
+  } finally { delete global.localStorage; }
 });

@@ -280,6 +280,19 @@ function pairPayload(accessUrl, kinds) {
   const withKinds = enc({ u: accessUrl, k: kinds || {} });
   return withKinds.length <= 1600 ? withKinds : enc({ u: accessUrl, k: {} });
 }
+// the other way: a pairing text from his phone or another computer (renderer/js/finance.js finTakeCode) → { accessUrl, kinds } or null
+function readPairPayload(text) {
+  const t = String(text || '').trim();
+  if (!t.startsWith('tasks-finance:1:') || t.length > 4096) return null;
+  let o;
+  try { o = JSON.parse(Buffer.from(t.slice('tasks-finance:1:'.length), 'base64url').toString('utf8')); } catch (e) { return null; }
+  const x = o && checkSimplefinUrl(o.u);
+  if (!x || !x.username || !x.password) return null;
+  const kinds = {};
+  const k = o.k && typeof o.k === 'object' ? o.k : {};
+  Object.keys(k).slice(0, 2000).forEach((p) => { if (['fixed', 'variable', 'skip', 'income'].includes(k[p])) kinds[txt(p, 80)] = k[p]; });
+  return { accessUrl: o.u, kinds };
+}
 
 /* ── his other computers: the link sealed under the passphrase key, for the :finance sync row ──
    Made once and kept in the vault, so the same copy goes up each time and the tab can tell it's already there. */
@@ -303,11 +316,13 @@ function wrongTry() {
 }
 
 // a new vault around the link: after a setup token, or the link from his other computer
-async function startVault(accessUrl, s, k, shared) {
+async function startVault(accessUrl, s, k, shared, kinds) {
   salt = s; key = k;
   vault = { accessUrl, cache: { fetchedAt: 0, accounts: [], errors: [] } };
   if (shared) vault.shared = shared;
+  if (kinds && Object.keys(kinds).length) vault.kinds = kinds;
   await writeVault();
+  await takeLockedEbt(); await keepEbt(); // an EBT balance he saved before Finance was connected
   watchPower(); stillHere();
   rememberForHello().catch(() => false);
   lookAtMail(true);
@@ -319,6 +334,7 @@ async function startVault(accessUrl, s, k, shared) {
 // after either unlock: an old download refreshed, purchase emails looked at → a warning or undefined
 async function afterUnlock() {
   let warning;
+  await takeLockedEbt(); // before anything reads the vault's EBT settings
   if (Date.now() - ((vault.cache && vault.cache.fetchedAt) || 0) > STALE_MS) {
     try { await refresh(false); } catch (e) { warning = e.message; }
   }
@@ -335,23 +351,38 @@ async function afterUnlock() {
 const EBT_FILE = 'finance-ebt.json';
 const ebtFile = () => path.join(ctx.userData(), EBT_FILE);
 let ebtWrites = Promise.resolve();
-function keepEbt() {
-  if (!key) return ebtWrites;
-  const e = ebtClean(vault.ebt);
+// rec: the cleaned settings, plus pending: true when saved while Finance was locked (Settings → EBT)
+function writeEbtFile(rec) {
   ebtWrites = ebtWrites.then(async () => {
-    const sealed = ctx.seal ? await ctx.seal(JSON.stringify(e)) : JSON.stringify(e);
+    const sealed = ctx.seal ? await ctx.seal(JSON.stringify(rec)) : JSON.stringify(rec);
     const tmp = ebtFile() + '.tmp';
     fs.writeFileSync(tmp, sealed, { mode: 0o600 });
     fs.renameSync(tmp, ebtFile());
   }).catch((err) => log('ebt: couldn’t keep it (' + txt(err.message, 80) + ')'));
   return ebtWrites;
 }
-// locked or not → {balance, at, day, monthly} (any missing), {} when there's none
-async function ebtNow() {
+function keepEbt() {
+  if (!key) return ebtWrites;
+  return writeEbtFile(ebtClean(vault.ebt));
+}
+async function readEbtFile() {
   try {
     const text = fs.readFileSync(ebtFile(), 'utf8');
-    return ebtClean(JSON.parse(ctx.unseal ? await ctx.unseal(text) : text));
+    const rec = JSON.parse(ctx.unseal ? await ctx.unseal(text) : text);
+    return rec && typeof rec === 'object' ? rec : {};
   } catch (e) { return {}; }
+}
+// locked or not → {balance, at, day, monthly} (any missing), {} when there's none
+async function ebtNow() { return ebtClean(await readEbtFile()); }
+// unlocking (or connecting): what he saved while Finance was locked replaces the vault's, then the file is
+// written again without the mark
+async function takeLockedEbt() {
+  await ebtWrites;
+  const rec = await readEbtFile();
+  if (!key || !rec.pending) return;
+  vault.ebt = ebtClean(rec);
+  await writeVault();
+  log('ebt: took the settings saved while locked');
 }
 
 /* ── bill reminders (renderer/js/finance-bills.js) ──
@@ -596,7 +627,13 @@ const handlers = {
   },
   // the EBT wallet (renderer/js/finance-ebt.js): his balance, deposit day and monthly amount, kept in the vault
   'finance:setEbt': async (_e, ebt) => {
-    if (!key) return { ok: false, error: 'locked' };
+    // locked (Settings → EBT): into the sealed copy only, marked so the next unlock moves it into the vault
+    if (!key) {
+      const e = ebtClean(ebt);
+      await writeEbtFile(Object.assign({}, e, { pending: true }));
+      if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');
+      return { ok: true, ebt: e, locked: true };
+    }
     stillHere();
     vault.ebt = ebtClean(ebt);
     await writeVault();
@@ -646,6 +683,25 @@ const handlers = {
     log('showed the phone pairing code');
     return { ok: true, svg };
   },
+  /* "add another device" (renderer/js/finance.js finShareFold): the same text, sealed in the page under a 12-character
+     pairing code (renderer/js/pair.js) that lasts 10 minutes and works once, so a phone or computer can type or scan it */
+  'finance:sharePayload': async () => {
+    if (!key) return { ok: false, error: 'locked' };
+    stillHere();
+    log('made a code for another device');
+    return { ok: true, text: pairPayload(vault.accessUrl, vault.kinds) };
+  },
+  // joining with a code from his phone or another computer: the link and his corrections, under a new passphrase here
+  'finance:setupFromPair': async (_e, text, passphrase) => {
+    if (isSetUp()) return { ok: false, error: 'Finance is already connected. Forget it first to connect again.' };
+    if (String(passphrase || '').length < MIN_PASSPHRASE) return { ok: false, error: 'Use a passphrase of at least ' + MIN_PASSPHRASE + ' characters.' };
+    const p = readPairPayload(text);
+    if (!p) return { ok: false, error: 'That code didn’t carry a Finance connection. Make a new one on your other device.' };
+    const s = crypto.randomBytes(16);
+    const k = await deriveKey(passphrase, s);
+    log('connected with a code from another device');
+    return startVault(p.accessUrl, s, k, null, p.kinds);
+  },
   'finance:refresh': async () => {
     if (!key) return { ok: false, error: 'locked' };
     stillHere();
@@ -666,4 +722,4 @@ const handlers = {
   },
 };
 
-module.exports = { init, handlers, lock, forAgent, ebtNow, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, MIN_PASSPHRASE, _kdf: KDF };
+module.exports = { init, handlers, lock, forAgent, ebtNow, isUnlocked, claimUrlFromToken, checkSimplefinUrl, cleanAccounts, mergeAccounts, pairPayload, readPairPayload, MIN_PASSPHRASE, _kdf: KDF };
