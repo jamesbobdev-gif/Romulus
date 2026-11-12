@@ -13,7 +13,8 @@
     "test": "node --test \"test/*.test.js\"",
     "lint": "eslint .",
     "release": "node scripts/release.js",
-    "demo": "node scripts/demo/build.js && electron scripts/demo/record.js"
+    "demo": "node scripts/demo/build.js && electron scripts/demo/record.js",
+    "demo:shots": "node scripts/demo/build.js && electron scripts/demo/shots.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
