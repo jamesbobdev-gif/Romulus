@@ -337,7 +337,7 @@ if(typeof module!=='undefined'&&module.exports){
 /* ══ the page ══ */
 if(typeof document!=='undefined'){
 
-const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideas:null,ideasBusy:false,ideasWhy:'',ideasVia:'',aim:''};
+const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideas:null,ideasBusy:false,ideasWhy:'',ideasVia:'',aim:'',undo:[],going:{}}; // undo: foods he marked out, last first; going: ids tapped dark, about to leave
 function kSave(){ persist(); renderKitchen(); }
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
 
@@ -448,6 +448,7 @@ function kBuild(view){
     '<div id="kitSyncNote" class="kit-note" hidden></div>'+
     '<section id="kit-meals"><div id="kitAfter"></div><div id="kitPhotoMeal"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
     '<section id="kit-pantry" hidden>'+
+      '<div class="kit-undo-bar" hidden><button id="kitUndo" type="button" class="ghost kit-undo" hidden>Undo</button></div>'+
       '<div class="kit-form"><input id="kitAddItem" class="sm kit-grow" placeholder="Add food you have: 2 lb chicken, eggs, 1 bag rice" aria-label="Add food">'+
       '<button id="kitAddItemBtn" class="btn-accent">Add</button></div>'+
       '<div class="kit-hint">Put an amount in to have it go down when you cook. Food with no amount counts as there until you mark it out.</div>'+
@@ -468,6 +469,7 @@ function kBuild(view){
     '<section id="kit-shop" hidden><div id="kitShop"></div></section>';
   view.querySelectorAll('.kit-tab').forEach(function(b){ b.addEventListener('click',function(){ kitchenUI.view=b.dataset.v; renderKitchen(); }); });
   view.querySelectorAll('.kit-chip').forEach(function(b){ b.addEventListener('click',function(){ kitchenUI.recipeFilter=b.dataset.f; renderKitchen(); }); });
+  $('kitUndo').addEventListener('click',kUndoOut);
   const addItem=function(){
     const inp=$('kitAddItem'), lines=kPantryLines(inp.value);
     if(!lines.length){ inp.focus(); return; }
@@ -626,42 +628,88 @@ function kDrawIdeas(){
     box.appendChild(card);
   });
 }
+// ran out: off the pantry and onto the grocery list, remembered so Undo (top right of the pantry) can put both back
 function kOut(p){
+  const t=typeof groceryTask==='function'?groceryTask():null;
+  const hit=t&&normList(t.list).find(function(x){ return sameFood(x.name.split(',')[0],p.name); });
+  const before=t?{had:!!hit,wasOut:!!(hit&&hit.out),names:normList(t.list).map(function(x){ return x.name; })}:null;
   state.kitchen.items=state.kitchen.items.filter(function(x){ return x.id!==p.id; }); kTomb(p.id);
   const n=kitchenToGroceries([{name:p.name,qty:null,unit:''}]);
+  let added=null;
+  if(t&&before&&!before.had){ const nl=normList(t.list); added=(nl.find(function(x){ return before.names.indexOf(x.name)===-1; })||{}).name||null; }
+  kitchenUI.undo.push({item:Object.assign({},p),grocery:before?{had:before.had,wasOut:before.wasOut,added:added}:null});
+  if(kitchenUI.undo.length>30)kitchenUI.undo.shift();
   voiceToast(n<0?p.name+' is out of the pantry':p.name+' is out: it’s on your grocery list for the next order');
+  kSave();
+}
+function kUndoOut(){
+  const u=kitchenUI.undo.pop(); if(!u)return;
+  const p=Object.assign({},u.item,{updatedAt:Date.now()+1}); // newer than its tombstone, so sync keeps it
+  state.kitchen.tombstones=state.kitchen.tombstones.filter(function(x){ return x.id!==p.id; });
+  if(!state.kitchen.items.some(function(x){ return x.id===p.id; }))state.kitchen.items.push(p);
+  const t=u.grocery&&typeof groceryTask==='function'?groceryTask():null;
+  if(t){
+    const list=normList(t.list);
+    if(u.grocery.added)t.list=list.filter(function(x){ return !(x.name===u.grocery.added&&x.out); });
+    else if(u.grocery.had&&!u.grocery.wasOut){ const hit=list.find(function(x){ return sameFood(x.name.split(',')[0],p.name); }); if(hit)hit.out=false; t.list=list; }
+    touch();
+  }
+  voiceToast(p.name+' is back in the pantry');
   kSave();
 }
 function kDrawPantry(){
   const box=$('kitPantry'); box.innerHTML='';
+  const last=kitchenUI.undo[kitchenUI.undo.length-1], undo=$('kitUndo');
+  undo.hidden=!last; undo.parentNode.hidden=!last; undo.textContent=last?'Undo: '+last.item.name:'Undo';
+  undo.title=last?'Put '+last.item.name+' back in the pantry and off the grocery list':'';
   if(typeof kpDraw==='function')kpDraw('food',$('kitPhotoFood')); // kitchen-photo.js
   const items=state.kitchen.items.slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
   if(!items.length){ box.appendChild(kEmpty('The pantry is empty. Add what you have above; groceries the Agent buys come in here on their own.')); return; }
+  const grid=el('div','kit-grid'); box.appendChild(grid);
   items.forEach(function(p){
-    const row=el('div','kit-row');
-    if(p.image){ // the picture from the order it came on
-      const pic=el('span','kit-pic'), im=document.createElement('img');
-      im.src=p.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
-      im.addEventListener('error',function(){ pic.remove(); });
-      pic.appendChild(im); row.appendChild(pic);
-    }
-    row.appendChild(el('span','kit-row-name',p.name));
+    // a card like the grocery order's: lit = we have some; tap it dark = none left, and after a moment it
+    // leaves for the grocery list (tap again before then to keep it). Its own controls don't toggle it.
+    const going=!!kitchenUI.going[p.id];
+    const card=el('div','kit-tile'+(going?' off':'')); card.tabIndex=0; card.setAttribute('role','button');
+    card.setAttribute('aria-pressed',String(!going)); card.setAttribute('aria-label',p.name+(going?': none left':': have some'));
+    card.title=going?'Tap to keep it':'Tap when you have none left';
+    const pic=el('div','kit-tile-pic');
+    const letter=function(){ pic.textContent=p.name.charAt(0).toUpperCase(); };
+    if(p.image&&/^https:\/\//i.test(String(p.image))){ // the picture from the order it came on
+      const im=document.createElement('img'); im.src=p.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+      im.addEventListener('error',function(){ im.remove(); letter(); }); pic.appendChild(im);
+    } else letter();
+    card.appendChild(pic);
+    card.appendChild(el('span','kit-tile-check','✓'));
+    card.appendChild(el('div','kit-tile-name',p.name));
+    const stop=function(e){ e.stopPropagation(); };
     const q=el('input','sm kit-qty'); q.value=p.qty!=null?kFmtQty(p.qty,p.unit):''; q.placeholder='some'; q.setAttribute('aria-label','How much '+p.name);
-    q.title='How much you have, like 2 lb or 6';
+    q.title='How much you have, like 2 lb or 6'; q.disabled=going;
     const setQ=function(){
       const v=q.value.trim(), i=v?parseIngredient(v+' x'):null;
       const nq=i&&i.qty!=null?i.qty:null, nu=i&&i.qty!=null?i.unit:'';
       if(nq===p.qty&&nu===p.unit)return;
       p.qty=nq; p.unit=nu; p.updatedAt=Date.now(); kSave();
     };
-    q.addEventListener('change',setQ); q.addEventListener('keydown',function(e){ if(e.key==='Enter')q.blur(); });
-    row.appendChild(q);
-    const out=el('button','ghost','Out'); out.title='Ran out: take it off and put it on the grocery list';
-    out.addEventListener('click',function(){ kOut(p); });
-    row.appendChild(out);
-    const del=iconBtn(I.x,'Remove '+p.name); del.addEventListener('click',function(){ state.kitchen.items=state.kitchen.items.filter(function(x){ return x.id!==p.id; }); kTomb(p.id); kSave(); });
-    row.appendChild(del);
-    box.appendChild(row);
+    q.addEventListener('click',stop); q.addEventListener('change',setQ);
+    q.addEventListener('keydown',function(e){ stop(e); if(e.key==='Enter')q.blur(); });
+    card.appendChild(q);
+    const del=iconBtn(I.x,'Remove '+p.name+' without adding it to the grocery list'); del.classList.add('kit-tile-del');
+    del.addEventListener('click',function(e){ stop(e); state.kitchen.items=state.kitchen.items.filter(function(x){ return x.id!==p.id; }); kTomb(p.id); kSave(); });
+    card.appendChild(del);
+    const toggle=function(){
+      if(kitchenUI.going[p.id]){ clearTimeout(kitchenUI.going[p.id]); delete kitchenUI.going[p.id]; }
+      else kitchenUI.going[p.id]=setTimeout(function(){
+        delete kitchenUI.going[p.id];
+        const live=state.kitchen.items.find(function(x){ return x.id===p.id; });
+        if(live)kOut(live); else renderKitchen();
+      },1500);
+      if(typeof buzz==='function')buzz('tap');
+      renderKitchen();
+    };
+    card.addEventListener('click',toggle);
+    card.addEventListener('keydown',function(e){ if(e.target===card&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); toggle(); } });
+    grid.appendChild(card);
   });
 }
 function kEditRecipe(r){

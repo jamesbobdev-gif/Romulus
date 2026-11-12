@@ -1331,3 +1331,21 @@ body.review-open .top-right{display:none!important}
 .kp-row .kit-hint{margin:0}
 .kp-item{justify-content:flex-start}
 .kp-item .kit-hint{margin:0;white-space:nowrap}
+/* pantry as picture cards (kitchen.js kDrawPantry): lit = have some, tapped dark = none left */
+.kit-undo-bar{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;margin-bottom:6px;pointer-events:none}
+.kit-undo-bar[hidden]{display:none}
+.kit-undo{pointer-events:auto;background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:12.5px;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+.kit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:0 0 6px}
+.kit-tile{position:relative;display:flex;flex-direction:column;gap:4px;background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:6px;cursor:pointer;color:var(--ink);transition:opacity .2s,border-color .2s,filter .2s,transform .1s;user-select:none}
+.kit-tile:active{transform:scale(.97)}
+.kit-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kit-tile.off{border-color:var(--hairline);opacity:.4;filter:grayscale(1)}
+.kit-tile.off .kit-tile-name{text-decoration:line-through}
+.kit-tile-pic{height:100px;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:26px;color:var(--faint);overflow:hidden}
+.kit-tile-pic img{max-width:100%;max-height:100%;object-fit:contain}
+.kit-tile-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;line-height:20px;text-align:center}
+.kit-tile.off .kit-tile-check{background:var(--chip);color:transparent;border:1px solid var(--hairline)}
+.kit-tile-name{font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kit-tile .kit-qty{margin-top:auto;width:100%;text-align:center;padding:3px 4px;font-size:12px}
+.kit-tile-del{position:absolute;top:2px;left:2px;width:22px;height:22px;background:var(--surface);border-radius:50%;opacity:.5}
+.kit-tile:hover .kit-tile-del,.kit-tile-del:focus-visible{opacity:1}
