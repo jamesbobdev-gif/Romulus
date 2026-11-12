@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { healthGoal, healthGoalWords, isHealthWord, healthMet, healthSay, normHealth, healthMergeDocs, healthDue } = require('../renderer/js/health');
+const { healthProfileOf, healthGoal, healthGoalWords, isHealthWord, healthMet, healthSay, normHealth, healthMergeDocs, healthDue } = require('../renderer/js/health');
 const { tagFromWords } = require('../renderer/js/quick-add');
 
 test('goals in a title, as a hashtag', () => {
@@ -137,4 +137,12 @@ test('a plan the Agent set remembers which task it came from; his own save drops
   const { macroPlanClean } = require('../renderer/js/health');
   assert.strictEqual(macroPlanClean({ protein: 150, span: 'week', source: '  Plan my   meals ' }).source, 'Plan my meals');
   assert.strictEqual(macroPlanClean({ protein: 150, span: 'week' }).source, undefined);
+});
+
+test('the health row is always sealed, whether or not the lists are encrypted', () => {
+  const plain = { url: 'https://x.supabase.co', key: 'pk', syncKey: 'tk_abc' };
+  assert.deepStrictEqual(healthProfileOf(plain, true), { url: 'https://x.supabase.co', key: 'pk', syncKey: 'tk_abc:health', v2: true });
+  assert.strictEqual(healthProfileOf(Object.assign({ v2: true }, plain), true).v2, true);
+  assert.strictEqual(healthProfileOf(plain, false), null); // a device that can't encrypt keeps the totals to itself
+  assert.strictEqual(healthProfileOf(null, true), null);
 });

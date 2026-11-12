@@ -198,14 +198,17 @@ const HOSTED_FAMILY_WHY={not_paid:'only the person paying for the plan can invit
 /* Delete my account: everything this install's lists keep on the Romulus server goes (rows, photos and
    files, a paid plan), through supabase/functions/sync-delete. What it sends, pure for tests: every key the
    server could hold a row of these lists under (the plain keys, where the moved markers are, and the encrypted
-   lookup ids) and the agent keys, whose hash names the storage folders. Only lists on the Romulus server. */
-async function hostedDeleteBody(cfg,rowKeyOf){
+   lookup ids) and the agent keys, whose hash names the storage folders. Only lists on the Romulus server.
+   sealedKeyOf: the personal key's lookup id, where the health totals sit sealed even when the lists are plain. */
+async function hostedDeleteBody(cfg,rowKeyOf,sealedKeyOf){
   const keys=[], agentKeys=[];
   for(const ws of ['personal','work','agent','school']){
     const p=cfg&&cfg[ws]; if(!p||!p.syncKey||!hostedIs(p.url))continue;
     [p.syncKey,await rowKeyOf(p)].forEach(function(k){ k=String(k||'').replace(/:.*$/,''); if(k&&keys.indexOf(k)===-1)keys.push(k); });
     if(ws==='agent'&&agentKeys.indexOf(p.syncKey)===-1)agentKeys.push(p.syncKey);
   }
+  const me=cfg&&cfg.personal;
+  if(sealedKeyOf&&me&&me.syncKey&&hostedIs(me.url)){ const k=String(await sealedKeyOf(me.syncKey)||''); if(k&&keys.indexOf(k)===-1)keys.push(k); }
   return {keys:keys,agentKeys:agentKeys};
 }
 /* Deleting the account takes three clicks on its button and a long number shown on screen typed back in, so it
@@ -227,7 +230,7 @@ function hostedDeleteStepText(step){
 }
 async function hostedDeleteAll(){
   const h=hostedServer(); if(!h)throw new Error('this build has no Romulus server');
-  const body=await hostedDeleteBody(syncState.cfg,syncRowKey);
+  const body=await hostedDeleteBody(syncState.cfg,syncRowKey,syncCryptoOk()?syncV2RowKey:null);
   if(!body.keys.length)throw new Error('nothing of yours is on the Romulus server');
   const res=await fetch(hostedTrim(h.url)+'/functions/v1/sync-delete',{method:'POST',headers:syncHeaders({key:h.key}),body:JSON.stringify(body)});
   let out=null; try{ out=await res.json(); }catch(e){}

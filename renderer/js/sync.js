@@ -537,7 +537,7 @@ async function syncOnce(){
       if(!firstErr)firstErr=e;
     }
   }
-  // daily health totals the phone read (health.js); only when the lists are end-to-end encrypted
+  // daily health totals the phone read (health.js); their row is always sealed, whatever the lists are
   const hlp=typeof healthProfile==='function'?healthProfile():null;
   let healthNew=false;
   if(hlp&&Date.now()>=healthRun.noRowUntil){
