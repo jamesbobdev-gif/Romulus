@@ -32,13 +32,31 @@ function ppSources(items,tasks,same){
   });
   const out=[];
   (Array.isArray(items)?items:[]).forEach(function(p){
-    if(!p||!p.id||!p.name||https(p.image))return;
+    if(!p||!p.id||!p.name||https(p.image)||p.picOwn)return; // a picture he took himself stays, even one that won't load here
     const match=ordered.filter(function(it){ return same(p.name,ppBase(it.name)); });
     const pic=match.find(function(it){ return https(it.image); });
     if(pic){ out.push({id:p.id,image:String(pic.image)}); return; }
     const page=match.find(function(it){ return https(it.url); });
     if(page){ out.push({id:p.id,url:String(page.url)}); return; }
     if(instacart&&ppBase(p.name))out.push({id:p.id,find:ppBase(p.name)});
+  });
+  return out;
+}
+/* the pantry pictures to check again against the product page: ones taken from an order he placed himself (read
+   off his order history, where an item could get the picture of the row next to it: the tuna showing the
+   potatoes), when that order item has a page. Not a picture he took himself (picOwn). → [{id, url, old}] */
+function ppRecheck(items,tasks,same){
+  const self=[];
+  (Array.isArray(tasks)?tasks:[]).forEach(function(t){
+    (t&&Array.isArray(t.orders)?t.orders:[]).forEach(function(o){
+      if(o&&o.self&&Array.isArray(o.items))o.items.forEach(function(it){ if(it&&it.name&&it.image&&it.url)self.push(it); });
+    });
+  });
+  const out=[];
+  (Array.isArray(items)?items:[]).forEach(function(p){
+    if(!p||!p.id||!p.name||!p.image||p.picOwn)return;
+    const it=self.find(function(x){ return String(x.image)===String(p.image)&&/^https:\/\//i.test(String(x.url))&&same(p.name,ppBase(x.name)); });
+    if(it)out.push({id:p.id,url:String(it.url),old:String(p.image)});
   });
   return out;
 }
@@ -60,7 +78,7 @@ function ppAmounts(items,tasks,same,sized){
   return out;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { ppSources, ppAmounts };
+if (typeof module !== 'undefined' && module.exports) module.exports = { ppSources, ppAmounts, ppRecheck };
 
 if (typeof document !== 'undefined') {
   const ppTried=new Set(); // product pages already asked this session, picture or not
@@ -82,6 +100,20 @@ if (typeof document !== 'undefined') {
         });
         try{ localStorage.setItem('ppAmountsDone','1'); }catch(e){}
       }
+      // once on the computer: order pictures that may be the neighbouring item's get the product page's own
+      let recheck=false; try{ recheck=!!ask&&localStorage.getItem('ppRecheck1')!=='1'; }catch(e){}
+      if(recheck){
+        for(const r of ppRecheck(state.kitchen.items,state.tasks,sameFood)){
+          const img=await ask(r.url).catch(function(){ return null; });
+          if(!img||!/^https:\/\//i.test(String(img))||String(img)===r.old)continue;
+          const p=state.kitchen.items.find(function(i){ return i.id===r.id; });
+          if(p&&String(p.image)===r.old&&!p.picOwn){ p.image=String(img).slice(0,600); p.updatedAt=Date.now(); changed=true; }
+          state.tasks.forEach(function(t){ (Array.isArray(t.orders)?t.orders:[]).forEach(function(o){ (o&&Array.isArray(o.items)?o.items:[]).forEach(function(it){
+            if(it&&String(it.image)===r.old&&String(it.url)===r.url){ it.image=String(img).slice(0,500); t.updatedAt=Date.now(); changed=true; }
+          }); }); });
+        }
+        try{ localStorage.setItem('ppRecheck1','1'); }catch(e){}
+      }
       for(const s of ppSources(state.kitchen.items,state.tasks,sameFood)){
         let img=s.image||null;
         if(!img&&s.url&&ask&&!ppTried.has(s.url)&&asked<25){
@@ -93,7 +125,7 @@ if (typeof document !== 'undefined') {
           img=await find(s.find).catch(function(){ return null; });
         }
         const p=img&&/^https:\/\//i.test(String(img))&&state.kitchen.items.find(function(i){ return i.id===s.id; });
-        if(p&&!p.image){ p.image=String(img).slice(0,600); p.updatedAt=Date.now(); changed=true; }
+        if(p&&!p.picOwn&&!p.image){ p.image=String(img).slice(0,600); p.updatedAt=Date.now(); changed=true; }
       }
       if(changed&&typeof kSave==='function')kSave();
     }finally{ ppBusy=false; }

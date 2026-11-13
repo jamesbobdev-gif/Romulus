@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { ppSources } = require('../renderer/js/pantry-pictures');
+const { ppSources, ppRecheck } = require('../renderer/js/pantry-pictures');
 const { sameFood } = require('../renderer/js/kitchen');
 
 test('ppSources: pantry items without a picture get one from the order they came on', () => {
@@ -54,4 +54,25 @@ test('instacartPick: the search result closest to the name, the food itself abov
   assert.strictEqual(instacartPick(page, 'Sweet potatoes'), pic('yam'));
   assert.strictEqual(instacartPick(page, 'Dish soap'), null);
   assert.strictEqual(instacartPick('', 'Yams'), null);
+});
+
+test('ppRecheck: pictures off his own order history are checked against the product page; his own photos are not', () => {
+  const items = [
+    { id: 't', name: 'Tuna', image: 'https://x.com/potatoes.jpg' }, // got the row above's picture
+    { id: 'p', name: 'Potatoes', image: 'https://x.com/potatoes.jpg', picOwn: true }, // he took this one
+    { id: 'r', name: 'Rice', image: 'https://x.com/rice.jpg' }, // from an order the Agent placed
+    { id: 'b', name: 'Bread' },
+  ];
+  const tasks = [
+    { orders: [{ store: 'instacart', self: true, items: [{ name: 'Potatoes, 5 lb', image: 'https://x.com/potatoes0.jpg', url: 'https://x.com/p' }, { name: 'Chunk Light Tuna, 5 oz', image: 'https://x.com/potatoes.jpg', url: 'https://x.com/tuna' }] }] },
+    { orders: [{ store: 'instacart', items: [{ name: 'Rice, 20 lb', image: 'https://x.com/rice.jpg', url: 'https://x.com/rice' }] }] },
+  ];
+  assert.deepStrictEqual(ppRecheck(items, tasks, sameFood), [{ id: 't', url: 'https://x.com/tuna', old: 'https://x.com/potatoes.jpg' }]);
+  assert.deepStrictEqual(ppRecheck(null, null, sameFood), []);
+});
+
+test('ppSources: a picture he took himself is never replaced, even one that will not load here', () => {
+  const items = [{ id: 'a', name: 'Hummus', image: 'https://x.com/mine.jpg', picOwn: true }];
+  const tasks = [{ orders: [{ store: 'instacart', items: [{ name: 'Hummus (17 oz)', image: 'https://x.com/h.jpg' }] }] }];
+  assert.deepStrictEqual(ppSources(items, tasks, sameFood, new Set(['https://x.com/mine.jpg'])), []);
 });

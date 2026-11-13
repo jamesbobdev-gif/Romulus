@@ -191,6 +191,7 @@ test('missingPictures: items of an order he placed himself get a picture from th
     cart: [{ name: 'Rice', url: 'https://x.com/rice', options: [{ name: 'Rice, 5 lb', url: 'https://x.com/r5' }] }, { name: 'Eggs', image: 'https://x.com/e.jpg', url: 'https://x.com/eggs' }],
     ordered: [{ store: 'Aldi (Instacart)', items: [{ name: 'Milk', url: 'https://www.instacart.com/products/1' }, { name: 'Bread', image: 'https://x.com/b.jpg', url: 'https://x.com/b' }, { name: 'Apples' }] }],
   };
-  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Rice', 'Rice, 5 lb', 'Milk']);
+  // an order item's own picture can be its neighbour's, so its page is asked even when it has one
+  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Milk', 'Bread', 'Rice', 'Rice, 5 lb']);
   assert.deepStrictEqual(ctx.missingPictures({}), []);
 });

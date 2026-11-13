@@ -57,7 +57,7 @@ function kpPantryList(){ return state.kitchen.items.map(function(i){ return {nam
 
 async function kpAsk(mode,file){
   if(kpUI.busy||!file)return;
-  kpUI.busy=mode; kpUI.why=''; kpUI.whyFor=mode; if(mode==='food')kpUI.food=null; if(mode==='shop')kpUI.shop=null; kpRedraw();
+  kpUI.busy=mode; kpUI.why=''; kpUI.whyFor=mode; if(mode==='food'){ kpUI.food=null; kpUI.foodFile=file; } if(mode==='shop')kpUI.shop=null; kpRedraw();
   if(!kpLocal()&&!kpPhoneAi()){ await kpSend(mode,file); kpUI.busy=''; kpRedraw(); return; }
   try{
     const image=await kpShrink(file);
@@ -145,6 +145,12 @@ function kpFoodAdd(){
     names.push(p.name+(p.qty!=null?', '+p.qty+(p.unit?' '+p.unit:''):''));
   });
   const added=stockPantry(state.kitchen,names,Date.now(),uid);
+  // a picture of just one food: that is the item's picture too, kept like one he took of it (kitchen.js kSetOwnPic)
+  const ask=f.askId&&(state.kitchen.asks||[]).find(function(a){ return a.id===f.askId; });
+  const shot=f.items.length===1&&added.length===1?(ask&&ask.url)||(!f.askId&&kpUI.foodFile)||null:null;
+  const one=shot&&pantryFind(state.kitchen.items,added[0]);
+  if(one&&!one.picOwn&&typeof kSetOwnPic==='function')kSetOwnPic(one.id,shot).then(function(ok){ if(ok)kpRedraw(); },function(){});
+  kpUI.foodFile=null;
   kpDone('food'); persist();
   voiceToast(added.length?'Added to the pantry: '+added.join(', '):'Nothing added');
   kpRedraw();

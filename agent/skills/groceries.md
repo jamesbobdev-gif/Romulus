@@ -281,7 +281,8 @@ from `list.bought` or a placed cart). Never say food went into his pantry unless
 Send each order you find in `ordered`: the store ("Aldi (Instacart)"), its order number, the day it was
 placed, the total, and its items from the order's own page (name with brand, then the size after a
 comma the way a cart item has it: "Bananas, 10.2 lb", "Hass Avocados Bag, 4 ct"; qty when he got more
-than one; price; `image`: the address of the item's picture on that page; `url`: its product link when
+than one; price; `image`: the address of that item's own picture on that page (the picture in the same row as its
+name, not the row above or below; leave it out when you can't tell, the app takes it from `url`); `url`: its product link when
 the item has one; and `food`: true for what he eats or drinks). Every item needs its size and its
 picture: the pantry shows both. Only orders that went through or
 were delivered; a cancelled one stays out. Also send `list.bought` for his list items in it. If the

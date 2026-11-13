@@ -1453,3 +1453,5 @@ body.review-open .top-right{display:none!important}
 .kit-tile .kit-where{align-self:flex-start;padding:0}
 .kit-tile-del{position:absolute;top:2px;left:2px;width:22px;height:22px;background:var(--surface);border-radius:50%;opacity:.5}
 .kit-tile:hover .kit-tile-del,.kit-tile-del:focus-visible{opacity:1}
+.kit-tile-cam{position:absolute;top:80px;left:8px;width:24px;height:24px;background:var(--surface);border-radius:50%;opacity:.75}
+.kit-tile:hover .kit-tile-cam,.kit-tile-cam:focus-visible{opacity:1}

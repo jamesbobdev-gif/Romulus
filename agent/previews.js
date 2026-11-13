@@ -17,6 +17,8 @@ const agentLog = (m) => ctx.agentLog(m);
 // a Shopify store's page: its files come from Shopify's CDN and it names its shop (Shop Pay checks out there)
 const SHOPIFY_PAGE = /cdn\.shopify\.com\/|\bShopify\.shop\s*=|myshopify\.com/i;
 const PREVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
+// a store's stand-in for a product with no photo (Instacart's "missing-item" picture): no picture at all
+const NO_PICTURE = /\/missing-item[-.]/i;
 function absHttps(img, pageUrl) {
   try { const u = new URL(String(img).replace(/&amp;/g, '&'), pageUrl).href; return /^https:\/\//i.test(u) ? u : null; } catch (e) { return null; }
 }
@@ -31,7 +33,7 @@ async function pagePreviewImage(url, lane, info) {
       const meta = (p) => (h.match(new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]*content=["']([^"']+)["']`, 'i'))
         || h.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${p}["']`, 'i')) || [])[1];
       const img = meta('og:image') || meta('og:image:url') || meta('twitter:image') || meta('twitter:image:src');
-      if (img) return absHttps(img, url);
+      if (img && !NO_PICTURE.test(img)) return absHttps(img, url);
       // Instacart publishes no og:image, but its product photo is in the page (the first one is the item's)
       const ic = /instacart\.com\//i.test(url) && h.match(/https:\/\/[a-z0-9.]+\/(?:assets\/domains\/)?product-image\/file\/large_[^"'\\\s]+/i); // cloudfront, or instacart.com/assets/domains/…
       if (ic) return ic[0];

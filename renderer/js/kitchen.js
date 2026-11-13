@@ -111,7 +111,8 @@ function kItem(x){
   if(!x||!x.id||!String(x.name||'').trim())return null;
   const q=x.qty==null||x.qty===''?null:Number(x.qty);
   const it={id:String(x.id),name:String(x.name).trim().slice(0,80),qty:q!=null&&isFinite(q)&&q>0?kRound(q):null,unit:kUnit(x.unit)||'',updatedAt:x.updatedAt||0};
-  if(kPic(x.image))it.image=String(x.image).slice(0,600); // the product picture from the order it came on
+  if(kPic(x.image))it.image=String(x.image).slice(0,600); // the product picture from the order it came on, or one he took
+  if(it.image&&x.picOwn)it.picOwn=true; // he took it himself (kTakePic): nothing replaces it
   if(KITCHEN_PLACES.indexOf(x.where)>=0)it.where=x.where; // where he said it's kept; without one the name decides (kPlaceOf)
   return it;
 }
@@ -948,6 +949,16 @@ function kDrawPantry(){
     const del=iconBtn(I.x,'Remove '+p.name+' without adding it to the grocery list'); del.classList.add('kit-tile-del');
     del.addEventListener('click',function(e){ stop(e); state.kitchen.items=state.kitchen.items.filter(function(x){ return x.id!==p.id; }); kTomb(p.id); kSave(); });
     card.appendChild(del);
+    // his own picture of it: the camera on a phone, a file on a computer
+    const cam=iconBtn(I.camera,'Take a picture of '+p.name); cam.classList.add('kit-tile-cam');
+    cam.title=kitchenUI.picBusy===p.id?'Saving the picture…':'Take a picture of it';
+    cam.disabled=going||!!kitchenUI.picBusy;
+    const pick=document.createElement('input'); pick.type='file'; pick.accept='image/*'; pick.hidden=true;
+    pick.setAttribute('capture','environment');
+    pick.addEventListener('click',stop);
+    pick.addEventListener('change',function(){ const f=pick.files&&pick.files[0]; pick.value=''; if(f)kTakePic(p.id,f); });
+    cam.addEventListener('click',function(e){ stop(e); pick.click(); });
+    card.appendChild(cam); card.appendChild(pick);
     const toggle=function(){
       if(kitchenUI.going[p.id]){ clearTimeout(kitchenUI.going[p.id]); delete kitchenUI.going[p.id]; }
       else kitchenUI.going[p.id]=setTimeout(function(){
@@ -962,6 +973,43 @@ function kDrawPantry(){
     card.addEventListener('keydown',function(e){ if(e.target===card&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); toggle(); } });
     grid.appendChild(card);
    });
+  });
+}
+/* a picture he took of a pantry item (its camera button, or a photo of just that one food: kitchen-photo.js):
+   made small, put in his own storage (agent-chat.js uploadAttachment, like a task's photos) and kept as the
+   item's picture on every device; pantry-pictures.js never replaces it. file: a picture file, or a url already
+   in his storage. → true when it was saved */
+async function kSetOwnPic(id,file){
+  let url=typeof file==='string'?file:null;
+  if(!url){
+    if(typeof attachProfile!=='function'||!attachProfile()||typeof uploadAttachment!=='function')
+      throw new Error('Turn on sync in Settings to keep your own pictures');
+    url=await uploadAttachment(await kSmallPic(file));
+  }
+  const p=state.kitchen.items.find(function(i){ return i.id===id; });
+  if(!p||!kPic(url))return false;
+  p.image=String(url).slice(0,600); p.picOwn=true; p.updatedAt=Date.now(); kSave();
+  return true;
+}
+async function kTakePic(id,file){
+  if(kitchenUI.picBusy)return;
+  kitchenUI.picBusy=id; renderKitchen();
+  try{ if(await kSetOwnPic(id,file))voiceToast('Picture saved'); }
+  catch(e){ voiceToast(e&&/^Turn on sync/.test(e.message)?e.message:'Couldn’t save the picture: '+(e&&e.message||e)); }
+  kitchenUI.picBusy=''; renderKitchen();
+}
+// a picture → a JPEG blob at most 600 px on its long side: plenty for a pantry card, small to sync
+function kSmallPic(file){
+  return new Promise(function(ok,fail){
+    const src=URL.createObjectURL(file), im=new Image();
+    im.onload=function(){
+      const k=Math.min(1,600/Math.max(im.naturalWidth,im.naturalHeight));
+      const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.naturalWidth*k)); c.height=Math.max(1,Math.round(im.naturalHeight*k));
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(src);
+      c.toBlob(function(b){ if(b)ok(b); else fail(new Error('that isn’t a picture')); },'image/jpeg',0.85);
+    };
+    im.onerror=function(){ URL.revokeObjectURL(src); fail(new Error('that isn’t a picture')); };
+    im.src=src;
   });
 }
 function kEditRecipe(r){
