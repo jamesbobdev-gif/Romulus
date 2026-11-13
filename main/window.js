@@ -66,8 +66,8 @@ function createWindow() {
     }
   });
   // The window only ever shows the app itself: no navigating away, no pop-ups.
-  // Web links go to the real browser instead.
-  const toBrowser = (url) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {}); };
+  // Web links go to the real browser instead; a mailto: link (the Hours tab emailing a time sheet) to the mail app.
+  const toBrowser = (url) => { if (/^(https?:\/\/|mailto:)/i.test(url)) shell.openExternal(url).catch(() => {}); };
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { toBrowser(url); return { action: 'deny' }; });
   mainWindow.webContents.on('will-navigate', (e, url) => {
     if (isAppPage(url)) return;

@@ -1124,6 +1124,9 @@ textarea.ask-other{min-height:70px}
 .hours-due-row .btn-accent:disabled{opacity:.4;cursor:default}
 .hours-act{color:var(--accent);font-family:var(--display);font-weight:600;font-size:12.5px;padding:5px 8px}
 .hours-act:hover{color:var(--accent-dim);background:var(--chip)}
+.hours-mail-inp{width:200px}
+.hours-due-err{flex:1 1 100%;color:var(--late);font-size:12px;padding-left:2px}
+@media(max-width:520px){.hours-mail-inp{flex:1 1 100%;width:auto}}
 .hours-sheet{margin-top:10px;padding:7px 4px;font-size:13px;color:var(--muted)}
 .hours-sheet b{color:var(--ink);font-weight:600}
 .hours-due:not([hidden])+.hours-sheet{margin-top:0}
