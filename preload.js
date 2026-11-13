@@ -137,6 +137,15 @@ contextBridge.exposeInMainWorld('desktop', {
   kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   // pantry photos (main/kitchen-ai.js): {mode: 'food'|'meal', image: {mime, b64}, pantry} → {items|meal, used, via} or {why}
   kitchenPhoto: (req) => ipcRenderer.invoke('kitchen:photo', req),
+  // Settings: copy AI keys to the phone by QR code (main/phone-ai-code.js)
+  aiPhoneChoices: () => ipcRenderer.invoke('ai:phoneChoices'),
+  aiPhoneCode: (ids) => ipcRenderer.invoke('ai:phoneCode', ids),
+  // a pantry item's picture from its product page (agent/previews.js): url → image url or null
+  kitchenPicture: (url) => ipcRenderer.invoke('kitchen:picture', url),
+  // the Kitchen tab's Plan your week (main/kitchen-ai.js): {pantry, recipes, aim, plan, slots} → {week, via} or {why}
+  kitchenWeek: (req) => ipcRenderer.invoke('kitchen:week', req),
+  // a pantry item's picture looked up on Instacart by its name (agent/previews.js): name → image url or null
+  kitchenPictureFor: (name) => ipcRenderer.invoke('kitchen:pictureFor', name),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),

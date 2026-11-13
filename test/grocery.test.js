@@ -70,6 +70,9 @@ test('a meal plan’s macros: per-day numbers and how long, nothing without numb
   assert.deepStrictEqual(macroChanges({ kcal: '2100', protein: 160.2, carbs: 0, fat: 65, span: 'month' }), { kcal: 2100, protein: 160, fat: 65, span: 'month' });
   assert.deepStrictEqual(macroChanges({ protein: 150, span: 'forever' }), { protein: 150, span: 'week' });
   assert.strictEqual(macroChanges({ span: 'week' }), undefined);
+  assert.deepStrictEqual(macroChanges({ protein: 180, keep: true }), { protein: 180, keep: true }); // just this number
+  assert.deepStrictEqual(macroChanges({ protein: 180, keep: true, span: 'month' }), { protein: 180, keep: true, span: 'month' });
+  assert.deepStrictEqual(macroChanges({ protein: 180, keep: 'yes' }), { protein: 180, span: 'week' });
   assert.strictEqual(macroChanges([2100]), undefined);
   assert.strictEqual(macroChanges(null), undefined);
 });
@@ -78,9 +81,10 @@ test('the meal-plan skill matches meal planning, not everyday tasks', () => {
   const { loadSkills } = require('../agent/task-context');
   const s = loadSkills().find((x) => x.name === 'meal-plan');
   assert.ok(s && s.match && !s.browser);
-  for (const t of ['help me plan my meals for the week', 'meal plan', 'I want to lose weight', 'meal prep for 2 weeks', 'set my macros', 'eat more protein'])
+  for (const t of ['help me plan my meals for the week', 'meal plan', 'I want to lose weight', 'meal prep for 2 weeks', 'set my macros', 'eat more protein',
+    'I want eat 1 gram of protein for every pound of weight', '1 g protein per lb', '2,000 calories a day', 'set my protein target'])
     assert.ok(s.match.test(t), t);
-  for (const t of ['cut the grass', 'book a haircut', 'order groceries', 'plan the trip to Denver', 'what time is the game'])
+  for (const t of ['cut the grass', 'book a haircut', 'order groceries', 'plan the trip to Denver', 'what time is the game', 'buy 1 lb of ground beef', 'get 2 grams of yeast'])
     assert.ok(!s.match.test(t), t);
 });
 
@@ -136,4 +140,19 @@ test('emptyPantryClaim: "added to your pantry" with no items to put there', () =
   assert.strictEqual(emptyPantryClaim({ status: 'done', note, list: { bought: ['Kiwis'] } }), false);
   assert.strictEqual(emptyPantryClaim({ status: 'done', note: 'Your pantry has 3 eggs left.' }), false);
   assert.strictEqual(emptyPantryClaim(null), false);
+});
+
+test('his weight from the Food plan row goes to the Agent as bodyWeight', () => {
+  const { weightBrief, macroBrief } = require('../agent/grocery');
+  const now = new Date('2026-11-09T12:00:00').getTime();
+  const at = new Date('2026-11-07T08:00:00').getTime();
+  const row = JSON.stringify({ protein: 180, span: 'open', weight: { lb: 182, at, from: 'Withings' } });
+  assert.deepStrictEqual(weightBrief(row, now), { lb: 182, kg: 82.6, asOf: '2026-11-07', daysAgo: 2, from: 'Withings' });
+  assert.strictEqual(macroBrief(row, now).perDay.protein, 180); // the plan still reads the same
+  // weight alone: no plan for grocery orders, but the weight still comes through
+  const alone = JSON.stringify({ weight: { lb: 182, at } });
+  assert.strictEqual(macroBrief(alone, now), undefined);
+  assert.strictEqual(weightBrief(alone, now).lb, 182);
+  assert.strictEqual(weightBrief(JSON.stringify({ protein: 180 }), now), undefined);
+  assert.strictEqual(weightBrief('', now), undefined);
 });

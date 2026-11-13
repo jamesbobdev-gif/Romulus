@@ -3,7 +3,8 @@
    or undated modules never reached the School list at all. Once a week Lupa (the
    only computer signed in to his Blackboard / D2L) opens his course list, goes through each current class,
    and notes the work still to do with add_class_item; the window adds those to the School list
-   (renderer/js/wiring.js importClassItems), skipping what the calendar or he already put there.
+   (renderer/js/wiring.js importClassItems), skipping what the calendar or he already put there. It also
+   says which listed items he already turned in (mark_class_done → wiring.js markClassDone checks them off).
    Read only, like coach mode. One task, id CLASS_SWEEP_ID, made by the window when he has a course
    calendar and a local model. No Electron here, so it can be tested on its own. */
 
@@ -72,6 +73,37 @@ function count(found) {
   return 'So far: ' + Object.keys(by).map((c) => c + ' ' + by[c]).join(', ') + '.';
 }
 
+/* Work he already turned in. The calendar links only carry names and dates, so the School list kept quizzes
+   he had taken days ahead as still to do (PHYS 1010, Nov 2026: four done on D2L, open in the app). The sweep
+   reads each class's quiz list (attempts used) and assignments page (submitted) and says so here. */
+const DONE_TOOL = { type: 'function', function: { name: 'mark_class_done', description: 'Say that one piece of work on "Already on his School list" is finished on the class site: a quiz or test with all its attempts used (like "1 / 1"), an assignment shown as Submitted, Completed or Graded. Never for work only past due or not submitted.', parameters: { type: 'object', properties: {
+  course: { type: 'string', description: 'the course code only, like "BIO 101"' },
+  title: { type: 'string', description: 'its name as the course shows it' },
+  due: { type: 'string', description: 'its due date YYYY-MM-DD, or ""' },
+  evidence: { type: 'string', description: 'what the page says that shows it is done, like "Attempts 1 / 1" or "Submitted"' } }, required: ['course', 'title', 'evidence'] } } };
+const DONE_WORDS = /\b(submitted|completed?|graded|turned in)\b|\b([1-9]\d*)\s*\/\s*\2\b/i;
+const NOT_DONE = /\bnot\s+(yet\s+)?(submitted|completed?|graded|turned in)\b|\b0\s*\/\s*\d+\b/i;
+const MAX_DONE = 80;
+
+/* one mark_class_done call → kept in done (an array of {course, title, due}), and what the model is told back */
+function markDone(done, args) {
+  args = args || {};
+  const m = String(args.course || '').match(COURSE);
+  if (!m) return 'course must be the course code only, like "BIO 101".';
+  const course = m[1].toUpperCase() + ' ' + m[2].toUpperCase();
+  const title = String(args.title || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (title.length < 3) return 'Give its name as the course shows it in title.';
+  const evidence = String(args.evidence || '').replace(/\s+/g, ' ').trim();
+  if (NOT_DONE.test(evidence) || !DONE_WORDS.test(evidence)) return 'Not marked: "' + evidence.slice(0, 80) + '" doesn\'t show it finished. Only work with all attempts used (like "1 / 1") or shown as Submitted, Completed or Graded.';
+  let due = String(args.due || '').trim();
+  if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) due = '';
+  if (done.length >= MAX_DONE) return 'That is enough. Answer now.';
+  const key = course + '|' + title.toLowerCase();
+  if (done.some((x) => x.course + '|' + x.title.toLowerCase() === key)) return 'Already marked ' + course + ': ' + title + '.';
+  done.push({ course, title, due: due || null });
+  return 'Marked done: ' + course + ': ' + title + '.';
+}
+
 /* what's on his School list already, so it doesn't add those again: upcoming and undated, open ones */
 function listedText(tasks, now = new Date()) {
   const today = ymd(now);
@@ -105,11 +137,17 @@ to do on his School list with add_class_item.
    Use the course code ("BIO 101"), the name as the course shows it, and the due date and time. Work with
    no date at all: only the current module's, at most a few per class.
 4. Skip anything on "Already on his School list" below, and anything marked done or submitted.
+5. Check off what he already finished. In each class open the quiz list (D2L: Quizzes, /d2l/lms/quizzing/user/
+   quizzes_list.d2l?ou=<course id>) and the assignments list (D2L: Assignments, /d2l/lms/dropbox/user/
+   folders_list.d2l?ou=<course id>; Blackboard: Gradebook). For each item on "Already on his School list"
+   that the page shows finished, call mark_class_done with what the page says: a quiz or test with every
+   attempt used ("1 / 1"), an assignment "Submitted", "Completed" or with a grade. He often does work days
+   early, so look at upcoming items too. "Not Submitted" or "0 / 1" is not done, even when it is past due.
 Read only: never submit, post, start a quiz or test attempt, or click anything that does.
 Signed out? Stop and answer needs-you: he signs in on the mini PC's browser, then replies "try again".
 
 When you have been through every class, answer with the JSON: status "done" and a note that says, per
-class, how many items you added and where they were (Blackboard, Connect, syllabus), and any class you
-couldn't read and why. Plain text, no emoji.`;
+class, how many items you added and checked off and where they were (Blackboard, Connect, syllabus), and any
+class you couldn't read and why. Plain text, no emoji.`;
 
-module.exports = { CLASS_SWEEP_ID, isSweep, ADD_ITEM_TOOL, addItem, listedText, itemId, RULES, KINDS, MAX_ITEMS };
+module.exports = { CLASS_SWEEP_ID, isSweep, ADD_ITEM_TOOL, addItem, DONE_TOOL, markDone, listedText, itemId, RULES, KINDS, MAX_ITEMS };

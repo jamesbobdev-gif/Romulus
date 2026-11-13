@@ -52,7 +52,7 @@ const liveRelay=(function(){
   function connect(){
     // retry: a try is already waiting its turn. tick() calls this every second, and without the wait a refused
     // socket (a key that wasn't accepted, no network) was opened again about every three seconds, all day
-    if(!info||sock||retry||typeof WebSocket!=='function')return;
+    if(!info||sock||retry||typeof WebSocket!=='function'||/^enc:/.test(String(info.key||'')))return; // a key the keyring couldn't open
     const s=new WebSocket(info.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(info.key)+'&vsn=1.0.0');
     sock=s; joined=false; lastMsg=Date.now();
     // never opened, or the join was never answered: start over rather than sit on a socket that carries nothing

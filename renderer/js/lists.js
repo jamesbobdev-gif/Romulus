@@ -126,6 +126,22 @@ function buildRow(t){
   if(isExp) li.appendChild(buildPanel(t));
   return li;
 }
+// the live log without the runner's "-- Gemini is on it" line: the status card above it already says that
+// a queued local task while the local model's own computer is busy or restarting: why it hasn't started yet
+function localWaitText(s){
+  if(!s||s.via!=='worker')return '';
+  const name=s.name||'The local model';
+  if(s.quiet){
+    const min=Math.max(1,Math.round((Date.now()-(s.at||Date.now()))/60000));
+    return name+' hasn’t checked in for '+min+' min, most likely restarting. This task waits for it for up to 15 min, then goes to a cloud AI (a private one keeps waiting). Or switch it to Claude below.';
+  }
+  if(s.busy){
+    const d=s.doing||{};
+    return name+' is on another task'+(d.title?' ('+d.title+')':d.what?' ('+d.what+')':'')+'. This one starts when it finishes, usually within a few minutes.';
+  }
+  return '';
+}
+function liveShown(text){ return String(text||'').split('\n').filter(function(l){ return !/^-- .+ is on it\s*$/.test(l); }).join('\n').trim(); }
 function toggleExpand(t){ if(state.expanded.has(t.id))state.expanded.delete(t.id); else state.expanded.add(t.id); render(); }
 
 /* ── subtask panel ── */
@@ -195,36 +211,41 @@ function buildPanel(t){
       :local
       ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
-        :'It starts within a few seconds while your computer has Tasks running.')
+        :localWaitText(localStat)||'It starts within a few seconds while your computer has Tasks running.')
       :t.status==='working'
-      ?(cloudName==='Claude'?'Write below to steer it: it reads your message after its next step.':'Usually under a minute. You can still add to your answer below.')
+      ?(cloudName==='Claude'?'Write below to steer it: it reads your message after its next step.':'Usually under a minute.')
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
       :'It starts within a few seconds while your computer has Tasks running.'));
     if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
     panel.appendChild(sb);
-    // Claude's checklist while it works (agent/run-live.js), filled live without a re-render
+    // its chain of thought, one box: Claude's checklist (agent/run-live.js) on top, what it's doing under it,
+    // both filled live without a re-render (agent-results.js onAgentLive)
+    const showLog=t.status==='working'&&(local||liveShown(liveText[t.id]));
+    const steps=el('div','agent-steps');
     if(!local&&t.status==='working'){
       const pl=el('ul','agent-plan'); pl.setAttribute('data-id',t.id); pl.setAttribute('aria-label','Plan');
       fillPlan(pl,livePlan[t.id]);
-      panel.appendChild(pl);
+      steps.appendChild(pl);
     }
+    // working: what it's searching, reading and clicking, live (the mini PC always; Claude once it has started)
+    if(showLog){
+      const lv=el('div','agent-live',liveShown(liveText[t.id])||'Starting…');
+      lv.setAttribute('data-id',t.id); lv.setAttribute('aria-live','polite');
+      steps.appendChild(lv);
+      setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
+    }
+    if(steps.firstChild)panel.appendChild(steps);
     // the agent browser, live, right in the card (agent-live-view.js): shows once it has a page up
     if(!local&&t.status==='working'&&liveViewAvailable()){
       const slot=el('div','live-slot'); panel.appendChild(slot);
       liveEmbed(slot,t.id);
     }
-    // working: what it's searching, reading and clicking, live (the mini PC always; Claude once it has started)
-    if(t.status==='working'&&(local||liveText[t.id])){
-      const lv=el('pre','agent-live',liveText[t.id]||'Starting…');
-      lv.setAttribute('data-id',t.id); lv.setAttribute('aria-live','polite');
-      panel.appendChild(lv);
-      setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
-    }
   }
   // who does it: a two-part pill, [cloud AI ▾ | mini PC model], with a highlight that slides between them.
   // The cloud half is a menu of every cloud AI, so the pill stays the same size however many there are.
   // Switching asks first; a first pick (no rule matched) doesn't.
-  if(taskWs(t)==='agent'&&!t.done&&agentAvailable()){
+  // Shown until you settle it: keep who has it or switch, and it goes (t.laneOk). The task works meanwhile.
+  if(taskWs(t)==='agent'&&!t.done&&agentAvailable()&&(!t.laneOk||laneAsks[t.id])){
     const now=laneNow(t), onCloud=!!now&&now!=='local';
     const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
     tg.style.setProperty('--n',2); tg.style.setProperty('--i',now==='local'?1:0);
@@ -244,9 +265,17 @@ function buildPanel(t){
     const lw=el('button','lane-word'+(now==='local'?' on':''),localModelName());
     lw.setAttribute('role','radio'); lw.setAttribute('aria-checked',String(now==='local'));
     lw.title=now==='local'?'The local model ('+localModelName()+') has this task':(now?'Switch this task to the local model (asks first)':'Send this task to the local model');
-    lw.addEventListener('click',function(e){ e.stopPropagation(); if(now!=='local')setLane(t,'local'); });
+    lw.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,'local'); }); // on the one it has: keeps it
     tg.appendChild(lw);
-    panel.appendChild(tg);
+    if(now&&!laneAsks[t.id]){
+      // keep who has it: the pill goes, the task carries on as it was
+      const row=el('div','lane-row'); row.appendChild(tg);
+      const keep=el('button','lane-keep','Keep '+(now==='local'?localModelName():LANE_NAMES[now]));
+      keep.title='Leave this task with '+(now==='local'?localModelName():LANE_NAMES[now])+' and hide this choice';
+      keep.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,now); });
+      row.appendChild(keep);
+      panel.appendChild(row);
+    } else panel.appendChild(tg);
     const ask=laneAsks[t.id];
     if(ask&&ask!==now){
       const name=LANE_NAMES[ask];
@@ -262,8 +291,8 @@ function buildPanel(t){
   }
   // a stale failure message isn't worth showing once the task is being retried
   const failed=/couldn’t finish/i.test(t.note||'');
-  const staleFail=agentBusy&&failed;
-  if(taskWs(t)==='agent'&&t.note&&!staleFail){
+  // while it works, its last message is already answered (your answer shows below) and sits in the conversation
+  if(taskWs(t)==='agent'&&t.note&&!agentBusy){
     const nb=el('div','agent-note');
     const who=t.lane==='local'?'The local model':cloudNameOf(t);
     const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
@@ -482,6 +511,22 @@ function buildPanel(t){
   }
   // grocery tasks: when the next 2-week order opens (grocery-list.js); the order itself shows as picture cards
   if(isGroceryTask(t)&&!t.done){ panel.appendChild(groceryNextLine()); const eb=groceryEbtLine(); if(eb)panel.appendChild(eb); }
+  // agent tasks fold repeat / starts when / date + tag under one "Schedule" line you open and close;
+  // closed, the line still says what's set. Open or closed is remembered for every agent task.
+  let opts=panel;
+  if(taskWs(t)==='agent'){
+    const fold=document.createElement('details'); fold.className='task-opts settings-collapse';
+    try{ fold.open=localStorage.getItem('agentOptsOpen')==='1'; }catch(e){}
+    const sm=el('summary','subs-label','Schedule');
+    const bits=[];
+    if(t.repeat)bits.push(({day:'every day',weekday:'weekdays',week:'every week'})[t.repeat.every]+(t.repeat.at?' '+t.repeat.at:''));
+    if(t.trigger&&t.trigger.kind)bits.push('starts '+triggerText(t.trigger));
+    if(t.due)bits.push(new Date(t.due+'T00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})+(t.dueTime?' '+t.dueTime:''));
+    if(t.tag)bits.push(t.tag);
+    if(bits.length)sm.appendChild(el('span','opts-sum',' · '+bits.join(' · ')));
+    fold.addEventListener('toggle',function(){ try{ localStorage.setItem('agentOptsOpen',fold.open?'1':'0'); }catch(e){} });
+    fold.appendChild(sm); panel.appendChild(fold); opts=fold;
+  }
   // repeat: Claude re-runs this task on a schedule (desktop app does the timing)
   if(taskWs(t)==='agent'){
     const rr=el('div','panel-meta repeat-row');
@@ -502,7 +547,7 @@ function buildPanel(t){
     sel.addEventListener('change',applyRepeat); tm.addEventListener('change',applyRepeat);
     rr.appendChild(sel); rr.appendChild(tm);
     if(t.repeat&&t.nextRun)rr.appendChild(el('span','next','next: '+fmtWhen(t.nextRun)));
-    panel.appendChild(rr);
+    opts.appendChild(rr);
     // starts when: the task waits for an email, a calendar event or a web page (triggers.js; the desktop app does the looking)
     const tw=el('div','panel-meta repeat-row trigger-row');
     tw.appendChild(el('span','lbl','Starts when'));
@@ -532,7 +577,7 @@ function buildPanel(t){
     }
     ks.addEventListener('change',applyTrigger); [what,url,hrs,day].forEach(function(i){ i.addEventListener('change',applyTrigger); });
     tw.appendChild(ks); tw.appendChild(hrs); tw.appendChild(day); tw.appendChild(url); tw.appendChild(what); tw.appendChild(hint); showTrigger();
-    panel.appendChild(tw);
+    opts.appendChild(tw);
   }
 
   // Task-level date + tag
@@ -550,7 +595,7 @@ function buildPanel(t){
   const tagIn=el('input','sm tag-inp'); tagIn.value=t.tag||''; tagIn.placeholder='tag'; tagIn.setAttribute('list','tagOptions'); tagIn.setAttribute('aria-label','Tag');
   tagIn.addEventListener('change',function(){ t.tag=tagIn.value.trim()||null; touch(); });
   tagIn.addEventListener('keydown',function(e){ if(e.key==='Enter')tagIn.blur(); });
-  pm.appendChild(dueIn); pm.appendChild(timeIn); pm.appendChild(tagIn); panel.appendChild(pm);
+  pm.appendChild(dueIn); pm.appendChild(timeIn); pm.appendChild(tagIn); opts.appendChild(pm);
 
   // repeat: ticking it off makes the next one (recur.js); agent tasks use their own schedule above.
   // Same row as the date it counts from; "Doesn’t repeat" says what it is, so no label
@@ -764,7 +809,7 @@ function render(){
   if(typeof famShowTab==='function')famShowTab();
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
   const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():onFamily?!familyConfigured():false;
-  document.querySelector('.composer').hidden=unconnected;
+  document.querySelector('.composer').hidden=unconnected||(typeof isViewTab==='function'&&isViewTab(state.activeTab)); // a background sync re-renders from any tab: keep the box off the tabs that hide it (switchTab)
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){

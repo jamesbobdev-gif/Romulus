@@ -5,7 +5,13 @@
    there: the day the task is due, or today when it has no date. Agent tasks never are, and one he unticked by hand
    stays unticked for that day.
    The phone keeps one line per day in state.health:
-     {days: {'YYYY-MM-DD': {steps, exerciseMin, sleepMin, at}}}   a kind he didn't allow is left out, not 0
+     {days: {'YYYY-MM-DD': {steps, exerciseMin, sleepMin, at, from,
+                            weightKg, restHr, activeKcal, distM, food:{kcal,protein,carbs,fat},
+                            workouts:[{type, name, at:'HH:MM', min, distM, kcal, reps, sets, from}]}}}
+     a kind he didn't allow is left out, not 0. Nothing here is typed in: it all comes from the phone's store, which
+     his watch, scale and apps (Samsung Health, Strava, MyFitnessPal...) write to.
+   from: {steps|exercise|sleep: ['Garmin Connect', ...]}, the apps and devices that wrote that number (Samsung Health,
+   Fitbit, Garmin, Oura, Strava and the rest all feed Health Connect or Apple Health, so the phone reads them there).
    Sleep counts toward the morning it ended. The days sync through their own row next to the personal list
    (syncKey+':health') so the computer can tick tasks off and show them too. That row always goes up sealed
    (sync-crypto.js), whether or not the lists themselves are end-to-end encrypted, so the server never holds a
@@ -14,6 +20,9 @@
    per-day macros (calories, protein, carbs, fat) for a week, two weeks, a month or until he changes it, which the
    Agent builds grocery orders to add up to (agent/grocery.js macroBrief, groceries skill). It's kept on this device
    and in the agent list's ':macros' sync row, so the computer that runs the Agent sees it.
+   His weight sits with the Food plan: typed there, or the newest weigh-in the phone's health store has (when he
+   allowed that read). It rides in the same ':macros' row as {weight: {lb, at, from}}, and unlike the daily totals
+   the Agent does see it, on meal-plan and grocery runs, so "1 g of protein per pound" works the number out.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists
    them. The parts without page globals are also loaded by test/health.test.js. */
 'use strict';
@@ -75,16 +84,66 @@ function healthSay(goal,day){
   return healthFmtMin(v)+(goal.kind==='sleep'?' of sleep':' of exercise');
 }
 
+// the rest of a day's numbers: [field, smallest, largest, decimals]
+const HEALTH_EXTRA=[['weightKg',20,400,1],['restHr',25,200,0],['activeKcal',1,20000,0],['distM',1,500000,0]];
+const HEALTH_FOOD=['kcal','protein','carbs','fat'];
+const HEALTH_WORKOUT_TYPES=['run','walk','hike','bike','swim','strength','yoga','pilates','hiit','cardio','row','stairs','dance','sport','other'];
+const hNum=function(v,lo,hi,dec){ const n=Number(v); if(v===null||v===''||!isFinite(n)||n<lo||n>hi)return undefined; const m=Math.pow(10,dec||0); return Math.round(n*m)/m; };
+function healthWorkout(w){
+  if(!w||typeof w!=='object')return null;
+  const min=hNum(w.min,0,1440); if(min==null)return null;
+  const o={type:HEALTH_WORKOUT_TYPES.indexOf(w.type)!==-1?w.type:'other',min:min};
+  if(/^\d{2}:\d{2}$/.test(w.at))o.at=w.at;
+  if(w.name&&String(w.name).trim())o.name=String(w.name).replace(/\s+/g,' ').trim().slice(0,40);
+  [['distM',1,500000],['kcal',1,20000],['reps',1,100000],['sets',1,1000]].forEach(function(x){ const v=hNum(w[x[0]],x[1],x[2]); if(v!=null)o[x[0]]=v; });
+  if(w.from&&String(w.from).trim())o.from=String(w.from).replace(/\s+/g,' ').trim().slice(0,40);
+  return o;
+}
+// one day as the phone read it (or as it synced) → the kept day, without `at`
+function healthDayClean(d){
+  const o={};
+  Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; const v=hNum(d[f],0,1e7); if(v!=null)o[f]=v; });
+  const from=healthFrom(d.from); if(from)o.from=from;
+  HEALTH_EXTRA.forEach(function(x){ const v=hNum(d[x[0]],x[1],x[2],x[3]); if(v!=null)o[x[0]]=v; });
+  if(d.food&&typeof d.food==='object'){
+    const f={}; HEALTH_FOOD.forEach(function(k){ const v=hNum(d.food[k],1,30000); if(v!=null)f[k]=v; });
+    if(Object.keys(f).length)o.food=f;
+  }
+  if(Array.isArray(d.workouts)){ const w=d.workouts.map(healthWorkout).filter(Boolean).slice(0,12); if(w.length)o.workouts=w; }
+  return o;
+}
 function normHealth(raw){
   const r=raw||{}, days={};
   const src=r.days&&typeof r.days==='object'?r.days:{};
   Object.keys(src).forEach(function(k){
     const d=src[k]; if(!/^\d{4}-\d{2}-\d{2}$/.test(k)||!d||typeof d!=='object')return;
-    const o={at:+d.at||0};
-    Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; if(isFinite(d[f])&&d[f]!==null&&d[f]>=0)o[f]=Math.round(+d[f]); });
-    days[k]=o;
+    days[k]=Object.assign({at:+d.at||0},healthDayClean(d));
   });
   return {days:days};
+}
+// everything on a day but when it was read, in a fixed order: two reads are the same when these match
+function healthDayKey(d){
+  const c=healthDayClean(d||{});
+  return JSON.stringify(Object.keys(c).sort().map(function(k){ return [k,c[k]]; }));
+}
+// what the phone said fed each number → {steps?, exercise?, sleep?: [names]}, or null when it said nothing.
+// At most 6 names a kind, 40 characters each, no repeats.
+function healthFrom(raw){
+  if(!raw||typeof raw!=='object')return null;
+  const out={};
+  Object.keys(HEALTH_FIELD).forEach(function(kind){
+    if(!Array.isArray(raw[kind]))return;
+    const names=[];
+    raw[kind].forEach(function(n){ const s=String(n==null?'':n).replace(/\s+/g,' ').trim().slice(0,40); if(s&&names.indexOf(s)===-1&&names.length<6)names.push(s); });
+    if(names.length)out[kind]=names;
+  });
+  return Object.keys(out).length?out:null;
+}
+// every app behind a day's numbers, once each: ['Samsung Health', 'Garmin Connect']
+function healthFromAll(day){
+  const all=[];
+  if(day&&day.from)Object.keys(HEALTH_FIELD).forEach(function(kind){ (day.from[kind]||[]).forEach(function(n){ if(all.indexOf(n)===-1)all.push(n); }); });
+  return all;
 }
 function healthYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function healthCutoff(now){ const d=new Date(now||Date.now()); d.setHours(0,0,0,0); d.setDate(d.getDate()-HEALTH_KEEP_DAYS); return healthYmd(d); }
@@ -98,7 +157,7 @@ function healthMergeDocs(local,remoteDoc,now){
     days[k]=!a?b:!b?a:((b.at||0)>(a.at||0)?b:a);
   });
   const merged=healthPrune({days:days},now);
-  const canon=function(h){ return JSON.stringify(Object.keys(h.days).sort().map(function(k){ const d=h.days[k]; return [k,d.at,d.steps,d.exerciseMin,d.sleepMin]; })); };
+  const canon=function(h){ return JSON.stringify(Object.keys(h.days).sort().map(function(k){ return [k,h.days[k].at,healthDayKey(h.days[k])]; })); };
   return {merged:merged,changedLocal:canon(merged)!==canon(local),changedRemote:canon(merged)!==canon(healthPrune(remote,now))};
 }
 
@@ -145,6 +204,28 @@ function macroPlanDaysLeft(p,todayYmd){
   if(!p||!p.until)return null;
   return Math.round((new Date(p.until+'T12:00:00')-new Date(todayYmd+'T12:00:00'))/864e5)+1;
 }
+// an Agent answer's `macros` on top of the plan he has → the plan to save (cleaned), or null.
+// keep: only the numbers it gives change, and a plan still running keeps its span and dates; without a running
+// plan it starts today, until he changes it. Otherwise it's a whole new plan from today.
+function macroPlanMerge(old,m,todayYmd,now){
+  if(!m||typeof m!=='object')return null;
+  const live=old&&(macroPlanDaysLeft(old,todayYmd)==null||macroPlanDaysLeft(old,todayYmd)>0)?old:null;
+  const next={at:now||Date.now(),source:m.source||''};
+  if(m.keep&&live){
+    MACRO_KEYS.forEach(function(k){ next[k]=m[k]>0?m[k]:live[k]; });
+    const sameSpan=!m.span||m.span===live.span;
+    next.span=sameSpan?live.span:m.span;
+    const c=macroPlanClean(next); if(!c)return null;
+    const keepDates=sameSpan&&!!live.from;
+    c.from=keepDates?live.from:todayYmd; c.until=keepDates?live.until:macroPlanUntil(c.span,c.from);
+    return c;
+  }
+  MACRO_KEYS.forEach(function(k){ next[k]=m[k]; });
+  next.span=m.span||(m.keep?'open':'week');
+  const c=macroPlanClean(next); if(!c)return null;
+  c.from=todayYmd; c.until=macroPlanUntil(c.span,c.from);
+  return c;
+}
 // one quiet line: "2,100 kcal · 160 g protein · 200 g carbs · 65 g fat a day · 13 days left (ends Nov 20)"
 function macroPlanSay(p,todayYmd){
   if(!p)return '';
@@ -163,10 +244,185 @@ function macroPlanSay(p,todayYmd){
   return s;
 }
 
+/* ── his weight (pure, for tests) ── */
+const KG_LB=2.20462;
+// what's saved → {lb (one decimal), at, from} or null. lb within what a person weighs
+function weightClean(w){
+  if(!w||typeof w!=='object')return null;
+  const lb=Math.round(Number(w.lb)*10)/10;
+  if(!(lb>=50&&lb<=900))return null;
+  const out={lb:lb,at:Number(w.at)>0?Number(w.at):0};
+  if(w.from&&String(w.from).trim())out.from=String(w.from).replace(/\s+/g,' ').trim().slice(0,40);
+  return out;
+}
+// the phone's answer ({kg, at, from}) → a weight, or null; from says which store fed it
+function weightFromStore(r,store){
+  if(!r||typeof r!=='object'||!(Number(r.kg)>0))return null;
+  const app=r.from&&String(r.from).trim();
+  return weightClean({lb:Number(r.kg)*KG_LB,at:r.at,from:app&&app!=='This phone'?app:store});
+}
+// the newer of two (null when neither)
+function weightNewer(a,b){ a=weightClean(a); b=weightClean(b); return !a?b:!b?a:(b.at>a.at?b:a); }
+// "182 lb, from Withings, Nov 9"
+function weightSay(w){
+  if(!w)return '';
+  return (w.lb%1?w.lb.toFixed(1):String(w.lb))+' lb'+(w.from==='typed in'?', typed in':w.from?', from '+w.from:'')+(w.at?', '+new Date(w.at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'');
+}
+// the ':macros' row's text: the plan (or nothing) and his weight
+function macroRowText(plan,weight){
+  const w=weightClean(weight);
+  if(!plan&&!w)return '';
+  return JSON.stringify(Object.assign({},plan||{},w?{weight:w}:{}));
+}
+
+/* ── the top of the Health tab (pure, for tests) ── */
+// this week's exercise minutes, Monday to the day `now` is in → {week, today}
+function healthWeek(days,now){
+  const d=new Date(now||Date.now()); d.setHours(0,0,0,0);
+  const tk=healthYmd(d); d.setDate(d.getDate()-((d.getDay()+6)%7));
+  let week=0;
+  for(let k=healthYmd(d);k<=tk;d.setDate(d.getDate()+1),k=healthYmd(d)){ const v=days[k]&&days[k].exerciseMin; if(typeof v==='number')week+=v; }
+  const t=days[tk]&&days[tk].exerciseMin;
+  return {week:week,today:typeof t==='number'?t:0};
+}
+// the biggest goal of that kind among the to-dos for today (or undated), else the usual one
+function healthTarget(tasks,kind,today,fallback,wsOf){
+  let best=0;
+  (tasks||[]).forEach(function(t){
+    if((wsOf&&wsOf(t)==='agent')||(t.due&&t.due!==today))return;
+    const g=healthGoal(t.title); if(g&&g.kind===kind&&g.target>best)best=g.target;
+  });
+  return best||fallback;
+}
+// one word for last night's sleep against the goal
+function healthSleepWord(min,goal){
+  if(typeof min!=='number'||!min)return '';
+  return min>=goal?'Good':min>=goal-60?'Fair':'Short';
+}
+function healthPct(v,target){ return target>0&&typeof v==='number'?Math.max(0,Math.min(100,Math.round(100*v/target))):0; }
+
+/* ── the rest of the tab (pure, for tests): everything comes from state.health.days, which the phone fills ── */
+const HEALTH_M_MI=1609.344;
+function healthYmdAdd(ymd,n){ const d=new Date(ymd+'T12:00:00'); d.setDate(d.getDate()+n); return healthYmd(d); }
+const hLb=function(kg){ return Math.round(kg*KG_LB*10)/10; };
+const hMi=function(m){ return Math.round(m/HEALTH_M_MI*10)/10; };
+// the newest day up to today that has the field, within `within` days → {day, value}, or null
+function healthLatest(days,field,today,within){
+  const cut=healthYmdAdd(today,-(within||30));
+  const k=Object.keys(days).filter(function(d){ return d<=today&&d>cut&&days[d][field]!=null; }).sort().pop();
+  return k?{day:k,value:days[k][field]}:null;
+}
+// the field across the last n days, oldest first, the days without it left out → [{day, value}]
+function healthSeries(days,field,today,n){
+  const out=[];
+  for(let i=n-1;i>=0;i--){ const d=healthYmdAdd(today,-i), v=days[d]&&days[d][field]; if(typeof v==='number')out.push({day:d,value:v}); }
+  return out;
+}
+// every workout in the last `back` days, newest first → [{day, type, min, ...}]
+function healthWorkouts(days,today,back){
+  const cut=healthYmdAdd(today,-(back||14)), out=[];
+  Object.keys(days).filter(function(d){ return d<=today&&d>cut; }).forEach(function(d){ (days[d].workouts||[]).forEach(function(w){ out.push(Object.assign({day:d},w)); }); });
+  return out.sort(function(a,b){ return (b.day+(b.at||'')).localeCompare(a.day+(a.at||'')); });
+}
+// seven days ending on `end` → the totals the week lines and training progress use
+function healthWeekSum(days,end){
+  const s={runMi:0,runs:0,workouts:0,strength:0,byType:{},kcal:0,sleep:[],steps:[]};
+  for(let i=0;i<7;i++){
+    const d=days[healthYmdAdd(end,-i)]; if(!d)continue;
+    (d.workouts||[]).forEach(function(w){
+      s.workouts++; s.byType[w.type]=(s.byType[w.type]||0)+1;
+      if(w.type==='run'){ s.runs++; s.runMi+=w.distM?w.distM/HEALTH_M_MI:0; }
+      if(w.type==='strength')s.strength++;
+    });
+    if(d.activeKcal)s.kcal+=d.activeKcal;
+    if(typeof d.sleepMin==='number'&&d.sleepMin>0)s.sleep.push(d.sleepMin);
+    if(typeof d.steps==='number'&&d.steps>0)s.steps.push(d.steps);
+  }
+  s.runMi=Math.round(s.runMi*10)/10;
+  const avg=function(a){ return a.length?Math.round(a.reduce(function(x,y){ return x+y; },0)/a.length):null; };
+  s.avgSleep=avg(s.sleep); s.avgSteps=avg(s.steps); delete s.sleep; delete s.steps;
+  return s;
+}
+/* the last 7 days against the 7 before, in a few plain lines (arithmetic, no AI) → [strings] */
+function healthWeekSay(days,today){
+  const a=healthWeekSum(days,today), b=healthWeekSum(days,healthYmdAdd(today,-7)), out=[];
+  const vs=function(x,y,unit,dec){ if(!y)return ''; const d=Math.round((x-y)*(dec?10:1))/(dec?10:1); return d===0?' (same as the week before)':' ('+Math.abs(d).toLocaleString('en-US')+(unit||'')+(d>0?' more':' less')+' than the week before)'; };
+  if(a.workouts||b.workouts)out.push(a.workouts+' workout'+(a.workouts===1?'':'s')+vs(a.workouts,b.workouts));
+  if(a.runMi||b.runMi)out.push('Ran '+a.runMi+' mi'+vs(a.runMi,b.runMi,' mi',true));
+  if(a.strength||b.strength)out.push(a.strength+' strength session'+(a.strength===1?'':'s')+vs(a.strength,b.strength));
+  if(a.kcal)out.push(a.kcal.toLocaleString('en-US')+' active calories'+(b.kcal?vs(a.kcal,b.kcal):''));
+  if(a.avgSteps!=null)out.push(a.avgSteps.toLocaleString('en-US')+' steps a day'+(b.avgSteps!=null?vs(a.avgSteps,b.avgSteps):''));
+  if(a.avgSleep!=null)out.push(healthFmtMin(a.avgSleep)+' of sleep a night'+(b.avgSleep!=null&&Math.abs(a.avgSleep-b.avgSleep)>=10?vs(a.avgSleep,b.avgSleep,' min'):''));
+  const now=healthLatest(days,'weightKg',today,7), then=healthLatest(days,'weightKg',healthYmdAdd(today,-7),14);
+  if(now&&then&&now.day!==then.day){ const d=Math.round((hLb(now.value)-hLb(then.value))*10)/10; out.push('Weight '+hLb(now.value)+' lb'+(d===0?', no change':' ('+(d>0?'up ':'down ')+Math.abs(d)+' lb)')); }
+  return out;
+}
+/* today's logged food against the Food plan → "Protein 142 / 170 g · Calories 1,850 / 2,100", or '' */
+function healthFoodSay(day,plan){
+  const f=day&&day.food; if(!f)return '';
+  const bits=[]; const n=function(v){ return Number(v).toLocaleString('en-US'); };
+  [['protein','Protein',' g'],['kcal','Calories',''],['carbs','Carbs',' g'],['fat','Fat',' g']].forEach(function(x){
+    if(f[x[0]]==null&&!(plan&&plan[x[0]]))return;
+    bits.push(x[1]+' '+n(f[x[0]]||0)+(plan&&plan[x[0]]?' / '+n(plan[x[0]]):'')+x[2]);
+  });
+  return bits.join(' · ');
+}
+/* how far along a training goal is, from what the phone recorded → {text, pct?}, or null when the phone has
+   nothing that measures it. A distance ("half marathon", "run 5 miles") against the longest run; a weight change
+   ("lose 10 pounds") against the weight when he set it; lifting, yoga, swims... by how often this week. */
+const HEALTH_RACES=[[/\bultra ?marathon\b/,50000],[/\bhalf ?-?marathon\b/,21097.5],[/\bmarathon\b/,42195],[/\b10 ?k\b/,10000],[/\b5 ?k\b/,5000]];
+function healthTraining(title,days,today,setYmd){
+  const s=String(title||'').toLowerCase();
+  const runs=function(){ return healthWorkouts(days,today,90).filter(function(w){ return w.type==='run'&&w.distM; }); };
+  let target=null;
+  HEALTH_RACES.some(function(r){ if(r[0].test(s)){ target=r[1]; return true; } return false; });
+  const md=s.match(/\b(?:run|jog)\b[^\d]{0,20}(\d+(?:\.\d+)?)\s*(mi|miles?|km|k)\b/);
+  if(!target&&md)target=/^mi/.test(md[2])?Number(md[1])*HEALTH_M_MI:Number(md[1])*1000;
+  if(target){
+    const best=runs().reduce(function(m,w){ return Math.max(m,w.distM); },0);
+    const pct=Math.min(100,Math.round(100*best/target));
+    return {text:best?'Longest run (90 days): '+hMi(best)+' of '+hMi(target)+' mi':'No runs with a distance yet',pct:pct};
+  }
+  const mw=s.match(/\b(lose|drop|gain|put on)\s+(\d+(?:\.\d+)?)\s*(lbs?|pounds?|kg|kilos?)\b/);
+  if(mw){
+    const goal=Number(mw[2])*(/^k/.test(mw[3])?KG_LB:1), losing=/lose|drop/.test(mw[1]);
+    const ks=Object.keys(days).filter(function(d){ return days[d].weightKg&&d<=today; }).sort();
+    if(!ks.length)return {text:'No weight readings yet (a scale or app that writes to your phone’s health store)'};
+    const start=ks.find(function(d){ return d>=(setYmd||ks[0]); })||ks[0], first=hLb(days[start].weightKg), now=hLb(days[ks[ks.length-1]].weightKg);
+    const moved=Math.round((losing?first-now:now-first)*10)/10;
+    return {text:(losing?'Down ':'Up ')+Math.max(0,moved)+' of '+goal+' lb (now '+now+' lb)',pct:Math.max(0,Math.min(100,Math.round(100*moved/goal)))};
+  }
+  const kinds=[[/\b(bench|squat|deadlift|lift|lifting|strength|press|pull ?-?ups?|chin ?-?ups?|push ?-?ups?|muscle|stronger|gym|powerlift)/,'strength','strength session'],
+    [/\b(run|running|jog)/,'run','run'],[/\byoga\b/,'yoga','yoga session'],[/\bswim/,'swim','swim'],[/\b(bike|cycling|ride)\b/,'bike','ride'],[/\bpilates\b/,'pilates','pilates session'],[/\bhike|hiking\b/,'hike','hike']];
+  const k=kinds.find(function(x){ return x[0].test(s); });
+  const a=healthWeekSum(days,today), b=healthWeekSum(days,healthYmdAdd(today,-7));
+  if(k){ const n=a.byType[k[1]]||0, p=b.byType[k[1]]||0; return {text:n+' '+k[2]+(n===1?'':'s')+' in the last 7 days, '+p+' the 7 before'}; }
+  if(/\b(work ?out|workouts?|in shape|fitter|cardio|exercise)\b/.test(s))return {text:a.workouts+' workout'+(a.workouts===1?'':'s')+' in the last 7 days, '+b.workouts+' the 7 before'};
+  return null;
+}
+const HEALTH_TYPE_WORD={run:'Run',walk:'Walk',hike:'Hike',bike:'Ride',swim:'Swim',strength:'Strength',yoga:'Yoga',pilates:'Pilates',hiit:'HIIT',cardio:'Cardio',row:'Row',stairs:'Stairs',dance:'Dance',sport:'Sport',other:'Workout'};
+// one workout as a line: "Run · 3.1 mi · 28m · 9:02 /mi · 310 kcal"
+function healthWorkoutSay(w){
+  const bits=[w.name&&w.type==='other'?w.name:HEALTH_TYPE_WORD[w.type]||'Workout'];
+  if(w.distM)bits.push(hMi(w.distM)+' mi');
+  bits.push(healthFmtMin(w.min));
+  if(w.distM&&(w.type==='run'||w.type==='walk'||w.type==='hike')&&w.min){
+    const sec=Math.round(w.min*60/(w.distM/HEALTH_M_MI)); // seconds a mile, rounded once so 9:59.98 reads 10:00
+    if(sec>180&&sec<2400)bits.push(Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0')+' /mi');
+  }
+  if(w.reps)bits.push((w.sets?w.sets+' sets, ':'')+w.reps+' reps');
+  if(w.kcal)bits.push(w.kcal+' kcal');
+  return bits.join(' · ');
+}
+
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={healthProfileOf:healthProfileOf,healthGoal:healthGoal,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
+  module.exports={healthProfileOf:healthProfileOf,healthGoal:healthGoal,healthFrom:healthFrom,healthFromAll:healthFromAll,healthGoalWords:healthGoalWords,isHealthWord:isHealthWord,healthMet:healthMet,healthSay:healthSay,normHealth:normHealth,
     healthMergeDocs:healthMergeDocs,healthDue:healthDue,healthCutoff:healthCutoff,
-    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay};
+    healthWeek:healthWeek,healthTarget:healthTarget,healthSleepWord:healthSleepWord,healthPct:healthPct,
+    macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay,macroPlanMerge:macroPlanMerge,
+    weightClean:weightClean,weightFromStore:weightFromStore,weightNewer:weightNewer,weightSay:weightSay,macroRowText:macroRowText,
+    healthDayClean:healthDayClean,healthLatest:healthLatest,healthSeries:healthSeries,healthWorkouts:healthWorkouts,healthWeekSum:healthWeekSum,
+    healthWeekSay:healthWeekSay,healthFoodSay:healthFoodSay,healthTraining:healthTraining,healthWorkoutSay:healthWorkoutSay};
 }
 
 /* ── the page: sync row, the phone's reads, ticking tasks off, Settings → Health, the Health tab ── */
@@ -210,6 +466,12 @@ function healthOn(){ try{ return localStorage.getItem(HEALTH_ON_KEY)==='1'; }cat
 function healthSetOn(v){ try{ if(v)localStorage.setItem(HEALTH_ON_KEY,'1'); else localStorage.removeItem(HEALTH_ON_KEY); }catch(e){} }
 const healthRun={last:0,busy:false,noRowUntil:0}; // noRowUntil: sync.js waits after the database refused the :health row
 
+// his weight on this device; the Health tab syncs it with the Food plan (healthWeightChanged)
+const WEIGHT_KEY='health.weight.v1';
+let healthWeightChanged=null, healthStatus=null; // healthStatus: the plugin's last status() (weight: may it read weight)
+function healthWeight(){ try{ return weightClean(JSON.parse(localStorage.getItem(WEIGHT_KEY)||'null')); }catch(e){ return null; } }
+function healthWeightKeep(w){ try{ if(w)localStorage.setItem(WEIGHT_KEY,JSON.stringify(w)); else localStorage.removeItem(WEIGHT_KEY); }catch(e){} }
+
 // the phone: today and the days before it from the health store into state.health, then tick off what's reached
 async function healthRead(days){
   const cap=healthCap(); if(!cap||!healthOn()||healthRun.busy)return false;
@@ -219,13 +481,14 @@ async function healthRead(days){
     const now=Date.now(); let changed=false;
     (r&&Array.isArray(r.days)?r.days:[]).forEach(function(d){
       if(!d||!/^\d{4}-\d{2}-\d{2}$/.test(d.date))return;
-      const prev=state.health.days[d.date]||{}, next={at:now};
-      Object.keys(HEALTH_FIELD).forEach(function(kind){ const f=HEALTH_FIELD[kind]; if(typeof d[f]==='number')next[f]=Math.round(d[f]); });
-      const same=Object.keys(HEALTH_FIELD).every(function(kind){ const f=HEALTH_FIELD[kind]; return prev[f]===next[f]; });
-      if(!same){ state.health.days[d.date]=next; changed=true; }
+      const prev=state.health.days[d.date]||{}, next=Object.assign({at:now},healthDayClean(d));
+      if(healthDayKey(prev)!==healthDayKey(next)){ state.health.days[d.date]=next; changed=true; }
     });
     healthRun.last=now;
     if(changed){ healthPrune(state.health); persist(); }
+    // a newer weigh-in than the one kept (or typed) becomes his weight
+    const w=weightFromStore(r&&r.weight,healthStoreName()), had=healthWeight();
+    if(w&&(!had||w.at>had.at)){ healthWeightKeep(w); if(healthWeightChanged)healthWeightChanged(); }
     if(!healthAutoCheck()&&state.activeTab==='health')renderHealth(); // a tick redraws through touch()
     healthDraw();
     return true;
@@ -235,6 +498,7 @@ async function healthRead(days){
 async function healthConnect(){
   const cap=healthCap(); if(!cap)return null;
   const s=await cap.nativePromise('Health','connect',{});
+  healthStatus=s;
   if(s&&(s.steps||s.exercise||s.sleep)){ healthSetOn(true); await healthRead(30); }
   else healthSetOn(false);
   return s;
@@ -249,7 +513,8 @@ function healthDraw(){
   if(typeof t.steps==='number')parts.push(t.steps.toLocaleString('en-US')+' steps');
   if(typeof t.exerciseMin==='number')parts.push(healthFmtMin(t.exerciseMin)+' exercise');
   if(typeof t.sleepMin==='number')parts.push(healthFmtMin(t.sleepMin)+' sleep');
-  box.textContent=parts.length?'Today so far: '+parts.join(' · ')+(t.at?' (read '+new Date(t.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+')':''):'';
+  const from=healthFromAll(t);
+  box.textContent=parts.length?'Today so far: '+parts.join(' · ')+(from.length?', from '+from.join(', '):'')+(t.at?' (read '+new Date(t.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+')':''):'';
 }
 
 if(typeof document!=='undefined')(function(){
@@ -282,7 +547,11 @@ if(typeof document!=='undefined')(function(){
     say((healthProfile()?'Reading steps, exercise and sleep. Your computer sees the daily totals, encrypted.':'Reading steps, exercise and sleep. They stay on this phone until sync is on.')+
       (healthIos()?' A number that stays blank wasn’t allowed: the Health app, Sharing, Apps, Romulus.':''));
   }
-  function refresh(){ cap.nativePromise('Health','status',{}).then(show).catch(function(){ show(null); }); }
+  function refresh(){ cap.nativePromise('Health','status',{}).then(function(s){
+    const flip=!!(healthStatus&&healthStatus.more)!==!!(s&&s.more); // the tab's "Allow workouts..." button comes or goes
+    healthStatus=s; show(s);
+    if(flip&&state.activeTab==='health')renderHealth();
+  }).catch(function(){ show(null); }); }
   on.addEventListener('change',async function(){
     const want=this.checked; this.disabled=true;
     try{
@@ -303,6 +572,7 @@ if(typeof document!=='undefined')(function(){
 
 /* the Health tab: today's numbers and the goals (from the phone's totals, synced to a computer), and the Food plan */
 let healthUi=null, healthSetPlan=null; // healthSetPlan: an Agent answer's `macros` → the Food plan (agent-results.js)
+let healthPlan=null; // healthPlan() → the Food plan as this device has it, or null (kitchen.js sizes meal ideas to it)
 function renderHealth(){ if(healthUi)healthUi.draw(); }
 
 if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getElementById('healthView')){
@@ -320,16 +590,22 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     const p=macrosProfile(); if(!p)return;
     try{
       const r=await syncPullRow(p); planSync.loadedAt=r.updatedAt; planSync.pulled=true;
-      let remote=null; try{ remote=macroPlanClean(JSON.parse(r.doc&&r.doc.text||'null')); }catch(e){}
+      let raw=null; try{ raw=JSON.parse(r.doc&&r.doc.text||'null'); }catch(e){}
+      const remote=macroPlanClean(raw);
       const ra=remote?remote.at:(r.doc?r.doc.clearedAt||0:0);
       if(ra>(plan?plan.at:0)&&!planEdit){ plan=remote; keepLocal(); }
+      // his weight: the newer of this device's and the synced one; push back when this device's is newer
+      const mine=healthWeight(), w=weightNewer(mine,raw&&raw.weight);
+      if(w&&(!mine||w.at>mine.at))healthWeightKeep(w);
+      if(w&&!(raw&&weightClean(raw.weight)&&weightClean(raw.weight).at>=w.at))setTimeout(function(){ pushPlan(); },0);
       planSync.msg='';
     }catch(e){ planSync.msg='not synced yet ('+e.message+')'; }
   };
   const pushPlan=async function(){
     const p=macrosProfile();
     if(!p){ planSync.msg='kept on this device: turn sync on so the Agent’s computer sees it'; return; }
-    const doc=plan?{v:1,text:JSON.stringify(plan)}:{v:1,text:'',clearedAt:Date.now()};
+    const text=macroRowText(plan,healthWeight());
+    const doc=plan?{v:1,text:text}:{v:1,text:text,clearedAt:Date.now()};
     try{
       for(let i=0;i<3;i++){
         if(!planSync.pulled||i){ const r=await syncPullRow(p); planSync.loadedAt=r.updatedAt; planSync.pulled=true; }
@@ -342,6 +618,52 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
   };
   const today=function(){ return healthYmd(new Date()); };
   const fmt=function(kind,v){ return typeof v!=='number'?'–':kind==='steps'?v.toLocaleString('en-US'):healthFmtMin(v); };
+  // the top: this week's exercise as a ring, and today's steps, exercise and last night's sleep as three pills
+  const NS='http://www.w3.org/2000/svg';
+  const svg=function(tag,attrs,parent){ const n=document.createElementNS(NS,tag); Object.keys(attrs).forEach(function(k){ n.setAttribute(k,attrs[k]); }); if(parent)parent.appendChild(n); return n; };
+  const ring=function(week,todayMin,target){
+    const pct=healthPct(week,target), card=el('div','health-tile health-ring-card');
+    card.appendChild(el('div','health-tile-k','This week'));
+    const box=el('div','health-ring');
+    box.setAttribute('role','img'); box.setAttribute('aria-label','Exercise this week: '+week+' of '+target+' minutes, '+pct+' percent');
+    const s=svg('svg',{viewBox:'0 0 120 120'},box), R=52, C=2*Math.PI*R;
+    svg('circle',{cx:60,cy:60,r:R,class:'health-ring-track'},s);
+    if(week>0)svg('circle',{cx:60,cy:60,r:R,class:'health-ring-arc','stroke-dasharray':(Math.min(1,week/(target||1))*C)+' '+C,transform:'rotate(-90 60 60)'},s);
+    const mid=el('div','health-ring-mid');
+    mid.appendChild(el('div','health-tile-v',pct+'%'));
+    mid.appendChild(el('div','health-tile-s',week+' of '+target+' min'));
+    box.appendChild(mid);
+    card.appendChild(box);
+    card.appendChild(el('div','health-tile-s health-ring-today',todayMin?'+'+todayMin+' min today':'Exercise since Monday'));
+    return card;
+  };
+  const pill=function(kind,label,value,sub,pct){
+    const c=el('div','health-tile health-pill');
+    const head=el('div','health-pill-head');
+    head.appendChild(el('div','health-tile-k',label));
+    if(sub)head.appendChild(el('div','health-tile-s',sub));
+    c.appendChild(head);
+    c.appendChild(el('div','health-tile-v',value));
+    if(pct!==null){ const bar=el('div','health-bar'), fill=el('div','health-fill'); fill.style.width=pct+'%'; bar.appendChild(fill); c.appendChild(bar); }
+    return c;
+  };
+  const drawTop=function(t){
+    const tk=today(), w=healthWeek(state.health.days,Date.now());
+    // a week's aim: 7 of his daily exercise goal, or the usual 150 minutes
+    const exDaily=healthTarget(state.tasks,'exercise',tk,0,taskWs), exGoal=exDaily||30;
+    const stepGoal=healthTarget(state.tasks,'steps',tk,10000,taskWs), sleepGoal=healthTarget(state.tasks,'sleep',tk,7*60,taskWs);
+    const top=el('div','health-top');
+    top.appendChild(ring(w.week,w.today,exDaily?exDaily*7:150));
+    const pills=el('div','health-pills');
+    const steps=t&&t.steps, ex=t&&t.exerciseMin, sl=t&&t.sleepMin;
+    // which apps wrote each number: the phone itself, a watch, Samsung Health, Garmin, Oura...
+    const from=function(p,kind,v){ const f=t&&t.from&&t.from[kind]; if(f&&f.length&&typeof v==='number'){ const x=el('div','health-tile-s',f.join(', ')); x.title='From '+f.join(', '); p.appendChild(x); } return p; };
+    pills.appendChild(from(pill('steps','Steps today',fmt('steps',steps),'of '+fmt('steps',stepGoal),healthPct(steps,stepGoal)),'steps',steps));
+    pills.appendChild(from(pill('exercise','Exercise today',fmt('exercise',ex),'of '+fmt('exercise',exGoal),healthPct(ex,exGoal)),'exercise',ex));
+    pills.appendChild(from(pill('sleep','Sleep last night',fmt('sleep',sl),healthSleepWord(sl,sleepGoal),healthPct(sl,sleepGoal)),'sleep',sl));
+    top.appendChild(pills);
+    return top;
+  };
   // today's numbers: on the phone with Connect or Manage above them; on a computer what the phone synced
   const drawNumbers=function(){
     const cap=healthCap(), t=state.health.days[today()]||null, wrap=el('div','health-numbers');
@@ -366,14 +688,29 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       else if(!healthOn())wrap.appendChild(el('p','settings-hint','Not connected. Once connected, the daily totals of steps, exercise and sleep reach your computer too, encrypted.'));
     }
     if(t||(cap&&healthOn())){
-      const tiles=el('div','health-tiles');
-      [['Steps today','steps',t&&t.steps],['Exercise today','exercise',t&&t.exerciseMin],['Sleep last night','sleep',t&&t.sleepMin]].forEach(function(x){
-        const c=el('div','health-tile');
-        c.appendChild(el('div','health-tile-k',x[0]));
-        c.appendChild(el('div','health-tile-v',fmt(x[1],x[2])));
-        tiles.appendChild(c);
-      });
-      wrap.appendChild(tiles);
+      wrap.appendChild(drawTop(t));
+      // the rest of the day, and the latest weight: only the ones the phone has something for
+      const days=state.health.days, tk=today(), extra=el('div','health-tiles health-tiles-more');
+      const wk=healthLatest(days,'weightKg',tk,30), wkept=healthWeight(), hr=healthLatest(days,'restHr',tk,7);
+      const tile=function(k,v,s){ const c=el('div','health-tile'); c.appendChild(el('div','health-tile-k',k)); c.appendChild(el('div','health-tile-v',v)); if(s)c.appendChild(el('div','health-tile-s',s)); extra.appendChild(c); };
+      const when=function(d){ return d===tk?'today':new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+      if(t&&t.activeKcal)tile('Active calories',t.activeKcal.toLocaleString('en-US'),'today');
+      if(t&&t.distM)tile('Distance today',hMi(t.distM)+' mi','walking, running, riding');
+      if(hr)tile('Resting heart rate',hr.value+' bpm',when(hr.day));
+      if(wk)tile('Weight',hLb(wk.value)+' lb',when(wk.day));
+      else if(wkept)tile('Weight',(wkept.lb%1?wkept.lb.toFixed(1):wkept.lb)+' lb',wkept.at?when(healthYmd(new Date(wkept.at))):'');
+      if(extra.childNodes.length)wrap.appendChild(extra);
+      // a phone that only allowed the first three: ask once more for the rest
+      if(cap&&healthOn()&&healthStatus&&healthStatus.more){
+        const more=el('button','ghost mono health-more','Allow workouts, weight, heart rate and food');
+        more.title='Opens '+healthStoreName()+'’s permission screen';
+        more.addEventListener('click',async function(){
+          more.disabled=true;
+          try{ await healthConnect(); }catch(e){ msg=(e&&e.message)||'didn’t work'; }
+          draw();
+        });
+        wrap.appendChild(more);
+      }
       // Apple Health never says which reads were allowed: a kind said no to simply comes back empty
       if(cap&&healthIos()&&(!t||typeof t.steps!=='number'||typeof t.exerciseMin!=='number'||typeof t.sleepMin!=='number'))
         wrap.appendChild(el('p','settings-hint','A blank number means nothing logged yet, or not allowed: the Health app, Sharing, Apps, Romulus.'));
@@ -422,20 +759,47 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       row.appendChild(f);
     });
     card.appendChild(row);
+    // his weight: typed here, or the phone's newest weigh-in; the Agent uses it for per-pound targets
+    const w=healthWeight(), wrow=el('div','health-plan-row health-weight-row');
+    const wf=el('label','health-plan-field');
+    wf.appendChild(el('span','health-tile-k','Weight'));
+    const winp=document.createElement('input'); winp.type='number'; winp.min='50'; winp.max='900'; winp.step='0.1'; winp.inputMode='decimal'; winp.placeholder='–';
+    winp.value=w?String(w.lb):''; winp.addEventListener('input',function(){ planEdit=true; });
+    wf.appendChild(winp); wf.appendChild(el('span','health-plan-unit','lb'));
+    wrow.appendChild(wf);
+    const wsay=el('span','settings-hint health-weight-say',w?weightSay(w)+'. The Agent uses it for targets like 1 g of protein per pound.':'Type it, or let your phone fill it in. The Agent uses it for targets like 1 g of protein per pound.');
+    wrow.appendChild(wsay);
+    // a phone that's connected but wasn't allowed to read weight (connected before weight was asked for)
+    const hcap=healthCap();
+    if(hcap&&healthOn()&&healthStatus&&healthStatus.available==='yes'&&!healthStatus.weight&&!healthStatus.more){ // `more` has its own button up top
+      const allow=el('button','ghost mono','Read it from '+healthStoreName());
+      allow.addEventListener('click',async function(){ allow.disabled=true; try{ await healthConnect(); }catch(e){} draw(); });
+      wrow.appendChild(allow);
+    }
+    card.appendChild(wrow);
     const say=el('p','settings-hint health-plan-say');
     say.textContent=plan?macroPlanSay(plan,today())+'. The Agent buys your groceries to add up to this, for you alone.'
       :'Set what you want to eat a day and the Agent buys groceries that add up to it (the 2-week order, or when you ask).';
     card.appendChild(say);
     if(plan&&plan.source)card.appendChild(el('p','settings-hint health-plan-src','Set by the Agent from “'+plan.source+'”. Change the numbers here, or ask it for changes on that task.'));
+    // what a food app logged today, against the plan
+    const ate=healthFoodSay(state.health.days[today()],plan);
+    if(ate)card.appendChild(el('p','health-plan-ate','Logged today: '+ate));
     const foot=el('div','health-plan-foot');
     const st=el('span','settings-hint health-plan-st',planSync.msg); foot.appendChild(st);
     const save=el('button','btn-accent','Save plan'); foot.appendChild(save);
     const stop=el('button','ghost mono','Stop'); stop.hidden=!plan; stop.title='Drop the plan: orders go back to your usual list'; foot.appendChild(stop);
     card.appendChild(foot);
     save.addEventListener('click',async function(){
+      // the weight he typed, when it differs from the kept one
+      const typed=winp.value.trim()?weightClean({lb:winp.value,at:Date.now(),from:'typed in'}):null;
+      if(winp.value.trim()&&!typed){ planSync.msg='that weight doesn’t look right (pounds)'; st.textContent=planSync.msg; return; }
+      const wNow=healthWeight(), wChanged=typed&&(!wNow||wNow.lb!==typed.lb);
+      if(wChanged)healthWeightKeep(typed);
       const next={span:spanSel.value,at:Date.now()};
       MACRO_KEYS.forEach(function(k){ next[k]=inputs[k].value; });
       const c=macroPlanClean(next);
+      if(!c&&wChanged){ planEdit=false; save.disabled=true; planSync.msg='saving…'; st.textContent=planSync.msg; await pushPlan(); draw(); return; }
       if(!c){ planSync.msg='give at least one number'; st.textContent=planSync.msg; return; }
       const t=today();
       c.from=plan&&plan.span===c.span&&plan.from&&macroPlanDaysLeft(plan,t)>0?plan.from:t; // the same span again keeps its dates
@@ -450,23 +814,111 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     });
     return card;
   };
+  // training goals the phone can't count ("Bench 225", "Run a half marathon"): to-dos tagged health, which is what
+  // saying one in the add box makes (tab-route.js). Each opens its to-do, where he ticks it off or changes it.
+  const drawTraining=function(){
+    const wrap=el('div','health-goals-sec');
+    const list=state.tasks.filter(function(t){ return !t.done&&taskWs(t)!=='agent'&&t.tag==='health'&&!healthGoal(t.title); })
+      .sort(function(a,b){ return String(a.due||'9999').localeCompare(String(b.due||'9999'))||(a.created||0)-(b.created||0); });
+    wrap.appendChild(el('h3','settings-subhead','Training'));
+    if(!list.length){ wrap.appendChild(el('p','settings-hint','Say or type a goal like “I want to bench 225 by March” or “I want to run a half marathon” and it lands here.')); return wrap; }
+    const ul=el('div','health-goals'), tk=today();
+    list.forEach(function(t){
+      const row=el('button','health-goal health-train');
+      row.type='button'; row.title='Open this to-do';
+      row.appendChild(el('span','health-goal-t',t.title));
+      row.appendChild(el('span','mono health-goal-v',t.due?(typeof dateInfo==='function'?dateInfo(t.due,t.dueTime).text:t.due):''));
+      // how far along, from what the phone recorded (healthTraining)
+      const p=healthTraining(t.title,state.health.days,tk,t.created?healthYmd(new Date(t.created)):null);
+      if(p){
+        row.appendChild(el('span','health-train-p',p.text));
+        if(typeof p.pct==='number'){ const bar=el('div','health-bar'), fill=el('div','health-fill'); fill.style.width=p.pct+'%'; bar.appendChild(fill); row.appendChild(bar); }
+      }
+      row.addEventListener('click',function(){ if(typeof openTaskById==='function')openTaskById(t.id); });
+      ul.appendChild(row);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  };
+  // the last 7 days against the 7 before: workouts, miles, calories, steps, sleep, weight (healthWeekSay)
+  const drawWeek=function(){
+    const lines=healthWeekSay(state.health.days,today());
+    if(!lines.length)return null;
+    const wrap=el('div','health-goals-sec');
+    wrap.appendChild(el('h3','settings-subhead','Last 7 days'));
+    const ul=el('ul','health-week'); lines.forEach(function(s){ ul.appendChild(el('li',null,s)); });
+    wrap.appendChild(ul);
+    return wrap;
+  };
+  // every workout from the last two weeks, whichever app or watch recorded it
+  const drawWorkouts=function(){
+    const list=healthWorkouts(state.health.days,today(),14);
+    const wrap=el('div','health-goals-sec');
+    wrap.appendChild(el('h3','settings-subhead','Workouts'));
+    if(!list.length){ wrap.appendChild(el('p','settings-hint','Workouts your watch or apps (Strava, Samsung Health, Hevy, Apple Watch...) record show up here on their own.')); return wrap; }
+    const ul=el('div','health-workouts');
+    list.slice(0,20).forEach(function(w){
+      const row=el('div','health-workout');
+      const d=new Date(w.day+'T12:00:00');
+      row.appendChild(el('span','mono health-workout-d',d.toLocaleDateString('en-US',{weekday:'short'})+' '+d.getDate()+(w.at?' · '+w.at:'')));
+      row.appendChild(el('span','health-workout-t',healthWorkoutSay(w)));
+      if(w.from)row.appendChild(el('span','health-workout-s',w.from));
+      ul.appendChild(row);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  };
+  // a small line for a number over time (weight, resting heart rate, sleep), in the accent color
+  const spark=function(series,fmtV){
+    const box=el('div','health-spark');
+    if(series.length<2){ box.appendChild(el('span','settings-hint',series.length?fmtV(series[0].value):'')); return box; }
+    const vals=series.map(function(x){ return x.value; }), lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals), W=240, H=44;
+    const pts=series.map(function(x,i){ return Math.round(i*W/(series.length-1))+','+Math.round(H-4-(hi===lo?0.5:(x.value-lo)/(hi-lo))*(H-8)); }).join(' ');
+    const s=svg('svg',{viewBox:'0 0 '+W+' '+H,preserveAspectRatio:'none',class:'health-spark-svg','aria-hidden':'true'},box);
+    svg('polyline',{points:pts},s);
+    box.appendChild(el('span','health-spark-r',fmtV(vals[0])+' → '+fmtV(vals[vals.length-1])+' · low '+fmtV(lo)+', high '+fmtV(hi)));
+    return box;
+  };
+  const drawTrends=function(){
+    const days=state.health.days, tk=today();
+    const wt=healthSeries(days,'weightKg',tk,60).map(function(x){ return {day:x.day,value:hLb(x.value)}; });
+    const hr=healthSeries(days,'restHr',tk,30), sl=healthSeries(days,'sleepMin',tk,30).filter(function(x){ return x.value>0; });
+    const st=healthSeries(days,'steps',tk,30).filter(function(x){ return x.value>0; });
+    if(!wt.length&&!hr.length&&sl.length<2&&st.length<2)return null;
+    const wrap=el('div','health-goals-sec');
+    wrap.appendChild(el('h3','settings-subhead','Trends'));
+    const row=function(label,s,f){ if(!s.length)return; const r=el('div','health-trend'); r.appendChild(el('span','health-tile-k',label)); r.appendChild(spark(s,f)); wrap.appendChild(r); };
+    row('Weight, 60 days',wt,function(v){ return v+' lb'; });
+    row('Resting heart rate, 30 days',hr,function(v){ return v+' bpm'; });
+    if(sl.length>=2)row('Sleep, 30 days',sl,healthFmtMin);
+    if(st.length>=2)row('Steps, 30 days',st,function(v){ return v.toLocaleString('en-US'); });
+    return wrap;
+  };
   const draw=function(){
     view.innerHTML='';
-    view.appendChild(drawNumbers());
-    view.appendChild(drawPlan());
-    view.appendChild(drawGoals());
+    const add=function(n){ if(n)view.appendChild(n); };
+    add(drawNumbers());
+    add(drawWeek());
+    add(drawGoals());
+    add(drawTraining());
+    add(drawWorkouts());
+    add(drawTrends());
+    add(drawPlan());
   };
-  // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today
+  // the Agent wrote a meal plan (agent/skills/meal-plan.md, `macros`): its targets become the plan, from today;
+  // with keep ("1 g of protein per pound") only those numbers change and the rest of the plan stays
   healthSetPlan=function(m,source){
-    const c=macroPlanClean(Object.assign({},m,{at:Date.now(),source:source||''}));
+    const c=macroPlanMerge(plan,Object.assign({},m,{source:source||''}),today());
     if(!c)return '';
-    c.from=today(); c.until=macroPlanUntil(c.span,c.from);
     plan=c; planEdit=false; keepLocal();
     pushPlan().then(function(){ if(state.activeTab==='health')draw(); });
     if(state.activeTab==='health')draw();
-    return macroPlanSay(c,c.from);
+    return macroPlanSay(c,today());
   };
   healthUi={draw:draw};
+  // the phone read a newer weigh-in: sync it, and show it unless he's mid-edit
+  healthWeightChanged=function(){ pushPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); };
+  healthPlan=function(){ return plan; };
   // the synced copy, once sync has started; and again each time the tab opens
   setTimeout(async function(){ await pullPlan(); if(state.activeTab==='health')draw(); },6000);
   $('tabHealth').addEventListener('click',function(){ if(planSync.pulled)pullPlan().then(function(){ if(state.activeTab==='health'&&!planEdit)draw(); }); });

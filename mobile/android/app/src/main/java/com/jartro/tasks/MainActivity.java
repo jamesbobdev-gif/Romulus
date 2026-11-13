@@ -32,6 +32,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CalAccountsPlugin.class); // Google / Microsoft calendar sign-in
         registerPlugin(FinanceVaultPlugin.class); // Finance: fingerprint lock, pairing scan, bank/price requests
         registerPlugin(HealthPlugin.class); // Health Connect: daily steps, workouts and sleep (read only)
+        registerPlugin(AiKeysPlugin.class); // his AI keys from the computer's QR code, for Kitchen photos
         super.onCreate(savedInstanceState);
         handle(getIntent());
     }

@@ -69,7 +69,8 @@ The EBT rules below are for when he pays with EBT/SNAP.
   6. "Brands?" Store brand to save money, Name brands, Mix [Store brand]
   7. "If something's out of stock?" Closest match, Ask me, Skip it [Closest match]
   The food questions (they set his Food plan on the Health tab). Leave all three out when the task
-  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age:
+  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age
+  (with a `bodyWeight`, the task's weight from the Health tab, 9 asks only height and age):
   8. "Shop for a food goal? It sets your Food plan on the Health tab." one of: "Lose fat", "Keep my
      weight", "Build muscle", "Just eat better", "No plan, just groceries" [Just eat better]
   9. "Your height, weight and age? (and sex, for the numbers)" `choices: []`, one line, any units.
@@ -247,6 +248,15 @@ The EBT rules below are for when he pays with EBT/SNAP.
   EBT PIN and tap Place order. Open Walmart ↗ (the cart is also in the Walmart app on your
   phone)." Leave the cart as it is, and send `list.bought` for its list items, since he's finishing
   the order himself.
+- **Payment declined:** if the order button brings back a payment error instead of an order number
+  ("couldn't process your payment", "payment declined", "try another payment method"), the order was
+  not placed. Never press the order button again, and don't change the payment split, the card or
+  the cart to get past it. Stop: `needs-you`, and don't send `list.bought`. Say the order didn't go
+  through and he wasn't charged, give the split the page showed ("$X.XX EBT, $Y.YY card"), and the
+  usual causes for him to check: the EBT balance is less than the EBT part (he can lower it next to
+  Benefits), the EBT PIN pop-up was mistyped or timed out (too many wrong PINs can lock the card for
+  the day), his bank blocked the card part, or the store's EBT system is having a moment (wait 10-15
+  minutes or finish in the store's app). End with the store link; the cart is still there.
 
 ## Orders he placed himself
 He sometimes orders on the store's own site or app instead of saying yes here. What he got still
@@ -269,8 +279,12 @@ from `list.bought` or a placed cart). Never say food went into his pantry unless
   for orders since `lastOrder` that aren't in `knownOrders`. One look per store, from one page; skip a
   store whose orders page wants a sign-in.
 Send each order you find in `ordered`: the store ("Aldi (Instacart)"), its order number, the day it was
-placed, the total, and its items from the order's own page (name with brand and size, qty, price,
-picture, product link, and `food`: true for what he eats or drinks). Only orders that went through or
+placed, the total, and its items from the order's own page (name with brand, then the size after a
+comma the way a cart item has it: "Bananas, 10.2 lb", "Hass Avocados Bag, 4 ct"; qty when he got more
+than one; price; `image`: the address of that item's own picture on that page (the picture in the same row as its
+name, not the row above or below; leave it out when you can't tell, the app takes it from `url`); `url`: its product link when
+the item has one; and `food`: true for what he eats or drinks). Every item needs its size and its
+picture: the pantry shows both. Only orders that went through or
 were delivered; a cancelled one stays out. Also send `list.bought` for his list items in it. If the
 order is the cart this task was holding, the task is done: status done, and say in the note how many
 items went into his pantry.

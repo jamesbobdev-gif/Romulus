@@ -12,7 +12,7 @@ const providers = require('./providers');
 const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
-const { routeTask, isClaudeLane, decided } = require('./routing');
+const { routeTask, routeInfo, isClaudeLane, decided } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog, offline } = require('./helpers');
@@ -22,7 +22,7 @@ const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks } = require('./task-context');
+  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -51,7 +51,7 @@ const agentLog = (m) => ctx.agentLog(m);
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
 
 const AGENT_GRACE_MS = 8 * 1000;        // let a burst of edits settle first
-const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, foodBrief } = require('./grocery');
+const { groceryBrief, groceryChanges, groceryListFor, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, foodBrief, weightBrief } = require('./grocery');
 const mailSend = require('./mail-send');
 const triggers = require('./triggers');
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000; // a stuck run is killed (browser tasks take a while)
@@ -228,13 +228,18 @@ async function startAgentRun() {
     if (ebt) agentLog('ebt: balance handed over');
   }
   // his macro plan (the Health tab's Food plan) for grocery runs: the order is built to add up to it
-  let macros;
-  if (tasks.some((t) => isGroceryRun(t, allTasks))) {
-    try { macros = macroBrief(await agentRow(':macros')); } catch (e) {}
+  // and for meal-plan tasks, so "1 g of protein per pound" changes that number and keeps the rest
+  const allSkills = loadSkills();
+  const mealSkill = allSkills.find((s) => s.name === 'meal-plan');
+  const isMealRun = (t) => !!(mealSkill && mealSkill.match && t && t.ws === 'agent' && mealSkill.match.test(String(t.title || '')));
+  // and his weight (Health tab, same row), so a per-pound target is worked out without asking him
+  let macros, weight;
+  if (tasks.some((t) => isGroceryRun(t, allTasks) || isMealRun(t))) {
+    try { const row = await agentRow(':macros'); macros = macroBrief(row); weight = weightBrief(row); } catch (e) {}
     if (macros) agentLog('macros: plan handed over');
+    if (weight) agentLog('weight: handed over');
   }
   // where he is now, for near-me tasks (theaters, stores, restaurants, groceries): closest first
-  const allSkills = loadSkills();
   const nearMe = tasks.filter((t) => wantsNearby(t, allSkills)).map((t) => t.id);
   const here = nearMe.length ? await where.hereNow().catch(() => null) : null;
   if (nearMe.length) agentLog(here ? 'location: handed over (±' + (here.accuracyM || '?') + ' m)' : 'location: unavailable (Windows location off?)');
@@ -256,7 +261,8 @@ async function startAgentRun() {
     knownOrders: isGroceryRun(t, allTasks) || t.cartCheck || t.orderLook || asksPantryFill(t) ? knownOrders(allTasks) : undefined,
     whatHeEats: foodBrief(t, allTasks, kitchen), // food tasks: his usual groceries, pantry and recipes (the Kitchen tab)
     ebtBalance: isGroceryRun(t, allTasks) ? ebt : undefined, // about what's left on his EBT card, and the next deposit
-    macroPlan: isGroceryRun(t, allTasks) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them
+    bodyWeight: isGroceryRun(t, allTasks) || isMealRun(t) ? weight : undefined, // his weight (Health tab): typed there, or his phone's newest weigh-in
+    macroPlan: isGroceryRun(t, allTasks) || isMealRun(t) ? macros : undefined, // his per-day macro targets (Health tab → Food plan): the order fits them; a meal-plan change starts from them
     // the task's back-and-forth so far (oldest first), so Claude remembers earlier answers and picks
     // the local model's own notes stay out: they can carry what it filled from the Locked profile or read in Finance
     conversation: Array.isArray(t.history) ? t.history.slice(-20).map((h) => ({ from: h.who,
@@ -304,7 +310,8 @@ async function startAgentRun() {
   const browses = (id) => !!browserCfg && (!providers.COMPAT[id] || providers.settings(readConfig())[id + 'Browser']);
 
   // why each newly routed task went to Claude (shown on the task)
-  sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+  sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
+    types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'claude')])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });
   // his Link wallet, for a store with no saved card (agent/link-wallet.js): where the launcher finds it, and what Claude is told
@@ -499,12 +506,11 @@ async function startAgentRun() {
         : (await Promise.all(u.options.slice(0, 10).map((o) => enrichOption(o)))).filter(Boolean)) : [];
     u.options = opts.length ? opts : null;
     // every card in the order gets a real product photo: one it didn't send comes from the item's page
-    // (and so does each other size/brand on its menu)
+    // (and so does each other size/brand on its menu, and each item of an order he placed himself, so the
+    // pantry gets its picture)
     // a few at a time: each may open a hidden window, and 80 at once is a lot for one computer (or many users of one hub)
-    if (u.cart || u.cards) {
-      const need = (u.cart || []).concat(...(u.cart || []).map((it) => it.options || []), u.cards || []).filter((it) => !it.image && it.url).slice(0, 80);
-      await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
-    }
+    const need = missingPictures(u);
+    await Promise.all(Array.from({ length: 6 }, async () => { let it; while ((it = need.shift())) { const img = await pagePreviewImage(it.url).catch(() => null); if (img) it.image = img; } }));
   }
   agentLog('answered ' + valid.length + ', missing ' + pending.length);
   if (valid.length) sendToRenderer('agent:results', valid);

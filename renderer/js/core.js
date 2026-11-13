@@ -73,6 +73,7 @@ const I={
   bot:  '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="1.8" y="3.8" width="8.4" height="6.4" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M6 1.4v2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="4.4" cy="7" r=".9" fill="currentColor"/><circle cx="7.6" cy="7" r=".9" fill="currentColor"/></svg>',
   mic:  '<svg width="13" height="13" viewBox="0 0 12 12" fill="none"><rect x="4.1" y="1" width="3.8" height="6.4" rx="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M2.4 5.8a3.6 3.6 0 0 0 7.2 0M6 9.4V11M4.2 11h3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   stop: '<svg width="11" height="11" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.2" fill="currentColor"/></svg>',
+  camera:'<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.2 4.2c0-.6.4-1 1-1h1.5l.9-1.3h2.8l.9 1.3h1.5c.6 0 1 .4 1 1v4.9c0 .6-.4 1-1 1H2.2c-.6 0-1-.4-1-1V4.2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="6" cy="6.5" r="1.8" stroke="currentColor" stroke-width="1.2"/></svg>',
   human:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="3.8" r="2.1" stroke="currentColor" stroke-width="1.3"/><path d="M2 10.8c.5-2.1 2.1-3.3 4-3.3s3.5 1.2 4 3.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
 };
 

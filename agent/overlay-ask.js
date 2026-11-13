@@ -108,7 +108,7 @@ async function callOne(step, cfg, { text, image, maxTokens }, deps) {
 
 /* {question, image: {mime, b64} | null, history, lane} → {text, via} or {why}
    deps: {fetch, order: the cloud AIs in his order, notReady: ids turned on but not connected, local: {url, model} | null, claudeCli(text, image) → text} */
-async function ask(cfg, { question, image, history, lane }, deps) {
+async function ask(cfg, { question, image, history, lane, maxTokens }, deps) {
   const steps = plan(cfg, { lane, order: deps.order, local: deps.local, image });
   if (!steps.length) {
     return { why: lane === 'local' ? 'Lupa isn’t set up on this computer (Settings → Local model).'
@@ -118,7 +118,7 @@ async function ask(cfg, { question, image, history, lane }, deps) {
   const text = promptText(question, history), tried = [];
   for (const step of steps) {
     try {
-      const out = String(await callOne(step, cfg, { text, image }, deps) || '').trim();
+      const out = String(await callOne(step, cfg, { text, image, maxTokens }, deps) || '').trim();
       if (out) return { text: out, via: step.id === 'local' ? 'Lupa' : providers.NAMES[step.id] || step.id };
       tried.push((providers.NAMES[step.id] || step.id) + ': no answer');
     } catch (e) {

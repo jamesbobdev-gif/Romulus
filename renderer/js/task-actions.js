@@ -51,6 +51,29 @@ function setLegion(on){
   legionOn=!!on; const b=$('legionBtn'); b.classList.toggle('on',legionOn); b.setAttribute('aria-pressed',String(legionOn));
   if(state.activeTab==='agent')$('newTitle').placeholder=legionOn?'What should the legion research?':'Add a task for the Agent…';
 }
+/* "You asked this on Tuesday": the notice under the add box when the new task is one he already has
+   (same-ask.js findSameAsk). Open it goes to the old one; Add anyway puts back what he typed and adds it */
+let sameAskForce=false, sameAskHeld=null;
+function hideSameAsk(){ const b=$('sameAsk'); if(b)b.hidden=true; sameAskHeld=null; }
+function showSameAsk(old,held){
+  const b=$('sameAsk'); if(!b)return;
+  sameAskHeld={id:old.id,held:held};
+  const when=sameWhen(old.done&&old.doneAt?old.doneAt:old.created);
+  $('sameAskText').textContent=(old.done?'You did this '+when+': ':'You already asked this '+when+': ')+'“'+old.title+'”. Go to that one?';
+  b.hidden=false;
+  if(wakeLive)wakeBubble('done','You already have “'+old.title+'”. Open it, or add this anyway.');
+}
+function sameAskOpen(){
+  const h=sameAskHeld; if(!h)return;
+  hideSameAsk(); $('newTitle').value=''; openTaskById(h.id);
+}
+async function sameAskAddAnyway(){
+  const h=sameAskHeld; if(!h)return;
+  const v=h.held;
+  $('newTitle').value=v.title; $('newDue').value=v.due||''; $('newTime').value=v.time||''; $('newTime').disabled=!v.due; $('newTag').value=v.tag||'';
+  if(v.legion&&state.activeTab==='agent')setLegion(true);
+  sameAskForce=true; await addTask();
+}
 async function addTask(){
   if(addingTask)return;
   const titleEl=$('newTitle'); let title=titleEl.value.trim();
@@ -61,6 +84,9 @@ async function addTask(){
   if(!title){ titleEl.value=''; titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
   if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')+(g.pantry.length?'. Taken out of the pantry':'')); return; } }
+  // said something about his health or his kitchen ("I want to walk 10k steps a day", "I have 2 lb of chicken"):
+  // it changes that tab instead of becoming a to-do (tab-route.js); a training goal keeps the date box's date
+  if(!withPhotos&&typeof tabRouteTry==='function'&&tabRouteTry(title,$('newDue').value||null)){ titleEl.value=''; buzz('add'); return 'routed'; }
   let photoUrls=[], photoFiles=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
@@ -88,6 +114,12 @@ async function addTask(){
   if(recur&&!$('newDue').value&&(recur.onDay||!due))due=recur.due;
   // typed "@Sam": it goes to Sam in the group, waiting on their To do tab, not onto my list (family.js)
   if(ws!=='agent'&&!photoUrls.length&&!recur&&typeof famSendTyped==='function'&&famSendTyped(title,due)){ titleEl.value=''; $('newDue').value=''; buzz('send'); titleEl.focus(); return; }
+  // asked this already this week ("can I get groceries" when "Get groceries" is on the list): offer that one (same-ask.js)
+  const force=sameAskForce; sameAskForce=false; hideSameAsk();
+  if(!force&&!photoUrls.length){
+    const old=findSameAsk(state.tasks,{title:title,ws:ws,due:due});
+    if(old){ showSameAsk(old,{title:titleEl.value,due:$('newDue').value,time:$('newTime').value,tag:$('newTag').value,legion:legionOn}); return 'same'; }
+  }
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
   if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
   // "legion I need to…" / "Deep research: …" typed as the first words: the same as the Legion button (agent/legion.js LEAD_IN)
@@ -363,8 +395,10 @@ async function voiceAdd(smart){
     // fill the boxes like you'd typed it, add, then put the sticky date/time back how they were
     const dueEl=$('newDue'), timeEl=$('newTime'), oldDue=dueEl.value, oldTime=timeEl.value;
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
-    await addTask();
+    const res=await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
+    if(res==='routed')return; // it went to the Health or Kitchen tab, which already said so (tab-route.js)
+    if(res==='same'){ voiceToast('You already have that one. Open it, or add it anyway, just under the add box.'); return; }
     voiceToast(cmd.raw?'Sent to the Agent: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+(cmd.learned?' (like your past ones)':'')+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);

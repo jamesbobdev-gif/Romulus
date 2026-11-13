@@ -4,6 +4,10 @@
 
 /* ── wiring ── */
 $('addBtn').addEventListener('click',addTask);
+// "You already asked this": go to that task, or add the new one anyway; typing something else drops the notice
+$('sameAskOpen').addEventListener('click',sameAskOpen);
+$('sameAskAdd').addEventListener('click',sameAskAddAnyway);
+$('newTitle').addEventListener('input',function(){ if(sameAskHeld&&this.value!==sameAskHeld.held.title)hideSameAsk(); });
 if(window.desktop&&window.desktop.openAgentBrowser){
   $('agentBrowserSection').hidden=false;
   // it has no window of its own (headless): open it in the live view, which starts it if needed
@@ -103,7 +107,7 @@ if(window.desktop&&window.desktop.aiStatus){
     usageDraw();
     // the Agent tab's "Pick an AI" card and nudge (welcome.js) follow this
     const readyNow=!!(ai&&ai.ready);
-    if(window.agentAiReady!==readyNow){ window.agentAiReady=readyNow; if(typeof render==='function')render(); }
+    if(window.agentAiReady!==readyNow){ window.agentAiReady=readyNow; if(typeof render==='function')render(); if(typeof drawSetupList==='function')drawSetupList(); }
     const list=$('aiList'); list.innerHTML='';
     ai.order.forEach(function(p,i){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
@@ -376,15 +380,15 @@ if(window.desktop&&window.desktop.aiStatus){
       } else if(ai[id]&&ai[id].compat){
         const o=u[id];
         if(!ai[id].hasKey){ row(ai.names[id],null,'no key yet'); return; }
-        row(ai.names[id],null,o?o.calls+' calls · '+o.tokensText+' tokens this month (free tier)':'0 calls this month (free tier)');
-      } else if(id==='openrouter'){
-        const o=u.openrouter;
-        if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
         const rt=o&&o.rate; // Groq's own count of requests left today
         if(rt){
           if(o.out){ row(ai.names[id],1,'out until '+(o.out===true?'it resets':fmtWhen(o.out)),true); return; }
           row(ai.names[id],o.pct,rt.left+' of '+rt.limit+' requests left today'+(rt.resetsAt&&rt.left<rt.limit?' · full again '+fmtWhen(rt.resetsAt):''));
           return; }
+        row(ai.names[id],null,o?o.calls+' calls · '+o.tokensText+' tokens this month (free tier)':'0 calls this month (free tier)');
+      } else if(id==='openrouter'){
+        const o=u.openrouter;
+        if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
         if(!o){ row('OpenRouter',null,'…'); return; }
         const cr=o.credit;
         row('OpenRouter',o.pct,cr?'$'+Number(cr.usage||0).toFixed(2)+(cr.limit?' of $'+cr.limit:' used · no limit set'):o.calls+' calls this month');
@@ -484,6 +488,34 @@ function importClassItems(items){
   try{ localStorage.setItem(SWEEP_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
   if(added||moved||labeled)touch();
   return {added:added,moved:moved,labeled:labeled};
+}
+/* Work the sweep saw turned in on the class site ("1 / 1" attempts, Submitted): its open School item is checked
+   off, and an Agent task made from it. Same class (or none), same name give or take, within a day when both
+   have dates. Each is checked off once: if he opens it again, a later sweep leaves it alone. */
+const SWEEP_DONE_KEY='tasks.sweepDone';
+// the kind of work a title names: a quiz is never its homework twin ("Quiz: Star Life and Death" / "Homework: …")
+function workKind(s){ const m=String(s||'').toLowerCase().match(/\b(quiz|homework|hw|test|exam|midterm|final|discussion|reply|assignment|worksheet|lab|project|essay|paper)\b/); return m?(m[1]==='hw'?'homework':m[1]):null; }
+function markClassDone(items){
+  if(!Array.isArray(items)||!items.length)return {checked:0,titles:[]};
+  let already={}; try{ already=JSON.parse(localStorage.getItem(SWEEP_DONE_KEY)||'{}')||{}; }catch(e){}
+  const checked=[];
+  items.forEach(function(e){
+    if(!e||!e.course||!e.title)return;
+    const t=state.tasks.find(function(x){
+      if(x.done||already[x.id])return false;
+      if(x.ws!=='school'&&!(taskWs(x)==='agent'&&x.fromWs==='school'))return false;
+      if(x.tag&&x.tag!==e.course)return false;
+      if(e.due&&x.due&&Math.abs((new Date(x.due+'T12:00')-new Date(e.due+'T12:00'))/864e5)>1)return false;
+      const a=workKind(x.title), b=workKind(e.title);
+      if(a&&b&&a!==b)return false;
+      return sameAssignment(x.title,e.title);
+    });
+    if(!t)return;
+    already[t.id]=Date.now(); setDone(t,true); checked.push((t.tag?t.tag+': ':'')+t.title);
+  });
+  try{ localStorage.setItem(SWEEP_DONE_KEY,JSON.stringify(already)); }catch(e){}
+  if(checked.length)touch();
+  return {checked:checked.length,titles:checked};
 }
 /* the sweep's task: one, made once on a computer with a course calendar and a local model (the same id
    everywhere, so two computers don't make two). Every Sunday morning; delete it and it stays gone */
@@ -777,9 +809,9 @@ $('tabWork').addEventListener('click',function(){ switchTab('work'); });
 $('tabFamily').addEventListener('click',function(){ switchTab('family'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
+$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
 $('tabHealth').addEventListener('click',function(){ switchTab('health'); });
-$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });

@@ -37,7 +37,7 @@ store.load().then(async function(data){
       if(Array.isArray(t.images)&&t.images.length)out.images=t.images.slice(0,12); // context screenshots on a task
       if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; if(t.site)out.site=String(t.site); } // the school site it came from (agent/course-sites.js)
       if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; if(t.site)out.site=String(t.site); /* a "chapter 8" task's class site (agent-results.js applyPinned), kept for Move back to School */ if(Array.isArray(t.list)&&t.list.length)out.list=normList(t.list); }
-      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; if(t.runFrom&&(out.status==='working'||out.status==='queued'))out.runFrom=t.runFrom; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true; if(t.parked&&out.status==='needs-you')out.parked=true;
+      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; if(t.runFrom&&(out.status==='working'||out.status==='queued'))out.runFrom=t.runFrom; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; /* "Who should do this one?" is gone (every task is routed): one left waiting on it goes back in line */ if(t.routeAsk&&!t.lane&&out.status==='needs-you'){ out.status='queued'; out.note=null; } if(t.parked&&out.status==='needs-you')out.parked=true;
         if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object'){ out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')}; if(t.stuck.verify)out.stuck.verify=true; }
         if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
         if(out.status==='suggested'&&(t.suggest==='look-ahead'||t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'))out.suggest=t.suggest; // a card on the Human tab (lists.js drawSuggestions)
@@ -66,7 +66,7 @@ store.load().then(async function(data){
         if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
-        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
+        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(t.routedLane==='claude'||t.routedLane==='local')out.routedLane=t.routedLane; if(typeof t.taskType==='string'&&t.taskType)out.taskType=t.taskType.slice(0,40); if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
         // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
         // only its own runs, or one nobody has touched for 3 hours: a computer opening at 19:53 put the mini PC's six running tasks back to queued
@@ -82,6 +82,8 @@ store.load().then(async function(data){
   rebuildSnap();
   if(spawnMissedRecurs())persist();
   if(sweepSchool())persist(); // assignments two days past their deadline come off (school-overdue.js)
+  // a first launch shows To do, Agent and Notes only; a tasks file with work in it means this install isn't new (tab-picker.js)
+  if(typeof tabsKeepAllIfExisting==='function')tabsKeepAllIfExisting(state.tasks.length>0||(state.ideas.cards||[]).length>0||(state.hours.entries||[]).length>0);
   if(state.activeTab==='list')render(); else switchTab(state.activeTab); // To do, unless it's switched off in Settings > Tabs (tab-picker.js)
   reviewBannerCheck(); // January and February: last year's review (year-review-view.js)
   holoBackToSchool(); // undo the School → Holo auto-move

@@ -310,16 +310,17 @@ function start() {
 function stop() { try { globalShortcut.unregisterAll(); } catch (e) {} if (overlay && !overlay.isDestroyed()) overlay.destroy(); }
 
 /* a picture he picked (an EBT receipt for main/finance.js finance:ebtReceipt) and one question about it: Lupa first
-   when it's set up, so the picture stays home, then his cloud AIs in his order. → {text, via} or {why} */
-async function readPicture(question, image) {
+   when it's set up, so the picture stays home, then his cloud AIs in his order. → {text, via} or {why}
+   maxTokens: room for a longer answer (the Kitchen tab's week plan) */
+async function readPicture(question, image, maxTokens) {
   const cfg = ctx.readConfig(), local = localModel();
   const deps = {
     fetch, order: ai.cloudOrder(), local,
     notReady: providers.settings(cfg).order.filter((o) => o.on && !ai.cloudReady(o.id)).map((o) => o.id),
     claudeCli: overlayAsk.claudeCliRunner({ spawn, exe: claudeExe(cfg), env: claudeEnv(cfg), dir: path.join(ctx.userData(), 'screen-helper'), model: (cfg.ai || {}).claudeModel }),
   };
-  let r = local ? await overlayAsk.ask(cfg, { question, image, lane: 'local' }, deps) : null;
-  if (!r || !r.text) r = await overlayAsk.ask(cfg, { question, image, lane: 'cloud' }, deps);
+  let r = local ? await overlayAsk.ask(cfg, { question, image, lane: 'local', maxTokens }, deps) : null;
+  if (!r || !r.text) r = await overlayAsk.ask(cfg, { question, image, lane: 'cloud', maxTokens }, deps);
   return r;
 }
 

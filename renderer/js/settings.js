@@ -211,7 +211,7 @@ async function routingLoad(){
   if(!d||!Array.isArray(d.rules))d=ROUTING_START;
   $('routingRules').innerHTML=''; d.rules.forEach(function(r){ $('routingRules').appendChild(routingRow(r)); });
   // before auto existed (v1) 'ask' was just the starting value: show auto, as the desktop app now uses
-  $('routingDefault').value=['claude','local','ask'].indexOf(d.default)!==-1&&(d.v>=2||d.default!=='ask')?d.default:'auto';
+  $('routingDefault').value=d.default==='claude'||d.default==='local'?d.default:'auto'; // 'ask' is gone: every task is routed
   $('routingSites').value=(Array.isArray(d.sites)?d.sites:[]).join('\n');
   $('routingPrivate').value=typeof d.private==='string'?d.private:PRIVATE_START;
   $('routingStatus').textContent='';
