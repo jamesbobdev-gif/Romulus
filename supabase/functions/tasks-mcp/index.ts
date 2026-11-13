@@ -371,7 +371,7 @@ async function callTool(name: string, a: any): Promise<string> {
       const which = a.list ? checkList(a.list, true) : "all";
       const lists = which === "all" ? LIST_NAMES : [which];
       const before = checkDate(a.due_on_or_before);
-      const q = a.search ? String(a.search).toLowerCase() : "";
+      const q = a.search ? String(a.search).toLowerCase().slice(0, 200) : "";
       const out: string[] = [];
       for (const l of lists) {
         let ts = (await load(l)).doc.tasks;
@@ -421,7 +421,7 @@ async function callTool(name: string, a: any): Promise<string> {
           t.dueTime = checkTime(a.due_time);
           if (t.dueTime && !t.due) throw new UserError("due_time needs a due date");
         }
-        if ("tag" in a) t.tag = a.tag ? String(a.tag).trim() : null;
+        if ("tag" in a) t.tag = a.tag ? String(a.tag).trim().slice(0, 80) : null;
         if (("status" in a || "note" in a) && list !== "agent") {
           throw new UserError("status and note only exist on the agent list");
         }
@@ -430,7 +430,7 @@ async function callTool(name: string, a: any): Promise<string> {
           t.status = a.status;
           t.done = a.status === "done";
         }
-        if ("note" in a) t.note = a.note ? String(a.note) : null;
+        if ("note" in a) t.note = a.note ? String(a.note).slice(0, 4000) : null; // bounded like add_task: past sync_put's 4 MB the apps could never save again
         if ("done" in a) {
           t.done = !!a.done;
           // mirrors the app: ticking an agent task closes it, reopening re-queues it
