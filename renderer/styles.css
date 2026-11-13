@@ -61,6 +61,20 @@ h1{font-size:28px;font-weight:600;letter-spacing:-.025em;margin:0}
 .welcome-choices .ghost:hover{background:var(--accent);color:#fff}
 .connect-card.welcome>.welcome-choices:last-child{margin-bottom:0}
 .welcome-foot{font-size:12px;margin:12px 0 0 !important;color:var(--faint)}
+/* first launch: Gmail and Google Calendar, a sign-in under each logo (google-first.js) */
+.google-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:0 0 4px}
+.google-tile{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:18px 14px 16px;border:1px solid var(--hairline);border-radius:12px;background:var(--surface)}
+.google-tile[hidden]{display:none}
+.google-tile.done{border-color:var(--accent)}
+.google-tile .google-logo{width:56px;height:46px;margin-bottom:4px}
+.connect-card.welcome .google-tile b{font-size:14.5px;margin:0}
+.google-tile span[data-note]{font-size:12.5px;color:var(--muted);line-height:1.45;min-height:36px}
+.google-tile .btn-accent{margin:4px 0 0}
+.google-tile .google-done{font-size:12.5px;font-weight:600;color:var(--accent);margin-top:6px}
+.google-first .connect-err:empty{display:none}
+.google-first-foot{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;margin-top:12px;font-size:12px;color:var(--faint)}
+.google-first-foot .btn-accent{margin:0}
+.google-first-foot a{color:var(--accent);cursor:pointer}
 /* bringing tasks over (task-import.js) */
 .import-card.drop{border-color:var(--accent);border-style:solid}
 .import-sources{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}

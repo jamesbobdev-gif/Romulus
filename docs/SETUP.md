@@ -120,6 +120,8 @@ The Android app is `Romulus-<version>.apk` on the [releases page](https://github
 
 Then choose, per calendar, whether its events become to-dos and whether your tasks appear on it.
 
+The first thing a new install shows is a card to connect Gmail and Google Calendar, with a **Sign in with Google** button under each logo: one sign-in covers both, and Gmail's button asks for the mail permissions too. **Skip for now** puts the card away; everything below does the same from Settings.
+
 **Agent tasks that start on their own.** Open an Agent task and set **Starts when**: *an email arrives about…* (needs Gmail ticked on the Google sign-in), *hours before a calendar event…*, or *a web page says…* (a public page the app can fetch; shops that block plain fetches won't work). The task shows as *watching* and runs when it happens, with what set it off in its conversation. The computer that runs the Agent does the looking, every few minutes; a page is fetched every six hours.
 
 **Steps it stops asking about.** Reply “always” or “don’t ask next time” when the Agent checks before an ordinary step (logging in, building a cart, opening a seat map) and it offers to remember that; press **Allow**. The list is in **⚙ Settings → The Agent → Doesn’t ask again**, where you can add or remove lines. Buying, paying, sending, submitting and booking can’t go on it: those always wait for your yes.

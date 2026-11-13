@@ -161,6 +161,7 @@
       return { ready: true, order: [{ id: 'claude', on: true }], names: { claude: 'Claude' }, used: {},
         claude: { installed: true, ready: true, email: 'you@example.com', plan: 'Pro' }, gemini: { hasKey: false }, openai: { via: 'key', hasKey: false, codex: {} }, openrouter: { hasKey: false } };
     },
+  const calAccts = []; // the demo's calendar accounts: none until the made-up Google sign-in below
     onAgentWorking: on('agent:working'),
     onAgentResults: on('agent:results'),
     onAgentWaiting: on('agent:waiting'),
@@ -176,8 +177,38 @@
     onFinanceUpdated: function () {}
   };
   // no welcome card, a light theme, and no scrollbar in the frames; no sync nudge bar, and no start on the Romulus
+    /* calendars and email: a made-up Google sign-in that lands after a moment (the first-launch card, google-first.js,
+       and Settings → Calendars & email). Starts empty; nothing opens a browser */
+    calOverview: async function () { return { accounts: calAccts.map(function (a) { return Object.assign({}, a, { calendars: a.calendars.map(function (c) { return Object.assign({}, c); }) }); }), builtIn: { google: true, microsoft: false } }; },
+    calConnect: async function (provider, own) {
+      await new Promise(function (r) { setTimeout(r, 1200); });
+      if (provider !== 'google') return { ok: false, error: 'Only Google is in the demo.' };
+      let a = calAccts.find(function (x) { return x.provider === 'google'; });
+      if (!a) {
+        a = { id: 'g-demo', provider: 'google', label: 'alex@example.com', broken: false, gmail: false, receipts: true, error: null,
+          calendars: [{ id: 'primary', name: 'alex@example.com', primary: true, canWrite: true, ref: 'g-demo|primary', push: false, pull: null }] };
+        calAccts.push(a);
+      }
+      if (!(own && own.noMail)) a.gmail = true;
+      return { ok: true, id: a.id, email: a.label };
+    },
+    calSetPrefs: async function (ch) {
+      ch = ch || {};
+      if ('push' in ch) calAccts.forEach(function (a) { a.calendars.forEach(function (c) { c.push = c.ref === ch.push; }); });
+      Object.keys(ch.pull || {}).forEach(function (ref) { calAccts.forEach(function (a) { a.calendars.forEach(function (c) { if (c.ref === ref) c.pull = ch.pull[ref]; }); }); });
+      return ch;
+    },
+    calSetReceipts: async function () { return true; },
+    calRemove: async function (id) { const i = calAccts.findIndex(function (a) { return a.id === id; }); if (i >= 0) calAccts.splice(i, 1); return true; },
+    calAddLink: async function () { return { ok: false, error: 'Calendar links aren’t in the demo.' }; },
+    calPull: async function () { return { items: [], errors: [] }; },
+    mailSetEnabled: async function () { return true; },
   // server (hosted-sync.js hostedAutoStart): the page would wait on the network before showing the lists
-  try { localStorage.setItem('tasks.welcomed.v1', String(now)); localStorage.setItem('tasks.themeMode.v1', 'light'); localStorage.setItem('tasks.syncNudge.later', String(now)); localStorage.setItem('tasks.syncHostedOff', '1'); localStorage.setItem('tabsOff', '["family"]'); } catch (e) {}
+  // ?first in the address keeps the first-launch cards (google-first.js, then welcome.js), to look at them
+  const first = /[?&]first\b/.test(location.search);
+  try { ['tasks.googleFirst.v1', 'tasks.welcomed.v1'].forEach(function (k) { if (first) localStorage.removeItem(k); else localStorage.setItem(k, String(now)); }); localStorage.setItem('tasks.themeMode.v1', 'light'); localStorage.setItem('tasks.syncNudge.later', String(now)); localStorage.setItem('tasks.syncHostedOff', '1'); localStorage.setItem('tabsOff', '["family"]'); } catch (e) {}
+  // the Finance sections the walkthrough looks at, open (they fold up to a line on a first visit)
+  try { ['inout', 'worth', 'debts', 'subs'].forEach(function (id) { localStorage.setItem('finOpen.' + id, '1'); }); localStorage.setItem('finStocksOpen', '1'); } catch (e) {}
   const css = document.createElement('style'); css.textContent = '::-webkit-scrollbar{display:none}'; document.head.appendChild(css);
 
   /* ── a caption at the bottom of the page, for the recording ── */

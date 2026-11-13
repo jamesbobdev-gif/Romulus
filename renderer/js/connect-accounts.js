@@ -265,6 +265,23 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
     setTimeout(function(){ user.focus(); },50);
   };
 
+  /* the first-launch card (google-first.js) signs in from outside Settings, with the usual choices ticked: events
+     onto the to-do list, tasks onto its calendar when none takes them yet, and Gmail when its tile was pressed */
+  window.connectGoogleQuick=async function(o){
+    const mail=!!(o&&o.mail)&&canMail;
+    let ov=null; try{ ov=await calApi.calOverview(false); }catch(e){}
+    if(ov&&ov.builtIn&&ov.builtIn.google===false)return {ok:false,needsClient:true};
+    const ids=ov?ov.accounts.map(function(a){ return a.id; }):[];
+    const taken=!!(ov&&ov.accounts.some(function(a){ return a.calendars.some(function(c){ return c.push; }); }));
+    savePending({at:Date.now(),provider:'google',before:ids,pull:true,push:desk&&!taken,mail:mail});
+    let r; try{ r=await calApi.calConnect('google',desk&&!mail?{noMail:true}:undefined); }catch(e){ r={ok:false,error:e.message}; }
+    if(!r||!r.ok){ if(!(r&&r.pending))savePending(null); return r||{ok:false,error:'sign-in didn’t finish'}; }
+    await afterConnect();
+    // Gmail added to an account that was already here: applyPending only switches on new accounts
+    if(mail&&r.id){ try{ const o2=await calApi.calOverview(false); if(o2.accounts.some(function(a){ return a.id===r.id&&a.gmail; }))await window.desktop.mailSetEnabled(true); }catch(e){} }
+    if(typeof jobsOfferAfterConnect==='function')jobsOfferAfterConnect(); // jobs.js: with the Agent list empty, its first task (once)
+    return r;
+  };
   pick.addEventListener('click',async function(e){
     const b=e.target.closest('button[data-pick]'); if(!b)return;
     const k=b.dataset.pick;
