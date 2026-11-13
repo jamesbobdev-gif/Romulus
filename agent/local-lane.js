@@ -840,9 +840,15 @@ async function runLocalTask(c, t) {
       if (key) madeCalls.add(key);
       // the Locked profile and his private words stay here: not in a search, not in an address the page asked it to open
       const outbound = name === 'web_search' ? args.query : name === 'read_page' ? args.url : name === 'browser_navigate' ? args.url : null;
-      const leak = outbound ? helpers.leaksPrivate(String(outbound), { privateWords: routing.getRouting().private, locked }) : null;
+      // and typed into a page: a card or SSN-shaped number, a private word or a secret from the profile never is, whatever
+      // the field is called (name, address and the like may be: forms need them, and fill_form checks the same way)
+      const typing = name === 'browser_type' ? args.text : name === 'browser_fill_form' ? (Array.isArray(args.fields) ? args.fields : []).map((f) => f && f.value).join('\n')
+        : name === 'browser_select_option' ? [].concat(args.values == null ? [] : args.values).join('\n') : null;
+      const leak = outbound ? helpers.leaksPrivate(String(outbound), { privateWords: routing.getRouting().private, locked })
+        : typing != null ? helpers.leaksTyped(String(typing), { privateWords: routing.getRouting().private, locked }) : null;
       if (leak) {
-        messages.push({ role: 'tool', tool_name: name, content: 'Not sent: ' + leak + '. Leave his private details out of searches and addresses.' });
+        messages.push({ role: 'tool', tool_name: name, content: (outbound ? 'Not sent: ' : 'Not typed: ') + leak + '. ' +
+          (outbound ? 'Leave his private details out of searches and addresses.' : 'That is his to type himself: say so in your note and go on with the rest.') });
         show('\nKept private: ' + name + '\n', true);
         continue;
       }

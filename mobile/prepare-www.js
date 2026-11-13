@@ -24,9 +24,12 @@ const schoolCfg = fs.existsSync(schoolFile) ? JSON.parse(fs.readFileSync(schoolF
 const addChannel = (name, cfg) => cfg ? `try{ var c=JSON.parse(localStorage.getItem('tasks.sync.v1')); if(c&&c.url)c={personal:c}; if(c&&!c.${name}){ c.${name}=${JSON.stringify(cfg)}; localStorage.setItem('tasks.sync.v1',JSON.stringify(c)); } }catch(e){}` : '';
 
 let html = fs.readFileSync(src, 'utf8');
-// the desktop page's Content-Security-Policy allows only its own script files; Capacitor's native bridge is an
-// inline script the WebView injects, so the phone build goes without it (the WebView has no Node side to reach)
+// the desktop page's Content-Security-Policy allows only its own script files; Capacitor's native bridge is an inline
+// script the WebView injects, so the phone build gets a policy of its own below (PHONE_CSP) that allows inline script and
+// keeps the rest: no frames, plugins, base changes or form posts, and pictures and connections only over the web
 html = html.replace(/<!--\s*Only the app's own scripts[^]*?-->\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*/, '');
+const PHONE_CSP = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; ' +
+  'font-src \'self\' data:; img-src \'self\' https: data: blob:; connect-src \'self\' https: wss: http: ws:; media-src \'self\' blob: data:; frame-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'">';
 const seed = `<script>
 window.ROMULUS_VERSION=${JSON.stringify(rootPkg.version)}; window.ROMULUS_RELEASES=${JSON.stringify(releases)};
 ${syncCfg ? `try{ if(!localStorage.getItem('tasks.sync.v1')) localStorage.setItem('tasks.sync.v1', ${JSON.stringify(JSON.stringify(syncCfg))}); }catch(e){}` : ''}
@@ -46,9 +49,9 @@ const store = '<script src="store.js"></script>';
 const storeArg = process.argv.indexOf('--store');
 const storeName = storeArg > 0 ? process.argv[storeArg + 1] : null;
 if (storeArg > 0 && !/^[a-z]+$/.test(storeName || '')) { console.error('usage: node prepare-www.js [--store appstore]'); process.exit(1); }
-// the desktop page's Content-Security-Policy bans inline scripts, and the phone page is built from them, so it stays desktop-only
+// the desktop page's Content-Security-Policy bans inline scripts, and the phone page is built from them: the phone's own policy goes in its place
 html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\r?\n?/, '');
-html = html.replace('<head>', () => '<head>\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
+html = html.replace('<head>', () => '<head>\n' + PHONE_CSP + '\n' + store + '\n' + seed + '\n' + calPhone + '\n' + financePhone + '\n' + updatePhone);
 
 fs.mkdirSync(outDir, { recursive: true });
 // everything else in renderer/ (the stylesheet and the page's scripts) goes over as it is

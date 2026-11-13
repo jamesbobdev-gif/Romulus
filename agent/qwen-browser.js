@@ -205,7 +205,8 @@ async function miniPcScreenshot() {
   if (!a.url || !a.key || !a.syncKey) return null;
   // the bucket is public: the folder is a hash of the agent key, never the key (same formula as renderer/js/agent-chat.js attachFolder)
   const folder = 'tk_agent_att_' + require('crypto').createHash('sha256').update(String(a.syncKey)).digest('hex').slice(0, 40);
-  const base = a.url.replace(/\/+$/, ''), file = folder + '/stuck-' + Date.now().toString(36) + '.jpg';
+  // a random name (the bucket is public: a name made from the time could be guessed by anyone who knows when a run was)
+  const base = a.url.replace(/\/+$/, ''), file = folder + '/stuck-' + require('crypto').randomBytes(12).toString('base64url') + '.jpg';
   try {
     const r = await fetch(base + '/storage/v1/object/agent-attachments/' + file, { method: 'POST', body: Buffer.from(out.jpeg, 'base64'),
       headers: { apikey: a.key, Authorization: 'Bearer ' + a.key, 'Content-Type': 'image/jpeg' }, signal: AbortSignal.timeout(20000) });

@@ -38,3 +38,13 @@ test('a refused upload says why in words', () => {
   assert.strictEqual(f.taskFileSize(1536), '2 KB');
   assert.strictEqual(f.taskFileSize(3 * 1048576), '3 MB');
 });
+
+test('an upload carries a proof from the id part, and the server keeps only its hash (20261120_task_files_proof.sql)', async () => {
+  const id = '26dbc739-a57d-4d40-900d-984640e0415d';
+  const want = nodeCrypto.createHash('sha256').update('romulus-task-files-v1|' + id).digest('hex');
+  for (const k of ['tk_' + id, 'tk_work_' + id, 'tk_' + id + ':files']) assert.strictEqual(await f.taskFilesProof(k), want, k);
+  assert.match(want, /^[0-9a-f]{64}$/); // the shape the upload rule reads from x-romulus-proof
+  assert.notStrictEqual(want, (await f.taskFilesFolder('tk_' + id)).slice(5)); // not the folder's own hash: that is public
+  // what sync_files_proof_set stores: sha256 of the proof; the policy hashes the header the same way
+  assert.strictEqual(nodeCrypto.createHash('sha256').update(want).digest('hex').length, 64);
+});

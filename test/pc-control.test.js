@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { next, parseAction, keyCombo, firstJson, describe, promptText } = require('../agent/pc-control');
+const { next, parseAction, keyCombo, neverPressed, parseFg, terminalInFront, firstJson, describe, promptText } = require('../agent/pc-control');
 
 const IMG = { mime: 'image/png', b64: 'AAAA' };
 const SIZE = { w: 1280, h: 720 };
@@ -72,4 +72,28 @@ test('next: the first AI that can read a picture gives the action, and is rememb
 test('next: says why when nothing can read a picture', async () => {
   const r = await next(cfg({ groqKey: 'q' }), { goal: 'x', steps: [], image: IMG, ...SIZE, lane: 'cloud' }, { fetch: async () => { throw new Error('no'); }, order: ['groq'], local: null });
   assert.match(r.why, /screenshot/);
+});
+
+test('parseAction: the Run box, Task Manager and Alt+F4 are never pressed for him; Win alone is', () => {
+  assert.match(parseAction('{"do":"key","keys":"win+r"}', SIZE).bad, /Win\+R/);
+  assert.match(parseAction('{"do":"key","keys":"alt+f4"}', SIZE).bad, /Alt\+F4/);
+  assert.match(parseAction('{"do":"key","keys":"ctrl+shift+esc"}', SIZE).bad, /Task Manager/);
+  assert.match(parseAction('{"do":"key","keys":"ctrl+alt+delete"}', SIZE).bad, /Ctrl\+Alt\+Delete/);
+  assert.ok(parseAction('{"do":"key","keys":"win"}', SIZE).action);
+  assert.ok(parseAction('{"do":"key","keys":"ctrl+l"}', SIZE).action);
+  assert.strictEqual(neverPressed([{ vk: 17 }, { vk: 67 }]), null);
+});
+
+test('terminalInFront: a console, a terminal, the Run box or the Registry Editor, not a browser about them', () => {
+  const fg = (cls, title) => parseFg(cls + '\t' + title);
+  assert.ok(terminalInFront(fg('ConsoleWindowClass', 'Windows PowerShell')));
+  assert.ok(terminalInFront(fg('CASCADIA_HOSTING_WINDOW_CLASS', 'Windows Terminal')));
+  assert.ok(terminalInFront(fg('HwndWrapper[powershell_ise.exe;;1]', 'Windows PowerShell ISE')));
+  assert.ok(terminalInFront(fg('#32770', 'Run')));
+  assert.ok(terminalInFront(fg('RegEdit_RegEdit', 'Registry Editor')));
+  assert.ok(terminalInFront(fg('Chrome_WidgetWin_1', 'Administrator: Command Prompt')));
+  assert.ok(!terminalInFront(fg('Chrome_WidgetWin_1', 'bash tutorial - Google Chrome')));
+  assert.ok(!terminalInFront(fg('#32770', 'Save As')));
+  assert.ok(!terminalInFront(parseFg('')));
+  assert.deepStrictEqual(parseFg('A\tB\tC'), { cls: 'A', title: 'B\tC' });
 });

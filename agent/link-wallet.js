@@ -333,7 +333,7 @@ async function forRun() {
   if (!s.node || !s.installed || !s.connected) return null;
   const { cli, auth, pending } = paths();
   const addr = await defaultAddress().catch(() => null);
-  return { cli, auth, pending, test: s.test, part: promptPart({ test: s.test, limits: s.limits, address: addr }) };
+  return { cli, auth, pending, test: s.test, address: addr, part: promptPart({ test: s.test, limits: s.limits, address: addr }) };
 }
 const LINK_SITE = /^https:\/\/([a-z0-9-]+\.)*(link\.com|stripe\.com)(\/|$)/i;
 const handlers = {

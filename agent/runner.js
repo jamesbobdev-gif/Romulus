@@ -12,10 +12,10 @@ const providers = require('./providers');
 const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
-const { routeTask, routeInfo, isClaudeLane, decided } = require('./routing');
+const { routeTask, routeInfo, isClaudeLane, decided, getRouting } = require('./routing');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, handoverNote, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
-const { trimRunLog, offline } = require('./helpers');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, lastAsk, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const { trimRunLog, offline, privateValues } = require('./helpers');
 const agentFiles = require('./agent-files');
 const supabase = require('./supabase');
 const runLive = require('./run-live');
@@ -71,11 +71,12 @@ let live = null; // the current run's plan, steps and his mid-run messages (agen
    emptied when the run ends, so they never sit in an AI's settings → the MCP config's path. No mailbox: the tools
    say so, and the run tells him. */
 const mailDir = () => path.join(ctx.userData(), 'agent-mail');
-async function prepareMailTools(final) {
+async function prepareMailTools(final, ask) { // ask: the note his yes answered, which is all that send or trash may cover
   const dir = mailDir();
   fs.mkdirSync(dir, { recursive: true });
-  const script = path.join(dir, 'mail-mcp.js'), acctFile = path.join(dir, 'accounts.json'), cfgFile = path.join(dir, 'mcp.json');
+  const script = path.join(dir, 'mail-mcp.js'), acctFile = path.join(dir, 'accounts.json'), cfgFile = path.join(dir, 'mcp.json'), askFile = path.join(dir, 'ask.txt');
   fs.writeFileSync(script, fs.readFileSync(path.join(__dirname, 'mail-mcp.js')));
+  fs.writeFileSync(askFile, final ? String(ask || '') : '');
   const list = [];
   for (const a of calendars.mailToolAccounts()) {
     try { list.push({ provider: a.provider, email: a.email, write: a.write, send: a.send, token: await calendars.tokenFor(a.id) }); }
@@ -84,7 +85,7 @@ async function prepareMailTools(final) {
   agentLog(list.length ? 'mail tools: ' + list.length + ' mailbox(es)' + (final ? ', send and trash unlocked by his yes' : '')
     : 'mail: no mailbox connected (Settings → Calendars): the run will say so');
   fs.writeFileSync(acctFile, JSON.stringify(list), { mode: 0o600 });
-  const node = findNode(), env = { MAIL_ACCOUNTS_FILE: acctFile, MAIL_FINAL: final ? '1' : '0' };
+  const node = findNode(), env = { MAIL_ACCOUNTS_FILE: acctFile, MAIL_FINAL: final ? '1' : '0', MAIL_ASK_FILE: askFile };
   if (!node) env.ELECTRON_RUN_AS_NODE = '1'; // no node on this computer: the app's own, run as node
   fs.writeFileSync(cfgFile, JSON.stringify({ mcpServers: { mail: { command: node || process.execPath, args: [script], env } } }));
   return cfgFile;
@@ -320,9 +321,16 @@ async function startAgentRun() {
   // his Link wallet, for a store with no saved card (agent/link-wallet.js): where the launcher finds it, and what Claude is told
   const link = browserCfg ? await linkWallet.forRun().catch((e) => { agentLog('link: ' + e.message); return null; }) : null;
   if (link) agentLog('link wallet: on' + (link.test ? ' (test mode)' : ''));
+  // his private details that go into the prompt (where he is, his Link address, his private words): the browser launcher
+  // (agent/browser-proxy.js leakRefusal) and the web-guard hook refuse any address, search or typed text carrying one
+  const privateFile = path.join(ctx.userData(), 'agent-run', 'private.json');
+  try {
+    fs.mkdirSync(path.dirname(privateFile), { recursive: true });
+    fs.writeFileSync(privateFile, JSON.stringify(privateValues({ here, address: link && link.address, privateWords: (getRouting() || {}).private })));
+  } catch (e) { agentLog('private values: ' + e.message); }
   // ...they get his mail tools instead, whichever AI answers. Send and trash only when his yes started this run:
   // one task, and his latest reply is the yes to its ask (a yes never unlocks them for another task)
-  const mailCfg = mailRun ? await prepareMailTools(tasks.length === 1 && saidYes(tasks[0])).catch((e) => { agentLog('mail tools: ' + e.message); return null; }) : null;
+  const mailCfg = mailRun ? await prepareMailTools(tasks.length === 1 && saidYes(tasks[0]), tasks.length === 1 ? lastAsk(tasks[0]) : '').catch((e) => { agentLog('mail tools: ' + e.message); return null; }) : null;
   const grocer = loadSkills().find((s) => s.name === 'groceries');
   runTimeoutMs = grocer && grocer.match && tasks.some((t) => grocer.match.test(skillText(t))) ? GROCERY_TIMEOUT_MS : AGENT_TIMEOUT_MS;
   // A shopping run (groceries, or a task whose links are store pages) is kept to the stores and the task's own
@@ -334,7 +342,7 @@ async function startAgentRun() {
   if (shopping) agentLog('shopping run: the browser stays on ' + runHosts.length + ' site(s)');
   // his yes unlocks the order button only on the sites the ask was about
   const yesHosts = tasks.length === 1 && saidYes(tasks[0]) ? approvedHostsFor(tasks[0]) : [];
-  const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · '), link };
+  const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · '), link, privateFile };
   // the cloud AIs he connected, in his order (Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
@@ -379,11 +387,11 @@ async function startAgentRun() {
       tries++;
       const untail = id !== 'claude' && browserCfg ? live.tail(stepsFile()) : null;
       // the other AIs get the same site limit on a shopping run as Claude (browserOpts.hosts), never his yes
-      const steps = { steps: true, hosts: runHosts, task: browserOpts.task };
+      const steps = { steps: true, hosts: runHosts, task: browserOpts.task, privateFile };
       // the other AIs' tools: the agent browser, or in an inbox run his Gmail (read-only) and no web search
       const otherTools = (st) => mailRun ? { browserMcpFile: mailCfg, browserDenied: [], mail: true }
         : { browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, st), browserDenied: BROWSER_DENIED };
-      const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt,
+      const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, privateFile,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, browserOpts) }).finally(() => live.close())
         : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, ...otherTools(steps),
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
@@ -469,6 +477,10 @@ async function startAgentRun() {
     u.status = u.status === 'done' ? 'done' : 'needs-you';
     u.page = !sawMail && u.status === 'needs-you' ? endPage : null; // ◉ Watch opens this page for him
     u.note =u.note ? String(u.note).slice(0, 1500) : null;
+    // the site his yes would unlock the final step on (agent-browser.js approvedHostsFor), written by the app, not the AI, so he
+    // sees it before answering: a page that led the run off somewhere else shows up here
+    const pageHost = (() => { try { return u.page ? new URL(u.page).hostname.toLowerCase() : ''; } catch (e) { return ''; } })();
+    if (pageHost && u.note && !u.note.toLowerCase().includes(pageHost)) u.note += '\n\n(The next step is on ' + pageHost + '.)';
     // an inbox run's answer may carry words from an email: nothing from it is remembered for later runs
     // (which can reach the web), and the app doesn't open its links for previews
     u.pref = sawMail ? null : prefLine(u.pref);
@@ -526,7 +538,7 @@ async function startAgentRun() {
   if (!claudeResetAt || !pending.length) scheduleAgentRun(); // anything queued while this run was going
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
-function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg }) {
+function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg, privateFile }) {
   return new Promise((resolve) => {
     let out = '', err = '', proc, killer = null, settled = false;
     const finish = (r) => { if (!settled) { settled = true; clearTimeout(killer); resolve(r); } };
@@ -538,7 +550,8 @@ function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg
       // Web run: search, page reading and the agent browser, but no connectors at all.
       const allowed = ['Read(./attachments/**)', 'Read(./skills/**)', PLAN_TOOLS];
       // Finance's files, named outright too (encrypted, and outside what Read is allowed anyway)
-      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)', 'Read(**/finance-ebt.json)'];
+      // and the local model's own output in this folder (its research reports and coach briefs, agent/local-lane.js): private, never Claude's to read
+      const denied = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Read(**/finance.vault*)', 'Read(**/finance.hello)', 'Read(**/finance-ebt.json)', 'Read(./Research/**)', 'Read(./Coach/**)'];
       // stream-json: the same answer, plus the usage Claude reports (the bars in Settings → AI connections)
       let guard = null;
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(cfg.maxTurns || (browserCfg ? 80 : mailRun ? 45 : 30))];
@@ -563,7 +576,7 @@ function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg
             args.push('--agents', JSON.stringify(shopAgents()));
             const ti = args.indexOf('--tools'); args[ti + 1] += ',Agent';
           }
-          guard = webGuardHooks(); // no web tools once the browser has shown his mail
+          guard = webGuardHooks(privateFile); // no web tools once the browser has shown his mail, and no private details in a fetch or search
         }
       }
       // the hooks: the web guard's, and his mid-run messages (agent/run-live.js)

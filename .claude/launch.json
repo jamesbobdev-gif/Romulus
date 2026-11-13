@@ -64,7 +64,7 @@
       "name": "ballot-match",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "C:/Users/chopin/code/ballot-match/server.js"
+        "../ballot-match/server.js"
       ],
       "port": 8781
     },

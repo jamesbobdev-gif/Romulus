@@ -573,6 +573,8 @@ async function syncOnce(){
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
   }
+  // files on tasks: this account's upload proof registered with the server, once a session (task-files.js)
+  if(typeof taskFilesRegister==='function')taskFilesRegister().catch(function(){});
   if(anyLocal){
     rebuildSnap();
     store.save(currentDoc());

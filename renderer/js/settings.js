@@ -551,6 +551,16 @@ $('syncSaveBtn').addEventListener('click',function(){
   const prev=syncState.cfg&&syncState.cfg.personal;
   // leaving the Romulus server for a project of one's own, same sync key: the other devices are told to follow
   const leaving=hosted&&validProfile(prev)&&hostedIs(prev.url)&&!hostedIs(url)&&prev.syncKey===sk?Object.assign({},prev):null;
+  // a sync code (typed, pasted, scanned or taken with a pairing code) can point anywhere: only a web address over https,
+  // and when it would move this device's lists under another key or to another project, he is told so first
+  let host=''; try{ const u=new URL(url); if(u.protocol==='https:')host=u.host; }catch(e){}
+  if(!host){ setSyncStatus('the Project URL has to start with https://',true); return; }
+  const moving=validProfile(prev)&&(prev.syncKey!==sk||String(prev.url).replace(/\/+$/,'')!==url.replace(/\/+$/,''));
+  if(moving&&state.tasks.length){
+    const what=prev.syncKey!==sk?'another sync key':'another project ('+host+')';
+    if(!confirm('This moves the lists on this device to '+what+'.\n\nThey will be uploaded there and merged with whatever is there, and whoever holds that key or project can read them. Only continue if it is your own, or one you were given on purpose.'))
+      { setSyncStatus('not changed'); return; }
+  }
   const btn=$('syncSaveBtn'); btn.disabled=true;
   (async function(){
     if(!(hosted&&hostedIs(url))){

@@ -70,7 +70,7 @@ function seatMap(t){
     buzz('send'); touch();
   });
   reset.addEventListener('click',function(e){ e.stopPropagation(); delete seatDrafts[t.id]; draw(); });
-  if(s.url){ const a=el('a','seat-link','Open the seat page ↗'); a.href=s.url; a.target='_blank'; a.rel='noopener'; a.addEventListener('click',function(e){ e.stopPropagation(); }); foot.appendChild(a); }
+  if(s.url&&/^https?:\/\//i.test(String(s.url))){ const a=el('a','seat-link','Open the seat page ↗'); a.href=s.url; a.target='_blank'; a.rel='noopener'; a.addEventListener('click',function(e){ e.stopPropagation(); }); foot.appendChild(a); } // a web link only (synced data)
   draw();
   return box;
 }
@@ -118,7 +118,7 @@ function showtimesCard(t){
     b.addEventListener('click',function(e){ e.stopPropagation(); showDay[t.id]=i; buzz('tap'); draw(); });
     tabs.appendChild(b);
   });
-  if(s.url){ const a=el('a','seat-link','All showtimes ↗'); a.href=s.url; a.target='_blank'; a.rel='noopener'; a.addEventListener('click',function(e){ e.stopPropagation(); }); box.appendChild(a); }
+  if(s.url&&/^https?:\/\//i.test(String(s.url))){ const a=el('a','seat-link','All showtimes ↗'); a.href=s.url; a.target='_blank'; a.rel='noopener'; a.addEventListener('click',function(e){ e.stopPropagation(); }); box.appendChild(a); } // a web link only (synced data)
   draw();
   return box;
 }

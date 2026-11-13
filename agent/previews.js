@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { AGENT_BROWSER_PORT, agentBrowserDir, findNode, ensureAgentBrowser } = require('./agent-browser');
 const { QWEN_BROWSER_LOCAL_PORT, ensureQwenBrowser } = require('./qwen-browser');
-const { isPublicUrl } = require('./helpers');
+const { isPublicUrl, fetchPublic } = require('./helpers');
 
 let ctx = null; // { readConfig, agentLog, newHiddenWindow }
 function init(c) { ctx = c; }
@@ -26,7 +26,8 @@ function absHttps(img, pageUrl) {
 async function pagePreviewImage(url, lane, info) {
   if (!isPublicUrl(url)) return null; // never this computer, the mini PC or the LAN, whatever link an answer carries
   try {
-    const r = await fetch(url, { headers: { 'User-Agent': PREVIEW_UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(10000) });
+    // each redirect checked the same way: a public page may answer with a hop to this computer or the mini PC
+    const r = await fetchPublic(url, { headers: { 'User-Agent': PREVIEW_UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(10000) });
     if (r.ok) {
       const h = (await r.text()).slice(0, 600000);
       if (info && SHOPIFY_PAGE.test(h)) info.shopify = true;

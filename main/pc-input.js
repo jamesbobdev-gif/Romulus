@@ -17,7 +17,16 @@ public static class RomulusInput {
   [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr v);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
   public static void Aware() { try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch (Exception) {} }
+  // the window that would take the typing: its class and title, tab-separated (agent/pc-control.js terminalInFront)
+  public static string Fg() {
+    var h = GetForegroundWindow(); var c = new System.Text.StringBuilder(256); var t = new System.Text.StringBuilder(512);
+    GetClassName(h, c, 256); GetWindowText(h, t, 512);
+    return c.ToString() + "\t" + t.ToString();
+  }
   static void Send(INPUT[] a) { if (SendInput((uint)a.Length, a, Marshal.SizeOf(typeof(INPUT))) != a.Length) throw new Exception("Windows blocked the input (an admin window may be in front)"); }
   static INPUT M(uint flags, uint data) { var i = new INPUT(); i.type = 0; i.u.mi.dwFlags = flags; i.u.mi.mouseData = data; return i; }
   static INPUT K(ushort vk, ushort scan, uint flags) { var i = new INPUT(); i.type = 1; i.u.ki.wVk = vk; i.u.ki.wScan = scan; i.u.ki.dwFlags = flags; return i; }
@@ -55,10 +64,11 @@ const PS = 'Add-Type -TypeDefinition @\'\n' + CS + '\n\'@\n' +
   '[RomulusInput]::Aware()\n' +
   '[Console]::Out.WriteLine("ready"); [Console]::Out.Flush()\n' +
   'while ($null -ne ($line = [Console]::In.ReadLine())) {\n' +
-  '  $c = $null\n' +
+  '  $c = $null; $out = ""\n' +
   '  try {\n' +
   '    $c = $line | ConvertFrom-Json\n' +
   '    switch ($c.op) {\n' +
+  '      "fg" { $out = [RomulusInput]::Fg() -replace "[\\r\\n]+", " " }\n' +
   '      "move" { [RomulusInput]::Move([int]$c.x, [int]$c.y) }\n' +
   '      "click" { [RomulusInput]::Click([int]$c.x, [int]$c.y, [string]$c.button, [int]$c.count) }\n' +
   '      "scroll" { [RomulusInput]::Scroll([int]$c.x, [int]$c.y, [int]$c.amount) }\n' +
@@ -67,12 +77,13 @@ const PS = 'Add-Type -TypeDefinition @\'\n' + CS + '\n\'@\n' +
   '      "type" { [RomulusInput]::Type([string]$c.text) }\n' +
   '      default { throw "unknown command" }\n' +
   '    }\n' +
-  '    [Console]::Out.WriteLine("ok " + $c.id)\n' +
+  '    [Console]::Out.WriteLine("ok " + $c.id + " " + $out)\n' +
   '  } catch { [Console]::Out.WriteLine("err " + $(if ($c) { $c.id } else { 0 }) + " " + ($_.Exception.Message -replace "\\s+", " ")) }\n' +
   '  [Console]::Out.Flush()\n' +
   '}\n';
 
-/* → {run(cmd) → Promise, close()}; rejects when PowerShell won't start. log(line) for what went wrong */
+/* → {run(cmd) → Promise (resolves with what the command answered: nothing, or the window in front for 'fg'), close()};
+   rejects when PowerShell won't start. log(line) for what went wrong */
 function start(log) {
   return new Promise((resolve, reject) => {
     if (process.platform !== 'win32') return reject(new Error('Do it only works on Windows for now.'));
@@ -104,7 +115,7 @@ function start(log) {
         const m = /^(ok|err) (\d+) ?(.*)$/.exec(line);
         if (m && pending[m[2]]) {
           const q = pending[m[2]]; delete pending[m[2]];
-          if (m[1] === 'ok') q.resolve(); else q.reject(new Error(m[3] || 'input failed'));
+          if (m[1] === 'ok') q.resolve(m[3] || ''); else q.reject(new Error(m[3] || 'input failed'));
         }
       }
     });
@@ -113,7 +124,7 @@ function start(log) {
         if (dead) return rej(new Error('PowerShell stopped'));
         const n = ++id;
         const t = setTimeout(() => { if (pending[n]) { delete pending[n]; rej(new Error('the input timed out')); } }, 60000);
-        pending[n] = { resolve: () => { clearTimeout(t); res(); }, reject: (e) => { clearTimeout(t); rej(e); } };
+        pending[n] = { resolve: (v) => { clearTimeout(t); res(v); }, reject: (e) => { clearTimeout(t); rej(e); } };
         p.stdin.write(JSON.stringify(Object.assign({ id: n }, cmd)) + '\n');
       });
     }
