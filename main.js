@@ -93,6 +93,10 @@ for (const [channel, fn] of Object.entries(allHandlers)) ipcMain.handle(channel,
 const kitchenAi = require('./main/kitchen-ai');
 kitchenAi.init(ctx);
 for (const [channel, fn] of Object.entries(kitchenAi.handlers)) ipcMain.handle(channel, fn);
+// Settings: the QR code that copies his AI keys to the phone (main/phone-ai-code.js)
+const phoneAiCode = require('./main/phone-ai-code');
+phoneAiCode.init(ctx);
+for (const [channel, fn] of Object.entries(phoneAiCode.handlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
 const { loadRouting, learnFrom } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
