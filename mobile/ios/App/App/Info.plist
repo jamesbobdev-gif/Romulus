@@ -29,7 +29,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Romulus reads your steps, sleep and workouts to tick off goal to-dos such as “Walk 8,000 steps”, and your latest weight for your Food plan (so “1 g of protein per pound” uses it). Steps, sleep and workouts stay on this phone; your weight goes to the Agent with your Food plan.</string>
+	<string>Romulus reads your steps, sleep, workouts, weight, heart rate, calories and logged food for its Health tab, and to tick off goals such as “Walk 8,000 steps”. Daily totals reach your own computer only encrypted; your weight goes to the Agent with your Food plan.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Romulus uses the camera when you take a photo for a task.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

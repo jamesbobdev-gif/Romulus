@@ -228,3 +228,45 @@ test('the top of the Health tab: the week, the goals, the sleep word', () => {
   assert.strictEqual(healthPct(20000, 10000), 100);
   assert.strictEqual(healthPct(undefined, 10000), 0);
 });
+
+test('the rest of the kinds the phone reads are kept, cleaned, and count as a change', () => {
+  const { normHealth, healthMergeDocs } = require('../renderer/js/health');
+  const h = normHealth({ days: { '2026-11-09': { at: 5, steps: 4000, weightKg: 82.46, restHr: 58.4, activeKcal: 412, distM: 5021, bogus: 1,
+    food: { kcal: 1850, protein: 142.4, junk: 9 }, workouts: [{ type: 'run', min: 28, distM: 5000, at: '07:10', from: 'Strava', extra: 1 }, { type: 'zumba', min: 30 }, { min: 'x' }] } } });
+  assert.deepStrictEqual(h.days['2026-11-09'], { at: 5, steps: 4000, weightKg: 82.5, restHr: 58, activeKcal: 412, distM: 5021,
+    food: { kcal: 1850, protein: 142 }, workouts: [{ type: 'run', min: 28, at: '07:10', distM: 5000, from: 'Strava' }, { type: 'other', min: 30 }] });
+  // a new workout on the same day is a change, even with the same totals
+  const later = { v: 1, days: { '2026-11-09': Object.assign({}, h.days['2026-11-09'], { at: 9, workouts: h.days['2026-11-09'].workouts.concat([{ type: 'yoga', min: 20 }]) }) } };
+  const r = healthMergeDocs(h, later, new Date('2026-11-09T12:00:00').getTime());
+  assert.ok(r.changedLocal);
+  assert.strictEqual(r.merged.days['2026-11-09'].workouts.length, 3);
+});
+
+test('the week, workouts, food and training goals come from the readings alone', () => {
+  const H = require('../renderer/js/health');
+  const days = {
+    '2026-11-03': { at: 1, weightKg: 83, sleepMin: 400, steps: 6000, workouts: [{ type: 'run', min: 30, distM: 4828 }] },
+    '2026-11-06': { at: 1, workouts: [{ type: 'strength', min: 50, reps: 120, sets: 12, from: 'Hevy' }] },
+    '2026-11-08': { at: 1, weightKg: 82, sleepMin: 420, steps: 9000, workouts: [{ type: 'run', min: 50, distM: 8047, at: '07:00' }] },
+    '2026-11-09': { at: 1, steps: 10000, restHr: 57, food: { protein: 142, kcal: 1850 }, workouts: [{ type: 'run', min: 28, distM: 5000, at: '06:30' }] },
+    '2026-10-30': { at: 1, workouts: [{ type: 'run', min: 25, distM: 4000 }] },
+  };
+  const today = '2026-11-09';
+  assert.deepStrictEqual(H.healthLatest(days, 'weightKg', today, 30), { day: '2026-11-08', value: 82 });
+  assert.deepStrictEqual(H.healthSeries(days, 'steps', today, 7).map((x) => x.value), [6000, 9000, 10000]);
+  assert.deepStrictEqual(H.healthWorkouts(days, today, 14).map((w) => w.day + ' ' + w.type), ['2026-11-09 run', '2026-11-08 run', '2026-11-06 strength', '2026-11-03 run', '2026-10-30 run']);
+  const wk = H.healthWeekSum(days, today);
+  assert.deepStrictEqual([wk.workouts, wk.runs, wk.strength, wk.runMi, wk.avgSteps, wk.avgSleep], [4, 3, 1, 11.1, 8333, 410]);
+  const said = H.healthWeekSay(days, today);
+  assert.ok(said.includes('4 workouts (3 more than the week before)'), said.join(' | '));
+  assert.ok(said.some((s) => /^Ran 11\.1 mi \(8\.6 mi more/.test(s)), said.join(' | '));
+  assert.strictEqual(H.healthFoodSay(days[today], { protein: 170, kcal: 2100 }), 'Protein 142 / 170 g · Calories 1,850 / 2,100');
+  assert.strictEqual(H.healthFoodSay({}, { protein: 170 }), '');
+  // training goals measured from the phone
+  assert.deepStrictEqual(H.healthTraining('Run a half marathon', days, today), { text: 'Longest run (90 days): 5 of 13.1 mi', pct: 38 });
+  assert.deepStrictEqual(H.healthTraining('Lose 10 pounds', days, today, '2026-11-01'), { text: 'Down 2.2 of 10 lb (now 180.8 lb)', pct: 22 });
+  assert.strictEqual(H.healthTraining('Bench 225 by March', days, today).text, '1 strength session in the last 7 days, 0 the 7 before');
+  assert.strictEqual(H.healthTraining('Learn to juggle', days, today), null);
+  assert.strictEqual(H.healthWorkoutSay(days['2026-11-08'].workouts[0]), 'Run · 5 mi · 50m · 10:00 /mi');
+  assert.strictEqual(H.healthWorkoutSay(days['2026-11-06'].workouts[0]), 'Strength · 50m · 12 sets, 120 reps');
+});

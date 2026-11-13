@@ -8,11 +8,18 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.metadata.DataOrigin
+import androidx.health.connect.client.aggregate.AggregateMetric
+import androidx.health.connect.client.aggregate.AggregationResultGroupedByPeriod
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.NutritionRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.getcapacitor.JSArray
@@ -29,6 +36,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.Period
 import java.time.ZoneId
 
@@ -36,8 +44,10 @@ import java.time.ZoneId
  * Health Connect, read-only: daily totals of steps, workout minutes and sleep, for tasks that check
  * themselves off ("Walk #steps 8000"). renderer/js/health.js calls it as the "Health" plugin.
  * Also his latest weight, for the Food plan ("1 g of protein per pound"); it's asked for alongside the three but
- * optional, so "granted" still means the three.
- * Only totals per day leave this file, never the samples, and nothing is ever written to Health Connect.
+ * optional, so "granted" still means the three. The same goes for the rest of the Health tab: the day's workouts
+ * (type, time, distance, calories, reps), resting heart rate, active calories, distance and what food apps logged.
+ * Per-day totals and one line per workout leave this file, never the raw samples, and nothing is ever written
+ * to Health Connect.
  * Health Connect needs Android 8 (API 26); the app still installs from Android 7, where status() says "no".
  */
 @CapacitorPlugin(name = "Health")
@@ -47,7 +57,13 @@ class HealthPlugin : Plugin() {
     private val exercisePerm = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     private val sleepPerm = HealthPermission.getReadPermission(SleepSessionRecord::class)
     private val weightPerm = HealthPermission.getReadPermission(WeightRecord::class)
-    private val perms = setOf(stepsPerm, exercisePerm, sleepPerm)
+    private val perms = setOf(stepsPerm, exercisePerm, sleepPerm) // the first three: "granted" means these
+    private val heartPerm = HealthPermission.getReadPermission(RestingHeartRateRecord::class)
+    private val kcalPerm = HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
+    private val distPerm = HealthPermission.getReadPermission(DistanceRecord::class)
+    private val foodPerm = HealthPermission.getReadPermission(NutritionRecord::class)
+    private val extraPerms = setOf(weightPerm, heartPerm, kcalPerm, distPerm, foodPerm)
+    private val allPerms = perms + extraPerms
     private val contract by lazy { PermissionController.createRequestPermissionResultContract() }
 
     private fun sdk(): Int =
@@ -65,9 +81,14 @@ class HealthPlugin : Plugin() {
         r.put("exercise", exercisePerm in granted)
         r.put("sleep", sleepPerm in granted)
         r.put("weight", weightPerm in granted)
+        r.put("heart", heartPerm in granted)
+        r.put("calories", kcalPerm in granted)
+        r.put("distance", distPerm in granted)
+        r.put("food", foodPerm in granted)
+        r.put("more", !granted.containsAll(extraPerms)) // the rest of the Health tab's kinds not allowed yet (or turned down)
     }
 
-    /** {available: "yes" | "install" | "no", granted, steps, exercise, sleep} */
+    /** {available: "yes" | "install" | "no", granted, steps, exercise, sleep, weight, heart, calories, distance, food, more} */
     @PluginMethod
     fun status(call: PluginCall) {
         val s = sdk()
@@ -85,7 +106,7 @@ class HealthPlugin : Plugin() {
     @PluginMethod
     fun connect(call: PluginCall) {
         when (sdk()) {
-            HealthConnectClient.SDK_AVAILABLE -> startActivityForResult(call, contract.createIntent(context, perms + weightPerm), "connectResult")
+            HealthConnectClient.SDK_AVAILABLE -> startActivityForResult(call, contract.createIntent(context, allPerms), "connectResult")
             HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
                 openStore()
                 call.reject("Install or update Health Connect from Google Play, then press Connect again.")
@@ -137,6 +158,10 @@ class HealthPlugin : Plugin() {
      * counts toward the morning it ended, overlapping sessions from different apps counted once.
      * from: {steps?, exercise?, sleep?: ["Samsung Health", "Garmin Connect"]}, the apps that wrote each number.
      * weight: {kg, at (ms), from?} the newest weigh-in of the last 180 days, when that read is allowed.
+     * And on each day, each when allowed and there's something: weightKg (the day's average), restHr (bpm),
+     * activeKcal, distM (meters, all walking, running and riding), food {kcal, protein, carbs, fat} (grams), and
+     * workouts [{type: run|walk|hike|bike|swim|strength|yoga|pilates|hiit|cardio|row|stairs|dance|sport|other,
+     *   name?, at: "HH:MM", min, distM?, kcal?, reps?, sets?, from?}], at most 12 a day.
      */
     @PluginMethod
     fun read(call: PluginCall) {
@@ -197,6 +222,65 @@ class HealthPlugin : Plugin() {
                         .forEach { (d, list) -> out[d]?.put("sleepMin", unionMinutes(list)) }
                     for ((d, origins) in sleepFrom) addFrom(sources, d, "sleep", origins)
                 }
+                // the rest of the Health tab's numbers, one daily total each
+                val dayOf = { row: AggregationResultGroupedByPeriod -> out[row.startTime.toLocalDate().toString()] }
+                if (kcalPerm in granted) daily(c, start, end, setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)) { row ->
+                    row.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.let { if (it > 0) dayOf(row)?.put("activeKcal", Math.round(it)) }
+                }
+                if (distPerm in granted) daily(c, start, end, setOf(DistanceRecord.DISTANCE_TOTAL)) { row ->
+                    row.result[DistanceRecord.DISTANCE_TOTAL]?.inMeters?.let { if (it > 0) dayOf(row)?.put("distM", Math.round(it)) }
+                }
+                if (heartPerm in granted) daily(c, start, end, setOf(RestingHeartRateRecord.BPM_AVG)) { row ->
+                    row.result[RestingHeartRateRecord.BPM_AVG]?.let { if (it > 0) dayOf(row)?.put("restHr", it) }
+                }
+                if (weightPerm in granted) daily(c, start, end, setOf(WeightRecord.WEIGHT_AVG)) { row ->
+                    row.result[WeightRecord.WEIGHT_AVG]?.inKilograms?.let { if (it > 0) dayOf(row)?.put("weightKg", Math.round(it * 10) / 10.0) }
+                }
+                if (foodPerm in granted) daily(c, start, end, setOf(NutritionRecord.ENERGY_TOTAL, NutritionRecord.PROTEIN_TOTAL,
+                        NutritionRecord.TOTAL_CARBOHYDRATE_TOTAL, NutritionRecord.TOTAL_FAT_TOTAL)) { row ->
+                    val f = JSObject()
+                    row.result[NutritionRecord.ENERGY_TOTAL]?.inKilocalories?.let { if (it > 0) f.put("kcal", Math.round(it)) }
+                    row.result[NutritionRecord.PROTEIN_TOTAL]?.inGrams?.let { if (it > 0) f.put("protein", Math.round(it)) }
+                    row.result[NutritionRecord.TOTAL_CARBOHYDRATE_TOTAL]?.inGrams?.let { if (it > 0) f.put("carbs", Math.round(it)) }
+                    row.result[NutritionRecord.TOTAL_FAT_TOTAL]?.inGrams?.let { if (it > 0) f.put("fat", Math.round(it)) }
+                    if (f.length() > 0) dayOf(row)?.put("food", f)
+                }
+                // each workout, from any app: what it was, how long, how far, how hard
+                if (exercisePerm in granted) {
+                    val byDay = HashMap<String, JSArray>()
+                    var token: String? = null
+                    var seen = 0
+                    do {
+                        val resp = c.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class,
+                            TimeRangeFilter.between(start, end), pageToken = token))
+                        for (w in resp.records) {
+                            if (++seen > 400) break
+                            val d = w.startTime.atZone(zone).toLocalDate().toString()
+                            val list = byDay.getOrPut(d) { JSArray() }
+                            if (list.length() >= 12) continue
+                            val type = typeName(w.exerciseType)
+                            val o = JSObject().put("type", type)
+                                .put("at", w.startTime.atZone(zone).toLocalTime().toString().take(5))
+                                .put("min", java.time.Duration.between(w.startTime, w.endTime).toMinutes())
+                            w.title?.trim()?.takeIf { it.isNotEmpty() }?.let { o.put("name", it.take(40)) }
+                            val span = TimeRangeFilter.between(w.startTime, w.endTime)
+                            if (distPerm in granted && type in DISTANCE_TYPES) try {
+                                c.aggregate(AggregateRequest(setOf(DistanceRecord.DISTANCE_TOTAL), span))[DistanceRecord.DISTANCE_TOTAL]
+                                    ?.inMeters?.let { if (it > 0) o.put("distM", Math.round(it)) }
+                            } catch (ignored: Exception) {}
+                            if (kcalPerm in granted) try {
+                                c.aggregate(AggregateRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL), span))[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
+                                    ?.inKilocalories?.let { if (it > 0) o.put("kcal", Math.round(it)) }
+                            } catch (ignored: Exception) {}
+                            val reps = w.segments.sumOf { it.repetitions }
+                            if (reps > 0) { o.put("reps", reps); o.put("sets", w.segments.count { it.repetitions > 0 }) }
+                            appName(w.metadata.dataOrigin.packageName)?.let { o.put("from", it) }
+                            list.put(o)
+                        }
+                        token = if (seen > 400) null else resp.pageToken
+                    } while (token != null)
+                    for ((d, list) in byDay) out[d]?.put("workouts", list)
+                }
                 for ((d, kinds) in sources) {
                     val o = out[d] ?: continue
                     val f = JSObject()
@@ -225,6 +309,34 @@ class HealthPlugin : Plugin() {
             o
         }
     } catch (e: Exception) { null }
+
+    /** One total per day of the given metrics, each row to `use`. A kind that fails is left out, not the whole read. */
+    private suspend fun daily(c: HealthConnectClient, start: LocalDateTime, end: LocalDateTime,
+                              metrics: Set<AggregateMetric<*>>, use: (AggregationResultGroupedByPeriod) -> Unit) {
+        try {
+            for (row in c.aggregateGroupByPeriod(AggregateGroupByPeriodRequest(metrics, TimeRangeFilter.between(start, end), Period.ofDays(1)))) use(row)
+        } catch (ignored: Exception) {}
+    }
+
+    private fun typeName(t: Int): String = when (t) {
+        ExerciseSessionRecord.EXERCISE_TYPE_RUNNING, ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL -> "run"
+        ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "walk"
+        ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> "hike"
+        ExerciseSessionRecord.EXERCISE_TYPE_BIKING, ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY -> "bike"
+        ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL, ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "swim"
+        ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+        ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS -> "strength"
+        ExerciseSessionRecord.EXERCISE_TYPE_YOGA -> "yoga"
+        ExerciseSessionRecord.EXERCISE_TYPE_PILATES -> "pilates"
+        ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING -> "hiit"
+        ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL -> "cardio"
+        ExerciseSessionRecord.EXERCISE_TYPE_ROWING, ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE -> "row"
+        ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING, ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING_MACHINE -> "stairs"
+        ExerciseSessionRecord.EXERCISE_TYPE_DANCING -> "dance"
+        ExerciseSessionRecord.EXERCISE_TYPE_BASKETBALL, ExerciseSessionRecord.EXERCISE_TYPE_SOCCER, ExerciseSessionRecord.EXERCISE_TYPE_TENNIS,
+        ExerciseSessionRecord.EXERCISE_TYPE_BOXING, ExerciseSessionRecord.EXERCISE_TYPE_MARTIAL_ARTS -> "sport"
+        else -> "other"
+    }
 
     private fun addFrom(from: HashMap<String, HashMap<String, LinkedHashSet<String>>>, day: String, kind: String, origins: Set<DataOrigin>) {
         if (origins.isEmpty()) return
@@ -261,6 +373,7 @@ class HealthPlugin : Plugin() {
     }
 
     companion object {
+        private val DISTANCE_TYPES = setOf("run", "walk", "hike", "bike", "swim", "row")
         private val KNOWN_APPS = mapOf(
             "android" to "This phone",
             "com.google.android.apps.healthdata" to "This phone",
