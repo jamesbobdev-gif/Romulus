@@ -660,7 +660,7 @@ async function runLocalTask(c, t) {
     // has filled a page and left him the words to read (t.draft), never on the strength of the report alone
     const approved = localApproved(t) && (!legion.isLegion(t) || !!(t.draft && t.draft.text));
     lockAllow = allow;
-    fs.writeFileSync(lockFile, JSON.stringify({ allow, approved }));
+    fs.writeFileSync(lockFile, JSON.stringify({ allow, approved }), { mode: 0o600 }); // what the browser may open and whether he said yes: this user only
     browser = await startBrowserTools(lockFile, t.title, await startTab(t.id)).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }

@@ -31,8 +31,10 @@ async function pagePreviewImage(url, lane, info) {
     if (r.ok) {
       const h = (await r.text()).slice(0, 600000);
       if (info && SHOPIFY_PAGE.test(h)) info.shopify = true;
-      const meta = (p) => (h.match(new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]*content=["']([^"']+)["']`, 'i'))
-        || h.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${p}["']`, 'i')) || [])[1];
+      // each <meta> tag on its own ([^<>] can't backtrack), then the one named p: a page of 20 KB of half-open meta tags used
+      // to hold the main process for seconds with one pattern over the whole page
+      const tags = h.match(/<meta\b[^<>]*>/gi) || [];
+      const meta = (p) => { const name = new RegExp(`(?:property|name)=["']${p}["']`, 'i'); for (const t of tags) if (name.test(t)) { const c = /\bcontent=["']([^"']+)["']/i.exec(t); if (c) return c[1]; } return undefined; };
       const img = meta('og:image') || meta('og:image:url') || meta('twitter:image') || meta('twitter:image:src');
       if (img && !NO_PICTURE.test(img)) return absHttps(img, url);
       // Instacart publishes no og:image, but its product photo is in the page (the first one is the item's)
@@ -92,9 +94,9 @@ async function enrichOption(o, lane) {
       .map((re) => (h.match(re) || [])[1]).find((u) => u && !/\.gif$/i.test(u));
     if (!img) return null; // no real product photo: usually a sketchy listing, and the user wants to see what he's buying
     const price = (h.match(/<span class="a-offscreen">(\$[0-9.,]+)<\/span>/) || [])[1];
-    const rating = (h.match(/([0-9.]+) out of 5 stars/) || [])[1];
+    const rating = (h.match(/(\d+(?:\.\d+)?) out of 5 stars/) || [])[1];
     return Object.assign(base, { url: clean,
-      image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1'),
+      image: img.replace(/\._[^/.]*_\.(jpg|png)$/i, '._AC_SL500_.$1'),
       price: price || null, rating: rating ? rating + '/5' : null });
   } catch (e) { return amazonViaBrowser(base, clean, lane); }
 }
@@ -156,7 +158,7 @@ function instacartPick(html, name) {
   const want = ICART_WORDS(name);
   if (!want.length) return null;
   let best = null;
-  const re = /<img\b[^>]*?product-image\/file\/(large_[A-Za-z0-9._-]+)[^>]*>/g;
+  const re = /<img\b[^<>]*?product-image\/file\/(large_[A-Za-z0-9._-]+)[^<>]*>/g;
   for (let m, i = 0; (m = re.exec(String(html || ''))) && i < 40; i++) {
     const alt = ICART_WORDS((m[0].match(/\balt="([^"]*)"/) || [])[1]);
     const hit = want.filter((w) => alt.includes(w)).length;

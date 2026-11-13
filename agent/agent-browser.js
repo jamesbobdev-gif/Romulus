@@ -164,7 +164,7 @@ function saidYes(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
+  return isYesTo(lastYou, asked) && /reply[ \t]{0,3}\**[ \t]{0,3}yes/i.test(asked); // bounded gaps: a note padded with spaces can't send it backtracking
 }
 // what Claude last asked him on this task (the note his yes answers): what a mail run's send or trash may cover (agent/mail-mcp.js)
 function lastAsk(t) {

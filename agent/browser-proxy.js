@@ -101,11 +101,27 @@ const START_TAB = process.env.TASKS_BROWSER_TAB || '';
 async function selectStartTab() {
   if (!START_TAB) return;
   const list = resultText(await ownCall('browser_tabs', { action: 'list' }));
-  const hits = [...list.matchAll(/^- (\d+): (?:\(current\) )?\[.*\]\((\S+)\)(?: \[crashed\])?\s*$/gm)].filter((m) => m[2] === START_TAB);
-  if (hits.length) await ownCall('browser_tabs', { action: 'select', index: Number(hits[hits.length - 1][1]) });
+  const hits = tabLines(list).filter((t) => t.url === START_TAB);
+  if (hits.length) await ownCall('browser_tabs', { action: 'select', index: hits[hits.length - 1].index });
 }
-// the address may itself hold parentheses (Workday job pages do), so take everything up to the line's last one
-const currentUrl = (text) => (text.match(/^- \d+: \(current\) \[.*\]\((\S+)\)(?: \[crashed\])?\s*$/m) || [])[1] || null;
+/* The tab list, a line per tab: "- 0: (current) [Title](https://…) [crashed]". The title is the page's own, so the
+   address is taken from the line's last "](" on (a title made of "](" repeated used to send one pattern backtracking
+   for seconds; the address may itself hold parentheses, as Workday job pages do), never by a pattern over the title. */
+function tabLines(text) {
+  const out = [];
+  for (const line of String(text || '').split('\n')) {
+    const m = /^- (\d+): (\(current\) )?\[/.exec(line);
+    if (!m) continue;
+    const t = line.trimEnd().replace(/ \[crashed\]$/, '');
+    const i = t.lastIndexOf('](');
+    if (i < 0 || !t.endsWith(')')) continue;
+    const url = t.slice(i + 2, -1);
+    if (/\s/.test(url)) continue;
+    out.push({ index: Number(m[1]), current: !!m[2], url });
+  }
+  return out;
+}
+const currentUrl = (text) => (tabLines(text).find((t) => t.current) || {}).url || null;
 
 /* Which tools reach Playwright at all: the ones a run needs to read pages, click, type, fill forms and
    manage its tabs. Everything else (running code in the page, raw network requests, closing the browser,
@@ -348,11 +364,24 @@ function learnLinks(text) {
 const refLabels = {}; // ref → accessible name, learned from every page snapshot Playwright sends back
 // a name with a colon in it comes YAML-quoted: - 'button "Submit: final" [ref=e9]'
 function learnRefs(text) {
-  for (const m of text.matchAll(/- '?(\w+) "([^"\n]*)"[^\n]*\[ref=(\w+)\]/g)) refLabels[m[3]] = m[1] + ' ' + m[2];
-  for (const m of text.matchAll(/- '?(\w+)[^\n"]*\[ref=(\w+)\][^\n:]*: ([^\n]+)/g)) if (!refLabels[m[2]]) refLabels[m[2]] = m[1] + ' ' + m[3];
+  // one line at a time, the ref found by indexOf: a text node written to look like many nodes ("- a "b" - a "b" …" for
+  // thousands of characters) used to send one pattern over the whole snapshot backtracking for as long as it liked, and
+  // this launcher sits between the AI and the browser, so a hang stalls every call of the run
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const r = line.indexOf('[ref=');
+    if (r < 0) continue;
+    const ref = /^\[ref=(\w+)\]/.exec(line.slice(r));
+    if (!ref) continue;
+    const head = line.slice(0, r);
+    const named = /^\s*- '?(\w+) "([^"]*)"/.exec(head);
+    if (named) { refLabels[ref[1]] = named[1] + ' ' + named[2]; continue; }
+    if (refLabels[ref[1]]) continue;
+    const role = /^\s*- '?(\w+)/.exec(head), tail = /^\[ref=\w+\][^:]*: (.+)$/.exec(line.slice(r));
+    if (role && tail) refLabels[ref[1]] = role[1] + ' ' + tail[1];
+  }
   // a nameless wrapper (a generic box around the order button, with the text on the lines nested under it)
   // takes the first name found inside it, so clicking the box instead of the button meets the same gates
-  const lines = text.split('\n');
   lines.forEach((l, i) => {
     const m = /^(\s*)- '?(\w+)[^\n"]*\[ref=(\w+)\]/.exec(l);
     if (!m || refLabels[m[3]]) return;
@@ -554,7 +583,7 @@ function withLinkTools(line) {
 // the fields a card may go into, by the label the page gives them (learned from its snapshots)
 const CARD_NUMBER = /\b(card|credit|debit)\b[^\n]{0,20}\b(number|no\.?|#)|\bnumber on (the |your )?card|card ?number|\bpan\b/i;
 const NOT_CARD_NUMBER = /cvc|cvv|security|expir|\bexp\b|phone|zip|postal|gift|routing|account|coupon|promo|\bname\b|loyalty|rewards|member/i;
-const EXPIRY = /expir|\bexp\b|mm\s*\/?\s*yy|valid (thru|through|until)|\bdate\b/i;
+const EXPIRY = /expir|\bexp\b|mm[ \t]{0,3}\/?[ \t]{0,3}yy|valid (thru|through|until)|\bdate\b/i;
 const CVC = /cvc|cvv|security code|security number|\bcsc\b|\bcid\b|card code|verification value|3.?digit|4.?digit/i;
 const NOT_CVC = /zip|postal|promo|coupon|discount|gift|verification code|one.?time|2fa|\bsms\b|\btexted\b|text message|phone|email/i; // (labels start with the role, e.g. "textbox CVC")
 let fillFields = (fields, ms) => ownCall('browser_fill_form', { fields }, ms);

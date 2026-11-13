@@ -17,7 +17,7 @@ function orderYesReply(text){
 function cartOutcome(t,u,asked,his){
   const had=Array.isArray(t.cart)&&t.cart.length>0;
   const bought=!!(u.list&&Array.isArray(u.list.bought)&&u.list.bought.length);
-  const placed=bought||(had&&u.status==='done'&&/reply\s*\**\s*yes/i.test(String(asked||''))&&orderYesReply(his));
+  const placed=bought||(had&&u.status==='done'&&/reply[ \t]{0,3}\**[ \t]{0,3}yes/i.test(String(asked||''))&&orderYesReply(his));
   const fresh=Array.isArray(u.cart)&&u.cart.length>0;
   return {placed:placed,cart:fresh?'new':placed?'clear':'keep'};
 }

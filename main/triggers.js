@@ -50,7 +50,7 @@ async function checkMail(tasks, s) {
   const mails = [];
   for (const { id } of fresh) {
     const m = await gmailDates.gmail('messages/' + id + '?format=full');
-    mails.push({ id, threadId: m.threadId, subject: header(m, 'subject'), from: header(m, 'from').replace(/\s*<[^>]+>/, '').replace(/"/g, ''),
+    mails.push({ id, threadId: m.threadId, subject: header(m, 'subject'), from: header(m, 'from').replace(/\s*<[^<>]+>/, '').replace(/"/g, ''),
       text: mailEvents.bodyText(m).slice(0, 900), date: Number(m.internalDate) || Date.now() });
   }
   const pairs = triggers.mailCandidates(tasks, mails);

@@ -34,6 +34,12 @@
       "assets/**",
       "agent/**"
     ],
+    "electronFuses": {
+      "runAsNode": true,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "target": [

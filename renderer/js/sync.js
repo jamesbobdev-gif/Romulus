@@ -420,8 +420,10 @@ function wsDoc(ws,remoteDoc){
 // Per task id the newer updatedAt wins; a tombstone beats a task unless the
 // task was edited after the deletion.
 function mergeRemoteWs(remoteDoc,ws){
-  const rTasksRaw=(remoteDoc&&Array.isArray(remoteDoc.tasks))?remoteDoc.tasks:[];
-  const rTombs=(remoteDoc&&Array.isArray(remoteDoc.tombstones))?remoteDoc.tombstones:[];
+  // only what a task or a tombstone looks like: a row another device (or a family member's) wrote with a null in it would
+  // otherwise throw here every sync and stop this list syncing until the row was repaired
+  const rTasksRaw=((remoteDoc&&Array.isArray(remoteDoc.tasks))?remoteDoc.tasks:[]).filter(function(t){ return t&&typeof t==='object'&&!Array.isArray(t); });
+  const rTombs=((remoteDoc&&Array.isArray(remoteDoc.tombstones))?remoteDoc.tombstones:[]).filter(function(x){ return x&&typeof x==='object'&&typeof x.id==='string'&&typeof x.deletedAt==='number'; });
   const rTasks=rTasksRaw.map(function(t){ const c=Object.assign({},t); c.ws=ws; if(!Array.isArray(c.subs))c.subs=[]; return c; });
   const tombs={};
   state.tombstones.concat(rTombs).forEach(function(x){ if(!tombs[x.id]||x.deletedAt>tombs[x.id])tombs[x.id]=x.deletedAt; });

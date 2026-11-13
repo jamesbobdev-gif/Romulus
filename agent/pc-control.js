@@ -47,8 +47,10 @@ function promptText({ goal, steps, w, h }) {
 
 // the first {...} in the reply that parses
 function firstJson(text) {
-  const s = String(text || '').replace(/```(?:json)?/gi, '');
-  for (let i = s.indexOf('{'); i >= 0; i = s.indexOf('{', i + 1)) {
+  // an action is a short object: the reply is cut at 20,000 characters and at most 20 starts are tried (a reply of "{"
+  // over and over would otherwise be scanned again from each of them)
+  const s = String(text || '').replace(/```(?:json)?/gi, '').slice(0, 20000);
+  for (let i = s.indexOf('{'), tries = 0; i >= 0 && tries < 20; i = s.indexOf('{', i + 1), tries++) {
     let depth = 0, inStr = false, esc = false;
     for (let j = i; j < s.length; j++) {
       const c = s[j];

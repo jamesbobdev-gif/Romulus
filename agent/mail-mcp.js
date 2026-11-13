@@ -115,8 +115,25 @@ const bodyOf = (a) => { const b = String(a.body == null ? '' : a.body).replace(/
 
 const b64 = (s) => Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 const tidy = (t) => String(t || '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
-const fromHtml = (h) => String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n')
-  .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+/* style and script blocks cut out by a scan, never a regex, and tags matched without backtracking ([^<>]): an email built
+   with an unclosed <style or a long run of "<" used to send the regex back over the rest of the text from every position,
+   minutes of it, in a run that every message in the mailbox reaches. */
+function dropBlocks(h) {
+  const low = h.toLowerCase(), re = /<(style|script)\b/g;
+  let out = '', at = 0, m;
+  while ((m = re.exec(low))) {
+    if (m.index < at) { re.lastIndex = at; continue; }
+    out += h.slice(at, m.index) + ' ';
+    const close = low.indexOf('</' + m[1], m.index);
+    if (close < 0) return out; // never closed: the rest is that block
+    const gt = low.indexOf('>', close);
+    at = gt < 0 ? h.length : gt + 1;
+    re.lastIndex = at;
+  }
+  return out + h.slice(at);
+}
+const fromHtml = (h) => dropBlocks(String(h || '')).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n')
+  .replace(/<[^<>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
 function bodyText(m) {
   let plain = '', html = '';
   (function walk(p) {

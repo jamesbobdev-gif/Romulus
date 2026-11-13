@@ -220,6 +220,7 @@ public class WakeWordService extends Service {
         Intent open = new Intent(this, MainActivity.class)
                 .setAction("com.jartro.tasks.WAKE")
                 .putExtra("hookKind", "wake")
+                .putExtra("hookNonce", Widgets.hookNonce(this)) // MainActivity takes a hook only with this install's nonce
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         // Android only lets an app jump in front from the background with "Display over other apps";
         // without it, a notification you tap does the same

@@ -16,7 +16,7 @@ const MAX_LINES = 40, MAX_LEN = 160;
 // one line from a run's `allow` ({site, text} or a string) → "site: text", or null when it isn't allowed
 function clean(a) {
   if (!a) return null;
-  const site = typeof a === 'object' ? String(a.site || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[^a-z0-9.-]+.*$/, '').slice(0, 60) : '';
+  const site = typeof a === 'object' ? String(a.site || '').slice(0, 200).toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[^a-z0-9.-][\s\S]*$/, '').slice(0, 60) : '';
   let text = String(typeof a === 'object' ? a.text || '' : a).replace(/\s+/g, ' ').replace(/^\s*-\s*/, '').trim();
   if (!text) return null;
   if (!site && typeof a !== 'object') { const m = text.match(/^([a-z0-9.-]+\.[a-z]{2,}):\s*(.+)$/i); if (m) return clean({ site: m[1], text: m[2] }); }

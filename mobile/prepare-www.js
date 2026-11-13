@@ -29,7 +29,7 @@ let html = fs.readFileSync(src, 'utf8');
 // keeps the rest: no frames, plugins, base changes or form posts, and pictures and connections only over the web
 html = html.replace(/<!--\s*Only the app's own scripts[^]*?-->\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*/, '');
 const PHONE_CSP = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; ' +
-  'font-src \'self\' data:; img-src \'self\' https: data: blob:; connect-src \'self\' https: wss: http: ws:; media-src \'self\' blob: data:; frame-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'">';
+  'font-src \'self\' data:; img-src \'self\' https: data: blob:; connect-src \'self\' https: wss:; media-src \'self\' blob: data:; frame-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'">';
 const seed = `<script>
 window.ROMULUS_VERSION=${JSON.stringify(rootPkg.version)}; window.ROMULUS_RELEASES=${JSON.stringify(releases)};
 ${syncCfg ? `try{ if(!localStorage.getItem('tasks.sync.v1')) localStorage.setItem('tasks.sync.v1', ${JSON.stringify(JSON.stringify(syncCfg))}); }catch(e){}` : ''}

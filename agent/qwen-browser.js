@@ -14,7 +14,10 @@ const readConfig = () => ctx.readConfig();
 const agentLog = (m) => ctx.agentLog(m);
 
 const QWEN_BROWSER_LOCAL_PORT = 9336;
-const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
+// up = something answers on the relay port AND says it is Chromium: another program that took the port first must not be
+// handed the browser's traffic (resume uploads, the pages it opens)
+const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) })
+  .then(async (r) => r.ok && /chrom(e|ium)/i.test(String(((await r.json().catch(() => null)) || {}).Browser || ''))).catch(() => false);
 /* After each task: one blank tab left, every other tab closed. Tabs piled up between tasks (Blackboard,
    D2L…) and kept their memory on a mini PC that froze when memory ran out. Logins stay (cookies).
    A run that stopped waiting on him (a sign-in, a code, a form for his yes) keeps its tabs: the next task's

@@ -26,6 +26,7 @@ public class WidgetActionActivity extends Activity {
             Intent open = new Intent(this, MainActivity.class);
             open.setAction("com.jartro.tasks.OPEN_TASK");
             open.putExtra("hookKind", "open");
+            open.putExtra("hookNonce", Widgets.hookNonce(this)); // MainActivity takes a hook only with this install's nonce
             open.putExtra("hookArg", id);
             open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(open);
