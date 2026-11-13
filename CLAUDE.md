@@ -60,8 +60,8 @@ that says what it does; read that first, then this for how the pieces fit and th
 ## Ground rules (also in CONTRIBUTING.md)
 
 - The Agent never buys, sends, submits, books or deletes without a yes from the user on that task.
-- Keys go through `main/store.js` (encrypted) and are never synced. Finance and the Locked profile are
-  never sent to a cloud AI.
+- Keys go through `main/store.js` (encrypted) and are never synced. Finance is never sent to a cloud AI, and
+  the Locked profile only while the user's switch for that is on in Settings (off to start).
 - No personal details in the repo: this repository is public. Fixtures use example names.
 - UI text is plain English for someone who has never seen the code. No emoji in UI text, notes or
   prompts (`no-emoji.js` strips ones that come in from outside).

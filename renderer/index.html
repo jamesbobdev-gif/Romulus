@@ -176,8 +176,10 @@
         </div>
       </details>
       <details class="settings-sub settings-collapse" id="lockedSection" hidden>
-        <summary class="settings-subhead">Locked — only the local model sees this</summary>
-        <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. The Agent’s cloud AIs never read it. No passwords, card numbers or SSN.</p>
+        <summary class="settings-subhead" id="lockedHead">Locked — only the local model sees this</summary>
+        <p class="settings-hint">Resume, address, phone, IDs — for filling in forms. No passwords, card numbers or SSN.</p>
+        <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="lockedCloud"><span class="track" aria-hidden="true"></span><span>Let the Agent’s cloud AIs read it too</span></label>
+        <p class="settings-hint">Off: only the local model on your own computer reads it. On: Claude and the other cloud AIs you connected get it with every task, for the forms and applications they fill in.</p>
         <textarea id="lockedText" class="settings-inp" rows="8" style="font-family:var(--display);font-size:13.5px;line-height:1.5;resize:vertical" placeholder="## Resume&#10;- …&#10;&#10;## Contact for forms&#10;- …"></textarea>
         <div class="settings-row">
           <button id="lockedSaveBtn" class="btn-accent">Save</button>

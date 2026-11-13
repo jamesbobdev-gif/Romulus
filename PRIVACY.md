@@ -19,7 +19,7 @@ goes only to services *you* connect, under your own accounts and keys.
   a phone under a key released only by your fingerprint. It is never sent to a cloud AI. When sync is on, the
   SimpleFIN access link alone (no bank data) is kept in your sync storage so your other computers can connect,
   encrypted under that same passphrase, which never leaves the computer you type it on.
-- The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
+- The Locked profile (resume, address, ID numbers for forms): read by a local AI model you run yourself, and by the Agent's cloud AIs only if you switch that on in Settings (it is off to start).
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.
 - Health (a phone, when you turn it on): see "Health" below.

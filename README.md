@@ -52,7 +52,7 @@ What the Agent can do today: research and writing; shopping on Amazon and Walmar
 
 ## Privacy, in short
 
-Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key; one button in Settings encrypts every list end to end, so the project holds only ciphertext. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
+Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. Finance is never given to a cloud AI, and the Locked profile only if you switch that on in Settings. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key; one button in Settings encrypts every list end to end, so the project holds only ciphertext. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
 
 ---
 

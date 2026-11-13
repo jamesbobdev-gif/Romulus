@@ -24,7 +24,7 @@ The [README](README.md) has more on the layout; [docs/SETUP.md](docs/SETUP.md) i
 ## Ground rules for changes
 
 - **The hard rule stays.** The Agent never buys, sends, submits, books or deletes without a yes from the user in that task. Any change to the agent prompts, the browser tools or the form filler must keep that true, in code where it can be.
-- **Private things stay private.** Keys are stored through `main/store.js` (encrypted) and never synced; the Locked profile and Finance are never given to a cloud AI. If a change moves data somewhere new, say so in the pull request.
+- **Private things stay private.** Keys are stored through `main/store.js` (encrypted) and never synced; Finance is never given to a cloud AI, and the Locked profile only while the user's switch for that is on in Settings (off to start). If a change moves data somewhere new, say so in the pull request.
 - **No personal details in the repo.** Test fixtures use example names and addresses. Config, keys and seed files are git-ignored; keep them that way.
 - **Plain English in the UI.** Settings text and agent messages are written for someone who has never seen the code.
 - Add or update a test in `test/` when the change has logic worth protecting. Modules under `agent/` and `main/` are written without Electron so they can be tested on their own.

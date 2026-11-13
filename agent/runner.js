@@ -22,7 +22,7 @@ const runLive = require('./run-live');
 const taskTabs = require('./task-tabs');
 const { reconnectTitle, CLAUDE_AUTH_RE } = require('./reconnect');
 const { wantsCalendar, calendarForAgent, loadSkills, wantsNearby, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, skillText, cartBrief,
-  wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures } = require('./task-context');
+  wantsInbox, agentRow, lockedForCloud, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures } = require('./task-context');
 const { cleanSeats, cleanShowtimes, cleanTheaters, placeTheaters } = require('./seats');
 const where = require('./where');
 const siteNotes = require('./site-notes');
@@ -185,6 +185,9 @@ async function startAgentRun() {
   try { rules = fs.readFileSync(path.join(__dirname, 'instant-prompt.md'), 'utf8'); } catch (e) { agentLog('cannot read instructions: ' + e.message); return; }
   const prefs = await agentRow(':prefs');
   const standingText = await agentRow(':standing'); // steps he said yes to once and for all (agent/standing.js)
+  // his Locked profile: '' unless he switched "Let the Agent's cloud AIs read it too" on (Settings → About you → Locked)
+  const locked = await lockedForCloud();
+  if (locked.trim()) agentLog('Locked profile: handed to the cloud AIs (his switch is on)');
   // photos the user attached (this reply + the latest few earlier ones) → ./attachments/<task>/ so
   // Claude can open them with its Read tool; only files from his own attachments bucket
   const workDir = path.join(ctx.documents(), 'Claude Agent');
@@ -300,9 +303,12 @@ async function startAgentRun() {
   // notes on the sites these tasks link to
   const notes = siteNotesFor(tasks.flatMap(taskLinks), 4);
   const notePart = notes.length ? '\n\n## Site notes\n' + notes.map(siteNotes.show).join('\n\n') : '';
+  // his Locked profile, only with his switch on: for forms and applications, never for anyone else to read
+  const lockedPart = !locked.trim() ? '' : '\n\n## His Locked profile\nPrivate details he keeps for forms and applications (he let the cloud AIs read them in Settings). ' +
+    'Use them to fill in forms and write applications. Never put them in a note, a reply, a search or a message to anyone else.\n' + locked.trim();
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
-  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') + (brief.some((b) => want.includes(b.id) && b.setup === 'jobs') ? jobs.JOBS_NOTE : '') +
+  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + lockedPart + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') + (brief.some((b) => want.includes(b.id) && b.setup === 'jobs') ? jobs.JOBS_NOTE : '') +
     (browses(id) ? filesPart + (id === 'claude' && link ? link.part : '') : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
     'Today is ' + new Date().toDateString() + '.\n' + // for deadlines and a followUp's day
