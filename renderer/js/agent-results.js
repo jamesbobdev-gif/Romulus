@@ -182,6 +182,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(u.lane!=='local'&&typeof u.model==='string'&&u.model)extra.model=u.model.slice(0,80); // which model wrote it (lists.js shows it by the name)
       if(t.shot)extra.images=[t.shot];
       if(Array.isArray(u.plan)&&u.plan.length>=2){ t.goalPlan=u.plan; extra.plan=u.plan; } // a goal's steps: Start button (goals.js planBox)
+      if(Array.isArray(u.jobs)&&u.jobs.length){ extra.jobs=u.jobs; if(typeof convOpen!=='undefined')convOpen.add(t.id); } // the setup task's suggested jobs, a Start each (jobs.js jobsBox), shown open
       if(thoughts){
         extra.thoughts=thoughts;
         // only the newest few keep theirs: each is up to 6000 characters, synced with the task

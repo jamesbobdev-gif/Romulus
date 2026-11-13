@@ -69,6 +69,10 @@ If Ollama is already running on this computer the panel notices and says so. Tas
 
 The Agent orders by itself at Amazon, Walmart, Target, Best Buy and Shopify stores with Shop Pay, where your card is already on file. For any other store, connect a [Link](https://link.com) wallet (Stripe's; US and Canada): **⚙ Settings → Agent & AI → Link wallet → Connect Link**. The app installs Link's small command-line tool, opens its sign-in page and shows a phrase to enter in the Link app. From then on, when you say yes to an order at such a store, the Agent asks Link for a one-time card for that exact amount, Link asks you to approve it in the Link app, and the Agent's browser types the card into the checkout itself. The AI is told the last four digits only, the number is blanked out of every page it reads afterwards, and the card is dead after that one purchase. The store stays the merchant: returns and refunds go through it as usual. **Test mode** (under Advanced) uses fake cards and charges nothing, for trying it out.
 
+### Add from Claude Desktop (optional)
+
+If Claude Desktop is on the same computer, **Settings → Agent & AI → Add from Claude Desktop → Set up** puts Romulus in its connections (its `claude_desktop_config.json`; nothing else in that file is touched). Restart Claude Desktop, and from then on you can tell it "put *call the dentist* on my Romulus list" or "hand *find the cheapest flight to Denver* to the Romulus Agent". It can add tasks, not read them, and the Agent still asks you before anything final. **Remove** takes it out again.
+
 ## 3. Sync with your phone
 
 A new install syncs from its first start: your lists go to the Romulus server end to end encrypted, under a random sync key only your devices know, with 50 MB free (a paid plan adds room for photos and files and 30 days of history). To add the phone, install the Android app (see *Connect the phone* below), then on the computer open **⚙ Settings → Device sync → Add a device**: it shows a short code for ten minutes, and typing that code on the phone fills in its sync form. Nothing else to copy.

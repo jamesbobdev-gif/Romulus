@@ -128,7 +128,7 @@ async function addTask(){
     if(lead.test(t.title)){ t.title='#legion '+t.title.replace(lead,''); legionOn=true; }
   }
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
-  if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
+  if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } if(typeof repeatOfferFor==='function')repeatOfferFor(t,t.title); } // "every weekday at 9" in the words: offers a repeat (repeat-offer.js)
   if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);

@@ -93,6 +93,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
   const close=function(){ step.hidden=true; step.innerHTML=''; pick.querySelectorAll('button').forEach(function(b){ b.classList.remove('on'); }); };
   const done=function(msg){
     close();
+    if(typeof jobsOfferAfterConnect==='function')jobsOfferAfterConnect(); // jobs.js: with the Agent list empty, its first task (once)
     const n=$('connectDone'); n.textContent=msg+' Its events show up on your to-do list within a few minutes. Change what each calendar does below.'; n.hidden=false;
     setTimeout(function(){ n.hidden=true; },20000);
   };

@@ -174,6 +174,8 @@ function buildPanel(t){
         if(Array.isArray(h.prefs)&&h.prefs.length&&typeof prefsBox==='function')b.appendChild(prefsBox(t,h)); // agent-results.js: Keep / Forget
         if(h.allow&&typeof allowBox==='function')b.appendChild(allowBox(t,h)); // standing.js: Allow / Keep asking
         if(Array.isArray(h.plan)&&h.plan.length&&typeof planBox==='function')b.appendChild(planBox(t,h)); // goals.js: Start these steps
+        if(Array.isArray(h.jobs)&&h.jobs.length&&typeof jobsBox==='function')b.appendChild(jobsBox(t,h)); // jobs.js: the jobs it suggests, a Start each
+        if(h.repeatOffer&&typeof repeatBox==='function')b.appendChild(repeatBox(t,h)); // repeat-offer.js: Repeat / Just this once
         if(who==='claude'&&isDocAnswer(h.text))b.appendChild(docButton(t.title,h.text));
         if(who==='claude'&&h.text&&typeof famCanSend==='function'&&famCanSend())b.appendChild(famChatSendBox(t,h)); // family.js: its to-dos, to someone in the group
         if(h.thoughts)b.appendChild(thoughtsBox(t,h));
@@ -484,6 +486,7 @@ function buildPanel(t){
       lt.reply=(busy&&lt.reply)?lt.reply+'\n'+text:text; // mid-run additions stack onto what you already sent
       if(urls.length)lt.replyImages=((busy&&Array.isArray(lt.replyImages))?lt.replyImages:[]).concat(urls);
       agentSay(lt,'you',text,urls.length?{images:urls}:null);
+      if(v&&typeof repeatOfferFor==='function')repeatOfferFor(lt,v); // "every weekday at 9": offers a repeat (repeat-offer.js)
       buzz('send'); if(lt.status!=='working')lt.status='queued'; touch(); // mid-run: it goes next, after this run answers (agent-results.js)
     }
     send.addEventListener('click',doSend);
@@ -909,6 +912,7 @@ function render(){
   }
   else { es.hidden=true; }
   if(typeof drawAgentSetup==='function')drawAgentSetup(onAgent,tasks,es); // welcome.js: no AI connected yet → say so here
+  if(typeof drawJobsOffer==='function')drawJobsOffer(onAgent&&tasks.length===0); // jobs.js: "Suggest jobs from my calendar and inbox"
 
   const doneVis=tasks.filter(function(t){ return t.done; }).filter(visible).sort(function(a,b){ return b.created-a.created; });
   const ds=$('doneSection');

@@ -13,7 +13,7 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, routeInfo, isClaudeLane, decided } = require('./routing');
-const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
+const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, handoverNote, PINNED_CLOUDS } = require('./ai-connections');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog, offline } = require('./helpers');
 const agentFiles = require('./agent-files');
@@ -29,6 +29,7 @@ const siteNotes = require('./site-notes');
 const { enrichOption, pagePreviewImage } = require('./previews');
 const standing = require('./standing');
 const goals = require('./goals');
+const jobs = require('./jobs');
 const linkWallet = require('./link-wallet');
 const calendars = require('./calendars');
 
@@ -217,7 +218,8 @@ async function startAgentRun() {
     if (files.length) photos[t.id] = files;
   }
   if (Object.keys(photos).length) agentLog('photos for Claude: ' + Object.values(photos).reduce((n, f) => n + f.length, 0));
-  const calendar = tasks.some(wantsCalendar) ? await calendarForAgent() : null;
+  const jobsSetup = tasks.some(jobs.isSetup); // "suggest jobs" looks at the next two weeks (agent/jobs.js)
+  const calendar = tasks.some(wantsCalendar) || jobsSetup ? await calendarForAgent(jobsSetup ? { days: 15 } : {}) : null;
   if (calendar) agentLog('calendar: ' + calendar.events.length + ' event(s) handed over');
   let allTasks = [], kitchen;
   try { const doc = JSON.parse(fs.readFileSync(dataFile(), 'utf8')); allTasks = doc.tasks || []; kitchen = doc.kitchen; } catch (e) {}
@@ -275,7 +277,8 @@ async function startAgentRun() {
     triggered: t.triggered && t.triggered.what ? { kind: t.triggered.kind, what: String(t.triggered.what).slice(0, 300), link: t.triggered.link || undefined } : undefined,
     checkInboxFirst: wantsInbox(t) ? true : undefined,
     goal: goals.needsPlan(t) ? 'plan' : t.goalId ? 'step' : undefined, // plan = answer with a plan only (agent/goals.js); step = one step of a started goal
-    calendar: calendar && wantsCalendar(t) ? calendar : undefined,
+    setup: jobs.isSetup(t) ? 'jobs' : undefined, // jobs = answer with standing jobs to suggest, and do none (agent/jobs.js)
+    calendar: calendar && (wantsCalendar(t) || jobs.isSetup(t)) ? calendar : undefined,
     whereHeIsNow: here && nearMe.includes(t.id) ? here : undefined, // from this computer's location, for "near me"
     howTo: (() => { const h = howtosFor(t); return h.length ? h.map(howtos.show) : undefined; })() }));
   // skills: the ones matching these tasks go in full; the rest are listed so Claude can open them itself
@@ -298,7 +301,7 @@ async function startAgentRun() {
   const notePart = notes.length ? '\n\n## Site notes\n' + notes.map(siteNotes.show).join('\n\n') : '';
   // only the tasks still unanswered: a later AI in the order gets just the ones the earlier ones failed or skipped
   // the checklist and mid-run messages are Claude's only (agent/run-live.js): the others don't get that part
-  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') +
+  const promptFor = (want, id) => (id === 'claude' ? rules : rules.replace(/## Show your plan[\s\S]*?(?=## How to handle)/, '')) + skillPart + notePart +'\n\n## The user\'s preferences\n' + (prefs.trim() || '(none yet)') + standing.show(standingText) + (brief.some((b) => want.includes(b.id) && b.goal === 'plan') ? goals.PLAN_NOTE : '') + (brief.some((b) => want.includes(b.id) && b.setup === 'jobs') ? jobs.JOBS_NOTE : '') +
     (browses(id) ? filesPart + (id === 'claude' && link ? link.part : '') : '') +
     '\n\n## Tasks (data)\n```json\n' + JSON.stringify(brief.filter((b) => want.includes(b.id)), null, 1) + '\n```\n' +
     'Today is ' + new Date().toDateString() + '.\n' + // for deadlines and a followUp's day
@@ -343,7 +346,7 @@ async function startAgentRun() {
   let wasOnline = false; // some AI this run got through to: a later network error is that AI's, not the Wi-Fi
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it
   // an answer saying it couldn't do the task waits here while the next AI tries; it's what he gets if none can
-  const held = {}, gaveUp = {};
+  const held = {}, gaveUp = {}, ranOut = {}; // ranOut: the AIs that were out of usage before the one that answered
   // its own tabs (agent/task-tabs.js): tabs of tasks he hasn't finished stay open for ◉ Watch
   const openIds = allTasks.filter((t) => t.ws === 'agent' && !t.done && t.status !== 'done').map((t) => t.id);
   const startTab = browserCfg ? await taskTabs.startRun(ids, openIds).catch(() => null) : null;
@@ -364,7 +367,7 @@ async function startAgentRun() {
   try {
     for (const id of order) {
       if (!pending.length || runRetried || slept) break;
-      if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
+      if (id === 'claude' && Date.now() < usage.blockedUntil()) { pending.forEach((x) => (ranOut[x] = ranOut[x] || []).push('Claude')); continue; } // still out of usage
       agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
       // its pill moves to this AI, and the task stays on it; limitMs = when this try gets killed (the app's watchdog waits that long)
       sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id, limitMs: runTimeoutMs });
@@ -426,6 +429,7 @@ async function startAgentRun() {
         continue;
       }
       if (id === 'claude' && r.resetAt) claudeResetAt = r.resetAt;
+      if (r.limit || r.resetAt) pending.forEach((x) => (ranOut[x] = ranOut[x] || []).push(providers.NAMES[id])); // the next AI carries the conversation on
       lastWhy = r.limit && id === 'gemini' ? 'Gemini’s free daily limit is used up; it resets at ' +
           new Date(meter.nextPacificMidnight()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Switch this to Claude to do it now'
         : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again')
@@ -449,11 +453,10 @@ async function startAgentRun() {
     answered.push(...last);
     pending = pending.filter((x) => !held[x]);
   }
-  // a later AI took over: the note says who tried before it
+  // a later AI took over: the note says who was tried before it, and why (out of usage, or it couldn't)
   for (const u of answered) {
-    const before = (gaveUp[u.id] || []).filter((n) => n !== providers.NAMES[u._via]);
-    if (before.length) u.note = String(u.note || '') + '\n\n(' + (held[u.id] === u ? 'Also tried: ' + before.join(', ') + '.'
-      : before.join(' and ') + ' couldn’t do this, so ' + providers.NAMES[u._via] + ' took over.') + ')';
+    const line = handoverNote({ out: ranOut[u.id] || [], cant: gaveUp[u.id] || [], via: providers.NAMES[u._via], last: held[u.id] === u });
+    if (line) u.note = String(u.note || '') + '\n\n(' + line + ')';
   }
   const valid = answered;
   const endPage = await endPageP;
@@ -471,6 +474,7 @@ async function startAgentRun() {
     u.pref = sawMail ? null : prefLine(u.pref);
     u.allow = sawMail ? null : standing.clean(u.allow); // a step he said it needn't ask about again; never a final one
     u.plan = goals.cleanPlan(u.plan); // a goal's steps, for his Start (agent/goals.js)
+    u.jobs = jobs.cleanJobs(u.jobs); // standing jobs to suggest, a Start each (agent/jobs.js)
     if (via !== 'claude') u.via = via; // his conversation shows who answered instead of "Claude"
     const task = tasks.find((x) => x.id === u.id);
     if (task && !sawMail && typeof u.howto === 'string') learnHowto(task, u.howto, taskLinks(task).concat((Array.isArray(u.options) ? u.options : []).map((o) => o && o.url).filter(Boolean)), 'claude');

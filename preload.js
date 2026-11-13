@@ -70,6 +70,13 @@ contextBridge.exposeInMainWorld('desktop', {
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
+  // tasks added from outside the app (Claude Desktop through the app's MCP server: main/outside-adds.js), and that server's switch in Settings
+  onOutsideTasks: (cb) => ipcRenderer.on('tasks:outside', (_event, items) => cb(items)),
+  outsidePending: () => ipcRenderer.invoke('outside:pending'),
+  outsideDone: (file) => ipcRenderer.invoke('outside:done', file),
+  mcpStatus: () => ipcRenderer.invoke('mcp:status'),
+  mcpSetup: () => ipcRenderer.invoke('mcp:setup'),
+  mcpRemove: () => ipcRenderer.invoke('mcp:remove'),
   // documents from the Agent tab: an answer as a Word file, and files the mini PC's browser downloaded
   saveDoc: (title, text) => ipcRenderer.invoke('doc:save', title, text),
   saveSheet: (title, csv) => ipcRenderer.invoke('sheet:save', title, csv),

@@ -468,6 +468,8 @@ body.search-open .search,.search:not(:placeholder-shown){display:block}
 .agent-examples-head{width:100%;text-align:center;color:var(--faint);font-size:12px}
 .agent-example{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:7px 13px;cursor:pointer;transition:border-color .15s}
 .agent-example:hover{border-color:var(--accent);color:var(--accent)}
+.agent-jobs{display:flex;justify-content:center;margin:-28px auto 40px}
+.agent-jobs[hidden]{display:none}
 
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #newTitle:focus-visible,.subadd:focus-visible,.title-edit:focus-visible{outline:none}

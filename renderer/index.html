@@ -136,6 +136,15 @@
           <span id="standingStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>
+      <div class="settings-sub adv" id="mcpSection" hidden>
+        <h3 class="settings-subhead">Add from Claude Desktop</h3>
+        <p class="settings-hint">Lets Claude Desktop on this computer add to your lists: ask it to put something on your to-do list, or to hand a task to the Agent. It can add, not read. Set up puts Romulus in Claude Desktop’s own connections; restart Claude Desktop afterwards.</p>
+        <div class="settings-row">
+          <button id="mcpSetupBtn" class="ghost mono">Set up</button>
+          <button id="mcpRemoveBtn" class="ghost mono danger" hidden>Remove</button>
+          <span id="mcpStatus" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
       <div class="settings-sub adv" id="howtosSection" hidden>
         <h3 class="settings-subhead">What worked before</h3>
         <p class="settings-hint">Notes the Agent kept from finished tasks. Tap one to read it; × if it's wrong.</p>
@@ -610,6 +619,8 @@
     <div id="agentExamples" class="agent-examples" hidden>
       <span class="agent-examples-head">Try one:</span>
     </div>
+    <!-- Agent tab, empty, with a calendar or mailbox connected: the Agent can suggest standing jobs (jobs.js) -->
+    <div id="agentJobsOffer" class="agent-jobs" hidden><button type="button" id="agentJobsBtn" class="agent-example">Suggest jobs from my calendar and inbox</button></div>
     <!-- Agent tab, nothing connected yet (welcome.js drawAgentSetup) -->
     <div id="agentSetupCard" class="connect-card" hidden>
       <b>Pick an AI to do your tasks</b>
@@ -745,6 +756,9 @@
 <script src="js/triggers.js"></script>
 <script src="js/standing.js"></script>
 <script src="js/goals.js"></script>
+<script src="js/jobs.js"></script>
+<script src="js/repeat-offer.js"></script>
+<script src="js/outside-adds.js"></script>
 <script src="js/local-sites.js"></script>
 <script src="js/update-sync.js"></script>
 <script src="js/update-desktop.js"></script>
