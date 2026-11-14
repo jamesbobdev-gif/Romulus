@@ -333,3 +333,11 @@ test('pantry items that went in with the size in their name get it as their amou
     [['Bananas', 10.2, 'lb'], ['Lean Ground Turkey', 32, 'oz'], ['Kiwi', 12, ''], ['Milk (whole)', null, ''], ['Rice (5 lb)', 3, 'lb']]);
   assert.strictEqual(k.kFixSized(kt, 10), 0); // nothing left to do the next time
 });
+
+test('recipes keep their steps through a sync, numbering taken off', () => {
+  assert.deepStrictEqual(k.kSteps('1. Heat the oven\n\nStep 2: Roast 25 minutes\n  Serve  '), ['Heat the oven', 'Roast 25 minutes', 'Serve']);
+  assert.deepStrictEqual(k.kSteps(null), []);
+  const kt = k.normKitchen({ recipes: [{ id: 'a', name: 'Toast', ingredients: ['1 slice bread'], steps: ['Toast it', ''] }, { id: 'b', name: 'Tea', ingredients: [] }] });
+  assert.deepStrictEqual(kt.recipes[0].steps, ['Toast it']);
+  assert.ok(!('steps' in kt.recipes[1]));
+});

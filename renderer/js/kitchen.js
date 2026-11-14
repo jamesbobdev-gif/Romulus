@@ -10,7 +10,7 @@
      extra:  what he put on the shopping list himself, shaped like an item
      item:   {id, name, qty (number, or null = "some, amount not known"), unit, where? (fridge, freezer or cupboard), updatedAt}
      recipe: {id, name, ingredients:[{name, qty|null, unit}], servings? (how many the ingredients make, when more than 1),
-              liked, planned, made:['YYYY-MM-DD'], updatedAt}
+              steps? ([how to make it, one line each]), liked, planned, made:['YYYY-MM-DD'], updatedAt}
      ideas:  the last meals his AIs suggested {at, via, aim, meals}, or null: kept so they're still there after a
              restart, and synced so the phone shows them too
    It syncs through its own row next to the personal list (syncKey+':kitchen'), merged like the Hours log:
@@ -150,6 +150,12 @@ function kScale(ings,f){
   return ings.map(function(i){ return i.qty==null?i:Object.assign({},i,{qty:kRound(i.qty*f)}); });
 }
 function kPic(s){ return !!s&&/^https:\/\//i.test(String(s)); }
+// a recipe's steps: lines (or one block of text) → [step], numbering like "1." or "Step 2:" taken off
+function kSteps(a){
+  if(typeof a==='string')a=a.split('\n');
+  return (Array.isArray(a)?a:[]).map(function(s){ return String(s==null?'':s).replace(/^\s*(?:step\s*)?\d+\s*[.):-]\s*/i,'').trim().slice(0,300); })
+    .filter(Boolean).slice(0,30);
+}
 function kRecipe(x){
   if(!x||!x.id||!String(x.name||'').trim())return null;
   const ings=(Array.isArray(x.ingredients)?x.ingredients:[]).map(function(i){
@@ -162,6 +168,8 @@ function kRecipe(x){
   const r={id:String(x.id),name:String(x.name).trim().slice(0,100),ingredients:ings,liked:!!x.liked,planned:!!x.planned,made:made,updatedAt:x.updatedAt||0};
   const sv=Math.round(Number(x.servings));
   if(sv>1&&sv<100)r.servings=sv; // how many the ingredients make; 1 when it doesn't say
+  const st=kSteps(x.steps);
+  if(st.length)r.steps=st;
   return r;
 }
 // the meals his AIs suggested last (agent/meal-ideas.js parse) → {at, via, aim, meals}, or null
@@ -470,7 +478,7 @@ if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kPantryLines:kPantryLines,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
     shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
-    uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized};
+    uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized,kSteps:kSteps};
 }
 
 /* ══ the page ══ */
@@ -602,6 +610,7 @@ function kBuild(view){
       '<div class="kit-form kit-recipe-form">'+
         '<input id="kitRecName" class="sm kit-grow" placeholder="Recipe name" aria-label="Recipe name">'+
         '<textarea id="kitRecIngs" class="sm" rows="5" placeholder="Ingredients, one per line:&#10;1 lb ground beef&#10;1 can kidney beans&#10;1 onion" aria-label="Ingredients"></textarea>'+
+        '<textarea id="kitRecSteps" class="sm" rows="4" placeholder="How to make it, one step per line:&#10;Brown the beef with the onion&#10;Add the beans and simmer 20 minutes" aria-label="Steps"></textarea>'+
         '<label class="kit-check"><input id="kitRecLiked" type="checkbox"> I like this one</label>'+
         '<label class="kit-check">Makes <input id="kitRecServ" class="sm kit-serv" type="number" min="1" max="99" inputmode="numeric" placeholder="1" aria-label="How many servings it makes"> servings</label>'+
         '<div class="kit-form-btns"><button id="kitRecCancel" class="ghost" hidden>Cancel</button><button id="kitRecSave" class="btn-accent">Save recipe</button></div>'+
@@ -869,7 +878,9 @@ function kDrawIdeas(){
     save.disabled=saved;
     save.addEventListener('click',function(){
       if(kIdeaSaved(m))return;
-      state.kitchen.recipes.push({id:uid(),name:m.name.slice(0,100),ingredients:ings.slice(0,60),liked:false,planned:false,made:[],updatedAt:Date.now()});
+      const nr={id:uid(),name:m.name.slice(0,100),ingredients:ings.slice(0,60),liked:false,planned:false,made:[],updatedAt:Date.now()};
+      const st=kSteps(m.steps); if(st.length)nr.steps=st;
+      state.kitchen.recipes.push(nr);
       kSave(); voiceToast(m.name+' saved to your recipes');
     });
     btns.appendChild(save); card.appendChild(btns);
@@ -1034,6 +1045,7 @@ function kEditRecipe(r){
   kitchenUI.editing=r?r.id:null;
   $('kitRecName').value=r?r.name:''; $('kitRecIngs').value=r?r.ingredients.map(fmtIngredient).join('\n'):''; $('kitRecLiked').checked=!!(r&&r.liked);
   $('kitRecServ').value=r&&r.servings?r.servings:'';
+  $('kitRecSteps').value=r&&r.steps?r.steps.join('\n'):'';
   $('kitRecSave').textContent=r?'Save changes':'Save recipe'; $('kitRecCancel').hidden=!r;
   if(r){ $('kitRecName').focus(); $('kitRecName').scrollIntoView({block:'nearest'}); }
 }
@@ -1048,12 +1060,24 @@ function kSaveRecipe(){
   if(r)Object.assign(r,{name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,updatedAt:now});
   else{ r={id:uid(),name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,planned:false,made:[],updatedAt:now}; state.kitchen.recipes.push(r); }
   if(sv>1&&sv<100)r.servings=sv; else delete r.servings;
+  const st=kSteps($('kitRecSteps').value);
+  if(st.length)r.steps=st; else delete r.steps;
   delete kitchenUI.portions[r.id];
   kEditRecipe(null); kSave();
 }
 function kDrawRecipes(){
   document.querySelectorAll('#kitchenView .kit-chip').forEach(function(b){ const on=b.dataset.f===kitchenUI.recipeFilter; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
   const box=$('kitRecipes'); box.innerHTML='';
+  // recipes saved from a meal idea before recipes kept steps: take them from that idea while it's still here
+  const ideaMeals=state.kitchen.ideas&&state.kitchen.ideas.meals||[];
+  let filled=false;
+  state.kitchen.recipes.forEach(function(r){
+    if(r.steps&&r.steps.length)return;
+    const m=ideaMeals.find(function(x){ return x.name.toLowerCase()===r.name.toLowerCase()&&x.steps&&x.steps.length; });
+    const st=m?kSteps(m.steps):[];
+    if(st.length){ r.steps=st; r.updatedAt=Date.now(); filled=true; }
+  });
+  if(filled)persist();
   const find=kitchenUI.findRec.trim();
   const list=state.kitchen.recipes.filter(function(r){ return kitchenUI.recipeFilter!=='liked'||r.liked; })
     .filter(function(r){ return !find||kMatch(r.name+' '+r.ingredients.map(function(i){ return i.name; }).join(' '),find); })
@@ -1063,6 +1087,8 @@ function kDrawRecipes(){
     const card=el('div','kit-card');
     const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',r.name)); top.appendChild(kLikeBtn(r)); card.appendChild(top);
     card.appendChild(el('div','kit-card-sub',r.ingredients.map(fmtIngredient).join(', ')||'No ingredients yet'));
+    if(r.steps&&r.steps.length){ const ol=document.createElement('ol'); ol.className='kit-idea-steps'; r.steps.forEach(function(s){ ol.appendChild(el('li','',s)); }); card.appendChild(ol); }
+    else card.appendChild(el('div','kit-card-meta','No steps yet. Tap the pencil to add how to make it.'));
     card.appendChild(el('div','kit-card-meta',(r.servings?'makes '+r.servings+' servings · ':'')+kLastMade(r)));
     const btns=el('div','kit-card-btns'); btns.appendChild(kPlanBtn(r));
     const ed=iconBtn(I.pen,'Edit '+r.name); ed.addEventListener('click',function(){ kEditRecipe(r); }); btns.appendChild(ed);
