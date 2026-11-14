@@ -772,7 +772,25 @@ function kPlan(){
   return left!=null&&left<=0?null:p;
 }
 function kIdeasLocal(){ return !!(window.desktop&&window.desktop.kitchenIdeas); }
-function kIdeasRemote(){ return !kIdeasLocal()&&!!kitchenProfile()&&typeof kpMe==='function'&&typeof kpMyAsks==='function'; }
+// the phone with his AI keys copied over (phone-ai.js): it asks them itself, no computer needed
+function kIdeasPhoneAi(){ return !kIdeasLocal()&&!!(window.phoneAi&&window.phoneAi.ready())&&typeof mealIdeasParse==='function'; }
+function kIdeasRemote(){ return !kIdeasLocal()&&!kIdeasPhoneAi()&&!!kitchenProfile()&&typeof kpMe==='function'&&typeof kpMyAsks==='function'; }
+/* the phone's own ask, the same one main/kitchen-ai.js sends (meal-ideas.js): his pantry, recipes, usual groceries,
+   preferences (the synced ':prefs' row, when this phone has the Agent's sync) and Food plan → {meals, via} or {why} */
+async function kIdeasOnPhone(aim){
+  const k=state.kitchen;
+  let prefs='';
+  try{ const p=typeof prefsProfile==='function'&&prefsProfile(); if(p){ const r=await syncPullRow(p); prefs=(r&&r.doc&&r.doc.text)||''; } }catch(e){}
+  const t=typeof groceryTask==='function'?groceryTask():null;
+  const q=mealIdeasPrompt()+'\n'+mealIdeasInput({
+    pantry:k.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
+    recipes:k.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),
+    usual:t?normList(t.list).map(function(x){ return x.name; }):[], prefs:prefs, aim:aim, plan:kPlan()});
+  const r=await window.phoneAi.ask(q,null,6000); // room for six whole recipes
+  if(!r||!r.text)return {why:(r&&r.why)||'No answer.'};
+  const meals=mealIdeasParse(r.text);
+  return meals.length?{meals:meals,via:r.via}:{why:r.via+' answered, but not with meals. Try again.'};
+}
 function kIdeasWaiting(){ return kIdeasRemote()&&kpMyAsks().some(function(a){ return a.mode==='ideas'&&(a.state==='waiting'||a.state==='reading'); }); }
 function kIdeasAgo(at){
   const d=new Date(at); d.setHours(0,0,0,0);
@@ -781,7 +799,7 @@ function kIdeasAgo(at){
 }
 async function kAskIdeas(){
   if(kitchenUI.ideasBusy)return;
-  if(!kIdeasLocal()){
+  if(!kIdeasLocal()&&!kIdeasPhoneAi()){
     if(!kIdeasRemote()||kIdeasWaiting())return;
     const now=Date.now();
     if(!Array.isArray(state.kitchen.asks))state.kitchen.asks=[];
@@ -793,7 +811,7 @@ async function kAskIdeas(){
   if(kitchenUI.aim.trim()&&typeof kAimSave==='function')kAimSave(kitchenUI.aim);
   try{
     const k=state.kitchen;
-    const r=await window.desktop.kitchenIdeas({
+    const r=!kIdeasLocal()?await kIdeasOnPhone(kitchenUI.aim):await window.desktop.kitchenIdeas({
       pantry:k.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
       recipes:k.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),
       aim:kitchenUI.aim, plan:kPlan()});
@@ -805,7 +823,7 @@ async function kAskIdeas(){
 function kIdeaSaved(m){ return state.kitchen.recipes.some(function(r){ return r.name.toLowerCase()===m.name.toLowerCase(); }); }
 function kDrawIdeas(){
   const box=$('kitIdeas'); if(!box)return;
-  const ideas=state.kitchen.ideas, can=kIdeasLocal()||kIdeasRemote(), waiting=kIdeasWaiting();
+  const ideas=state.kitchen.ideas, can=kIdeasLocal()||kIdeasPhoneAi()||kIdeasRemote(), waiting=kIdeasWaiting();
   if(!can&&!ideas){ box.innerHTML=''; return; }
   const old=$('kitAim'), typing=!!old&&document.activeElement===old; // a redraw mid-typing keeps his place
   const caret=typing?old.selectionStart:0;

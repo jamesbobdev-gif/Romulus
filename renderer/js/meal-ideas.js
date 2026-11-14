@@ -59,23 +59,87 @@ function mealIdeasInput({ pantry, recipes, usual, prefs, aim, plan }) {
   return lines.join('\n\n');
 }
 
-// the first {...} in an answer, parsed; null when there's none
-function miPickJson(text) {
-  const t = String(text || ''), a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a < 0 || b <= a) return null;
-  try { const j = JSON.parse(t.slice(a, b + 1)); return j && typeof j === 'object' ? j : null; } catch (e) { return null; }
+/* Reading the answer. AIs don't always send the bare JSON asked for: a model's <think> notes, a code fence, words
+   after it with braces of their own, a trailing comma, or an answer cut off at its length limit. Each of those
+   used to come back as no meals at all, so this keeps every whole meal it can find. */
+// the answer without thinking notes or code fences
+function miStrip(text) {
+  return String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, ' ').replace(/^[\s\S]*<\/think>/i, ' ').replace(/```[a-z]*/gi, ' ');
+}
+// t[i] is { or [: the index of its closing bracket (strings skipped), or -1 when the answer stops first
+function miSpan(t, i) {
+  let depth = 0, inStr = false;
+  for (let k = i; k < t.length; k++) {
+    const c = t[k];
+    if (inStr) { if (c === '\\') k++; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{' || c === '[') depth++;
+    else if ((c === '}' || c === ']') && --depth === 0) return k;
+  }
+  return -1;
+}
+// one piece of JSON, forgiving a trailing comma or curly quotes; undefined when it won't read
+function miJson(s) {
+  const tries = [s, s.replace(/,(\s*[}\]])/g, '$1'), s.replace(/,(\s*[}\]])/g, '$1').replace(/[“”]/g, '"')];
+  for (const x of tries) { try { return JSON.parse(x); } catch (e) {} }
+  return undefined;
+}
+// an ingredient or step as the AI wrote it: a line, or {amount, unit, item} → one line
+function miLine(x) {
+  if (x && typeof x === 'object') {
+    const name = x.item || x.name || x.ingredient || x.food || '';
+    return [x.amount != null ? x.amount : x.quantity != null ? x.quantity : x.qty, x.unit, name].filter((p) => p != null && p !== '').join(' ');
+  }
+  return x;
+}
+function miLines(v, n, max, split) {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(split) : [];
+  return list.map(miLine).map((x) => miClean(x, n).replace(/^(step\s*)?\d+\s*[.):]\s*/i, '')).filter(Boolean).slice(0, max);
+}
+// one meal as the AI wrote it → {name, why, ingredients, steps}, or null when it has no name or no ingredients
+function miMeal(m) {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
+  const out = {
+    name: miClean(m.name || m.title || m.dish || m.meal, 80), why: miClean(m.why || m.reason || m.note, 160),
+    ingredients: miLines(m.ingredients, 80, 25, /\n|;|,(?![^(]*\))/),
+    steps: miLines(m.steps || m.instructions || m.method, 240, 10, /\n+|(?<=\.)\s+(?=\d+[.)]\s)/),
+  };
+  return out.name && out.ingredients.length ? out : null;
+}
+// a parsed answer → its list of meals: {"meals": [...]}, another name for the list, a bare list, or one meal
+function miList(j) {
+  if (Array.isArray(j)) return j;
+  if (!j || typeof j !== 'object') return [];
+  for (const k of ['meals', 'recipes', 'ideas', 'dishes', 'suggestions']) if (Array.isArray(j[k])) return j[k];
+  if (miMeal(j)) return [j];
+  const any = Object.keys(j).map((k) => j[k]).find((v) => Array.isArray(v) && v.some(miMeal));
+  return any || [];
 }
 
 // the AI's text → [{name, why, ingredients:[lines], steps:[lines]}], at most 8, no repeats; [] when unusable
 function mealIdeasParse(text) {
-  const j = miPickJson(text), seen = new Set();
-  const list = j && Array.isArray(j.meals) ? j.meals : [];
-  return list.map((m) => m && typeof m === 'object' ? {
-    name: miClean(m.name, 80), why: miClean(m.why, 160),
-    ingredients: (Array.isArray(m.ingredients) ? m.ingredients : []).map((x) => miClean(x, 80)).filter(Boolean).slice(0, 25),
-    steps: (Array.isArray(m.steps) ? m.steps : []).map((x) => miClean(x, 240)).filter(Boolean).slice(0, 10),
-  } : null).filter((m) => {
-    if (!m || !m.name || !m.ingredients.length) return false;
+  const t = miStrip(text);
+  let found = [];
+  // the whole answer first: the first piece of JSON in it that holds meals
+  for (let i = 0; i < t.length && !found.length; i++) {
+    if (t[i] !== '{' && t[i] !== '[') continue;
+    const end = miSpan(t, i);
+    if (end < 0) continue;
+    const j = miJson(t.slice(i, end + 1));
+    if (j !== undefined) { found = miList(j).map(miMeal).filter(Boolean); if (found.length) break; }
+  }
+  // cut off, or not one piece: every whole meal object in it, when that finds more
+  const loose = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== '{') continue;
+    const end = miSpan(t, i);
+    if (end < 0) continue;
+    const m = miMeal(miJson(t.slice(i, end + 1)));
+    if (m) { loose.push(m); i = end; }
+  }
+  if (loose.length > found.length) found = loose;
+  const seen = new Set();
+  return found.filter((m) => {
     const k = m.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true;
   }).slice(0, 8);
 }

@@ -38,3 +38,44 @@ test('the answer: meals with ingredients only, no repeats, no emoji, text around
   assert.deepStrictEqual(parse('no json here'), []);
   assert.deepStrictEqual(parse('{"meals":"nope"}'), []);
 });
+
+// what AIs really send back: each of these used to come back as no meals at all
+const meal = (i) => ({ name: 'Meal ' + i, why: 'about 40 g protein', ingredients: ['8 oz chicken breast', '1 cup rice'], steps: ['Cook the rice', 'Cook the chicken'] });
+const six = JSON.stringify({ meals: [1, 2, 3, 4, 5, 6].map(meal) }, null, 2);
+
+test('the answer reads through thinking notes, code fences, words with braces after it and a trailing comma', () => {
+  assert.strictEqual(parse('<think>first {a plan} for this</think>\n' + six).length, 6);
+  assert.strictEqual(parse('```json\n' + six + '\n```').length, 6);
+  assert.strictEqual(parse(six + '\nWant more? {just ask}').length, 6);
+  assert.strictEqual(parse(six.replace(/\]\s*\}\s*$/, '],\n}')).length, 6);
+  assert.strictEqual(parse(six.replace('"Meal 1"', '“Meal 1”')).length, 6);
+});
+
+test('an answer cut off at its length limit keeps every whole meal before the cut', () => {
+  const cut = six.slice(0, six.indexOf('"Meal 5"') + 20);
+  assert.deepStrictEqual(parse(cut).map((m) => m.name), ['Meal 1', 'Meal 2', 'Meal 3', 'Meal 4']);
+});
+
+test('other shapes: a bare list, another name for the list, lines as text, ingredients as objects, numbered steps', () => {
+  assert.strictEqual(parse(JSON.stringify([meal(1), meal(2)])).length, 2);
+  assert.strictEqual(parse(JSON.stringify({ recipes: [meal(1)] })).length, 1);
+  assert.deepStrictEqual(parse(JSON.stringify({ meals: [
+    { title: 'Eggs on toast', ingredients: '2 eggs, 1 slice bread (toasted)', instructions: '1. Toast the bread. 2. Fry the eggs.' },
+    { name: 'Rice bowl', ingredients: [{ amount: 1, unit: 'cup', item: 'rice' }, { quantity: '2', name: 'eggs' }], steps: ['Step 1: Cook the rice'] },
+  ] })), [
+    { name: 'Eggs on toast', why: '', ingredients: ['2 eggs', '1 slice bread (toasted)'], steps: ['Toast the bread.', 'Fry the eggs.'] },
+    { name: 'Rice bowl', why: '', ingredients: ['1 cup rice', '2 eggs'], steps: ['Cook the rice'] },
+  ]);
+});
+
+test('the computer asks for room for whole recipes, and the cloud when Lupa answers without meals', async () => {
+  const kitchenAi = require('../main/kitchen-ai');
+  let seen = null;
+  kitchenAi.init({ dataFile: () => 'no-such-file.json', agentLog: () => {},
+    readPicture: async (q, img, maxTokens, usable) => { seen = { maxTokens, usable }; return { text: six, via: 'Claude' }; } });
+  const r = await kitchenAi.handlers['kitchen:ideas'](null, { pantry: [{ name: 'Rice' }] });
+  assert.strictEqual(r.meals.length, 6);
+  assert.ok(seen.maxTokens >= 6000);
+  assert.strictEqual(seen.usable('Sorry, I can\'t help with that.'), false);
+  assert.strictEqual(seen.usable(six), true);
+});

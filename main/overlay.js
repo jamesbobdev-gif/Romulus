@@ -311,8 +311,9 @@ function stop() { try { globalShortcut.unregisterAll(); } catch (e) {} if (overl
 
 /* a picture he picked (an EBT receipt for main/finance.js finance:ebtReceipt) and one question about it: Lupa first
    when it's set up, so the picture stays home, then his cloud AIs in his order. → {text, via} or {why}
-   maxTokens: room for a longer answer (the Kitchen tab's week plan) */
-async function readPicture(question, image, maxTokens) {
+   maxTokens: room for a longer answer (the Kitchen tab's week plan). usable(text): false when Lupa's answer
+   can't be used (meal ideas with no meal in it), so his cloud AIs are asked too */
+async function readPicture(question, image, maxTokens, usable) {
   const cfg = ctx.readConfig(), local = localModel();
   const deps = {
     fetch, order: ai.cloudOrder(), local,
@@ -320,6 +321,10 @@ async function readPicture(question, image, maxTokens) {
     claudeCli: overlayAsk.claudeCliRunner({ spawn, exe: claudeExe(cfg), env: claudeEnv(cfg), dir: path.join(ctx.userData(), 'screen-helper'), model: (cfg.ai || {}).claudeModel }),
   };
   let r = local ? await overlayAsk.ask(cfg, { question, image, lane: 'local', maxTokens }, deps) : null;
+  if (r && r.text && usable && !usable(r.text)) {
+    const cloud = await overlayAsk.ask(cfg, { question, image, lane: 'cloud', maxTokens }, deps);
+    return cloud && cloud.text ? cloud : r; // nothing from the cloud either: Lupa's answer, for the page to explain
+  }
   if (!r || !r.text) r = await overlayAsk.ask(cfg, { question, image, lane: 'cloud', maxTokens }, deps);
   return r;
 }

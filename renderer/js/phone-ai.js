@@ -48,13 +48,15 @@ function phoneAiUnpack(text){
   return s.length?s:null;
 }
 
-/* one question to one AI → {url, headers, body} (body is a string). image: {mime, b64} or null */
-function phoneAiRequest(step,text,image){
+/* one question to one AI → {url, headers, body} (body is a string). image: {mime, b64} or null. maxTokens: room
+   for a longer answer (Kitchen meal ideas), 2000 when not given */
+function phoneAiRequest(step,text,image,maxTokens){
+  const most=maxTokens>0?maxTokens:2000;
   const json={'Content-Type':'application/json'};
   if(step.id==='claude'){
     const content=(image?[{type:'image',source:{type:'base64',media_type:image.mime,data:image.b64}}]:[]).concat({type:'text',text:text});
     return {url:'https://api.anthropic.com/v1/messages',headers:Object.assign({'x-api-key':step.key,'anthropic-version':'2023-06-01'},json),
-      body:JSON.stringify({model:step.model||'claude-sonnet-5-5',max_tokens:2000,messages:[{role:'user',content:content}]})};
+      body:JSON.stringify({model:step.model||'claude-sonnet-5-5',max_tokens:most,messages:[{role:'user',content:content}]})};
   }
   if(step.id==='gemini'){
     const parts=(image?[{inline_data:{mime_type:image.mime,data:image.b64}}]:[]).concat({text:text});
@@ -68,7 +70,7 @@ function phoneAiRequest(step,text,image){
   }
   const content=[{type:'text',text:text}].concat(image?[{type:'image_url',image_url:{url:'data:'+image.mime+';base64,'+image.b64}}]:[]);
   return {url:'https://openrouter.ai/api/v1/chat/completions',headers:Object.assign({Authorization:'Bearer '+step.key},json),
-    body:JSON.stringify({model:step.model||'openrouter/auto',max_tokens:2000,messages:[{role:'user',content:image?content:text}],
+    body:JSON.stringify({model:step.model||'openrouter/auto',max_tokens:most,messages:[{role:'user',content:image?content:text}],
       provider:step.zdr?{data_collection:'deny',zdr:true}:{data_collection:'deny'}})}; // only providers that don't collect what's sent
 }
 // an AI's JSON answer → its text
@@ -83,12 +85,12 @@ function phoneAiText(step,j){
   const m=j.choices&&j.choices[0]&&j.choices[0].message; return (m&&m.content)||'';
 }
 /* each AI in turn until one answers → {text, via} or {why}. post(url, headers, body) → {status, body} */
-async function phoneAiAsk(steps,text,image,post){
+async function phoneAiAsk(steps,text,image,post,maxTokens){
   const tried=[];
   for(const st of phoneAiClean(steps)){
     const name=PHONE_AI_NAMES[st.id];
     try{
-      const q=phoneAiRequest(st,text,image), r=await post(q.url,q.headers,q.body);
+      const q=phoneAiRequest(st,text,image,maxTokens), r=await post(q.url,q.headers,q.body);
       let j=null; try{ j=JSON.parse(r.body); }catch(e){}
       if(!(r.status>=200&&r.status<300)){
         const e=j&&(j.error||j.message);
@@ -124,8 +126,8 @@ async function paLoad(){
 window.phoneAi={
   ready:function(){ return paPlugin&&paState.steps.length>0; },
   names:function(){ return paState.steps.map(function(s){ return PHONE_AI_NAMES[s.id]; }); },
-  ask:function(text,image){
-    return phoneAiAsk(paState.steps,text,image,function(url,headers,body){ return paCall('post',{url:url,headers:headers,body:body}); });
+  ask:function(text,image,maxTokens){
+    return phoneAiAsk(paState.steps,text,image,function(url,headers,body){ return paCall('post',{url:url,headers:headers,body:body}); },maxTokens);
   },
 };
 async function paScan(){

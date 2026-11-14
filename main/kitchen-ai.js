@@ -15,6 +15,7 @@ const { newestGroceryList, macroBrief } = require('../agent/grocery');
 
 let ctx = null; // { dataFile, readPicture, agentLog }
 let asking = false, reading = false, planning = false;
+const IDEAS_TOKENS = 6000;
 function init(c) { ctx = c; }
 
 function usualGroceries() {
@@ -41,7 +42,8 @@ async function ideas(_e, req) {
   asking = true;
   try {
     const question = mealIdeas.prompt() + '\n' + await askData(req, pantry);
-    const r = await ctx.readPicture(question, null);
+    // room for six whole recipes (2000 tokens cut them off), and the cloud when Lupa's answer has no meals in it
+    const r = await ctx.readPicture(question, null, IDEAS_TOKENS, (text) => mealIdeas.parse(text).length > 0);
     if (!r || !r.text) { ctx.agentLog('meal ideas: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
     const meals = mealIdeas.parse(r.text);
     ctx.agentLog('meal ideas: ' + meals.length + ' from ' + r.via);

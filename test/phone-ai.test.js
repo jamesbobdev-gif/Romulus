@@ -55,3 +55,10 @@ test('the computer offers only keys the phone can use, in his order', () => {
   assert.match(cs[1].why, /Anthropic API key/);
   assert.strictEqual(cs.find((c) => c.id === 'openai').can, false);
 });
+
+test('a longer answer can be asked for (meal ideas), 2000 tokens otherwise', () => {
+  const body = (id, n) => JSON.parse(pa.phoneAiRequest({ id, key: 'k-0000000000', model: '' }, 'hi', null, n).body);
+  assert.strictEqual(body('claude').max_tokens, 2000);
+  assert.strictEqual(body('claude', 6000).max_tokens, 6000);
+  assert.strictEqual(body('openrouter', 6000).max_tokens, 6000);
+});
