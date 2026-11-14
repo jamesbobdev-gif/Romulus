@@ -1476,6 +1476,9 @@ body.review-open .top-right{display:none!important}
 .kp-row .kit-hint{margin:0}
 .kp-item{justify-content:flex-start}
 .kp-item .kit-hint{margin:0;white-space:nowrap}
+.kp-more{flex-wrap:wrap}
+.kp-more .kit-hint{margin:0;flex:1 1 200px}
+.kp-more button{white-space:nowrap}
 @media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
 .kit-idea-more{margin-top:6px}
 .kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
