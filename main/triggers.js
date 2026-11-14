@@ -50,7 +50,7 @@ async function checkMail(tasks, s) {
   const mails = [];
   for (const { id } of fresh) {
     const m = await gmailDates.gmail('messages/' + id + '?format=full');
-    mails.push({ id, threadId: m.threadId, subject: header(m, 'subject'), from: header(m, 'from').replace(/\s*<[^>]+>/, '').replace(/"/g, ''),
+    mails.push({ id, threadId: m.threadId, subject: header(m, 'subject'), from: header(m, 'from').replace(/\s*<[^<>]+>/, '').replace(/"/g, ''),
       text: mailEvents.bodyText(m).slice(0, 900), date: Number(m.internalDate) || Date.now() });
   }
   const pairs = triggers.mailCandidates(tasks, mails);
@@ -78,7 +78,10 @@ async function checkCalendar(tasks, s) {
 async function fetchPage(url) {
   let at = triggers.safeUrl(url), res = null;
   if (!at) throw new Error('not a public web address');
+  const { resolvesPublic } = require('../agent/helpers');
   for (let hop = 0; hop < 5; hop++) {
+    // the name itself may point at this computer or the network (DNS rebinding): what it resolves to is checked too
+    if (!(await resolvesPublic(at))) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
     res = await fetch(at, { redirect: 'manual', signal: AbortSignal.timeout(20000),
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Accept: 'text/html,*/*' } });
     if (![301, 302, 303, 307, 308].includes(res.status)) break;

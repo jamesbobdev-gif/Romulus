@@ -14,7 +14,8 @@
    says which version this phone runs with a Check for updates that looks right now, past any Later or Not now.
    The answer is shared with his other devices (renderer/js/update-sync.js): Update here makes the computers
    update too, and an Update said on a computer shows this banner even after a Later here (Android still
-   needs his tap to install). A Not now said elsewhere keeps the banner away. */
+   needs his tap to install). A Not now said elsewhere keeps the banner away. The first open after the install
+   says what changed (renderer/js/whats-new.js, the same card as on the computer). */
 (function () {
   var cap = window.Capacitor;
   var version = window.ROMULUS_VERSION, releases = window.ROMULUS_RELEASES;

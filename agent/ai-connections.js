@@ -229,4 +229,16 @@ function runOrder({ order, pinned, ready }) {
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }
 
-module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudRoom, cloudRoomNow, cloudReady, runOrder, homeCloud, outOfUsage, couldntDo, PINNED_CLOUDS };
+/* the line under an answer when the AI that gave it was not the first one asked: who was out of usage (`out`) and who
+   couldn't do it (`cant`) before `via` took the task on. last = this answer is the last AI's own "couldn't" (none could) */
+function handoverNote({ out = [], cant = [], via, last }) {
+  const o = [...new Set(out)].filter((n) => n !== via), c = [...new Set(cant)].filter((n) => n !== via);
+  if (!o.length && !c.length) return '';
+  if (last) return 'Also tried: ' + c.concat(o.map((n) => n + ' (out of usage)')).join(', ') + '.';
+  const parts = [];
+  if (o.length) parts.push(o.join(' and ') + (o.length > 1 ? ' were' : ' was') + ' out of usage');
+  if (c.length) parts.push(c.join(' and ') + ' couldn’t do this');
+  return parts.join(', and ') + ', so ' + via + ' took over.';
+}
+
+module.exports = { init, handlers, aiStatus, claudeLast, cloudOrder, cloudRoom, cloudRoomNow, cloudReady, runOrder, homeCloud, outOfUsage, couldntDo, handoverNote, PINNED_CLOUDS };

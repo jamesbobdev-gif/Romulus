@@ -83,6 +83,13 @@ function localCfg() {
   return c.url && c.model && c.enabled !== false ? { url: String(c.url).replace(/\/+$/, ''), model: String(c.model) } : null;
 }
 const isLocalLane = (t) => laneOf(t) === 'local';
+/* no local model set up: #legion tasks still run here, led by a cloud AI (startCloudLegionRun). Nothing else on
+   the local lane can: a private task has nowhere to go but his own model */
+function queuedCloudLegions(raw) {
+  let data;
+  try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
+  return (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' && legion.isLegion(t));
+}
 function queuedLocalTasks(raw) {
   let data;
   try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
@@ -101,8 +108,19 @@ function workerBeat() {
 }
 // the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
 const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
+/* no local model set up, yet tasks only it may do are queued (private words, his money, a School assignment, a
+   switch to Local): the renderer says so on each card (renderer/js/lists.js), instead of "Routing to a model" for
+   good. Sent on every look (the renderer ignores repeats), and the task isn't pinned to the lane, so a #claude tag
+   in the title still frees a private one. Legions aren't waiting: without the model they run on the cloud AIs. */
+function tellNoLocal(raw) {
+  const waiting = waitingForLocal(queuedLocalTasks(raw));
+  if (waiting.length) sendToRenderer('agent:waiting', { ids: waiting.map((t) => t.id), noLocal: true, reasons: Object.fromEntries(waiting.map((t) => [t.id, routeTask(t).reason])) });
+}
+const waitingForLocal = (queued) => queued.filter((t) => !legion.isLegion(t)); // pure, for tests
 function scheduleLocalRun(raw) {
-  if (!localCfg() || localBusy || !routing.decided(raw) || !queuedLocalTasks(raw).length) return;
+  if (localBusy || !routing.decided(raw)) return;
+  if (!localCfg()) tellNoLocal(raw);
+  if (!(localCfg() ? queuedLocalTasks(raw) : queuedCloudLegions(raw)).length) return;
   clearTimeout(localTimer);
   localTimer = setTimeout(() => { localTimer = null; startLocalRun().catch((e) => { localBusy = false; agentLog('local run crashed: ' + (e && e.stack || e)); }); }, AGENT_GRACE_MS);
 }
@@ -371,7 +389,8 @@ function cleanStuck(s) {
 }
 async function startLocalRun() {
   const c = localCfg();
-  if (!c || localBusy || !routing.decided()) return;
+  if (localBusy || !routing.decided()) return;
+  if (!c) return startCloudLegionRun(); // no local model: only a legion runs here, led by a cloud AI
   // the worker's heartbeat as of now, not as of the last time the status line asked: with the window in the
   // tray that copy goes stale, and this computer took Lupa's tasks while Lupa was answering
   if (!worker.isWorker(readConfig())) await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
@@ -433,6 +452,33 @@ async function startLocalRun() {
     scheduleLocalRun(); // anything queued meanwhile
   }
 }
+/* No local model set up: a #legion task still runs, led by the first cloud AI in his order in Lupa's place. That one
+   AI sees the whole request (as any single AI does with a plain task); the others still get one general question
+   each, and the report says so. What needs Lupa's own browser ("book the 9am one") is handed back to him instead. */
+async function startCloudLegionRun() {
+  if (!cloudOrder().length) return;
+  const queued = queuedCloudLegions();
+  if (!queued.length) return;
+  localBusy = true; doing({ what: 'starting a legion' });
+  const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
+  try {
+    const tasks = await claimAgentTasks(queued, 'local');
+    if (!tasks.length) return;
+    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+    for (const t of tasks) {
+      await runLegionTask(null, t).catch((e) => {
+        const msg = String(e && e.message || e);
+        agentLog('legion (cloud-led) failed: ' + msg);
+        sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
+          note: 'The legion couldn’t finish: ' + msg.slice(0, 150) + '. Reply to try again.' }]);
+      });
+    }
+  } finally {
+    localBusy = false; doing(null);
+    ctx.powerSaveBlocker.stop(awake);
+    scheduleLocalRun(); // anything queued meanwhile
+  }
+}
 // a local task that couldn't finish: the cloud AIs take over, unless it's private or about his money (then it waits for him)
 async function localFailed(c, t, msg) {
   agentLog('local task failed: ' + msg);
@@ -456,10 +502,17 @@ async function localFailed(c, t, msg) {
    (so none can tell what he is researching), and Lupa puts the answers together into the report. The report is
    also saved as Word + Markdown in Documents/Claude Agent/Research. A reply afterwards stays a legion without him
    tagging it: Lupa answers it from the report, sends the legion out on the new question when the report doesn't have
-   it, or (for "book the 9am one") does it itself with its own browser. #legion (or "dig deeper") re-runs the whole. */
+   it, or (for "book the 9am one") does it itself with its own browser. #legion (or "dig deeper") re-runs the whole.
+   Without a local model (c is null) the first cloud AI in his order leads in Lupa's place (startCloudLegionRun). */
 // who leads a legion, as the live box and the report name it: localModel.name in config.json if set
 const legionLead = () => String((readConfig().localModel || {}).name || '').trim() || 'your local model';
 const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replace(/[^\w-]/g, '') + '.md');
+// the cloud lead thinking in Lupa's place: one prompt → its whole answer (the prompts ask for JSON where Lupa's schema would)
+const cloudThink = (id) => async (prompt, { ms } = {}) => {
+  const r = await runHelperOn(id, prompt, ms || 10 * 60 * 1000);
+  if (r && typeof r.text === 'string' && r.text.trim()) return r.text;
+  throw new Error(String((r && r.why) || 'no answer'));
+};
 /* a coach task's notes from his course (agent/coach.js), kept per task so a reply ("make it 2 minutes",
    "I want to talk about my job") rewrites the brief from them without going through the course again */
 const coachFile = (id) => path.join(ctx.userData(), 'coach', String(id).replace(/[^\w-]/g, '') + '.json');
@@ -504,11 +557,15 @@ async function runLegionTask(c, t) {
   doing({ what: 'legion research', id: t.id, title: t.title });
   const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
   const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
+  const cloudLead = c ? null : order[0]; // no local model: the first cloud AI in his order leads
+  if (!c && !cloudLead) return sendToRenderer('agent:results', [{ id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
+    note: 'No AI is connected to lead the legion: turn one on in Settings → AI connections, then reply “try again”.' }]);
   let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
   let again = !before || !reply || /(^|\s)#(legion|research)\b|\b(dig deeper|research (it )?(again|more)|send the legion)\b/i.test(reply);
   let live = '';
   const show = (s) => { live = (live + s).slice(-6000); sendToRenderer('agent:live', { id, text: live }); };
-  const think = (prompt, o) => lupaThink(c, prompt, o);
+  const think = c ? (prompt, o) => lupaThink(c, prompt, o) : cloudThink(cloudLead);
+  const leadName = c ? legionLead() : names[cloudLead] || cloudLead;
   // the turns since the report (his "I can't drive", Lupa's answers), without the report itself or this reply
   const hist = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who !== 'app' && String(h.text || '').trim());
   const since = hist.slice(Math.max(0, hist.map((h) => String(h.text || '').slice(0, 200)).lastIndexOf(before.slice(0, 200)) + 1)).slice(-8);
@@ -516,11 +573,11 @@ async function runLegionTask(c, t) {
   const earlier = since.map((h) => (h.who === 'you' ? 'He said: ' : 'You answered: ') + String(h.text).trim().slice(0, 800)).join('\n\n');
   let note, options = [], lookup = ''; // lookup: a follow-up question the legion goes out on (the report doesn't have it)
   if (!again) {
-    const lead = legionLead();
-    show('' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
+    show('' + leadName.charAt(0).toUpperCase() + leadName.slice(1) + ' is answering from the report…\n');
     const f = await legion.followUp(topic, before, reply, { think, earlier });
-    if (f.task) return runLegionStep(c, t, before, f.answer);
-    if (f.research) { show('' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
+    if (f.task && c) return runLegionStep(c, t, before, f.answer);
+    if (f.task) note = (f.answer ? f.answer + '\n\n' : '') + 'Doing that needs the local model’s own browser, and none is set up. Add it as a task for the Agent instead (that one AI will see the request).';
+    else if (f.research) { show('' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
     else note = f.answer;
   }
   if (again) {
@@ -529,14 +586,14 @@ async function runLegionTask(c, t) {
     const extra = [lookup ? 'This is one part of his bigger request: ' + topic : '', t.notes, ...told.filter((x) => x !== reply), reply].filter(Boolean).join('\n').slice(-1500);
     agentLog('legion: ' + (lookup || topic).slice(0, 80) + (lookup ? ' (follow-up)' : '') + ' (' + order.join(', ') + ')');
     const started = Date.now();
-    const r = await legion.research(lookup || topic, { order, run: runHelperOn, think, names, lead: legionLead(), extra, whole: lookup ? topic : undefined,
+    const r = await legion.research(lookup || topic, { order, run: runHelperOn, think, names, lead: leadName, cloud: !c, extra, whole: lookup ? topic : undefined,
       privateWords: routing.getRouting().private, locked: await agentRow(':locked'), onStep: show });
     if (r.error) {
       // Lupa itself not answering is a failure like any other local task's (it waits for him: never handed to the cloud)
-      if (UNREACHABLE.test(r.error) || /timed? ?out/i.test(r.error)) throw new Error(r.error);
+      if (c && (UNREACHABLE.test(r.error) || /timed? ?out/i.test(r.error))) throw new Error(r.error);
       note = 'The legion couldn’t finish: ' + r.error + '. Reply to try again.';
     } else {
-      const full = r.report + '\n\n' + legion.credits(r, names, legionLead());
+      const full = r.report + '\n\n' + legion.credits(r, names, leadName, { cloud: !c });
       const dir = path.join(ctx.documents(), 'Claude Agent', 'Research');
       const base = ((lookup || topic).replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
       let saved = '';
@@ -549,7 +606,7 @@ async function runLegionTask(c, t) {
         saved = '\n\nSaved: ' + path.join(dir, base + '.docx');
       } catch (e) { agentLog('legion: saving the report failed: ' + e.message); }
       note = full.slice(0, 11000) + saved +
-        (!lookup && !reply && legion.isTask(topic) ? '\n\nReply “go ahead” (or pick an option) and ' + legionLead() + ' does it with its own browser, on your machine.' : '');
+        (c && !lookup && !reply && legion.isTask(topic) ? '\n\nReply “go ahead” (or pick an option) and ' + leadName + ' does it with its own browser, on your machine.' : '');
       options = (await Promise.all(r.options.map((o) => enrichOption(o).catch(() => o)))).filter(Boolean);
       agentLog('legion: done in ' + Math.round((Date.now() - started) / 1000) + 's, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' pieces answered');
     }
@@ -603,7 +660,7 @@ async function runLocalTask(c, t) {
     // has filled a page and left him the words to read (t.draft), never on the strength of the report alone
     const approved = localApproved(t) && (!legion.isLegion(t) || !!(t.draft && t.draft.text));
     lockAllow = allow;
-    fs.writeFileSync(lockFile, JSON.stringify({ allow, approved }));
+    fs.writeFileSync(lockFile, JSON.stringify({ allow, approved }), { mode: 0o600 }); // what the browser may open and whether he said yes: this user only
     browser = await startBrowserTools(lockFile, t.title, await startTab(t.id)).catch((e) => { agentLog('local: browser tools failed: ' + e.message); return null; });
     if (browser && !browser.tools.length) { browser.close(); browser = null; }
   }
@@ -783,9 +840,15 @@ async function runLocalTask(c, t) {
       if (key) madeCalls.add(key);
       // the Locked profile and his private words stay here: not in a search, not in an address the page asked it to open
       const outbound = name === 'web_search' ? args.query : name === 'read_page' ? args.url : name === 'browser_navigate' ? args.url : null;
-      const leak = outbound ? helpers.leaksPrivate(String(outbound), { privateWords: routing.getRouting().private, locked }) : null;
+      // and typed into a page: a card or SSN-shaped number, a private word or a secret from the profile never is, whatever
+      // the field is called (name, address and the like may be: forms need them, and fill_form checks the same way)
+      const typing = name === 'browser_type' ? args.text : name === 'browser_fill_form' ? (Array.isArray(args.fields) ? args.fields : []).map((f) => f && f.value).join('\n')
+        : name === 'browser_select_option' ? [].concat(args.values == null ? [] : args.values).join('\n') : null;
+      const leak = outbound ? helpers.leaksPrivate(String(outbound), { privateWords: routing.getRouting().private, locked })
+        : typing != null ? helpers.leaksTyped(String(typing), { privateWords: routing.getRouting().private, locked }) : null;
       if (leak) {
-        messages.push({ role: 'tool', tool_name: name, content: 'Not sent: ' + leak + '. Leave his private details out of searches and addresses.' });
+        messages.push({ role: 'tool', tool_name: name, content: (outbound ? 'Not sent: ' : 'Not typed: ') + leak + '. ' +
+          (outbound ? 'Leave his private details out of searches and addresses.' : 'That is his to type himself: say so in your note and go on with the rest.') });
         show('\nKept private: ' + name + '\n', true);
         continue;
       }
@@ -1014,4 +1077,4 @@ const isBusy = () => localBusy || howtoCompacting;
 let activity = null;
 function doing(a) { activity = a ? Object.assign({ since: Date.now() }, a, a.title ? { title: String(a.title).slice(0, 80) } : {}) : null; }
 const nowDoing = () => activity ? Object.assign({}, activity) : howtoCompacting ? { what: 'tidying how-to notes' } : null;
-module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS, WORKER_HOLD_MS };
+module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS, WORKER_HOLD_MS, waitingForLocal };

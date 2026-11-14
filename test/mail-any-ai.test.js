@@ -45,12 +45,15 @@ test('pickJson finds the object in a chatty answer', () => {
   assert.strictEqual(pickJson('no json here'), null);
 });
 
-// the mail tools' accounts file, as the runner writes it
-function mailboxes(list, final) {
-  const f = path.join(os.tmpdir(), 'mail-mcp-test-accounts.json');
+// the mail tools' accounts file and the note his yes answered, as the runner writes them
+function mailboxes(list, final, ask) {
+  const f = path.join(os.tmpdir(), 'mail-mcp-test-accounts.json'), askFile = path.join(os.tmpdir(), 'mail-mcp-test-ask.txt');
   fs.writeFileSync(f, JSON.stringify(list));
-  process.env.MAIL_ACCOUNTS_FILE = f; process.env.MAIL_FINAL = final ? '1' : '0';
+  fs.writeFileSync(askFile, ask || '');
+  process.env.MAIL_ACCOUNTS_FILE = f; process.env.MAIL_FINAL = final ? '1' : '0'; process.env.MAIL_ASK_FILE = askFile;
+  mailMcp.resetForTests();
 }
+const ASK = 'I would send one email: to Ann <ann@x.com>, subject "Hi", "Hello". And move "Old invoice" to the trash. Reply **yes** and I will.';
 // a fake mail server: records each call, answers what the tool needs
 function fakeFetch(answer) {
   const calls = [];
@@ -87,15 +90,39 @@ test('send and trash wait for his yes; drafts and archive do not', async () => {
   assert.deepStrictEqual(calls[1].body, { addLabelIds: [], removeLabelIds: ['INBOX'] });
 });
 
+// Gmail's metadata answer for a message or thread, with its subject
+const withSubject = (subject) => (url) => /\/threads\/[^/]+\?format=metadata/.test(url) ? { messages: [{ id: 'm1', payload: { headers: [{ name: 'Subject', value: subject }] } }] }
+  : /\/messages\/[^/]+\?format=metadata/.test(url) ? { id: 'm1', payload: { headers: [{ name: 'Subject', value: subject }] } } : { id: 'x1' };
+
 test('with his yes, send goes through Gmail and trash never deletes for good', async () => {
-  mailboxes([{ provider: 'google', email: 'me@gmail.com', token: 't', write: true, send: true }], true);
-  const calls = fakeFetch();
+  mailboxes([{ provider: 'google', email: 'me@gmail.com', token: 't', write: true, send: true }], true, ASK);
+  const calls = fakeFetch(withSubject('Re: Old invoice'));
   const r = await mailMcp.call('send_message', { to: 'Ann <ann@x.com>', subject: 'Hi', body: 'Hello' });
   assert.deepStrictEqual(r.to, ['ann@x.com']);
   assert.match(calls[0].url, /messages\/send$/);
   assert.match(Buffer.from(calls[0].body.raw, 'base64url').toString(), /To: ann@x\.com/);
+  mailboxes([{ provider: 'google', email: 'me@gmail.com', token: 't', write: true, send: true }], true, ASK); // a fresh yes for the trash
   await mailMcp.call('trash', { messageId: 'm1' });
-  assert.match(calls[1].url, /messages\/m1\/trash$/);
+  assert.match(calls[calls.length - 1].url, /messages\/m1\/trash$/);
+});
+
+test('his yes covers one step, to the addresses and subjects his note named, and nothing more', async () => {
+  mailboxes([{ provider: 'google', email: 'me@gmail.com', token: 't', write: true, send: true }], true, ASK);
+  const calls = fakeFetch(withSubject('Tax documents'));
+  // an address the note didn't name: an email the run read can't send him somewhere else
+  await assert.rejects(mailMcp.call('send_message', { to: ['x@evil.example'], subject: 'Hi', body: 'Hello' }), /did not cover x@evil\.example/);
+  await assert.rejects(mailMcp.call('forward', { messageId: 'm1', to: ['ann@x.com', 'x@evil.example'] }), /did not cover x@evil\.example/);
+  // an email whose subject the note didn't name stays out of the trash
+  await assert.rejects(mailMcp.call('trash', { messageId: 'm2' }), /did not cover "Tax documents"/);
+  assert.ok(calls.every((c) => !/\/send$|\/trash$/.test(c.url)), 'nothing was sent or trashed');
+  // the one step the note named goes; a second send waits for a fresh yes
+  await mailMcp.call('send_message', { to: ['ann@x.com'], subject: 'Hi', body: 'Hello' });
+  await assert.rejects(mailMcp.call('send_message', { to: ['ann@x.com'], subject: 'Hi again', body: 'Hello' }), /covered one step/);
+  await assert.rejects(mailMcp.call('trash', { messageId: 'm1' }), /covered one step/);
+  assert.strictEqual(calls.filter((c) => /\/send$/.test(c.url)).length, 1);
+  // no note at all (the runner always writes one): nothing final goes
+  mailboxes([{ provider: 'google', email: 'me@gmail.com', token: 't', write: true, send: true }], true, '');
+  await assert.rejects(mailMcp.call('send_message', { to: ['ann@x.com'], subject: 'Hi', body: 'Hello' }), /did not cover/);
 });
 
 test('a mailbox connected before it could change mail says to connect it again', async () => {
@@ -105,7 +132,7 @@ test('a mailbox connected before it could change mail says to connect it again',
 });
 
 test('Outlook: drafts, archive and send through Microsoft Graph', async () => {
-  mailboxes([{ provider: 'microsoft', email: 'me@school.edu', token: 't', write: true, send: true }], true);
+  mailboxes([{ provider: 'microsoft', email: 'me@school.edu', token: 't', write: true, send: true }], true, 'Send to a@b.co, subject Hi. Reply yes.');
   const calls = fakeFetch();
   await mailMcp.call('create_draft', { to: ['a@b.co'], subject: 'Hi', body: 'Hello' });
   assert.match(calls[0].url, /graph\.microsoft\.com\/v1\.0\/me\/messages$/);
@@ -113,6 +140,16 @@ test('Outlook: drafts, archive and send through Microsoft Graph', async () => {
   assert.deepStrictEqual(calls[1].body, { destinationId: 'archive' });
   await mailMcp.call('send_message', { to: ['a@b.co'], subject: 'Hi', body: 'Hello', account: 'me@school.edu' });
   assert.match(calls[2].url, /\/sendMail$/);
+});
+
+test('Outlook: a reply goes only where the note said, and a trash is by subject', async () => {
+  mailboxes([{ provider: 'microsoft', email: 'me@school.edu', token: 't', write: true, send: true }], true, 'Reply to Prof. Lee <lee@school.edu>: "I will attend". Trash "Lunch menu". Reply yes.');
+  const calls = fakeFetch((url) => /\$select=from/.test(url) ? { from: { emailAddress: { address: 'x@evil.example' } }, toRecipients: [] }
+    : /\$select=subject/.test(url) ? { subject: 'RE: Lunch menu' } : { id: 'x1', value: [] });
+  await assert.rejects(mailMcp.call('reply', { messageId: 'm9', body: 'ok' }), /did not cover x@evil\.example/);
+  await mailMcp.call('trash', { messageId: 'm2' });
+  assert.match(calls[calls.length - 1].url, /messages\/m2\/move$/);
+  await assert.rejects(mailMcp.call('send_message', { to: ['lee@school.edu'], subject: 'Hi', body: 'x' }), /covered one step/);
 });
 
 test('ids from an email cannot walk to another address', async () => {

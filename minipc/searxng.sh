@@ -28,12 +28,17 @@ search:
     - json
 EOF
 fi
+chmod 600 /opt/searxng/settings.yml # the secret key inside: root only
 
 log "3/4 Starting SearXNG (restarts by itself after reboots)"
 docker rm -f searxng >/dev/null 2>&1 || true
 # 127.0.0.1 in -p matters: a bare "-p 8888:8080" binds every interface and Docker's own iptables rules let it
 # through before ufw gets a say, so the firewall would not have protected it.
+# The container's log holds every search (a task's words): kept to 30 MB. No new privileges inside it. The image is
+# the newest at the time (searxng publishes no fixed tags); to pin what runs, note "docker images --digests" and
+# put searxng/searxng@sha256:... here.
 docker run -d --name searxng --restart unless-stopped -p 127.0.0.1:8888:8080 \
+  --log-opt max-size=10m --log-opt max-file=3 --security-opt no-new-privileges \
   -v /opt/searxng:/etc/searxng:rw searxng/searxng:latest
 ufw delete allow from 192.168.1.0/24 to any port 8888 proto tcp >/dev/null 2>&1 || true   # the old rule, if this ran before
 # an earlier version of this script published it to a Tailscale tailnet: not any more, this machine only

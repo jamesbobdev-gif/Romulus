@@ -9,7 +9,7 @@ function claimIsMine(t,host){
   if(String(t.claimedBy).split('@').slice(1).join('@')===host)return true;
   return !!t.claimedAt&&Date.now()-t.claimedAt>3*60*60*1000;
 }
-$('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+$('stamp').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
 $('stamp').addEventListener('click',function(){ switchTab('calendar'); });
 store.load().then(async function(data){
   // desktop: the sync settings come from config.json (sync.js started reading them; nothing is kept in localStorage)
@@ -63,6 +63,7 @@ store.load().then(async function(data){
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
         if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)
         if(Array.isArray(t.goalPlan)&&t.goalPlan.length)out.goalPlan=t.goalPlan; if(t.goalStarted)out.goalStarted=true; if(t.goalDone)out.goalDone=true; // goals.js
+        if(t.jobsSetup)out.jobsSetup=true; // jobs.js: the "suggest jobs" setup task
         if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting

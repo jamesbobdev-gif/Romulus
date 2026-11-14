@@ -128,6 +128,14 @@ async function agentRow(suffix) { // a doc next to the agent list ({v, text}): '
   const a = supabase.channel(readConfig());
   return a ? supabase.readText(a, suffix) : '';
 }
+// the Locked profile for this computer's cloud run (agent/runner.js): '' unless Settings → About you → Locked has
+// "Let the Agent's cloud AIs read it too" on (agent/supabase.js lockedCloudText); unreachable or unreadable = ''
+async function lockedForCloud(opts) {
+  const a = supabase.channel(readConfig());
+  if (!a) return '';
+  try { const row = await supabase.readRow(a, ':locked', opts); return supabase.lockedCloudText(a.syncKey, row && row.doc); }
+  catch (e) { return ''; }
+}
 // a preference an agent wants saved: {section, text} → "Section|text" (the renderer files it under that
 // heading); a plain string still works. A list (e.g. a setup's answers) → a list of lines, up to 8
 function prefLine(p) {
@@ -267,4 +275,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures };
+  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, lockedForCloud, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures };

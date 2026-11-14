@@ -39,6 +39,7 @@ const finance = require('./main/finance');
 const downloads = require('./main/downloads');
 const updater = require('./main/updater');
 const overlay = require('./main/overlay');
+const outsideAdds = require('./main/outside-adds'); // tasks dropped in by Claude Desktop (agent/tasks-mcp.js)
 
 // Match the installer's shortcut ID so Windows shows our icon on the taskbar
 if (process.platform === 'win32') app.setAppUserModelId('com.jartro.tasks');
@@ -82,7 +83,7 @@ const ctx = {
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
+  usage, routingMod, ai, agentBrowser, linkWallet, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay, outsideAdds];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);

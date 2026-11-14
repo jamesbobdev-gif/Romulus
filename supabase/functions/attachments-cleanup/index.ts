@@ -5,21 +5,31 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // KEEP_DAYS old. The bucket is public, so a screenshot of an order or account page should not stay up for
 // good. The desktop app calls this about once a day (agent/supabase.js cleanupAttachments); storage.objects refuses
 // plain SQL deletes, so it goes through the Storage API with the service role. It only ever removes files
-// past their age, so anyone calling it early or often changes nothing: no auth needed.
+// past their age, so anyone calling it early or often changes nothing. What a caller could do was make the project
+// list every folder of two buckets at will: a call needs the app's publishable key, and the ten-minute gap between
+// runs is kept in the database (sync_attachments_cleanup_claim, 20261121_attachments_cleanup_gap.sql), not in this
+// instance's memory, so parallel or freshly started instances share it.
 
 // Both public buckets: photos on tasks, and the local model's downloads (agent-files), which are worksheets nobody
 // needs a month on.
 const KEEP_DAYS = 30;
 const BUCKETS = ["agent-attachments", "agent-files"];
 const MAX_PER_RUN = 1000;
-const MIN_GAP_MS = 10 * 60 * 1000; // listing every folder is the costly part: at most once in ten minutes per instance
+const MIN_GAP_S = 10 * 60; // listing every folder is the costly part: at most once in ten minutes, project-wide
 let lastRun = 0;
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+const APP_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
-  if (Date.now() - lastRun < MIN_GAP_MS) return Response.json({ ok: true, removed: 0, keepDays: KEEP_DAYS, throttled: true });
+  // the app's own key (every install has it): not a secret, but a stranger's bare request does nothing
+  const key = req.headers.get("apikey") || (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!APP_KEY || key !== APP_KEY) return new Response("Not found", { status: 404 });
+  if (Date.now() - lastRun < MIN_GAP_S * 1000) return Response.json({ ok: true, removed: 0, keepDays: KEEP_DAYS, throttled: true });
+  // the claim in the database: a server without that migration yet (null) runs as before
+  const { data: claimed, error: claimErr } = await db.rpc("sync_attachments_cleanup_claim", { p_gap_s: MIN_GAP_S });
+  if (!claimErr && claimed === false) return Response.json({ ok: true, removed: 0, keepDays: KEEP_DAYS, throttled: true });
   lastRun = Date.now();
   const cutoff = Date.now() - KEEP_DAYS * 24 * 60 * 60 * 1000;
   let removed = 0;

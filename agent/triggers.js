@@ -193,10 +193,27 @@ function dateHits(tasks, { now = Date.now(), fired = {} } = {}) {
 
 /* ---------- a web page ---------- */
 const pageDue = (t, checkedAt = {}, now = Date.now()) => now - (checkedAt[t.id] || 0) >= PAGE_EVERY_MS;
+/* script, style and comment blocks cut out by a scan, never a regex, and tags matched without backtracking ([^<>] below):
+   a page with an unclosed <script or a long run of "<" used to send the regex back over the rest of the page from every
+   position, minutes of it, in the main process, for any address a trigger watches. */
+function dropBlocks(h) {
+  const low = h.toLowerCase(), re = /<(script|style|noscript|svg|template)\b|<!--/g;
+  let out = '', at = 0, m;
+  while ((m = re.exec(low))) {
+    if (m.index < at) { re.lastIndex = at; continue; }
+    out += h.slice(at, m.index) + ' ';
+    const close = m[1] ? low.indexOf('</' + m[1], m.index) : low.indexOf('-->', m.index + 4);
+    if (close < 0) return out; // never closed: the rest is that block
+    const end = m[1] ? low.indexOf('>', close) : close + 2;
+    at = end < 0 ? h.length : end + 1;
+    re.lastIndex = at;
+  }
+  return out + h.slice(at);
+}
 // a page's readable words (its HTML with the tags, scripts and styles taken out)
 function stripHtml(html) {
-  return String(html || '').replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<\/(p|div|li|tr|h\d|br|section|article)>/gi, '\n').replace(/<[^>]+>/g, ' ')
+  return dropBlocks(String(html || ''))
+    .replace(/<\/(p|div|li|tr|h\d|br|section|article)>/gi, '\n').replace(/<[^<>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, '\'').replace(/&quot;/g, '"')
     .replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim().slice(0, PAGE_CHARS);
 }

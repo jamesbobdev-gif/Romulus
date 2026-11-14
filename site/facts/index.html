@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Romulus facts: what it is, what it is not, what it costs, where your data lives</title>
+<meta name="description" content="The plain facts about Romulus, the open-source to-do list with an AI agent in it: what it is and is not, which AIs it runs on and how, what stays on your computer, what each thing costs, and which platforms it runs on.">
+<link rel="canonical" href="https://jamesbobdev-gif.github.io/Romulus/facts/">
+<meta property="og:site_name" content="Romulus">
+<meta property="og:title" content="Romulus facts">
+<meta property="og:description" content="What it is, what it is not, what it costs, where your data lives. Reviewed November 13, 2026.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://jamesbobdev-gif.github.io/Romulus/facts/">
+<meta property="og:image" content="https://jamesbobdev-gif.github.io/Romulus/img/card.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://jamesbobdev-gif.github.io/Romulus/img/card.png">
+<link rel="icon" href="../img/icon.png">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../styles.css">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "WebPage",
+ "@id": "https://jamesbobdev-gif.github.io/Romulus/facts/",
+ "url": "https://jamesbobdev-gif.github.io/Romulus/facts/",
+ "name": "Romulus facts",
+ "description": "What Romulus is and is not, which AIs it runs on, what stays on your computer, what each thing costs, and which platforms it runs on.",
+ "dateModified": "2026-11-13",
+ "about": { "@id": "https://jamesbobdev-gif.github.io/Romulus/#app" },
+ "isPartOf": { "@type": "WebSite", "url": "https://jamesbobdev-gif.github.io/Romulus/", "name": "Romulus" }
+}
+</script>
+<style>
+.facts{display:grid;gap:12px}
+.facts li{list-style:none;padding:0;color:var(--muted);font-size:15px;max-width:66ch}
+.facts li b{color:var(--ink);font-weight:600}
+.facts{margin:0;padding:0}
+.reviewed{font-size:13px;color:var(--faint);margin-top:12px}
+.box div{grid-template-columns:190px minmax(0,1fr)}
+@media (max-width:560px){.box div{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="../"><img src="../img/icon.png" alt="" width="28" height="28">Romulus</a>
+  <nav class="nav">
+    <a href="../#download">Download</a>
+    <a href="../#plans">Plans</a>
+    <a href="../#privacy">Privacy</a>
+    <a href="../#faq">Questions</a>
+    <a href="https://github.com/jamesbobdev-gif/Romulus">GitHub</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero wrap">
+  <div class="eyebrow"><span class="mono">Facts</span></div>
+  <h1>Romulus, in plain facts</h1>
+  <p class="lede">What it is, what it is not, which AIs it runs on and how, what stays on your computer, what each thing costs, and where it runs. Short, and kept current.</p>
+  <p class="reviewed">Last reviewed November 13, 2026, for version 1.3.22.</p>
+</section>
+
+<section class="wrap" id="what">
+  <h2>What it is</h2>
+  <ul class="facts">
+    <li><b>A to-do list app with an AI agent in it.</b> You write a task the way you would tell a person and hand it to the Agent. It searches, reads pages, fills forms, compares prices, builds the cart, drafts the email, and comes back when it needs a decision.</li>
+    <li><b>Free and open source.</b> The whole app is on GitHub under the MIT license, and every installer is built from that source. There is no company behind it.</li>
+    <li><b>Yours to run on the AI you already have.</b> A Claude or ChatGPT plan, a Gemini key, an OpenRouter account, the free tiers from Grok, Groq, Cloudflare and NVIDIA, or your own model through Ollama. Connect several and it tries them in your order; when one is out of usage, the next one carries the task on.</li>
+    <li><b>Also a place for the rest of your life.</b> Calendar, School, Work, Notes, Hours, Finance, Health, Kitchen and Group tabs, each of which you can switch off.</li>
+  </ul>
+</section>
+
+<section class="wrap" id="not">
+  <h2>What it is not</h2>
+  <ul class="facts">
+    <li><b>Not an AI model or a chatbot.</b> It runs on the models you bring. Without one connected, it is a to-do list.</li>
+    <li><b>Not a service that holds your data.</b> Your lists live on your devices. Sync goes through a project you own or through the Romulus sync server, which can hold only ciphertext once you turn on end-to-end encryption.</li>
+    <li><b>Not something that acts on its own.</b> The Agent never buys, pays, sends, submits, books or deletes until you say yes to the exact thing it described. That rule is enforced in code, in the Agent's own browser, not left to the model.</li>
+    <li><b>Not a developer tool.</b> No terminal, no server to run. Where the app needs Claude Code or OpenAI's Codex to use your plan, it installs them for you and signs you in with a button.</li>
+    <li><b>Not a bank.</b> The Finance tab reads your accounts through SimpleFIN, read-only, and the data sits in an encrypted vault on your computer.</li>
+  </ul>
+</section>
+
+<section class="wrap" id="ai">
+  <h2>Which AIs, and how they connect</h2>
+  <div class="box">
+    <div><b>Claude</b><p>Your own Claude plan, through the official Claude Code app and Anthropic's sign-in. Or an Anthropic API key. Usage counts against your plan.</p></div>
+    <div><b>ChatGPT</b><p>Your own ChatGPT plan, through OpenAI's Codex app and OpenAI's sign-in. Or an OpenAI API key.</p></div>
+    <div><b>Gemini</b><p>A Gemini API key. With Google's Gemini CLI installed, it gets the Agent's browser too.</p></div>
+    <div><b>OpenRouter</b><p>One sign-in in your browser makes a key. Hundreds of models, some free, only through providers that do not keep or train on what is sent.</p></div>
+    <div><b>Grok, Groq, Cloudflare, NVIDIA</b><p>Each one's free tier, with its API key.</p></div>
+    <div><b>Your own model</b><p>Any model through Ollama, on this computer or another one on your network. Tasks with private words (bank, medical, password) only ever go here.</p></div>
+    <div><b>Several at once</b><p>Settings lists them in your order. A task goes to the first; one that is out of usage, signed out or stuck hands the same conversation to the next.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="where">
+  <h2>Where things live</h2>
+  <div class="box">
+    <div><b>Your tasks</b><p>A plain file in the app's data folder on your computer, and on your other devices once sync is on.</p></div>
+    <div><b>Keys and sign-ins</b><p>Encrypted with the operating system's own encryption on the computer you connected them on. Never synced.</p></div>
+    <div><b>Finance</b><p>An encrypted vault on your computer, behind a passphrase that is never saved. Never given to a cloud AI.</p></div>
+    <div><b>The Locked profile</b><p>Resume, address and IDs for forms. Encrypted on your device before it is uploaded; only your local model reads it, unless you let the cloud AIs in from Settings.</p></div>
+    <div><b>Health numbers</b><p>Sealed before they sync and never shown to an AI.</p></div>
+    <div><b>The Agent's memory</b><p>Preferences you typed and one-line tips about sites, in your sync project and the data folder. You can read and edit all of it in Settings.</p></div>
+    <div><b>What leaves the computer</b><p>A task's text, its conversation and the pages the Agent reads go to the AI you routed it to. Nothing goes to the people who make Romulus. There is no telemetry.</p></div>
+  </div>
+  <p class="can">The full list, with file names and the threat model, is in <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+</section>
+
+<section class="wrap" id="cost">
+  <h2>What it costs</h2>
+  <div class="box">
+    <div><b>The app</b><p>Free, on every platform, with everything in it.</p></div>
+    <div><b>Sync</b><p>Free up to 50 MB on the Romulus server, or as much as you like on your own Supabase project.</p></div>
+    <div><b>Group plan</b><p>$5 a month or $50 a year: up to 5 people, 600 MB each for photos and files, 30 days of history, new versions early, a family list and to-dos you send each other. Turned on inside the app, through Stripe. Cancel any time and nothing is deleted.</p></div>
+    <div><b>The AI</b><p>Whatever you already pay your AI provider, or nothing on a free tier or your own model. Romulus adds no charge for AI use.</p></div>
+    <div><b>Bank access</b><p>About $15 a year, paid to SimpleFIN, for the read-only connection the Finance tab uses.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="platforms">
+  <h2>Where it runs</h2>
+  <div class="box">
+    <div><b>Windows</b><p>Windows 10 and 11. Not code-signed yet, so SmartScreen warns on the first run; every release has checksums.</p></div>
+    <div><b>macOS</b><p>Apple silicon and Intel. Unsigned for now: the first open needs Open Anyway in System Settings.</p></div>
+    <div><b>Linux</b><p>A .deb for Ubuntu, Debian and Mint, and an AppImage for the rest.</p></div>
+    <div><b>Android</b><p>An APK from the releases page. It stays in sync with the computer; the Agent itself runs on the computer.</p></div>
+    <div><b>iPhone</b><p>Runs from Xcode. Not on the App Store yet.</p></div>
+    <div><b>Updates</b><p>Installed copies update themselves. Settings decides whether they ask first.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="who">
+  <h2>Who makes it</h2>
+  <p class="sub">One developer and contributors, in the open, at <a href="https://github.com/jamesbobdev-gif/Romulus">github.com/jamesbobdev-gif/Romulus</a>. Questions and bugs go to the issues there; security problems through <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+  <div class="cta">
+    <a class="btn btn-primary" href="../#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Download Romulus free</a>
+    <a class="btn btn-ghost" href="../#faq">All questions</a>
+  </div>
+  <p class="related" style="margin-top:28px">Also: <a href="../free-ai-agent/">Free AI agent</a> <a href="../ai-to-do-list/">AI to-do list app</a> <a href="../#privacy">Privacy</a></p>
+</section>
+</main>
+
+<footer>
+  <span>Romulus · MIT · <a href="https://github.com/jamesbobdev-gif/Romulus">Source</a> · <a href="https://github.com/jamesbobdev-gif/romulus-releases/releases">All releases</a></span>
+</footer>
+</body>
+</html>

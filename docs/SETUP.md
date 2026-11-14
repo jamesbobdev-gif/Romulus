@@ -69,6 +69,10 @@ If Ollama is already running on this computer the panel notices and says so. Tas
 
 The Agent orders by itself at Amazon, Walmart, Target, Best Buy and Shopify stores with Shop Pay, where your card is already on file. For any other store, connect a [Link](https://link.com) wallet (Stripe's; US and Canada): **⚙ Settings → Agent & AI → Link wallet → Connect Link**. The app installs Link's small command-line tool, opens its sign-in page and shows a phrase to enter in the Link app. From then on, when you say yes to an order at such a store, the Agent asks Link for a one-time card for that exact amount, Link asks you to approve it in the Link app, and the Agent's browser types the card into the checkout itself. The AI is told the last four digits only, the number is blanked out of every page it reads afterwards, and the card is dead after that one purchase. The store stays the merchant: returns and refunds go through it as usual. **Test mode** (under Advanced) uses fake cards and charges nothing, for trying it out.
 
+### Add from Claude Desktop (optional)
+
+If Claude Desktop is on the same computer, **Settings → Agent & AI → Add from Claude Desktop → Set up** puts Romulus in its connections (its `claude_desktop_config.json`; nothing else in that file is touched). Restart Claude Desktop, and from then on you can tell it "put *call the dentist* on my Romulus list" or "hand *find the cheapest flight to Denver* to the Romulus Agent". It can add tasks, not read them, and the Agent still asks you before anything final. **Remove** takes it out again.
+
 ## 3. Sync with your phone
 
 A new install syncs from its first start: your lists go to the Romulus server end to end encrypted, under a random sync key only your devices know, with 50 MB free (a paid plan adds room for photos and files and 30 days of history). To add the phone, install the Android app (see *Connect the phone* below), then on the computer open **⚙ Settings → Device sync → Add a device**: it shows a short code for ten minutes, and typing that code on the phone fills in its sync form. Nothing else to copy.
@@ -115,6 +119,8 @@ The Android app is `Romulus-<version>.apk` on the [releases page](https://github
 - For a link, press **+ Calendar link** and paste the subscribe link (`.ics` or `webcal://`). Read-only.
 
 Then choose, per calendar, whether its events become to-dos and whether your tasks appear on it.
+
+The first thing a new install shows is a card to connect Gmail and Google Calendar, with a **Sign in with Google** button under each logo: one sign-in covers both, and Gmail's button asks for the mail permissions too. **Skip for now** puts the card away; everything below does the same from Settings.
 
 **Agent tasks that start on their own.** Open an Agent task and set **Starts when**: *an email arrives about…* (needs Gmail ticked on the Google sign-in), *hours before a calendar event…*, or *a web page says…* (a public page the app can fetch; shops that block plain fetches won't work). The task shows as *watching* and runs when it happens, with what set it off in its conversation. The computer that runs the Agent does the looking, every few minutes; a page is fetched every six hours.
 

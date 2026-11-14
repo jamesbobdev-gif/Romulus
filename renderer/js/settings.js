@@ -96,7 +96,8 @@ function prefsProfile(){
   const a=syncState.cfg&&syncState.cfg.agent;
   return validProfile(a)?{url:a.url,key:a.key,syncKey:a.syncKey+':prefs'}:null;
 }
-// the locked profile: its own row; only the mini PC's local lane reads it (nothing on the Claude side does)
+// the locked profile: its own row; the mini PC's local lane reads it, and the cloud AIs only while the switch
+// below is on (the row's `cloud: true`, kept plain next to the ciphertext; agent/task-context.js lockedForCloud)
 function lockedProfile(){
   const a=syncState.cfg&&syncState.cfg.agent;
   return validProfile(a)?{url:a.url,key:a.key,syncKey:a.syncKey+':locked',baseKey:a.syncKey}:null;
@@ -130,23 +131,35 @@ async function lockedRead(syncKey,doc){ // the text of a locked row, whichever v
   if(doc.v===2&&doc.ct)return lockedDecrypt(syncKey,doc);
   return doc.text||'';
 }
+let lockedLoaded=false; // the row is in the box: the switch may save (a save before that would wipe the profile)
 async function lockedLoad(){
   const p=lockedProfile(); $('lockedSection').hidden=!p; if(!p)return;
   $('lockedStatus').textContent='loading…';
   try{
     const d=await syncPull(p); const text=await lockedRead(p.baseKey,d);
-    $('lockedText').value=text; $('lockedStatus').textContent='';
+    $('lockedText').value=text; $('lockedCloud').checked=!!(d&&d.cloud===true); lockedHeadSay(); lockedLoaded=true; $('lockedStatus').textContent='';
     if(d&&d.v!==2&&text&&lockedCryptoOk())await syncPushDoc(p,await lockedEncrypt(p.baseKey,text)); // a plain row from an older build: encrypted from now on
   }
   catch(e){ $('lockedStatus').textContent='could not load ('+e.message+')'; }
 }
-$('lockedSaveBtn').addEventListener('click',async function(){
+// the heading says who reads it, so the answer is there with the section closed
+function lockedHeadSay(){ $('lockedHead').textContent=$('lockedCloud').checked?'Locked — the local model and the cloud AIs see this':'Locked — only the local model sees this'; }
+// the row as saved: the text encrypted, plus `cloud: true` when he let the cloud AIs read it
+async function lockedSave(){
   const p=lockedProfile(); if(!p)return;
   if(!lockedCryptoOk()){ $('lockedStatus').textContent='this device can’t encrypt; not saved'; return; }
   $('lockedStatus').textContent='saving…';
-  try{ await syncPushDoc(p,await lockedEncrypt(p.baseKey,$('lockedText').value)); $('lockedStatus').textContent='saved'; }
+  try{
+    const doc=await lockedEncrypt(p.baseKey,$('lockedText').value); if($('lockedCloud').checked)doc.cloud=true;
+    await syncPushDoc(p,doc); lockedHeadSay(); $('lockedStatus').textContent='saved';
+  }
   catch(e){ $('lockedStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('lockedStatus').textContent=''; },2500);
+}
+$('lockedSaveBtn').addEventListener('click',lockedSave);
+$('lockedCloud').addEventListener('change',function(){ // the switch saves on its own, text and all
+  if(!lockedLoaded){ this.checked=!this.checked; $('lockedStatus').textContent='not loaded yet: reopen Settings and try again'; return; }
+  lockedSave();
 });
 // Form answers: the questions forms keep asking, answered once; the mini PC's form mode uses them as
 // written, and a question left blank stays empty on the form. Added at the end, never over what's there.
@@ -551,6 +564,16 @@ $('syncSaveBtn').addEventListener('click',function(){
   const prev=syncState.cfg&&syncState.cfg.personal;
   // leaving the Romulus server for a project of one's own, same sync key: the other devices are told to follow
   const leaving=hosted&&validProfile(prev)&&hostedIs(prev.url)&&!hostedIs(url)&&prev.syncKey===sk?Object.assign({},prev):null;
+  // a sync code (typed, pasted, scanned or taken with a pairing code) can point anywhere: only a web address over https,
+  // and when it would move this device's lists under another key or to another project, he is told so first
+  let host=''; try{ const u=new URL(url); if(u.protocol==='https:')host=u.host; }catch(e){}
+  if(!host){ setSyncStatus('the Project URL has to start with https://',true); return; }
+  const moving=validProfile(prev)&&(prev.syncKey!==sk||String(prev.url).replace(/\/+$/,'')!==url.replace(/\/+$/,''));
+  if(moving&&state.tasks.length){
+    const what=prev.syncKey!==sk?'another sync key':'another project ('+host+')';
+    if(!confirm('This moves the lists on this device to '+what+'.\n\nThey will be uploaded there and merged with whatever is there, and whoever holds that key or project can read them. Only continue if it is your own, or one you were given on purpose.'))
+      { setSyncStatus('not changed'); return; }
+  }
   const btn=$('syncSaveBtn'); btn.disabled=true;
   (async function(){
     if(!(hosted&&hostedIs(url))){

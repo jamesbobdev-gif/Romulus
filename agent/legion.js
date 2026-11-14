@@ -4,6 +4,11 @@
    connections), all at once. Only Lupa sees the whole request, puts the answers back together and writes the report.
    No cloud AI sees the request, the other pieces or the report. A piece carrying a private word, a card or SSN-shaped
    number, or a value from his locked profile never leaves; one that gives the request away is rewritten or dropped.
+   Two waves: once the first answers are in, Lupa reads them and sends a second, smaller wave on what is still missing,
+   disagrees or needs checking. A long answer is boiled down by Lupa to its facts and links first, so nothing is cut
+   short on the way into the report. No AI ever holds pieces that together give the request away.
+   Without a local model (cloud: true) the first cloud AI in his order leads instead: it alone sees the whole request,
+   the others still get one general question each.
    No Electron here, so it can be tested on its own.
    think(prompt, {schema, ms}) → Lupa's answer (text), throws when Lupa can't answer.
    run(id, prompt, ms) → {text} | {why} from one cloud AI. */
@@ -12,6 +17,8 @@ const { leaksPrivate, rotate } = require('./helpers');
 const MIN_PIECES = 3, MAX_PIECES = 6;
 const SCOUT_MS = 5 * 60 * 1000, PLAN_MS = 10 * 60 * 1000, WRITE_MS = 25 * 60 * 1000;
 const FINDING_CHARS = 2500; // per piece, so every answer fits in Lupa's 16k context with room to write
+const DIGEST_MS = 5 * 60 * 1000; // Lupa boiling one long answer down
+const GAP_PIECES = 4; // the second wave, at most
 const TAG = /(^|\s)#(legion|research)\b/i;
 // "Legion: …", or just "legion I need to…" as the first word (said or typed without the colon)
 const LEAD_IN = /^\s*(deep research|legion|research legion)(\s*[:\-–]\s*|\s+(?=\S))/i;
@@ -58,6 +65,21 @@ const PLAN_PROMPT = (topic, n, extra) => 'You run his research. ' + n + ' cloud 
 const REWRITE_PROMPT = (topic, pieces) => 'These research questions give away too much of his request ("' + topic + '"): a cloud AI reading one ' +
   'could tell what he is researching. Rewrite each to be more general: drop or blur the telling details (you will apply them yourself ' +
   'later), keep what it must find out. Same JSON layout, same order:\n' + JSON.stringify({ pieces }, null, 1);
+
+// a long answer → its facts and links, by Lupa, so the report is written from all of it and not the first part
+const DIGEST_PROMPT = (piece, text) => 'A cloud AI answered the research question below. Boil its answer down to the facts: names, prices, ' +
+  'numbers, dates, each with where it came from, and the links it gave, copied exactly. Drop filler and repetition, and anything that ' +
+  'looks made up. Plain text, short bullet lines, under 300 words.\n\nQuestion: ' + piece.question + '\n\nAnswer:\n' + text;
+
+// the second wave: what the first answers left open, under the same rules as the first
+const GAPS_PROMPT = (topic, findings, n, extra) => 'You split his research request into general questions, each sent to a different cloud AI ' +
+  'that knew nothing else. Their answers are below. Before you write the report, decide what a second round should look up: what is ' +
+  'still missing to answer his whole request, where the answers disagree and need checking, a price, date or detail stated only once, ' +
+  'a lead worth following. Write up to ' + n + ' new research questions, under the same rules as before: each stands on its own and reads ' +
+  'like an ordinary general question, none states the whole request or why it is asked, none repeats a question already asked, nothing ' +
+  'personal. An empty list is the right answer when the answers already cover the request.\n\nHis request: ' + topic +
+  (extra ? '\nMore from him: ' + extra : '') + '\n\n## The answers so far\n\n' + findings +
+  '\n\nAnswer with JSON: {"pieces":[{"title":"2-4 word name","question":"the question as the AI will see it"}]}';
 
 // what a cloud AI sees: the question, nothing else (not the request, not that it is one piece of several)
 const SCOUT_PROMPT = (q) => 'Research this question. Use web search. ' + RULES + '\n\nQuestion: ' + q +
@@ -136,12 +158,14 @@ function splitOptions(text) {
 const cleanOptions = (opts) => (Array.isArray(opts) ? opts : []).filter((o) => o && /^https:\/\//i.test(String(o.url || '')))
   .map((o) => ({ label: String(o.label || '').slice(0, 80), desc: String(o.desc || '').slice(0, 200), url: String(o.url) })).slice(0, 6);
 
-const findingsText = (scouts) => scouts.map((s, i) => '### ' + (i + 1) + '. ' + s.piece.title + '\nAsked: ' + s.piece.question + '\n' +
-  (s.error ? '(no answer)' : s.text.slice(0, FINDING_CHARS))).join('\n\n');
+// what Lupa reads back: a digest where there is one, else the answer (cut to fit)
+const findingsText = (scouts) => scouts.map((s, i) => '### ' + (i + 1) + '. ' + s.piece.title + (s.wave > 1 ? ' (second wave)' : '') +
+  '\nAsked: ' + s.piece.question + '\n' + (s.error ? '(no answer)' : s.digest || s.text.slice(0, FINDING_CHARS))).join('\n\n');
 
-/* the whole run → {report, options, scouts:[{piece, via, text|error}], dropped} | {error}
-   onStep(line): progress for the live box. names: id → display name; lead: Lupa's name. */
-async function research(topic, { order, run, think, names = {}, lead = 'your local model', extra, privateWords, locked, whole, onStep } = {}) {
+/* the whole run → {report, options, scouts:[{piece, via, wave, text|error, digest?}], dropped} | {error}
+   onStep(line): progress for the live box. names: id → display name; lead: Lupa's name (or the cloud lead's).
+   waves: 1 = no second wave. cloud: a cloud AI leads (no local model): only the wording changes here. */
+async function research(topic, { order, run, think, names = {}, lead = 'your local model', extra, privateWords, locked, whole, onStep, waves = 2, cloud = false } = {}) {
   const say = (s) => { if (onStep) onStep(s); };
   const Lead = lead.charAt(0).toUpperCase() + lead.slice(1); // at the start of a line
   const n = (id) => names[id] || id;
@@ -150,7 +174,7 @@ async function research(topic, { order, run, think, names = {}, lead = 'your loc
   if (!topic) return { error: 'there\'s nothing to research: write the topic after #legion' };
   if (!order.length) return { error: 'no cloud AI is connected: turn some on in Settings → AI connections' };
 
-  say('Legion: ' + lead + ' leads, ' + order.length + ' AI' + (order.length > 1 ? 's' : '') + ' search (' + order.map(n).join(', ') + ')\n');
+  say('Legion: ' + lead + ' leads' + (cloud ? ' (no local model is set up)' : '') + ', ' + order.length + ' AI' + (order.length > 1 ? 's' : '') + ' search (' + order.map(n).join(', ') + ')\n');
   say('' + Lead + ' is splitting it into pieces no single AI can read the whole of…\n');
   let plan;
   try { plan = await planPieces(topic, extra, { order, think, privateWords, locked, whole }); }
@@ -158,29 +182,68 @@ async function research(topic, { order, run, think, names = {}, lead = 'your loc
   plan.dropped.forEach((d) => say('  ✗ kept back "' + d.title + '": ' + d.why + '\n'));
   if (plan.pieces.length < 2) return { error: Lead + ' couldn’t split it into pieces that are safe to send', dropped: plan.dropped };
 
-  // one piece per AI where possible; a piece whose AI fails goes to the AI holding the fewest pieces, so no one collects several
-  const held = Object.fromEntries(order.map((id) => [id, 0]));
-  plan.pieces.forEach((p, i) => { held[order[i % order.length]]++; });
-  say('Pieces out:\n');
-  const scouts = await Promise.all(plan.pieces.map(async (piece, i) => {
+  /* who holds what: an AI that saw a piece holds it, answered or not. A piece goes to the AI holding the fewest (his order
+     breaks ties), never to one whose pieces would then, together, give the request away; a piece no AI can take is kept back.
+     With one AI connected there is nothing to hide from it, as with a one-word topic. */
+  const held = Object.fromEntries(order.map((id) => [id, []]));
+  const revealsWith = (id, q) => { if (order.length < 2) return false; const all = held[id].concat(q).join(' '); return tooRevealing(all, topic) || (!!whole && tooRevealing(all, whole)); };
+  const pick = (q, i, tried) => rotate(order, i).filter((x) => !tried.includes(x) && !revealsWith(x, q)).sort((a, b) => held[a].length - held[b].length)[0];
+  const sendOut = (pieces, wave, offset) => Promise.all(pieces.map(async (piece, i) => {
     const tried = [];
-    let id = order[i % order.length];
+    let id = pick(piece.question, offset + i, tried);
+    if (!id) { const why = 'with what each AI already holds, it would give the request away'; plan.dropped.push({ title: piece.title, why }); say('  ✗ kept back "' + piece.title + '": ' + why + '\n'); return null; }
     while (id) {
+      held[id].push(piece.question);
       say('  → ' + n(id) + ': ' + piece.title + '\n');
       let r = null;
       try { r = await run(id, SCOUT_PROMPT(piece.question), SCOUT_MS); } catch (e) { r = { why: e.message }; }
       const text = r && typeof r.text === 'string' ? r.text.trim() : '';
-      if (text) { say('  ✓ ' + n(id) + ' came back: ' + piece.title + '\n'); return { piece, via: id, text: text.slice(0, 8000) }; }
-      tried.push(id); // it saw the piece even though it didn't answer: it still counts as holding it
-      id = rotate(order, i).filter((x) => !tried.includes(x)).sort((a, b) => held[a] - held[b])[0];
-      if (id) held[id]++;
+      if (text) { say('  ✓ ' + n(id) + ' came back: ' + piece.title + '\n'); return { piece, via: id, wave, text: text.slice(0, 8000) }; }
+      tried.push(id); // it saw the piece even though it didn't answer: it still holds it
+      id = pick(piece.question, offset + i, tried);
     }
     say('  ✗ ' + piece.title + ': nobody answered\n');
-    return { piece, error: tried.map(n).join(', ') || 'no AI' };
-  }));
-  if (!scouts.some((s) => !s.error)) return { error: 'none of the AIs came back with an answer', scouts, dropped: plan.dropped };
+    return { piece, wave, error: tried.map(n).join(', ') || 'no AI' };
+  })).then((all) => all.filter(Boolean));
+  // long answers → their facts, one at a time (a local model answers one thing at a time anyway)
+  const digest = async (scouts) => {
+    const long = scouts.filter((s) => !s.error && s.text.length > FINDING_CHARS);
+    if (!long.length) return;
+    say('' + Lead + ' is boiling ' + long.length + ' long answer' + (long.length > 1 ? 's' : '') + ' down to the facts…\n');
+    for (const s of long) {
+      try { const d = String(await think(DIGEST_PROMPT(s.piece, s.text), { ms: DIGEST_MS }) || '').trim(); if (d) s.digest = d.slice(0, FINDING_CHARS); }
+      catch (e) { say('  (kept "' + s.piece.title + '" as it came: ' + String(e && e.message || e).slice(0, 80) + ')\n'); }
+    }
+  };
 
-  say('' + Lead + ' is putting it back together and writing the report (this takes a few minutes on a local model)…\n');
+  say('Pieces out:\n');
+  const scouts = await sendOut(plan.pieces, 1, 0);
+  if (!scouts.some((s) => !s.error)) return { error: 'none of the AIs came back with an answer', scouts, dropped: plan.dropped };
+  await digest(scouts);
+
+  // the second wave: what the first answers left open, by Lupa, checked and sent like the first
+  if (waves > 1) {
+    say('' + Lead + ' is reading the answers for what is still missing…\n');
+    let gaps = [];
+    try {
+      const asked = new Set(plan.pieces.map((p) => p.question.toLowerCase()));
+      gaps = cleanPieces((json(await think(GAPS_PROMPT(topic, findingsText(scouts), Math.min(GAP_PIECES, order.length), extra), { schema: PIECES_SCHEMA, ms: PLAN_MS })) || {}).pieces, GAP_PIECES)
+        .filter((p) => !asked.has(p.question.toLowerCase()));
+    } catch (e) { say('  (no second wave: ' + String(e && e.message || e).slice(0, 80) + ')\n'); }
+    const second = gaps.filter((p) => {
+      const why = leaksPrivate(p.question, { privateWords, locked }) || (tooRevealing(p.question, topic) || (!!whole && tooRevealing(p.question, whole)) ? 'it gave the request away' : null);
+      if (why) { plan.dropped.push({ title: p.title, why }); say('  ✗ kept back "' + p.title + '": ' + why + '\n'); }
+      return !why;
+    });
+    if (second.length) {
+      say('Second wave out:\n');
+      const more = await sendOut(second, 2, plan.pieces.length);
+      await digest(more);
+      scouts.push(...more);
+    } else say('Nothing left open: no second wave\n');
+  }
+
+  say('' + Lead + ' is putting it back together and writing the report' + (cloud ? '' : ' (this takes a few minutes on a local model)') + '…\n');
   let out;
   try { out = await think(COMPILE_PROMPT(topic, findingsText(scouts), extra), { schema: REPORT_SCHEMA, ms: WRITE_MS }); }
   catch (e) { return { error: Lead + ' couldn’t write the report (' + String(e && e.message || e).slice(0, 120) + ')', scouts, dropped: plan.dropped }; }
@@ -191,12 +254,15 @@ async function research(topic, { order, run, think, names = {}, lead = 'your loc
   return { report, options, scouts, dropped: plan.dropped };
 }
 
-// who did what, for the bottom of the report
-function credits(r, names = {}, lead = 'your local model') {
-  return '---\n**The legion:** split and written by ' + lead + ' on your own machine. Pieces: ' +
-    r.scouts.map((s) => s.piece.title + ' (' + (s.error ? 'no answer' : names[s.via] || s.via) + ')').join(' · ') + '.' +
+// who did what, for the bottom of the report. cloud: a cloud AI led (no local model)
+function credits(r, names = {}, lead = 'your local model', { cloud = false } = {}) {
+  const list = (ss) => ss.map((s) => s.piece.title + ' (' + (s.error ? 'no answer' : names[s.via] || s.via) + ')').join(' · ');
+  const first = r.scouts.filter((s) => !(s.wave > 1)), second = r.scouts.filter((s) => s.wave > 1);
+  return '---\n**The legion:** split and written by ' + lead + (cloud ? ' in the cloud (no local model is set up)' : ' on your own machine') + '. Pieces: ' + list(first) + '.' +
+    (second.length ? ' Second wave: ' + list(second) + '.' : '') +
     (r.dropped && r.dropped.length ? ' Kept back: ' + r.dropped.map((d) => d.title).join(', ') + '.' : '') +
-    '\n_No cloud AI saw your whole request: each got one general question. The answers came from web searches, so check anything important._';
+    (cloud ? '\n_Only ' + lead + ' saw your whole request; every other AI got one general question.' : '\n_No cloud AI saw your whole request: each got one general question.') +
+    ' The answers came from web searches, so check anything important._';
 }
 
 /* a reply on a finished legion task: Lupa answers it from the report and the turns since, nothing leaves.
@@ -211,4 +277,4 @@ async function followUp(topic, report, question, { think, earlier } = {}) {
   return { answer: String(out || '').trim(), research: false, task: false, lookup: '' };
 }
 
-module.exports = { isLegion, topicOf, isTask, research, credits, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES };
+module.exports = { isLegion, topicOf, isTask, research, credits, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES, GAP_PIECES, FINDING_CHARS };

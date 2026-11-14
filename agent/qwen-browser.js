@@ -14,7 +14,10 @@ const readConfig = () => ctx.readConfig();
 const agentLog = (m) => ctx.agentLog(m);
 
 const QWEN_BROWSER_LOCAL_PORT = 9336;
-const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
+// up = something answers on the relay port AND says it is Chromium: another program that took the port first must not be
+// handed the browser's traffic (resume uploads, the pages it opens)
+const qwenBrowserUp = () => fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/version', { signal: AbortSignal.timeout(1500) })
+  .then(async (r) => r.ok && /chrom(e|ium)/i.test(String(((await r.json().catch(() => null)) || {}).Browser || ''))).catch(() => false);
 /* After each task: one blank tab left, every other tab closed. Tabs piled up between tasks (Blackboard,
    D2L…) and kept their memory on a mini PC that froze when memory ran out. Logins stay (cookies).
    A run that stopped waiting on him (a sign-in, a code, a form for his yes) keeps its tabs: the next task's
@@ -205,7 +208,8 @@ async function miniPcScreenshot() {
   if (!a.url || !a.key || !a.syncKey) return null;
   // the bucket is public: the folder is a hash of the agent key, never the key (same formula as renderer/js/agent-chat.js attachFolder)
   const folder = 'tk_agent_att_' + require('crypto').createHash('sha256').update(String(a.syncKey)).digest('hex').slice(0, 40);
-  const base = a.url.replace(/\/+$/, ''), file = folder + '/stuck-' + Date.now().toString(36) + '.jpg';
+  // a random name (the bucket is public: a name made from the time could be guessed by anyone who knows when a run was)
+  const base = a.url.replace(/\/+$/, ''), file = folder + '/stuck-' + require('crypto').randomBytes(12).toString('base64url') + '.jpg';
   try {
     const r = await fetch(base + '/storage/v1/object/agent-attachments/' + file, { method: 'POST', body: Buffer.from(out.jpeg, 'base64'),
       headers: { apikey: a.key, Authorization: 'Bearer ' + a.key, 'Content-Type': 'image/jpeg' }, signal: AbortSignal.timeout(20000) });

@@ -27,16 +27,19 @@ async function processBuyEmails(raw) {
   if (!to || !fnUrl) return; // not set up on this computer
   const sent = new Set(Array.isArray(cfg.buyEmailsSent) ? cfg.buyEmailsSent : []);
   let changed = false;
+  // only web links go into the email (a task synced from elsewhere could carry any kind of address); a picture only when it is one too
+  const webLink = (u) => /^https:\/\/[^\s"'<>]+$/i.test(String(u || ''));
   for (const t of pending) {
     const b = t.buyEmail;
     const key = t.id + '|' + (b.url || '') + '|' + (b.at || '');
     if (sent.has(key) || buyFailed.has(key) || buySending.has(key)) continue;
+    if (!webLink(b.url)) { buyFailed.add(key); agentLog('buy email skipped: not a web link'); continue; }
     buySending.add(key);
     try {
       const res = await fetch(fnUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, kind: b.kind === 'print' || b.kind === 'link' ? b.kind : 'buy', label: b.label, url: b.url, price: b.price, rating: b.rating, image: b.image }),
+        body: JSON.stringify({ to, kind: b.kind === 'print' || b.kind === 'link' ? b.kind : 'buy', label: b.label, url: b.url, price: b.price, rating: b.rating, image: webLink(b.image) ? b.image : undefined }),
         signal: AbortSignal.timeout(20000),
       });
       const data = await res.json().catch(() => null);

@@ -52,7 +52,9 @@ async function ideas(_e, req) {
 }
 
 /* {mode: 'food'|'shop'|'meal', image: {mime, b64}, pantry} → food: {items, via}; meal: {meal, used, via}; or {why}.
-   shop: {items, via}, what to put on the shopping list. A meal can come as words instead of a picture: {mode: 'meal', said: 'chicken and rice', pantry} */
+   shop: {items, via}, what to put on the shopping list. A meal can come as words instead of a picture: {mode: 'meal', said: 'chicken and rice', pantry}.
+   food and shop also carry retake (the picture couldn't be read: no items, and why) or more (part of it couldn't:
+   what another picture should show), from pantry-photo.js result. */
 async function photo(_e, req) {
   if (reading) return { why: 'Still reading the last one.' };
   req = req || {};
@@ -69,9 +71,8 @@ async function photo(_e, req) {
     if (!r || !r.text) { ctx.agentLog('pantry photo: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
     const out = pantryPhoto.parse(mode, r.text);
     const n = mode === 'meal' ? out.used.length : out.items.length;
-    ctx.agentLog('pantry photo (' + mode + '): ' + n + ' from ' + r.via);
-    if (!n) return { why: mode === 'meal' ? r.via + ' couldn’t match that meal to anything in the pantry.' : mode === 'shop' ? r.via + ' didn’t see anything to buy in that picture.' : r.via + ' didn’t see any food in that picture or receipt.' };
-    return Object.assign(out, { via: r.via });
+    ctx.agentLog('pantry photo (' + mode + '): ' + n + ' from ' + r.via + (out.retake ? '; retake: ' + out.retake : out.more ? '; more: ' + out.more : ''));
+    return pantryPhoto.result(mode, out, r.via);
   } catch (e) {
     return { why: String(e && e.message || e).slice(0, 200) };
   } finally { reading = false; }

@@ -127,14 +127,21 @@ function moneyQuestion(t) {
     .map((x) => String(x || '')).join('\n');
   return MY_MONEY.test(text);
 }
+// a local model is set up (Settings → Local model): the same test as agent/local-lane.js localCfg
+function hasLocalModel() {
+  let c = {};
+  try { c = (ctx && ctx.readConfig && readConfig().localModel) || {}; } catch (e) {}
+  return !!(c.url && c.model && c.enabled !== false);
+}
 // → {lane: 'claude' | 'local', reason}: every task goes to one of them
 function routeTask(t) {
   const title = String(t.title || '');
   if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
   if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
   if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: The local model reads Finance' };
-  // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js)
-  if (isLegion(t)) return { lane: 'local', reason: 'deep research: your local model leads a legion of cloud AIs' };
+  // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js);
+  // without a local model the local lane still takes it, with the first cloud AI in his order leading (agent/local-lane.js)
+  if (isLegion(t)) return { lane: 'local', reason: hasLocalModel() ? 'deep research: your local model leads a legion of cloud AIs' : 'deep research: a cloud AI leads the legion (no local model is set up)' };
   // only he can do it (a video, a presentation): Lupa, signed in to his courses, reads the assignment and coaches him (agent/coach.js)
   if (isCoach(t)) return { lane: 'local', reason: 'only you can do this one: your local model reads the assignment and coaches you' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };

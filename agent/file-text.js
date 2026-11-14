@@ -37,8 +37,8 @@ function unzip(buf) {
   return out;
 }
 const unxml = (x) => String(x).replace(/<\/w:p>|<\/a:p>|<\/text:p>|<\/text:h>|<w:br\/>|<w:tab\/>/g, (m) => /tab/.test(m) ? '\t' : '\n')
-  .replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
-  .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  .replace(/<[^<>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+  .split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim(); // ([^<>] and trimEnd: a long run of "<" or spaces can't send a regex backtracking)
 // Word: the body, then its tables come with it; PowerPoint: each slide in order, numbered
 function officeText(buf, ext) {
   const files = unzip(buf);

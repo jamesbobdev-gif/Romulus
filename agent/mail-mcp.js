@@ -9,7 +9,8 @@
    connect it again. The accounts and their access tokens are read from MAIL_ACCOUNTS_FILE
    ([{provider, email, token, write, send}]), which the runner writes and empties after the run, so tokens never
    sit in an AI's own settings. Plain node, no packages: the runner copies it out of the app.
-   Usage: node mail-mcp.js   (env MAIL_ACCOUNTS_FILE, MAIL_FINAL) */
+   A yes buys one final step, and only to the addresses and subjects named in the note he said yes to (MAIL_ASK_FILE):
+   an email the run reads can't widen it. Usage: node mail-mcp.js   (env MAIL_ACCOUNTS_FILE, MAIL_FINAL, MAIL_ASK_FILE) */
 const fs = require('fs');
 
 const BODY_MAX = 12000; // one message's text; a thread gets this much per message
@@ -23,8 +24,31 @@ function accounts() {
 const finalOk = () => process.env.MAIL_FINAL === '1';
 const NOT_CONNECTED = 'No mailbox is connected: he can tick email on his Google or Microsoft account in Settings → Calendars';
 const NEEDS_YES = 'This one sends or trashes mail, so it waits for his yes. Don\'t call it again in this run: list exactly what ' +
-  'you would do in your note (each email: to, subject, first line; or which emails go to the trash), ask him to reply yes, and ' +
-  'set the task to needs-you. His yes lets the next run do exactly that.';
+  'you would do in your note (each email: to, with the full email address, subject, first line; or the subject of each email ' +
+  'that goes to the trash), ask him to reply yes, and set the task to needs-you. His yes lets the next run do exactly that, ' +
+  'and only that: one send or trash, to the addresses and subjects the note named.';
+/* His yes was to one ask (MAIL_ASK_FILE: the note he answered, written by the runner). It buys one final step, to what
+   that note named: an address not in it can't be sent to, an email whose subject isn't in it can't be trashed, and a
+   second send or trash waits for a fresh yes. So an email the run reads can't widen what he agreed to. */
+let finalDone = false;
+function asked() { // the note, lowercased, one line
+  let t = ''; try { t = fs.readFileSync(process.env.MAIL_ASK_FILE || '', 'utf8'); } catch (e) {}
+  return String(t).toLowerCase().replace(/\s+/g, ' ');
+}
+const SPENT = 'His yes covered one step, and this run has taken it. Anything more waits for a fresh yes: say in your note what else you would do and set the task to needs-you.';
+const notAsked = (what) => 'His yes did not cover ' + what + ': the note he said yes to doesn\'t name it. Only what that note listed can go ' +
+  '(each address in full, each subject). For anything else, ask him again: say it in your note and set the task to needs-you.';
+// the addresses a send goes to must all be in the note he said yes to
+function askedFor(addrs) {
+  const a = asked(), miss = addrs.filter((x) => !a.includes(String(x).toLowerCase()));
+  if (miss.length) throw new Error(notAsked(miss.join(', ')));
+}
+// an email to trash must be named by its subject in that note
+function askedSubject(subject) {
+  const s = String(subject || '').toLowerCase().replace(/^((re|fwd?|aw|wg)\s*:\s*)+/, '').replace(/\s+/g, ' ').trim();
+  if (!s || !asked().includes(s)) throw new Error(notAsked('"' + (String(subject || '').trim() || 'an email with no subject') + '"'));
+}
+const spent = (r) => { finalDone = true; return r; }; // the one final step is taken
 // which mailbox: the one named (its address), else the first connected
 function pick(a) {
   const all = accounts();
@@ -40,6 +64,7 @@ function needWrite(acct) {
 }
 function needSend(acct) {
   if (!finalOk()) throw new Error(NEEDS_YES);
+  if (finalDone) throw new Error(SPENT);
   if (!acct.send) throw new Error((acct.email || 'This mailbox') + ' doesn\'t let the app send: he can connect it again in Settings → Calendars');
 }
 
@@ -90,8 +115,25 @@ const bodyOf = (a) => { const b = String(a.body == null ? '' : a.body).replace(/
 
 const b64 = (s) => Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 const tidy = (t) => String(t || '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
-const fromHtml = (h) => String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n')
-  .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+/* style and script blocks cut out by a scan, never a regex, and tags matched without backtracking ([^<>]): an email built
+   with an unclosed <style or a long run of "<" used to send the regex back over the rest of the text from every position,
+   minutes of it, in a run that every message in the mailbox reaches. */
+function dropBlocks(h) {
+  const low = h.toLowerCase(), re = /<(style|script)\b/g;
+  let out = '', at = 0, m;
+  while ((m = re.exec(low))) {
+    if (m.index < at) { re.lastIndex = at; continue; }
+    out += h.slice(at, m.index) + ' ';
+    const close = low.indexOf('</' + m[1], m.index);
+    if (close < 0) return out; // never closed: the rest is that block
+    const gt = low.indexOf('>', close);
+    at = gt < 0 ? h.length : gt + 1;
+    re.lastIndex = at;
+  }
+  return out + h.slice(at);
+}
+const fromHtml = (h) => dropBlocks(String(h || '')).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n')
+  .replace(/<[^<>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
 function bodyText(m) {
   let plain = '', html = '';
   (function walk(p) {
@@ -202,37 +244,44 @@ const gmailTools = {
   },
   async send_message(acct, a) {
     needSend(acct);
-    const r = recipients(a), raw = mime(Object.assign({ from: acct.email, subject: a.subject, body: bodyOf(a) }, r));
+    const r = recipients(a); askedFor(r.to.concat(r.cc, r.bcc));
+    const raw = mime(Object.assign({ from: acct.email, subject: a.subject, body: bodyOf(a) }, r));
     const m = await gmail(acct, 'messages/send', { method: 'POST', body: { raw } });
-    return { sent: true, id: m.id, to: r.to };
+    return spent({ sent: true, id: m.id, to: r.to });
   },
   async reply(acct, a) {
     needSend(acct);
-    const p = await gmailReplyParts(acct, a.messageId, !!a.replyAll);
+    const p = await gmailReplyParts(acct, a.messageId, !!a.replyAll); askedFor(p.to.concat(p.cc));
     const raw = mime({ from: acct.email, to: p.to, cc: p.cc, subject: p.subject, body: bodyOf(a), inReplyTo: p.inReplyTo, references: p.references });
     const m = await gmail(acct, 'messages/send', { method: 'POST', body: { raw, threadId: p.threadId } });
-    return { sent: true, id: m.id, to: p.to, cc: p.cc };
+    return spent({ sent: true, id: m.id, to: p.to, cc: p.cc });
   },
   async forward(acct, a) {
     needSend(acct);
-    const r = recipients(a);
+    const r = recipients(a); askedFor(r.to.concat(r.cc, r.bcc));
     const m = await gmail(acct, 'messages/' + needId(a.messageId, 'messageId') + '?format=full');
     const subj = header(m, 'subject');
     const body = (String(a.body || '').trim() ? String(a.body).trim() + '\n\n' : '') + '---------- Forwarded message ---------\nFrom: ' + header(m, 'from') +
       '\nDate: ' + header(m, 'date') + '\nSubject: ' + subj + '\nTo: ' + header(m, 'to') + '\n\n' + bodyText(m);
     const sent = await gmail(acct, 'messages/send', { method: 'POST', body: { raw: mime(Object.assign({ from: acct.email, subject: /^fwd?:/i.test(subj) ? subj : 'Fwd: ' + subj, body }, r)) } });
-    return { sent: true, id: sent.id, to: r.to };
+    return spent({ sent: true, id: sent.id, to: r.to });
   },
   async send_draft(acct, a) {
     needSend(acct);
-    const m = await gmail(acct, 'drafts/send', { method: 'POST', body: { id: String(needId(a.draftId, 'draftId')) } });
-    return { sent: true, id: m.id };
+    const id = String(needId(a.draftId, 'draftId'));
+    const d = (await gmail(acct, 'drafts/' + id + '?format=metadata')).message || {}; // who the draft goes to
+    askedFor(addresses(header(d, 'to') + ',' + header(d, 'cc') + ',' + header(d, 'bcc')));
+    const m = await gmail(acct, 'drafts/send', { method: 'POST', body: { id } });
+    return spent({ sent: true, id: m.id });
   },
   async trash(acct, a) {
     needSend(acct);
     const t = target(a);
+    const m = t.kind === 'thread' ? ((await gmail(acct, 'threads/' + t.id + '?format=metadata&metadataHeaders=Subject')).messages || [])[0] || {}
+      : await gmail(acct, 'messages/' + t.id + '?format=metadata&metadataHeaders=Subject');
+    askedSubject(header(m, 'subject'));
     await gmail(acct, (t.kind === 'thread' ? 'threads/' : 'messages/') + t.id + '/trash', { method: 'POST' });
-    return { trashed: true };
+    return spent({ trashed: true });
   },
 };
 
@@ -310,27 +359,41 @@ const outlookTools = {
   },
   async send_message(acct, a) {
     needSend(acct);
-    const r = recipients(a);
+    const r = recipients(a); askedFor(r.to.concat(r.cc, r.bcc));
     await graph(acct, 'sendMail', { method: 'POST', body: { message: { subject: oneLine(a.subject), body: { contentType: 'Text', content: bodyOf(a) },
       toRecipients: rcpt(r.to), ccRecipients: rcpt(r.cc), bccRecipients: rcpt(r.bcc) }, saveToSentItems: true } });
-    return { sent: true, to: r.to };
+    return spent({ sent: true, to: r.to });
   },
   async reply(acct, a) {
     needSend(acct);
-    await graph(acct, 'messages/' + needId(a.messageId, 'messageId') + (a.replyAll ? '/replyAll' : '/reply'), { method: 'POST', body: { comment: bodyOf(a) } });
-    return { sent: true };
+    const id = needId(a.messageId, 'messageId'), me = String(acct.email || '').toLowerCase();
+    const m = await graph(acct, 'messages/' + id + '?$select=from,replyTo,toRecipients,ccRecipients'); // who the reply goes to
+    const to = addresses(((m.replyTo || [])[0] && who(m.replyTo[0])) || who(m.from));
+    const cc = a.replyAll ? addresses((m.toRecipients || []).concat(m.ccRecipients || []).map(who)).filter((x) => x !== me && !to.includes(x)) : [];
+    askedFor(to.concat(cc));
+    await graph(acct, 'messages/' + id + (a.replyAll ? '/replyAll' : '/reply'), { method: 'POST', body: { comment: bodyOf(a) } });
+    return spent({ sent: true, to, cc });
   },
   async forward(acct, a) {
     needSend(acct);
-    const r = recipients(a);
+    const r = recipients(a); askedFor(r.to);
     await graph(acct, 'messages/' + needId(a.messageId, 'messageId') + '/forward', { method: 'POST', body: { comment: String(a.body || ''), toRecipients: rcpt(r.to) } });
-    return { sent: true, to: r.to };
+    return spent({ sent: true, to: r.to });
   },
-  async send_draft(acct, a) { needSend(acct); await graph(acct, 'messages/' + needId(a.draftId, 'draftId') + '/send', { method: 'POST' }); return { sent: true }; },
+  async send_draft(acct, a) {
+    needSend(acct);
+    const id = needId(a.draftId, 'draftId');
+    const d = await graph(acct, 'messages/' + id + '?$select=toRecipients,ccRecipients,bccRecipients'); // who the draft goes to
+    askedFor(addresses((d.toRecipients || []).concat(d.ccRecipients || [], d.bccRecipients || []).map(who)));
+    await graph(acct, 'messages/' + id + '/send', { method: 'POST' });
+    return spent({ sent: true });
+  },
   async trash(acct, a) {
     needSend(acct);
-    for (const id of await outlookIds(acct, a)) await graph(acct, 'messages/' + id + '/move', { method: 'POST', body: { destinationId: 'deleteditems' } });
-    return { trashed: true };
+    const ids = await outlookIds(acct, a);
+    if (ids.length) askedSubject((await graph(acct, 'messages/' + ids[0] + '?$select=subject')).subject);
+    for (const id of ids) await graph(acct, 'messages/' + id + '/move', { method: 'POST', body: { destinationId: 'deleteditems' } });
+    return spent({ trashed: true });
   },
 };
 
@@ -405,4 +468,5 @@ if (require.main === module) {
   // stdin closed: node exits by itself once any mail call still going has answered
 }
 
-module.exports = { TOOLS, FINAL_TOOLS, call, handle, showMessage, showOutlook, bodyText, mime, addresses };
+const resetForTests = () => { finalDone = false; };
+module.exports = { TOOLS, FINAL_TOOLS, call, handle, showMessage, showOutlook, bodyText, mime, addresses, resetForTests };

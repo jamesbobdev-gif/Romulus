@@ -834,12 +834,17 @@ document.addEventListener('keydown',function(e){
   if(e.key!=='/'||isViewTab(state.activeTab))return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
-/* ── search ── */
+/* ── search: the box opens under the filter row from its button or Ctrl+F, and goes away again once it's empty and left ── */
+function openSearch(){ document.body.classList.add('search-open'); $('searchBtn').classList.add('on'); $('searchBox').focus(); $('searchBox').select(); }
+function closeSearch(){ document.body.classList.remove('search-open'); $('searchBtn').classList.remove('on'); }
+$('searchBtn').addEventListener('click',function(){ if(document.body.classList.contains('search-open')&&!$('searchBox').value){ closeSearch(); return; } openSearch(); });
 $('searchBox').addEventListener('input',function(){ state.search=this.value.trim().toLowerCase(); render(); });
 $('searchBox').addEventListener('keydown',function(e){
-  if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); }
+  if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); closeSearch(); }
   if(e.key==='Enter')this.blur();
 });
+$('searchBox').addEventListener('blur',function(){ if(!this.value)closeSearch(); });
+$('filters').addEventListener('change',function(){ state.filter=this.value||null; render(); });
 /* the tab bar scrolls sideways with its scrollbar hidden: a fade at an edge says there's more that way
    (styles.css .tabs.more-left / .more-right), and on a computer the mouse wheel scrolls it along */
 (function(){
@@ -861,7 +866,7 @@ document.addEventListener('keydown',function(e){
     e.preventDefault();
     if(state.activeTab==='ideas'){ $('ideaSearch').focus(); $('ideaSearch').select(); return; } // Notes has its own search box
     if(state.activeTab==='calendar'||isViewTab(state.activeTab))switchTab('list');
-    $('searchBox').focus(); $('searchBox').select();
+    openSearch();
   }
 });
 

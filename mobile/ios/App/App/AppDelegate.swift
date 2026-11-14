@@ -7,7 +7,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // The page's storage (Library/WebKit: localStorage with the sync key and the project key under tasks.sync.v1, and the
+        // lists) stays out of iCloud and local backups, as the Android build's backup rules keep it out there. The folder
+        // exists from the first time the page opens, so the first launch marks it on the next one.
+        if let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first {
+            var webkit = library.appendingPathComponent("WebKit")
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? webkit.setResourceValues(values)
+        }
         return true
     }
 
