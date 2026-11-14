@@ -149,6 +149,7 @@
     }
   };
 
+  const calAccts = []; // the demo's calendar accounts: none until the made-up Google sign-in below
   window.desktop = {
     load: async function () { return JSON.stringify(doc); },
     loadRestored: async function () { return null; },
@@ -161,7 +162,6 @@
       return { ready: true, order: [{ id: 'claude', on: true }], names: { claude: 'Claude' }, used: {},
         claude: { installed: true, ready: true, email: 'you@example.com', plan: 'Pro' }, gemini: { hasKey: false }, openai: { via: 'key', hasKey: false, codex: {} }, openrouter: { hasKey: false } };
     },
-  const calAccts = []; // the demo's calendar accounts: none until the made-up Google sign-in below
     onAgentWorking: on('agent:working'),
     onAgentResults: on('agent:results'),
     onAgentWaiting: on('agent:waiting'),
@@ -174,9 +174,7 @@
     financeSetKind: async function (payee, kind) { if (kind == null) delete kinds[payee]; else kinds[payee] = kind; return { ok: true, kinds: kinds }; },
     financeBills: async function () { return { bills: [], odd: [], reminded: {} }; },
     onFinanceLocked: function () {},
-    onFinanceUpdated: function () {}
-  };
-  // no welcome card, a light theme, and no scrollbar in the frames; no sync nudge bar, and no start on the Romulus
+    onFinanceUpdated: function () {},
     /* calendars and email: a made-up Google sign-in that lands after a moment (the first-launch card, google-first.js,
        and Settings → Calendars & email). Starts empty; nothing opens a browser */
     calOverview: async function () { return { accounts: calAccts.map(function (a) { return Object.assign({}, a, { calendars: a.calendars.map(function (c) { return Object.assign({}, c); }) }); }), builtIn: { google: true, microsoft: false } }; },
@@ -202,7 +200,9 @@
     calRemove: async function (id) { const i = calAccts.findIndex(function (a) { return a.id === id; }); if (i >= 0) calAccts.splice(i, 1); return true; },
     calAddLink: async function () { return { ok: false, error: 'Calendar links aren’t in the demo.' }; },
     calPull: async function () { return { items: [], errors: [] }; },
-    mailSetEnabled: async function () { return true; },
+    mailSetEnabled: async function () { return true; }
+  };
+  // no welcome card, a light theme, and no scrollbar in the frames; no sync nudge bar, and no start on the Romulus
   // server (hosted-sync.js hostedAutoStart): the page would wait on the network before showing the lists
   // ?first in the address keeps the first-launch cards (google-first.js, then welcome.js), to look at them
   const first = /[?&]first\b/.test(location.search);
