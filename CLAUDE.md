@@ -33,7 +33,7 @@ that says what it does; read that first, then this for how the pieces fit and th
 | Calendars and email accounts | `calendars.js`, `connect-accounts.js`, `google-first.js` (first launch) | `agent/calendars.js`, `main/calendar-accounts.js`, `main/gcal-sync.js`, `mobile/cal-phone.js` |
 | Settings | `settings.js`, `tab-picker.js`, `local-model.js`, `setup-list.js`, `welcome.js`, `demo.js` (example to-dos), `backup.js` (backup file) | `main/store.js` |
 | Screen helper | `renderer/overlay.*` | `main/overlay.js`, `agent/overlay-ask.js`, `agent/pc-control.js` |
-| Updates | `update-desktop.js` | `main/updater.js`, `mobile/update-phone.js`, `scripts/release.js` |
+| Updates | `update-desktop.js`, `whats-new.js` (what changed, after an update) | `main/updater.js`, `mobile/update-phone.js`, `scripts/release.js`, `scripts/whats-new.js` |
 
 ## Rules for the page scripts
 
@@ -75,3 +75,6 @@ that says what it does; read that first, then this for how the pieces fit and th
 - Supabase migrations are applied by hand in the SQL editor; add the file under `supabase/migrations/`
   and keep `setup.sql` in step.
 - `npm start` runs the app from source; `npm run dist` builds the installer.
+- Every update tells the person what changed. When a change is worth telling them about, add a line under the
+  top entry (version `'next'`) of `renderer/js/whats-new.js`, in plain English. `npm run release` puts the version
+  in and refuses a release with no lines there.

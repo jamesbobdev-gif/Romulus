@@ -97,7 +97,7 @@ The stores (Google Play, the App Store, the Microsoft Store) and the signing tha
 
 Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The Mac and Windows installers stay unsigned until their signing secrets are set; the release workflow lists them.
 
-`npm run release` is the quick path for Windows only: it bumps the version, builds the installer on this machine and publishes it. The phone and the other systems only get a version that went through the tag workflow.
+`npm run release` is the quick path for Windows only: it bumps the version, builds the installer on this machine and publishes it. The phone and the other systems only get a version that went through the tag workflow. It also stamps the version on the top entry of `renderer/js/whats-new.js`, the lines the app shows after the update and the release page leads with; a release with no lines written there is refused.
 
 Never add `seed-config.json` or `oauth-clients.json` to a build you share, and never share an APK built with your own `mobile/sync-config.json`: both hold keys to your lists.
 

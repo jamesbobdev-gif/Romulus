@@ -11,7 +11,8 @@
    "Restart now" / the tray's "Restart to update".
    Runs on Windows, Linux (AppImage) and macOS alike. On a Mac the update only installs once the app is
    code-signed (the release workflow builds it unsigned until an Apple certificate is added); until then
-   the check fails quietly and is logged. The phone updates itself through mobile/update-phone.js. */
+   the check fails quietly and is logged. The phone updates itself through mobile/update-phone.js.
+   The first open of a new version says what changed (renderer/js/whats-new.js, which asks update:version). */
 
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
 const IDLE_CHECK_MS = 10 * 60 * 1000;
@@ -175,6 +176,7 @@ function installNow() {
 
 const handlers = {
   'update:state': () => state(),
+  'update:version': () => ctx.version, // this version, for the What’s new card (renderer/js/whats-new.js)
   'update:accept': () => accept(),
   'update:skip': () => skip(),
   'update:shared': (_e, doc) => shared(doc && typeof doc === 'object' ? { yes: doc.yes, no: doc.no } : null),

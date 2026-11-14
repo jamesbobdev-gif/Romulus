@@ -164,6 +164,7 @@ contextBridge.exposeInMainWorld('desktop', {
   onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),
   // a new version: asks before updating, unless Settings says automatically (main/updater.js)
   updateState: () => ipcRenderer.invoke('update:state'),
+  updateVersion: () => ipcRenderer.invoke('update:version'), // this version, for the What’s new card (renderer/js/whats-new.js)
   updateAccept: () => ipcRenderer.invoke('update:accept'),
   updateSkip: () => ipcRenderer.invoke('update:skip'),
   updateShared: (doc) => ipcRenderer.invoke('update:shared', doc),

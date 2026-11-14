@@ -26,9 +26,11 @@ function syncReadme() {
   return true;
 }
 
-// the notes on a release page: which of the files is the installer. `node scripts/releases-readme.js notes 1.0.2`
+// the notes on a release page: what changed, then which of the files is the installer. `node scripts/releases-readme.js notes 1.0.2`
 function releaseNotes(version) {
+  const what = require('./whats-new').notesFor(version); // the lines the app shows after the update (renderer/js/whats-new.js)
   return [
+    ...(what ? ['## What changed', '', ...what.map((n) => '- ' + n), ''] : []),
     `## Windows: download **Romulus-Setup-${version}.exe** and run it`,
     '',
     'It updates an existing copy in place; your tasks and settings stay.',

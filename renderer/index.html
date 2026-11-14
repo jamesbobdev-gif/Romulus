@@ -460,6 +460,9 @@
         <button id="updateCheck" class="ghost mono" hidden>Check for updates</button>
         <span id="updateStatus" class="settings-hint" style="margin:0"></span>
       </div>
+      <!-- this version's lines, to read again (whats-new.js) -->
+      <button id="updateNotes" class="ghost mono" type="button" hidden>What changed in this version</button>
+      <ul id="updateNotesList" class="whats-new-list" hidden></ul>
     </details>
     <details class="settings-panel settings-collapse" id="themeSection">
       <summary class="settings-label">Theme</summary>
@@ -589,6 +592,12 @@
         <li id="welcomeTrayTip">Closing the window hides Romulus in the tray. On Windows it sits under the ^ by the clock until you drag it onto the taskbar; right-click the icon to quit.</li>
       </ul>
       <p class="welcome-foot">You can change all of this later in Settings. This card shows once.</p>
+    </div>
+    <!-- the first open after an update (whats-new.js): what changed since the version this device last ran -->
+    <div id="whatsNewCard" class="connect-card welcome whats-new" hidden>
+      <b id="whatsNewTitle">What’s new</b>
+      <ul id="whatsNewList" class="whats-new-list"></ul>
+      <div class="whats-new-foot"><button id="whatsNewOk" class="btn-accent" type="button">Got it</button></div>
     </div>
     <!-- the example to-dos are on the list (demo.js): say so, and take them away in one click -->
     <div id="demoBar" class="nudge sync-nudge" hidden><span>These to-dos are examples to try things on. Nothing here is real.</span> <button id="demoRemoveBtn" class="btn-accent">Remove the examples</button></div>
@@ -789,6 +798,7 @@
 <script src="js/local-sites.js"></script>
 <script src="js/update-sync.js"></script>
 <script src="js/update-desktop.js"></script>
+<script src="js/whats-new.js"></script>
 <script src="js/init.js"></script>
 </body>
 </html>
