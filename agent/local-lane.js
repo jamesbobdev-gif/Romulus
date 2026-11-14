@@ -396,6 +396,15 @@ function cleanStuck(s) {
   const reason = String(s.reason || '').trim().slice(0, 300), fix = String(s.fix || '').trim().slice(0, 400);
   return reason || fix ? { reason: reason || 'It couldn’t carry on.', fix: fix || 'Reply “try again”, or switch it to Claude.' } : null;
 }
+/* The page's "working" notice for tasks the local model has taken: every task's id, the lane, and for each
+   task that wasn't the local model's yet (new, or moved here because a private word came in on Claude) the
+   reason it is here now; the type only for a first routing, which is what agent/route-learn.js learns from. */
+function workingNotice(tasks) {
+  const fresh = tasks.filter((t) => !t.lane), moved = tasks.filter((t) => t.lane && t.lane !== 'local');
+  return { ids: tasks.map((t) => t.id), lane: 'local',
+    reasons: Object.fromEntries(fresh.concat(moved).map((t) => [t.id, routeTask(t).reason])),
+    types: Object.fromEntries(fresh.map((t) => [t.id, routeInfo(t, 'local')])) };
+}
 async function startLocalRun() {
   const c = localCfg();
   if (localBusy || !routing.decided()) return;
@@ -429,8 +438,7 @@ async function startLocalRun() {
     const tasks = await claimAgentTasks(mine, 'local');
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     tasks.forEach((t) => heldSince.delete(t.id));
-    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
-    types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'local')])) });
+    sendToRenderer('agent:working', workingNotice(tasks));
     // nobody took them in time: they all go to the cloud AIs at once
     if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
     for (const t of tasks) {
@@ -473,7 +481,7 @@ async function startCloudLegionRun() {
   try {
     const tasks = await claimAgentTasks(queued, 'local');
     if (!tasks.length) return;
-    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+    sendToRenderer('agent:working', workingNotice(tasks));
     for (const t of tasks) {
       await runLegionTask(null, t).catch((e) => {
         const msg = String(e && e.message || e);
@@ -1087,4 +1095,4 @@ const isBusy = () => localBusy || howtoCompacting;
 let activity = null;
 function doing(a) { activity = a ? Object.assign({ since: Date.now() }, a, a.title ? { title: String(a.title).slice(0, 80) } : {}) : null; }
 const nowDoing = () => activity ? Object.assign({}, activity) : howtoCompacting ? { what: 'tidying how-to notes' } : null;
-module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS, WORKER_HOLD_MS, waitingForLocal };
+module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, workingNotice, LOCAL_HOLD_MS, WORKER_HOLD_MS, waitingForLocal };
