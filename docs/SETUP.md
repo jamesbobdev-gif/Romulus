@@ -65,6 +65,21 @@ To pick a model yourself instead: leave the address as `http://localhost:11434` 
 
 If Ollama is already running on this computer the panel notices and says so. Tasks that contain private words (bank, medical, password…) only ever go to the local model; see **Who does Agent tasks** to tune the words and rules.
 
+### The TV (optional)
+
+If you run [Media Hub](https://github.com/jamesbobdev-gif/mediahub) on a Raspberry Pi for your TVs, the
+local model can drive it. In the hub's `config/access.json` set a `controlToken` (its `docs/CONTROL.md`
+explains, with every command); then in Romulus open **Settings → Local model → Media Hub**, enter the
+hub's address (`http://192.168.1.200:8787`) and that token, and Save. The line under it says whether the
+hub answered and which TVs it sees.
+
+From then on a task such as "play Fantastic Planet on the TV", "pause the living room TV", "put PBS on
+the TV" or "what's on the TV?" goes to the local model, which lists the TVs, searches every source's
+titles at once, and sends the TV the command through the hub. It can play, pause, resume, stop, open a
+site, press remote keys and show a short line on the screen; it cannot change the hub's sources or
+settings. Nothing about what you watch goes to a cloud AI: only the local model gets this tool, and it
+needs a local model set up first.
+
 ### Link wallet (pay at any store)
 
 The Agent orders by itself at Amazon, Walmart, Target, Best Buy and Shopify stores with Shop Pay, where your card is already on file. For any other store, connect a [Link](https://link.com) wallet (Stripe's; US and Canada): **⚙ Settings → Agent & AI → Link wallet → Connect Link**. The app installs Link's small command-line tool, opens its sign-in page and shows a phrase to enter in the Link app. From then on, when you say yes to an order at such a store, the Agent asks Link for a one-time card for that exact amount, Link asks you to approve it in the Link app, and the Agent's browser types the card into the checkout itself. The AI is told the last four digits only, the number is blanked out of every page it reads afterwards, and the card is dead after that one purchase. The store stays the merchant: returns and refunds go through it as usual. **Test mode** (under Advanced) uses fake cards and charges nothing, for trying it out.

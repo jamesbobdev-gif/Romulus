@@ -17,6 +17,7 @@ const decider = require('./decider');
 const { isLegion } = require('./legion');
 const { isCoach } = require('./coach');
 const { isVague } = require('./find-out');
+const mediaHub = require('./media-hub');
 const learn = require('./route-learn');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer, scheduleAgentRun, scheduleLocalRun }
@@ -128,6 +129,7 @@ function moneyQuestion(t) {
   return MY_MONEY.test(text);
 }
 // a local model is set up (Settings → Local model): the same test as agent/local-lane.js localCfg
+function safeConfig() { try { return (ctx && ctx.readConfig && readConfig()) || {}; } catch (e) { return {}; } }
 function hasLocalModel() {
   let c = {};
   try { c = (ctx && ctx.readConfig && readConfig().localModel) || {}; } catch (e) {}
@@ -145,6 +147,8 @@ function routeTask(t) {
   // only he can do it (a video, a presentation): Lupa, signed in to his courses, reads the assignment and coaches him (agent/coach.js)
   if (isCoach(t)) return { lane: 'local', reason: 'only you can do this one: your local model reads the assignment and coaches you' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
+  // the TV: only the local model talks to the Media Hub (agent/media-hub.js), once its address is in Settings → Local model
+  if (mediaHub.isTvTask(t) && mediaHub.enabled(safeConfig())) return { lane: 'local', reason: 'the TV: your local model talks to the Media Hub' };
   // "chapter 8" and nothing else: Lupa, signed in to his courses, finds out which class and what it is, then does it (agent/find-out.js)
   if (isVague(t)) return { lane: 'local', reason: 'only names the work: your local model finds it in your classes, then does it' };
   const priv = privateMatch(t);

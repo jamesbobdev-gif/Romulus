@@ -42,6 +42,7 @@ const uploadTool = (files) => ({ type: 'function', function: { name: 'upload_fil
   description: 'Put one of his files into the file box a site opened (click its Upload / Attach / Choose file button first). file = the file name: ' + files.map((f) => f.name).join(', ') + '. No file = close the box without uploading.',
   parameters: { type: 'object', properties: { file: { type: 'string' } } } } });
 const { localWebSearch, localReadPage, searchMyData, LOCAL_TOOLS, FILL_FORM_TOOL } = require('./local-tools');
+const mediaHub = require('./media-hub'); // the TV, through the Media Hub on his network: one tool, only here
 const courseSites = require('./course-sites');
 const runLog = require('./run-log');
 const APP_VERSION = (() => { try { return require('../package.json').version; } catch (e) { return null; } })();
@@ -160,7 +161,7 @@ handle('local:status', () => localStatus());
 const OLLAMA_DEFAULT = 'http://localhost:11434';
 const cleanUrl = (u) => { u = String(u || OLLAMA_DEFAULT).trim().replace(/\/+$/, ''); if (!/^https?:\/\//i.test(u)) u = 'http://' + u; return /^https?:\/\/[a-z0-9._-]+(:\d+)?$/i.test(u) ? u : null; };
 handle('local:get', () => { const c = readConfig().localModel || {}; return { url: c.url || '', model: c.model || '', enabled: c.enabled !== false, configured: !!localCfg(), defaultUrl: OLLAMA_DEFAULT,
-  worker: !!c.worker, synced: !!require('./supabase').channel(readConfig()) }; });
+  worker: !!c.worker, synced: !!require('./supabase').channel(readConfig()), hub: mediaHub.publicConfig(readConfig()) }; });
 // "This computer runs the local model for all my devices" (agent/worker.js): on, it says so in Supabase right away
 handle('local:worker', async (_e, on) => {
   const c = readConfig();
@@ -191,6 +192,14 @@ function mergeLocalModel(cfg, change) {
 }
 handle('local:save', async (_e, change) => {
   const c = readConfig();
+  // Settings → Local model → Media Hub: the TV hub's address and control token (agent/media-hub.js)
+  if (change && change.hub) {
+    try { c.mediaHub = mediaHub.mergeConfig(c, change.hub); } catch (e) { return { ok: false, error: e.message }; }
+    ctx.writeConfig(c);
+    let checked = '', error = '';
+    if (c.mediaHub) { try { checked = await mediaHub.check(c); } catch (e) { error = e.message; } }
+    return { ok: true, hub: Object.assign(mediaHub.publicConfig(c), { checked, error }) };
+  }
   try { c.localModel = mergeLocalModel(c, change || {}); } catch (e) { return { ok: false, error: e.message }; }
   ctx.writeConfig(c);
   if (c.localModel.enabled !== false) ctx.scheduleLocalRun && ctx.scheduleLocalRun();
@@ -671,7 +680,7 @@ async function runLocalTask(c, t) {
     ? 'to attach one, click the site\'s Upload / Attach / Choose file button, then call upload_file with its name. His files: ' + files.map((f) => f.name).join(', ') + '. Only these can ever be uploaded, nothing else.'
     : 'he hasn\'t added any (Settings → About you → Files for forms). If a site needs his resume, fill the rest and say in your note that he should add it there, then reply "try again".';
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
-    : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
+    : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(mediaHub.enabled(readConfig()) ? [mediaHub.TOOL] : [], canAsk ? [ASK_HELPERS_TOOL] : [],
       coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
       sweeping && browser ? [classSweep.ADD_ITEM_TOOL, classSweep.DONE_TOOL, fileText.READ_FILE_TOOL] : [],
       findingOut && browser ? [findOut.PIN_TOOL, fileText.READ_FILE_TOOL] : []);
@@ -868,6 +877,7 @@ async function runLocalTask(c, t) {
         else if (sweeping && name === 'mark_class_done') { result = classSweep.markDone(doneFound, args); show('\n' + result + '\n', true); }
         else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); if (pinned.item) findOut.remember(classLogFile(), pinned.item); show('\n' + result.split('. His task')[0] + '\n', true); }
         else if ((coaching || sweeping || findingOut) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
+        else if (name === 'media_hub') { show('\nMedia Hub: ' + String(args.action || '') + (args.query ? ' ' + args.query : '') + '\n', true); result = await mediaHub.run(args, readConfig()); }
         else if (name === 'search_my_data') {
           show('\nSearching your Tasks data: ' + args.query + '\n', true);
           if (!myCal && !calTried) { calTried = true; myCal = await calendarForAgent(); } // fetched once, only if needed

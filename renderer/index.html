@@ -81,6 +81,16 @@
           <label class="switch" style="margin-bottom:4px"><input type="checkbox" id="localWorkerOn"><span class="track" aria-hidden="true"></span><span>Run local tasks here for all my devices</span></label>
           <p class="settings-hint" style="margin:0">Turn this on on the computer that runs the model. It picks up local tasks from your phone and other computers through sync, so they don’t need to reach it on the network (no address to type). Files its browser downloads show up on your other computers the same way. Leave this app open there.</p>
         </div>
+        <!-- local-model.js: the TV hub on the network (agent/media-hub.js); the local model drives the TVs through it -->
+        <div id="hubRow" style="margin-top:14px">
+          <p class="settings-hint" style="margin:0 0 6px"><b>Media Hub.</b> The TV hub on your network, if you run one. With its address and control token here, "play Fantastic Planet on the TV" is a task the local model can do.</p>
+          <div class="settings-row" style="margin-top:0">
+            <input id="hubUrl" class="settings-inp mono" placeholder="http://192.168.1.200:8787" autocomplete="off" spellcheck="false" style="flex:1;margin:0">
+            <input id="hubToken" class="settings-inp mono" type="password" placeholder="control token" autocomplete="off" style="flex:1;margin:0">
+            <button id="hubSaveBtn" class="ghost mono">Save</button>
+          </div>
+          <span id="hubStatusLine" class="mono" style="font-size:11px;color:var(--muted)"></span>
+        </div>
       </div>
       <div class="settings-sub adv" id="routingSection" hidden>
         <h3 class="settings-subhead">Who does Agent tasks</h3>

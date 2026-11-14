@@ -27,6 +27,9 @@ if(window.desktop&&window.desktop.localGet){
     $('localEasy').hidden=!!cur.configured;
     $('localWorkerRow').hidden=!cur.configured&&!cur.worker; $('localWorkerOn').checked=!!cur.worker;
     window.localWorkerHere=!!cur.worker;
+    // the Media Hub (agent/media-hub.js): address shown, the token never (type to replace it)
+    if(cur.hub){ $('hubUrl').value=cur.hub.url||''; $('hubToken').value=''; $('hubToken').placeholder=cur.hub.hasToken?'token saved · type to replace':'control token';
+      $('hubStatusLine').textContent=cur.hub.url?'TV tasks go to the local model through '+cur.hub.url+(cur.hub.hasToken?'':' · no token yet: the hub takes commands from the Pi only'):''; }
     if(cur.configured){
       const s=await window.desktop.localStatus().catch(function(){ return null; });
       if(s&&s.via==='worker'){ say(s.name+' is taking local tasks for all your devices'+(s.model?' ('+s.model+')':'')+(s.busy?' · working on one now':'')); return; }
@@ -57,6 +60,14 @@ if(window.desktop&&window.desktop.localGet){
     const r=await window.desktop.localSave({url:$('localUrl').value.trim()||(cur&&cur.defaultUrl),model:model});
     if(!r.ok){ say(r.error,true); return; }
     await draw(); if(typeof refreshLocalStatus==='function')refreshLocalStatus();
+  });
+  $('hubSaveBtn').addEventListener('click',async function(){
+    $('hubStatusLine').textContent='saving…';
+    const r=await window.desktop.localSave({hub:{url:$('hubUrl').value.trim(),token:$('hubToken').value}});
+    if(!r.ok){ $('hubStatusLine').textContent=r.error; return; }
+    const h=r.hub||{};
+    $('hubStatusLine').textContent=!h.url?'Media Hub off':h.error?'Saved, but: '+h.error:'Saved · '+(h.checked||'the hub answers')+(h.hasToken?'':' · no token yet');
+    $('hubToken').value=''; if(h.url)$('hubToken').placeholder=h.hasToken?'token saved · type to replace':'control token';
   });
   $('localOffBtn').addEventListener('click',async function(){
     const r=await window.desktop.localSave({enabled:false});

@@ -17,6 +17,7 @@ const WHATS_NEW_SEEN_KEY='tasks.version.seen';
 const WHATS_NEW=[
   {version:'next',notes:[
     'After an update, this card says what changed.',
+    'The TV: with the Media Hub’s address and control token in Settings → Local model, "play Fantastic Planet on the TV" or "pause the TV" is a task the local model does.',
     'Lists: tasks sort themselves (overdue, today, then by date), and the Tag menu and search share one row.',
     'Hours: turning hours in can email the time sheet to an address.',
     'First launch: Gmail and Google Calendar are offered before anything else.',
