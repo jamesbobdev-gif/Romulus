@@ -58,6 +58,9 @@ Everything you connect stays on the computer where you connected it. Keys, token
 
 ## Working on the code
 
+Keeping the project going without anyone's help, from shipping a version to the sync server and the
+website, is written down in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 ```
 npm install
 npm start        # dev mode

@@ -13,6 +13,9 @@ Node 22 or newer (`npm test` uses Node's built-in test runner with a file glob, 
 
 ## Where things are
 
+The owner's side of the project, releases, the website, the sync server, payments, is in
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 - `main.js` wires the Electron main process; `main/` is the desktop plumbing (window, tray, config and encrypted secrets, calendars, Gmail dates, Finance).
 - `agent/` is the Agent: routing, the Claude runner, the other cloud AIs, the local-model lane, the agent browser, skills and site notes.
 - `renderer/` is the page: plain scripts with no bundler, loaded in the order `index.html` lists them. They share one global scope, so declare a top-level name in one file only.
