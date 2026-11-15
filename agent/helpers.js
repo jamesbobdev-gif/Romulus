@@ -130,10 +130,30 @@ const noEmoji = (s) => String(s == null ? '' : s).replace(EMOJI, '').replace(/^ 
 /* fetch for an address that came from outside (a task, a calendar link, a page): the address itself must be public,
    and so must every redirect it answers with, one hop at a time (a public name can answer 302 → this computer, the hub
    or a router; fetch's own redirect:'follow' would go there). At most 5 hops. */
+/* An address (IPv4 or IPv6, as the resolver gives it) on this computer, the LAN or a private range: the same ranges
+   isPublicUrl refuses when they are written in the address itself. */
+function privateIp(ip) {
+  const h = String(ip || '').toLowerCase().replace(/^\[|\]$/g, '');
+  const v4 = h.startsWith('::ffff:') ? h.slice(7) : h;
+  if (/^\d+(\.\d+){3}$/.test(v4)) {
+    const [a, b] = v4.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  }
+  return h === '::1' || h === '::' || /^(fc|fd|fe[89ab])/.test(h) || h.startsWith('::ffff:');
+}
+/* The name in a public-looking address can still point at this computer or the LAN (DNS rebinding: a name the attacker
+   owns answering with 127.0.0.1), so what it resolves to is checked too, before each hop. A name that doesn't resolve
+   is left to the fetch, which fails on it anyway. → true when every address is public */
+async function resolvesPublic(url) {
+  let h; try { h = new URL(String(url)).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch (e) { return false; }
+  if (/^\d+(\.\d+){3}$/.test(h) || h.includes(':')) return !privateIp(h); // an address written out: judged as it is
+  let addrs; try { addrs = await require('dns').promises.lookup(h, { all: true, verbatim: true }); } catch (e) { return true; }
+  return addrs.length > 0 && addrs.every((a) => !privateIp(a.address));
+}
 async function fetchPublic(url, opts = {}) {
   let at = String(url || '');
   for (let hop = 0; ; hop++) {
-    if (!isPublicUrl(at)) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
+    if (!isPublicUrl(at) || !(await resolvesPublic(at))) throw new Error(hop ? 'redirected somewhere private' : 'not a public web address');
     const res = await fetch(at, Object.assign({}, opts, { redirect: 'manual' }));
     if (![301, 302, 303, 307, 308].includes(res.status)) return res;
     try { await res.body?.cancel(); } catch (e) {}
@@ -147,4 +167,37 @@ async function fetchPublic(url, opts = {}) {
    the pages a run read */
 const OFFLINE_RE = /\b(ENOTFOUND|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT)\b|Can.t reach the API|getaddrinfo|fetch failed|network (error|is unreachable)/i;
 const offline = (r) => !!r && OFFLINE_RE.test([r.why, String(r.text || '').slice(-2000), String(r.log || '').slice(-4000)].join('\n'));
-module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, fetchPublic, trimRunLog, offline };
+/* The secrets in his locked profile outright: the values of lines whose label says so (SSN, passport, card, PIN,
+   password, account and routing numbers). Name, address, phone and the like are not here: forms need them. */
+const SECRET_LABEL = /ssn|social security|passport|card|cvv|cvc|\bpin\b|password|passcode|account number|routing|iban|sort code|tax id|\bitin\b/i;
+function lockedSecrets(locked) {
+  return String(locked || '').split('\n').map((l) => l.replace(/^\s*[-*]\s*/, ''))
+    .filter((l) => /^[^:]{1,40}:/.test(l) && SECRET_LABEL.test(l.split(':')[0]))
+    .map((l) => l.replace(/^[^:]{1,40}:\s*/, '').trim().toLowerCase()).filter((v) => v.length >= 4);
+}
+/* → why text typed into a page (or chosen on it) mustn't go, or null: a private word, a card or SSN-shaped number, or a
+   secret from his locked profile. The rest of the profile may be typed (that is what forms are for); these are his to
+   type himself. Both lanes use it: the mini PC's model directly (agent/local-lane.js), Claude's browser through the
+   launcher (agent/browser-proxy.js leakRefusal, with the same number shapes). */
+function leaksTyped(text, { privateWords, locked } = {}) {
+  const low = String(text || '').toLowerCase();
+  const words = String(privateWords || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
+  const hit = words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(low));
+  if (hit) return 'it has "' + hit + '", one of his private words';
+  if (/(^|[^0-9])(\d[ -]?){12,18}\d([^0-9]|$)/.test(low)) return 'it has something like a card number';
+  if (/(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)/.test(low)) return 'it has something like a social security number';
+  if (lockedSecrets(locked).some((v) => low.includes(v))) return 'it has a secret from his locked profile (a number only he types)';
+  return null;
+}
+/* The values a Claude run's prompt carries that must not leave in an address, a search or typed text (agent/runner.js
+   writes them for the browser launcher and the web-guard hook): his private words (Settings → Routing), where he is
+   (both numbers, as the prompt shows them) and his Link shipping address (street and postal code). Under 4 characters
+   is left out: such a match is chance. */
+function privateValues({ here, address, privateWords } = {}) {
+  const out = String(privateWords || '').split(',').map((w) => w.trim()).filter((w) => w.length >= 4);
+  if (here && Number.isFinite(Number(here.lat)) && Number.isFinite(Number(here.lng))) out.push(String(here.lat), String(here.lng));
+  if (address) for (const v of [address.line_1, address.line_2, address.postal_code]) if (v && String(v).trim().length >= 4) out.push(String(v).trim());
+  return [...new Set(out)];
+}
+
+module.exports = { noEmoji, MAX_QUESTIONS, HELPER_PROMPT, leaksPrivate, lockedValues, lockedSecrets, leaksTyped, privateValues, rotate, askPool, show, isYes, isYesTo, isPublicUrl, privateIp, resolvesPublic, fetchPublic, trimRunLog, offline };

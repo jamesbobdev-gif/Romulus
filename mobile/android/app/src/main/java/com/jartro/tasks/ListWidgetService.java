@@ -317,7 +317,8 @@ public class ListWidgetService extends RemoteViewsService {
 
         private static String firstImage(JSONObject t) {
             JSONArray imgs = t.optJSONArray("replyImages");
-            if (imgs != null && imgs.length() > 0) return imgs.optString(0, null);
+            String first = imgs != null && imgs.length() > 0 ? imgs.optString(0, null) : null;
+            if (first != null && first.startsWith("https://")) return first; // a web picture only, like the options below
             JSONArray opts = t.optJSONArray("options");
             if (opts != null) for (int i = 0; i < opts.length(); i++) {
                 JSONObject o = opts.optJSONObject(i);

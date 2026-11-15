@@ -236,9 +236,10 @@ function impGenericCsv(rows,opts){
 
 /* ── Trello board JSON ── */
 function impTrello(j){
-  const lists={}; (j.lists||[]).forEach(function(l){ lists[l.id]=l; });
-  const labels={}; (j.labels||[]).forEach(function(l){ labels[l.id]=l.name||l.color; });
-  const checks={}; (j.checklists||[]).forEach(function(c){ (checks[c.idCard]=checks[c.idCard]||[]).push(c); });
+  // keyed by ids from the file: plain maps with no prototype, so an id like "__proto__" is just another key
+  const lists=Object.create(null); (j.lists||[]).forEach(function(l){ if(l&&l.id!=null)lists[l.id]=l; });
+  const labels=Object.create(null); (j.labels||[]).forEach(function(l){ if(l&&l.id!=null)labels[l.id]=l.name||l.color; });
+  const checks=Object.create(null); (j.checklists||[]).forEach(function(c){ if(c&&c.idCard!=null)(checks[c.idCard]=checks[c.idCard]||[]).push(c); });
   return (j.cards||[]).filter(function(c){ return !c.closed&&!(lists[c.idList]&&lists[c.idList].closed); }).map(function(c){
     const list=lists[c.idList]?lists[c.idList].name:'';
     const d=impDate(c.due);
@@ -317,7 +318,7 @@ function parseImport(text,opts){
     else if(j&&(j.kind==='tasks#taskLists'||(Array.isArray(j.items)&&j.items.some(function(x){ return x&&Array.isArray(x.items); })))){ source='gtasks'; items=impGoogle(j); }
     else if(j&&Array.isArray(j)&&j.length&&typeof j[0]==='object'){ // an array of records: read it as a table
       const keys=Object.keys(j[0]); source='json';
-      items=impGenericCsv([keys].concat(j.map(function(o){ return keys.map(function(k){ const v=o[k]; return v==null?'':typeof v==='object'?(Array.isArray(v)?v.join(', '):''):String(v); }); })),opts);
+      items=impGenericCsv([keys].concat(j.map(function(o){ return keys.map(function(k){ const v=o[k]; return v==null?'':typeof v==='object'?(Array.isArray(v)?impJoin(v):''):String(v); }); })),opts);
     }
     else if(j)return {source:'json',items:[],error:'That file doesn’t look like a task list Romulus can read.'};
   }
@@ -363,7 +364,24 @@ function importToTasks(items,o){
   return {tasks:tasks,skipped:skipped};
 }
 
+// a value that is a list in a JSON export → "a, b" (one nested too deep to flatten just comes out empty, never a crash)
+function impJoin(v){ try{ return v.flat(20).map(function(x){ return x==null?'':String(x); }).join(', ').slice(0,2000); }catch(e){ return ''; } }
+
 /* ── zip files (Google Takeout, Notion) ── read with the browser's own inflate; only the files that could be tasks */
+const IMP_ZIP_FILE_MAX=20e6;
+// the browser's inflate, read in pieces and stopped past max bytes: a zip's directory can say a file is small when it isn't
+async function impInflate(raw,max){
+  const rd=new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const parts=[]; let n=0;
+  for(;;){
+    const r=await rd.read(); if(r.done)break;
+    n+=r.value.length;
+    if(n>max){ rd.cancel().catch(function(){}); throw new Error('a file in the zip is too big'); }
+    parts.push(r.value);
+  }
+  const out=new Uint8Array(n); let o=0; parts.forEach(function(p){ out.set(p,o); o+=p.length; });
+  return out;
+}
 async function impUnzip(buf){
   const b=new Uint8Array(buf), v=new DataView(buf);
   let e=-1; for(let i=b.length-22;i>=Math.max(0,b.length-65557);i--){ if(v.getUint32(i,true)===0x06054b50){ e=i; break; } }
@@ -371,16 +389,19 @@ async function impUnzip(buf){
   const count=v.getUint16(e+10,true); let p=v.getUint32(e+16,true);
   const files=[];
   for(let n=0;n<count;n++){
-    if(v.getUint32(p,true)!==0x02014b50)break;
+    if(p+46>b.length||v.getUint32(p,true)!==0x02014b50)break; // offsets from the file itself: checked before they are read
     const method=v.getUint16(p+10,true), comp=v.getUint32(p+20,true), size=v.getUint32(p+24,true), nl=v.getUint16(p+28,true), xl=v.getUint16(p+30,true), cl=v.getUint16(p+32,true), off=v.getUint32(p+42,true);
+    if(p+46+nl>b.length)break;
     const name=new TextDecoder().decode(b.subarray(p+46,p+46+nl));
     p+=46+nl+xl+cl;
-    if(!/\.(csv|json|txt|md)$/i.test(name)||/(^|\/)(__MACOSX|\.)/.test(name)||size>20e6)continue;
+    if(!/\.(csv|json|txt|md)$/i.test(name)||/(^|\/)(__MACOSX|\.)/.test(name)||size>IMP_ZIP_FILE_MAX||comp>IMP_ZIP_FILE_MAX)continue;
+    if(off+30>b.length)continue;
     const start=off+30+v.getUint16(off+26,true)+v.getUint16(off+28,true);
+    if(start+comp>b.length)continue;
     const raw=b.subarray(start,start+comp);
     let data;
     if(method===0)data=raw;
-    else if(method===8)data=new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    else if(method===8)data=await impInflate(raw,IMP_ZIP_FILE_MAX);
     else continue;
     files.push({name:name,text:new TextDecoder().decode(data)});
   }
@@ -474,7 +495,7 @@ if(typeof document!=='undefined'&&document.getElementById('importCard'))(functio
   let pasteT=null;
   $('importPaste').addEventListener('input',function(){
     clearTimeout(pasteT); const v=this.value;
-    pasteT=setTimeout(function(){ if(!v.trim()){ preview(null); return; } const r=parseImport(v); if(r.source==='text')r.name='what you pasted'; preview(r); },300);
+    pasteT=setTimeout(function(){ if(!v.trim()){ preview(null); return; } let r; try{ r=parseImport(v); }catch(e){ preview(null); return; } if(r.source==='text')r.name='what you pasted'; preview(r); },300);
   });
   $('importGo').addEventListener('click',function(){
     if(!pending||!pending.items.length)return;

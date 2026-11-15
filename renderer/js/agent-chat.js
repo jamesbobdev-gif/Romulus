@@ -44,6 +44,7 @@ function fillPlan(box,items){
   box.hidden=!(items&&items.length);
 }
 let localStat=null;       // last mini PC status: {configured, online, model, loaded, address}
+let noLocalWait={};       // task id → why only the local model may do it, while none is set up (agent-results.js; the card says so in lists.js)
 function refreshLocalStatus(){
   if(!window.desktop||!window.desktop.localStatus)return;
   window.desktop.localStatus().then(function(s){

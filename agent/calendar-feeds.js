@@ -14,7 +14,7 @@ function parse(text, now = new Date()) {
     if (line === 'END:VEVENT') { if (ev) { const e = toItem(ev, now); if (e) out.push(e); } ev = null; continue; }
     if (!ev) continue;
     const m = line.match(/^([A-Z-]+)((?:;[^:]*)?):(.*)$/);
-    if (m && !(m[1] in ev)) ev[m[1]] = { params: m[2], value: m[3] };
+    if (m && !(m[1] in ev)) ev[m[1]] = { params: m[2], value: m[3].slice(0, 5000) }; // a title or note's worth: every pattern below then has a bound
   }
   return out;
 }
@@ -51,30 +51,32 @@ function toItem(ev, now) {
   if (!t || t.at < new Date(now.getTime() - 2 * 864e5)) return null; // already past: nothing to do
   let course = unescape((ev.LOCATION && ev.LOCATION.value) || (ev.CATEGORIES && ev.CATEGORIES.value) || '');
   // "BIO 101: Chapter 19" / "[BIO 101] Chapter 19" / "HIS 210 - Sec 510 - Deliverable" carry the course in the title
-  const pre = title.match(/^\[([^\]]+)\]\s*(.+)$/) || title.match(/^([A-Z]{2,5}[ -]?\d{3,4}[A-Z]?[^:]*):\s*(.+)$/) ||
-    title.match(/^([A-Z]{2,5}[ -]?\d{3,4}[A-Z]?)\s+-\s+(.+)$/);
+  title = title.replace(/\s+/g, ' ').trim(); // single spaces: the patterns below then can't be sent backtracking over a padded title
+  const pre = title.match(/^\[([^\[\]]+)\] ?(\S.*)$/) || title.match(/^([A-Z]{2,5}[ -]?\d{3,4}[A-Z]?[^:]*): ?(\S.*)$/) ||
+    title.match(/^([A-Z]{2,5}[ -]?\d{3,4}[A-Z]?) - (\S.*)$/);
   if (pre) { course = course || pre[1]; title = pre[2]; }
   // D2L sends an item up to three times: "… - Due", "… - Availability Ends", and "… - Available" when it opens
-  const ph = title.match(/\s+-\s+(Due|Availability Ends|Ends|Available)$/i);
+  const ph = title.match(/ - (Due|Availability Ends|Ends|Available)$/i);
   const phase = ph ? (/^due$/i.test(ph[1]) ? 'due' : /^available$/i.test(ph[1]) ? 'available' : 'ends') : null;
   if (ph) title = title.slice(0, ph.index);
   title = cleanTitle(title);
-  const notes = unescape(ev.DESCRIPTION && ev.DESCRIPTION.value).replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').slice(0, 2000);
+  const notes = unescape(ev.DESCRIPTION && ev.DESCRIPTION.value).replace(/<[^<>]+>/g, ' ').replace(/[ \t]+/g, ' ').slice(0, 2000);
   return { uid, title: title.slice(0, 200), course: course ? courseCode(course) : null, courseName: courseName(course),
     due: t.due, dueTime: t.dueTime, phase, notes: notes || null, url: ev.URL ? ev.URL.value.trim() : null };
 }
 
 // "Proctoring Enabled: Quiz 2" → "Quiz 2"; "Sec 510 - Research Deliverable #1 - Assignment" → "Research Deliverable #1"
 function cleanTitle(s) {
-  return String(s || '').replace(/^Proctoring Enabled:\s*/i, '').replace(/^\s*[-–:]\s*/, '')
-    .replace(/^Sec(?:tion)?\.?\s*\d+\s*[-–:]\s*/i, '').replace(/(.{3,})\s+[-–]\s+Assignment$/i, '$1').trim();
+  // whitespace collapsed first: the patterns then have single spaces to look at, not runs a feed could pad out
+  return String(s || '').replace(/\s+/g, ' ').replace(/^Proctoring Enabled: ?/i, '').replace(/^ ?[-–:] ?/, '')
+    .replace(/^Sec(?:tion)?\.? ?\d+ ?[-–:] ?/i, '').replace(/^(.{3,}) [-–] Assignment$/i, '$1').trim();
 }
 
 // "PHYS-1010-(83263)-Astronomy-Fall 2026" → "Astronomy": the course's name, so a task tagged by name finds its code
 function courseName(s) {
   s = String(s || '').trim();
   if (!/\b[A-Z]{2,5}[ -]?\d{3,4}[A-Z]?\b/.test(s)) return null;
-  const n = s.replace(/\b[A-Z]{2,5}[ -]?\d{3,4}[A-Z]?\b/g, ' ').replace(/\([^)]*\)/g, ' ')
+  const n = s.replace(/\b[A-Z]{2,5}[ -]?\d{3,4}[A-Z]?\b/g, ' ').replace(/\([^()]*\)/g, ' ')
     .replace(/\b(fall|spring|summer|winter)\s*\d{2,4}\b/gi, ' ').replace(/\b\d{2,}\b/g, ' ').replace(/[-_:|]+/g, ' ').replace(/\s+/g, ' ').trim();
   return n && n.length <= 60 ? n : null;
 }

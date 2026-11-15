@@ -121,9 +121,14 @@ if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
       input.value='';
       // say whose project this is before adopting it: a code someone else talked him into typing would otherwise
       // move his lists into their project without a word
-      let host=''; try{ host=new URL(JSON.parse(atob(text.slice(SYNC_CODE_PREFIX.length))).url).host; }catch(e){}
+      let host='', newKey=''; try{ const o=JSON.parse(atob(text.slice(SYNC_CODE_PREFIX.length))); const u=new URL(o.url); if(u.protocol==='https:')host=u.host; newKey=String(o.s||''); }catch(e){}
       if(!host){ setSyncStatus('that code didn’t hold a sync project address',true); return; }
-      if(!confirm('Use the sync project at '+host+'?\n\nYour lists will be kept there from now on. Only continue if this is your own project (or one you were given on purpose).')){ setSyncStatus('not paired'); return; }
+      // on the Romulus server every code names the same host, so the host alone can't tell his own device's code from a
+      // stranger's: say what taking it does to the lists already on this device
+      const cur=syncState.cfg&&syncState.cfg.personal, joins=cur&&cur.syncKey&&newKey&&cur.syncKey!==newKey&&state.tasks.length;
+      const msg=joins?'This code comes with a different sync key. Taking it joins this device to the lists of whoever made the code: the lists already here are uploaded under their key and merged with theirs, and they can read them.\n\nOnly continue if you made the code on your own other device.'
+        :'Use the sync project at '+host+'?\n\nYour lists will be kept there from now on. Only continue if this is your own project (or one you were given on purpose).';
+      if(!confirm(msg)){ setSyncStatus('not paired'); return; }
       if(fillFromSyncCode(text)){ setSyncStatus('paired: saving…'); $('syncSaveBtn').click(); }
     }catch(e){ setSyncStatus('couldn’t pair: '+e.message,true); }
     finally{ useBtn.disabled=false; }

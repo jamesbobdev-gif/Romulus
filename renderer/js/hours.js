@@ -1,5 +1,6 @@
 /* The Hours tab: how many hours he put in each day, for school or for work. One week at a time, the way a
    timesheet app shows it: the week's total and a bar per day on top, the add line, then the week's entries.
+   Turn in stamps the hours as handed in, and can email the sheet to his boss or teacher on the way.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
@@ -11,12 +12,13 @@
 const HOUR_KINDS=['school','work'];
 /* what the tab is showing: the day the add line logs to (its week is the one on screen), the entry being
    changed, and a turn-in waiting for a yes */
-const hourUI={kind:'school',day:null,editing:null,confirmTurnIn:null,turnInThrough:null};
+const hourUI={kind:'school',day:null,editing:null,confirmTurnIn:null,turnInThrough:null,turnInTo:null,turnInError:null};
 function normHours(raw){
   const r=raw||{};
   const entries=(Array.isArray(r.entries)?r.entries:[]).filter(function(e){ return e&&e.id&&/^\d{4}-\d{2}-\d{2}$/.test(e.date)&&isFinite(e.hours); }).map(function(e){
     const o={id:String(e.id),date:e.date,kind:HOUR_KINDS.indexOf(e.kind)>=0?e.kind:'work',hours:+e.hours,note:String(e.note||''),updatedAt:e.updatedAt||0};
     if(e.turnedIn)o.turnedIn=e.turnedIn; // when he turned these hours in (a timestamp); unset = still to turn in
+    if(e.turnedIn&&e.turnedInTo)o.turnedInTo=String(e.turnedInTo).slice(0,600); // the address the sheet was emailed to, when it was
     return o;
   });
   const tombs=(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; });
@@ -109,21 +111,85 @@ function hoursPending(kind){ return state.hours.entries.filter(function(e){ retu
 function hoursLastTurnIn(kind){
   return state.hours.entries.reduce(function(a,e){ return e.kind===kind&&e.turnedIn>a?e.turnedIn:a; },0);
 }
-// through = 'YYYY-MM-DD': only days up to and including it (an older sheet he already sent)
-function hoursTurnIn(kind,through){
+// through = 'YYYY-MM-DD': only days up to and including it (an older sheet he already sent); to = the address it was emailed to
+function hoursTurnIn(kind,through,to){
   const now=Date.now();
-  hoursPending(kind).forEach(function(e){ if(!through||e.date<=through){ e.turnedIn=now; e.updatedAt=now; } });
+  hoursPending(kind).forEach(function(e){ if(!through||e.date<=through){ e.turnedIn=now; e.updatedAt=now; if(to)e.turnedInTo=to; } });
   persist();
 }
 function hoursUndoTurnIn(kind){
   const last=hoursLastTurnIn(kind), now=Date.now(); if(!last)return;
-  state.hours.entries.forEach(function(e){ if(e.kind===kind&&e.turnedIn===last){ delete e.turnedIn; e.updatedAt=now; } });
+  state.hours.entries.forEach(function(e){ if(e.kind===kind&&e.turnedIn===last){ delete e.turnedIn; delete e.turnedInTo; e.updatedAt=now; } });
   persist();
+}
+
+/* ── turning hours in by email ──
+   The sheet is plain text: one line per day with its notes, then the total. On the computer it goes out from the
+   Gmail or Outlook he connected in Settings → Calendars and email (main/gmail-dates.js mail:send, the same way the
+   Agent's emails go). Without one, and on the phone, it opens in his mail app with everything filled in and he
+   presses Send there. The address is remembered per kind, on this device. */
+const HOURS_EMAIL_KEY='tasks.hoursEmail';
+// "Boss@work.com, payroll@work.com" → ['boss@work.com', 'payroll@work.com']: good addresses once each, nothing else
+function hoursEmailList(s){
+  return String(s||'').split(/[,;\s]+/).map(function(x){ return x.trim().toLowerCase(); })
+    .filter(function(a,i,all){ return a&&a.length<=254&&/^[^@\s<>",;]+@[^@\s<>",;]+\.[a-z]{2,}$/i.test(a)&&all.indexOf(a)===i; });
+}
+function hoursEmailRemembered(kind){ try{ return (JSON.parse(localStorage.getItem(HOURS_EMAIL_KEY)||'{}')||{})[kind]||''; }catch(e){ return ''; } }
+function hoursEmailRemember(kind,to){
+  let all={}; try{ all=JSON.parse(localStorage.getItem(HOURS_EMAIL_KEY)||'{}')||{}; }catch(e){}
+  all[kind]=to;
+  try{ localStorage.setItem(HOURS_EMAIL_KEY,JSON.stringify(all)); }catch(e){}
+}
+// two days as one span: "Nov 2 – 8", "Oct 28 – Nov 3", "Dec 29, 2025 – Jan 4, 2026", or the one day
+function hSpan(a,b){
+  const da=hParse(a), db=hParse(b);
+  if(a===b)return hShort(a);
+  if(da.getFullYear()!==db.getFullYear())return hShort(a)+', '+da.getFullYear()+' – '+hShort(b)+', '+db.getFullYear();
+  if(da.getMonth()===db.getMonth())return da.toLocaleDateString('en-US',{month:'short'})+' '+da.getDate()+' – '+db.getDate();
+  return hShort(a)+' – '+hShort(b);
+}
+// the sheet for one kind's pending hours through a day → {subject, body, hours}, or null when there is nothing to send
+function hoursSheet(kind,entries,through){
+  const rows=entries.filter(function(e){ return e.kind===kind&&!e.turnedIn&&(!through||e.date<=through); });
+  if(!rows.length)return null;
+  const byDay={};
+  rows.forEach(function(e){ (byDay[e.date]=byDay[e.date]||[]).push(e); });
+  const days=Object.keys(byDay).sort();
+  const title=(kind==='school'?'School':'Work')+' hours, '+hSpan(days[0],days[days.length-1]);
+  let total=0;
+  const lines=days.map(function(d){
+    const sum=byDay[d].reduce(function(a,e){ return a+e.hours; },0); total+=sum;
+    const notes=byDay[d].map(function(e){ return e.note; }).filter(Boolean).join('; ');
+    return hParse(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+': '+fmtHours(sum)+(notes?' · '+notes:'');
+  });
+  const dec=Math.round(total*100)/100; // payroll often wants a decimal: "7h 30m (7.5 hours)"
+  return {subject:title,body:title+'\n\n'+lines.join('\n')+'\n\nTotal: '+fmtHours(total)+(dec%1?' ('+dec+' hours)':''),hours:total};
+}
+function hoursMailto(to,sheet){ return 'mailto:'+to.join(',')+'?subject='+encodeURIComponent(sheet.subject)+'&body='+encodeURIComponent(sheet.body); }
+/* Email and turn in: the sheet goes out, then the hours it covers are stamped with the address. → 'sent' (from his
+   account) or 'mail app' (opened there for him to send). Throws when his account would not send it. */
+async function hoursEmailTurnIn(kind,through,to){
+  const sheet=hoursSheet(kind,state.hours.entries,through); if(!sheet)return null;
+  const d=typeof window!=='undefined'&&window.desktop;
+  let via='mail app';
+  if(d&&d.mailSend&&d.mailSendAccounts){
+    let r=null; try{ r=await d.mailSendAccounts(); }catch(e){}
+    if(r&&r.accounts&&r.accounts.length){
+      let out; try{ out=await d.mailSend({task:'Hours tab',email:{to:to,subject:sheet.subject,body:sheet.body}}); }catch(e){ out={error:e.message}; }
+      if(!out||!out.ok)throw new Error((out&&out.error)||'unknown error');
+      via='sent';
+    }
+  }
+  if(via!=='sent')window.location.href=hoursMailto(to,sheet); // the desktop hands mailto: to the mail app (main/window.js), the phone too
+  const addr=to.join(', ');
+  hoursEmailRemember(kind,addr);
+  hoursTurnIn(kind,through,addr);
+  return via;
 }
 
 /* ── the tab ── */
 // opening the tab (calendar-view.js switchTab): back to today, nothing half-done
-function hoursEnter(){ hourUI.day=hDateKey(todayStart()); hourUI.editing=null; hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; }
+function hoursEnter(){ hourUI.day=hDateKey(todayStart()); hourUI.editing=null; hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; hourUI.turnInTo=null; hourUI.turnInError=null; }
 function renderHours(){
   const view=$('hoursView'); if(!view)return;
   if(!view.firstChild)hoursBuild(view); // built once: the add line keeps what he was typing across re-renders (a sync can land mid-entry)
@@ -236,25 +302,45 @@ function hoursDueDraw(){
     row.appendChild(el('span','hours-kind '+kind,kind==='school'?'School':'Work'));
     const t=el('span','hours-due-t');
     if(hourUI.confirmTurnIn===kind){
-      // which days the sheet covers: through today unless he picks an earlier day
+      // which days the sheet covers: through today unless he picks an earlier day; and an address to email it to, if he wants
       const thru=el('input','sm'); thru.type='date'; thru.value=hourUI.turnInThrough||hDateKey(todayStart()); thru.setAttribute('aria-label','Turned in through');
+      const mail=el('input','sm hours-mail-inp'); mail.type='email'; mail.autocomplete='email'; mail.placeholder='Email to (optional)'; mail.setAttribute('aria-label','Email the hours to');
+      mail.value=hourUI.turnInTo!==null?hourUI.turnInTo:hoursEmailRemembered(kind);
       const upTo=function(){ return pend.filter(function(e){ return e.date<=thru.value; }).reduce(function(a,e){ return a+e.hours; },0); };
-      const yes=el('button','btn-accent','Turn in '+fmtHours(upTo())); yes.disabled=!upTo();
-      thru.addEventListener('change',function(){ hourUI.turnInThrough=thru.value; yes.textContent='Turn in '+fmtHours(upTo()); yes.disabled=!upTo(); });
-      yes.addEventListener('click',function(){ hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; hoursTurnIn(kind,thru.value); renderHours(); });
+      const yes=el('button','btn-accent');
+      const fit=function(){
+        const h=upTo(), addr=mail.value.trim();
+        yes.textContent=(addr?'Email and turn in ':'Turn in ')+fmtHours(h);
+        yes.disabled=!h||(!!addr&&!hoursEmailList(addr).length);
+      };
+      fit();
+      thru.addEventListener('change',function(){ hourUI.turnInThrough=thru.value; fit(); });
+      mail.addEventListener('input',function(){ hourUI.turnInTo=mail.value; fit(); });
+      mail.addEventListener('keydown',function(ev){ if(ev.key==='Enter'&&!yes.disabled)yes.click(); });
+      const close=function(){ hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; hourUI.turnInTo=null; hourUI.turnInError=null; };
+      yes.addEventListener('click',async function(){
+        const to=hoursEmailList(mail.value);
+        if(!to.length){ close(); hoursTurnIn(kind,thru.value); renderHours(); return; }
+        yes.disabled=true; yes.textContent='Sending…'; hourUI.turnInError=null;
+        try{ await hoursEmailTurnIn(kind,thru.value,to); close(); }
+        catch(e){ hourUI.turnInError='Not sent: '+(e.message||'unknown error'); }
+        renderHours();
+      });
       const no=el('button','ghost','Cancel');
-      no.addEventListener('click',function(){ hourUI.confirmTurnIn=null; hourUI.turnInThrough=null; renderHours(); });
+      no.addEventListener('click',function(){ close(); renderHours(); });
       t.className+=' hours-due-thru'; t.textContent='turned in through';
-      row.appendChild(t); row.appendChild(thru); row.appendChild(yes); row.appendChild(no);
+      row.appendChild(t); row.appendChild(thru); row.appendChild(mail); row.appendChild(yes); row.appendChild(no);
+      if(hourUI.turnInError)row.appendChild(el('span','hours-due-err',hourUI.turnInError));
     } else {
       if(pend.length){
         const sum=pend.reduce(function(a,e){ return a+e.hours; },0), oldest=pend.map(function(e){ return e.date; }).sort()[0];
         t.appendChild(el('b','',fmtHours(sum)));
         t.appendChild(document.createTextNode(' not turned in yet · since '+hShort(oldest)));
       } else {
-        const sum=state.hours.entries.filter(function(e){ return e.kind===kind&&e.turnedIn===last; }).reduce(function(a,e){ return a+e.hours; },0);
+        const done=state.hours.entries.filter(function(e){ return e.kind===kind&&e.turnedIn===last; });
+        const sum=done.reduce(function(a,e){ return a+e.hours; },0), to=done.map(function(e){ return e.turnedInTo; }).filter(Boolean)[0];
         t.appendChild(el('b','',fmtHours(sum)));
-        t.appendChild(document.createTextNode(' turned in '+(hDateKey(new Date(last))===hDateKey(todayStart())?'today':'yesterday')));
+        t.appendChild(document.createTextNode(' turned in '+(hDateKey(new Date(last))===hDateKey(todayStart())?'today':'yesterday')+(to?' · sent to '+to:'')));
       }
       row.appendChild(t);
       if(recent){
@@ -320,7 +406,7 @@ function hoursRow(e){
   row.appendChild(el('span','hours-kind '+e.kind,e.kind==='school'?'School':'Work'));
   row.appendChild(el('span','hours-amt mono',fmtHours(e.hours)));
   row.appendChild(el('span','hours-note',e.note));
-  if(e.turnedIn){ const c=el('span','hours-done'); c.innerHTML=I.check; c.title='Turned in '+hShort(hDateKey(new Date(e.turnedIn))); row.appendChild(c); }
+  if(e.turnedIn){ const c=el('span','hours-done'); c.innerHTML=I.check; c.title='Turned in '+hShort(hDateKey(new Date(e.turnedIn)))+(e.turnedInTo?' · sent to '+e.turnedInTo:''); row.appendChild(c); }
   row.addEventListener('click',function(){ hourUI.editing=e.id; renderHours(); });
   return row;
 }
@@ -350,4 +436,4 @@ function hoursEditRow(e){
   return row;
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={parseHours:parseHours,fmtHours:fmtHours,hAddDays:hAddDays,hWeekStart:hWeekStart,hWeekLabel:hWeekLabel,normHours:normHours}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={parseHours:parseHours,fmtHours:fmtHours,hAddDays:hAddDays,hWeekStart:hWeekStart,hWeekLabel:hWeekLabel,hSpan:hSpan,normHours:normHours,hoursSheet:hoursSheet,hoursEmailList:hoursEmailList}; }

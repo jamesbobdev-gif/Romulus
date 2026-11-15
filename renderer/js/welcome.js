@@ -1,5 +1,5 @@
 /* First launch, and the Agent tab before anything is connected.
-   - The welcome card (once, ever): what to set up.
+   - The welcome card (once, ever): what to set up. It comes after the Gmail and Google Calendar card (google-first.js).
    - The Agent tab on this computer works without device sync (the agent runs here); what it does need
      is an AI. With none connected its empty state becomes "Pick an AI", and once tasks are waiting a
      nudge says they can't run yet. Sync is offered as "also on your phone".
@@ -55,7 +55,7 @@ if(!syncNudgeLoaded)syncState.ready.then(function(){ syncNudgeLoaded=true; drawS
 function drawSyncNudge(){
   const bar=$('syncNudge'); if(!bar)return;
   let later=0; try{ later=+localStorage.getItem(SYNC_NUDGE_KEY)||0; }catch(e){}
-  const welcoming=$('welcomeCard')&&!$('welcomeCard').hidden;
+  const welcoming=($('welcomeCard')&&!$('welcomeCard').hidden)||(typeof googleFirstShowing==='function'&&googleFirstShowing()); // or the Google card ahead of it (google-first.js)
   const show=syncNudgeLoaded&&!syncEnabled()&&!welcoming&&Date.now()-later>SYNC_NUDGE_SNOOZE;
   if(show&&!bar.dataset.drawn){
     bar.dataset.drawn='1';

@@ -30,8 +30,25 @@ function bodyText(m) {
     else if (p.mimeType === 'text/html' && p.body && p.body.data && !html) html = b64(p.body.data);
     (p.parts || []).forEach(walk);
   })(m.payload);
-  const text = plain || html.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+  const text = plain || dropBlocks(html).replace(/<[^<>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
   return (text || m.snippet || '').replace(/\s+/g, ' ').trim();
+}
+/* style and script blocks cut out by a scan, never a regex, and tags matched without backtracking ([^<>] above): an email
+   built with an unclosed <style or a long run of "<" used to send the regex back over the rest of the text from every
+   position, minutes of it, in the main process, on every message the mail check reads. */
+function dropBlocks(h) {
+  const low = String(h).toLowerCase(), re = /<(style|script)\b/g;
+  let out = '', at = 0, m;
+  while ((m = re.exec(low))) {
+    if (m.index < at) { re.lastIndex = at; continue; }
+    out += h.slice(at, m.index) + ' ';
+    const close = low.indexOf('</' + m[1], m.index);
+    if (close < 0) return out; // never closed: the rest is that block
+    const gt = low.indexOf('>', close);
+    at = gt < 0 ? h.length : gt + 1;
+    re.lastIndex = at;
+  }
+  return out + h.slice(at);
 }
 
 const SCHEMA = {
@@ -76,7 +93,7 @@ async function check({ gmail, ask, state, now = new Date() }) {
   const mails = [];
   for (const { id } of fresh) {
     const m = await gmail('messages/' + id + '?format=full');
-    const subject = header(m, 'subject'), from = header(m, 'from').replace(/\s*<[^>]+>/, '').replace(/"/g, '');
+    const subject = header(m, 'subject'), from = header(m, 'from').replace(/\s*<[^<>]+>/, '').replace(/"/g, '');
     const text = bodyText(m);
     if (DATEISH.test(subject + ' ' + text)) mails.push({ id, threadId: m.threadId, subject, from, text: text.slice(0, BODY_CHARS) });
   }

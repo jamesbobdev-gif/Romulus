@@ -208,6 +208,12 @@ function standUp() {
 // one action on the screen; the helper steps out of the way when it's under the point
 async function act(hands, a, d, size) {
   if (a.do === 'wait') return sleep(a.seconds * 1000);
+  // a console, terminal, the Run box or the Registry Editor in front: typing (or Enter) there would run a command with his
+  // rights, so it isn't done for him, whatever the AI or the screen says (agent/pc-control.js terminalInFront)
+  if (a.do === 'type' || (a.do === 'key' && a.combo.some((k) => k.vk === 13))) {
+    const fg = pcControl.parseFg(await hands.run({ op: 'fg' }));
+    if (pcControl.terminalInFront(fg)) throw new Error('"' + (fg.title || fg.cls).slice(0, 60) + '" runs what is typed into it, so nothing is typed there for him. Say what he should type himself.');
+  }
   if (a.do === 'type') return hands.run({ op: 'type', text: a.text });
   if (a.do === 'key') return hands.run({ op: 'keys', vks: a.combo.map((k) => k.vk), ext: a.combo.map((k) => k.ext) });
   const p = toScreen(d, size, a.x, a.y), p2 = a.do === 'drag' ? toScreen(d, size, a.x2, a.y2) : null;

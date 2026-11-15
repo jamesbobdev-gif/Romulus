@@ -118,7 +118,7 @@ function addPrefLine(text: string, section: string, item: string): { text: strin
   section = (section || "Other").replace(/[#\n]/g, " ").trim() || "Other";
   if (!item) throw new UserError("text is required");
   if (text.split("\n").some((l) => normLine(l) === normLine(item))) return { text, added: false };
-  const rows = text ? text.replace(/\s+$/, "").split("\n") : [];
+  const rows = text ? text.trimEnd().split("\n") : [];
   const h = rows.findIndex((l) => /^##\s+/.test(l) && normLine(l.replace(/^##\s+/, "")) === normLine(section));
   if (h < 0) rows.push(...(rows.length ? [""] : []), `## ${section}`, `- ${item}`);
   else {

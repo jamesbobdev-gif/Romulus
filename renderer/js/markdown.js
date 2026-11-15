@@ -1,10 +1,11 @@
 // A model's answer in markdown (headings, **bold**, lists, links, tables), drawn as real text.
 // Builds DOM nodes only: the model's words never go through innerHTML. Links open in the browser.
-function looksLikeMd(s){ return /(^|\n)\s{0,3}(#{1,6}\s|[-*]\s|\d+[.)]\s|\|.*\|)|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)/.test(String(s||'')); }
+// the link text is [^\[\]\n]: a run of "[" (a model echoing a page) can't send the pattern backtracking
+function looksLikeMd(s){ return /(^|\n)\s{0,3}(#{1,6}\s|[-*]\s|\d+[.)]\s|\|.*\|)|\*\*[^*\n]+\*\*|\[[^\[\]\n]+\]\(https?:\/\/[^)\s]+\)/.test(String(s||'')); }
 
 function mdInline(text){
   const frag=document.createDocumentFragment();
-  const re=/\*\*([^*\n]+)\*\*|__([^_\n]+)__|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|\*([^*\n]+)\*|(?:^|(?<=\s))_([^_\n]+)_(?=\s|$|[.,;:!?])/g;
+  const re=/\*\*([^*\n]+)\*\*|__([^_\n]+)__|`([^`\n]+)`|\[([^\[\]\n]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|\*([^*\n]+)\*|(?:^|(?<=\s))_([^_\n]+)_(?=\s|$|[.,;:!?])/g;
   let last=0, m;
   while((m=re.exec(text))){
     if(m.index>last)frag.appendChild(document.createTextNode(text.slice(last,m.index)));
@@ -39,7 +40,7 @@ function mdBlock(text){
     }
     if(/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)){ end(); box.appendChild(el('hr','md-hr')); continue; }
     // a table: a header row, then |---|---|
-    if(/\|/.test(line)&&i+1<lines.length&&/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(lines[i+1])){
+    if(/\|/.test(line)&&i+1<lines.length&&/^\|?:?-{2,}:?(\|:?-{2,}:?)*\|?$/.test(lines[i+1].replace(/\s+/g,''))){ // spaces out first: the pattern then can't backtrack over them
       end();
       const wrap=el('div','md-table'), tb=el('table');
       const hr=el('tr'); cells(line).forEach(function(c){ const th=el('th'); th.appendChild(mdInline(c)); hr.appendChild(th); }); tb.appendChild(hr);

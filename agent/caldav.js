@@ -43,6 +43,7 @@ function siteOf(host) {
   return p.slice(/^(co|com|org|net|ac|gov)$/.test(p[p.length - 2] || '') && p.length > 2 ? -3 : -2).join('.');
 }
 function sameSite(a, b) { try { return siteOf(new URL(a).hostname) === siteOf(new URL(b).hostname); } catch (e) { return false; } }
+function sameScheme(a, b) { try { return new URL(a).protocol === new URL(b).protocol; } catch (e) { return false; } }
 
 /* ---------- XML, just enough for multistatus replies (prefixes vary: d:, D:, none) ---------- */
 const unXml = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
@@ -70,7 +71,8 @@ function auth(acct) { return 'Basic ' + Buffer.from(acct.username + ':' + acct.a
 async function dav(acct, method, url, body, headers) {
   let at = url;
   for (let hop = 0; hop < 5; hop++) {
-    if (!sameSite(at, acct.server)) throw new Error('The calendar server sent us to another site');
+    // the same site, over the same scheme as his server (https: serverUrl takes no other): a redirect to plain http would carry the password in the clear
+    if (!sameSite(at, acct.server) || !sameScheme(at, acct.server)) throw new Error('The calendar server sent us to another site');
     const res = await fetch(at, { method, redirect: 'manual', signal: AbortSignal.timeout(20000), body,
       headers: Object.assign({ Authorization: auth(acct), 'User-Agent': 'Romulus-Tasks' }, body ? { 'Content-Type': /^BEGIN:/.test(body) ? 'text/calendar; charset=utf-8' : 'application/xml; charset=utf-8' } : {}, headers) });
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) { at = new URL(res.headers.get('location'), at).href; continue; }

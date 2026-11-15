@@ -70,6 +70,13 @@ contextBridge.exposeInMainWorld('desktop', {
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
+  // tasks added from outside the app (Claude Desktop through the app's MCP server: main/outside-adds.js), and that server's switch in Settings
+  onOutsideTasks: (cb) => ipcRenderer.on('tasks:outside', (_event, items) => cb(items)),
+  outsidePending: () => ipcRenderer.invoke('outside:pending'),
+  outsideDone: (file) => ipcRenderer.invoke('outside:done', file),
+  mcpStatus: () => ipcRenderer.invoke('mcp:status'),
+  mcpSetup: () => ipcRenderer.invoke('mcp:setup'),
+  mcpRemove: () => ipcRenderer.invoke('mcp:remove'),
   // documents from the Agent tab: an answer as a Word file, and files the mini PC's browser downloaded
   saveDoc: (title, text) => ipcRenderer.invoke('doc:save', title, text),
   saveSheet: (title, csv) => ipcRenderer.invoke('sheet:save', title, csv),
@@ -157,6 +164,7 @@ contextBridge.exposeInMainWorld('desktop', {
   onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),
   // a new version: asks before updating, unless Settings says automatically (main/updater.js)
   updateState: () => ipcRenderer.invoke('update:state'),
+  updateVersion: () => ipcRenderer.invoke('update:version'), // this version, for the What’s new card (renderer/js/whats-new.js)
   updateAccept: () => ipcRenderer.invoke('update:accept'),
   updateSkip: () => ipcRenderer.invoke('update:skip'),
   updateShared: (doc) => ipcRenderer.invoke('update:shared', doc),

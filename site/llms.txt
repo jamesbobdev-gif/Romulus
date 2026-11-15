@@ -19,6 +19,7 @@ Key facts:
 - [Website and downloads](https://jamesbobdev-gif.github.io/Romulus/)
 - [Free AI agent](https://jamesbobdev-gif.github.io/Romulus/free-ai-agent/)
 - [AI to-do list app](https://jamesbobdev-gif.github.io/Romulus/ai-to-do-list/)
+- [Facts: what it is, what it is not, what it costs, where things live](https://jamesbobdev-gif.github.io/Romulus/facts/)
 - [Latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest)
 - [Source code](https://github.com/jamesbobdev-gif/Romulus)
 - [README](https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/README.md)

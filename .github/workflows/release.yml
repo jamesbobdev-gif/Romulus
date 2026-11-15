@@ -42,10 +42,6 @@ jobs:
             name: mac
             target: --mac
     runs-on: ${{ matrix.os }}
-    env:
-      # the app's own Google / Microsoft sign-in clients, when the repository has them as a secret
-      # (job-level so the step's `if` below can see it: a step's own env isn't set when its `if` is evaluated)
-      OAUTH_CLIENTS_JSON: ${{ secrets.OAUTH_CLIENTS_JSON }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -71,10 +67,9 @@ jobs:
           npm audit --audit-level=high
           npm audit --audit-level=moderate --omit=dev || echo "::warning::npm audit found moderate advisories in what ships"
       - run: npm test
-      - name: OAuth clients
-        if: ${{ env.OAUTH_CLIENTS_JSON != '' }}
-        shell: bash
-        run: printf '%s' "$OAUTH_CLIENTS_JSON" > oauth-clients.json
+      # The app's own Google / Microsoft sign-in clients (oauth-clients.json) are not built in: the installer is public, and
+      # main.js reads them from each computer's user-data folder. (An OAUTH_CLIENTS_JSON secret used to be written to a file
+      # here that the installer never carried, while sitting in the environment of every build step: dropped.)
       # where pairing codes meet and new installs sync (renderer/js/pair-server.js, hosted-sync.js): the repository
       # variables PAIR_URL and PAIR_KEY, and PAY_URL and PAY_YEAR_URL (the Stripe Payment Links for the Group plan, monthly and yearly; optional), PAY_PERSONAL_URL and PAY_PERSONAL_YEAR_URL (the Personal plan, whose links carry the metadata plan=personal; optional: without them only Group is offered, at $5), and PAY_TRIAL_DAYS (the free trial set on those links, so the app offers it; optional).
       # PAIR_KEY is a publishable key. Without them the build pairs through each device's own sync project.

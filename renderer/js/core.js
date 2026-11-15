@@ -1,4 +1,4 @@
-/* App state, dates, icons, DOM helpers, sort order and drag to reorder.
+/* App state, dates, icons, DOM helpers and sort order.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
@@ -46,16 +46,16 @@ function todayStart(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
 function fmtTime(time){
   const p=time.split(':').map(Number);
   const d=new Date(); d.setHours(p[0],p[1],0,0);
-  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}).replace(' ','').toLowerCase();
+  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}).replace(/\s/,' '); // "5:30 PM" (a plain space, not the narrow one some locales give)
 }
 function dateInfo(due,time){
   const p=due.split('-').map(Number);
   const dt=new Date(p[0],p[1]-1,p[2]);
   const diff=Math.round((dt-todayStart())/864e5);
   const suffix=time?' '+fmtTime(time):'';
-  if(diff<0)  return{text:'overdue '+(-diff)+'d'+suffix,cls:'late',diff:diff};
-  if(diff===0)return{text:'today'+suffix,cls:'today',diff:diff};
-  if(diff===1)return{text:'tomorrow'+suffix,cls:'soon',diff:diff};
+  if(diff<0)  return{text:'Overdue '+(-diff)+'d'+suffix,cls:'late',diff:diff};
+  if(diff===0)return{text:'Today'+suffix,cls:'today',diff:diff};
+  if(diff===1)return{text:'Tomorrow'+suffix,cls:'soon',diff:diff};
   if(diff<7)  return{text:dt.toLocaleDateString('en-GB',{weekday:'short'})+suffix,cls:'',diff:diff};
   return{text:dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+suffix,cls:'',diff:diff};
 }
@@ -68,7 +68,6 @@ const I={
   x:    '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   pen:  '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M8.5 1.8l1.7 1.7L4 9.7l-2.3.6.6-2.3 6.2-6.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   chev: '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  grip: '<svg width="8" height="13" viewBox="0 0 8 13" fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="6.5" r="1.3"/><circle cx="6" cy="6.5" r="1.3"/><circle cx="2" cy="11" r="1.3"/><circle cx="6" cy="11" r="1.3"/></svg>',
   cal:  '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="1" y="2" width="10" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 5h10" stroke="currentColor" stroke-width="1.3"/><path d="M4 1v2M8 1v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   snooze:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.7" stroke="currentColor" stroke-width="1.3"/><path d="M6 3.8V6l1.8 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   bot:  '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="1.8" y="3.8" width="8.4" height="6.4" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M6 1.4v2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="4.4" cy="7" r=".9" fill="currentColor"/><circle cx="7.6" cy="7" r=".9" fill="currentColor"/></svg>',
@@ -83,7 +82,8 @@ const $=function(id){ return document.getElementById(id); };
 function el(tag,cls,text){ const n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
 function iconBtn(svg,label,extraCls){ const b=el('button','icon'+(extraCls?' '+extraCls:'')); b.innerHTML=svg; b.setAttribute('aria-label',label); return b; }
 
-/* ── sort key: overdue, then today, then undated, then tomorrow onward; pin overrides ── */
+/* ── sort key: overdue, then today, then undated, then tomorrow onward.
+   A 'pin' (a place set by hand, from the drag-to-reorder of older versions) still wins, so a task someone moved stays put. ── */
 function getSortKey(t){
   if(t.pin!=null) return t.pin;
   if(t.due){
@@ -98,60 +98,3 @@ function getSortKey(t){
   return tomorrow.getTime()-59000+slot;
 }
 
-/* ── drag to reorder ── */
-let dragId=null;
-function clearDropMarks(){ document.querySelectorAll('.drop-above,.drop-below').forEach(function(n){ n.classList.remove('drop-above','drop-below'); }); }
-// Dragging sets a numeric 'pin' on the task that overrides due-date sort.
-// Tasks with pin=null always auto-sort by due date.
-function dragTask(srcId,targetId,before){
-  const src=state.tasks.find(function(x){ return x.id===srcId; });
-  if(!src||srcId===targetId) return;
-  const sorted=state.tasks.filter(function(t){ return !t.done; }).slice().sort(function(a,b){ return getSortKey(a)-getSortKey(b); });
-  const ti=sorted.findIndex(function(x){ return x.id===targetId; });
-  if(ti===-1) return;
-  let lo,hi;
-  if(before){
-    hi=getSortKey(sorted[ti]);
-    lo=ti>0?getSortKey(sorted[ti-1]):hi-86400000*366;
-  } else {
-    lo=getSortKey(sorted[ti]);
-    hi=ti<sorted.length-1?getSortKey(sorted[ti+1]):lo+86400000*366;
-  }
-  src.pin=(lo+hi)/2;
-  touch();
-}
-function makeDraggable(li,t){
-  li.addEventListener('dragstart',function(e){ dragId=t.id; li.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',t.id);}catch(_e){} });
-  li.addEventListener('dragend',function(){ li.draggable=false; li.classList.remove('dragging'); dragId=null; clearDropMarks(); });
-  li.addEventListener('dragover',function(e){
-    if(!dragId||dragId===t.id) return; e.preventDefault(); e.dataTransfer.dropEffect='move';
-    const r=li.getBoundingClientRect(); const before=(e.clientY-r.top)<r.height/2;
-    clearDropMarks(); li.classList.add(before?'drop-above':'drop-below');
-  });
-  li.addEventListener('dragleave',function(){ li.classList.remove('drop-above','drop-below'); });
-  li.addEventListener('drop',function(e){
-    e.preventDefault(); if(!dragId||dragId===t.id) return;
-    const r=li.getBoundingClientRect(); const before=(e.clientY-r.top)<r.height/2;
-    const id=dragId; dragId=null; clearDropMarks(); dragTask(id,t.id,before);
-  });
-}
-
-// a background sync swaps task objects, so always act on the live copy
-function liveTask(t){ return state.tasks.find(function(x){ return x.id===t.id; })||t; }
-// a short buzz on the phone for the few moments that matter (nothing on a computer)
-function buzz(kind){
-  // no JS bundler in the phone app, so call the native plugin through the bridge directly
-  const cap=window.Capacitor;
-  if(!cap||typeof cap.nativePromise!=='function')return;
-  const call=function(method,opts){ try{ const p=cap.nativePromise('Haptics',method,opts||{}); if(p&&p.catch)p.catch(function(){}); }catch(e){} };
-  const H={ impact:function(o){ call('impact',o); }, notification:function(o){ call('notification',o); } };
-  const later=function(ms,f){ setTimeout(function(){ try{ f(); }catch(e){} },ms); };
-  try{
-    if(kind==='check')H.notification({type:'SUCCESS'});                            // ticked a task off
-    else if(kind==='add')H.impact({style:'MEDIUM'});                              // new task
-    else if(kind==='tap'||kind==='tick')H.impact({style:'LIGHT'});                // a small pick, mic on
-    else if(kind==='delete')H.notification({type:'WARNING'});
-    else if(kind==='send'){ H.impact({style:'MEDIUM'}); later(90,function(){ H.impact({style:'LIGHT'}); }); } // to the Agent
-    else if(kind==='answer'){ H.impact({style:'LIGHT'}); later(140,function(){ H.impact({style:'LIGHT'}); }); } // the Agent replied
-  }catch(e){}
-}

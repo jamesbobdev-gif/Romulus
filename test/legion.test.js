@@ -147,3 +147,65 @@ test('a follow-up legion keeps the bigger request hidden too', async () => {
   assert.equal(p.pieces.length, 2);
   assert.deepEqual(p.dropped.map((d) => d.title), ['Whole']);
 });
+
+test('a second wave goes out on what the first answers left open, and the report is written from both', async () => {
+  const gaps = [{ title: 'Price check', question: 'What does the Baby Jogger City Mini double cost today?' },
+    { title: 'Weight', question: 'How much do double strollers weigh?' }, PIECES[0],
+    { title: 'Whole', question: 'Best stroller for twins under $400 that fits a small apartment?' }];
+  const l = lupa({ think: async (prompt) => /second round/.test(prompt) ? JSON.stringify({ pieces: gaps }) : null });
+  const p = pool();
+  const r = await legion.research(TOPIC, { order: ['claude', 'gemini', 'openrouter'], run: p.run, think: l.think, names });
+  assert.equal(p.calls.length, 5); // 3 + 2: the repeat and the revealing one never go out
+  const second = r.scouts.filter((s) => s.wave === 2);
+  assert.deepEqual(second.map((s) => s.piece.title), ['Price check', 'Weight']);
+  assert.deepEqual(second.map((s) => s.via), ['claude', 'gemini']); // each to an AI holding the fewest pieces, in his order
+  assert.deepEqual(r.dropped.map((d) => d.title), ['Whole']);
+  const ask = l.thoughts.find((x) => /second round/.test(x.prompt));
+  assert.match(ask.prompt, /gemini answered: Which strollers/); // Lupa read the first answers before asking for more
+  const write = l.thoughts.find((x) => /put it back together/.test(x.prompt));
+  assert.match(write.prompt, /Price check \(second wave\)[\s\S]*claude answered: What does the Baby Jogger/);
+  assert.match(legion.credits(r, names), /Second wave: Price check \(Claude\) · Weight \(Gemini\)/);
+  // waves: 1 turns it off
+  const one = lupa({ think: async (prompt) => /second round/.test(prompt) ? JSON.stringify({ pieces: gaps }) : null }), q = pool();
+  await legion.research(TOPIC, { order: ['claude', 'gemini'], run: q.run, think: one.think, names, waves: 1 });
+  assert.equal(q.calls.length, 3);
+  assert.ok(!one.thoughts.some((x) => /second round/.test(x.prompt)));
+});
+
+test('a long answer is boiled down by Lupa before the report is written; a short one is used as it came', async () => {
+  const long = 'A costs $350 at Target. ' + 'Filler sentence about nothing in particular. '.repeat(80) + 'Sources: https://a.example/a';
+  assert.ok(long.length > legion.FINDING_CHARS);
+  const p = pool({ claude: async () => ({ text: long }) });
+  const l = lupa({ think: async (prompt) => /Boil its answer down/.test(prompt) ? '- A: $350 at Target (https://a.example/a)' : null });
+  const r = await legion.research(TOPIC, { order: ['claude', 'gemini', 'openrouter'], run: p.run, think: l.think, names });
+  assert.equal(l.thoughts.filter((x) => /Boil its answer down/.test(x.prompt)).length, 1); // only the long one
+  assert.equal(r.scouts[0].digest, '- A: $350 at Target (https://a.example/a)');
+  const write = l.thoughts.find((x) => /put it back together/.test(x.prompt));
+  assert.match(write.prompt, /- A: \$350 at Target/);
+  assert.ok(!/Filler sentence/.test(write.prompt));
+  assert.match(write.prompt, /gemini answered: Which strollers/); // the short ones as they came
+});
+
+test('no AI collects pieces that together give the request away', async () => {
+  const pieces = [{ title: 'Twins', question: 'Which strollers suit twins?' }, { title: 'Space', question: 'What fits in a small apartment?' },
+    { title: 'Budget', question: 'Under $400, what fits small spaces for twins?' }];
+  const l = lupa({ think: async (prompt) => /Split his request/.test(prompt) ? JSON.stringify({ pieces }) : null });
+  const p = pool();
+  const r = await legion.research(TOPIC, { order: ['claude', 'gemini'], run: p.run, think: l.think, names });
+  assert.deepEqual(r.scouts.map((s) => s.via), ['claude', 'gemini']);
+  assert.deepEqual(r.dropped, [{ title: 'Budget', why: 'with what each AI already holds, it would give the request away' }]);
+  // with one AI there is nothing to hide from it: everything goes
+  const one = pool();
+  const r1 = await legion.research(TOPIC, { order: ['claude'], run: one.run, think: l.think, names });
+  assert.equal(r1.scouts.length, 3);
+  assert.equal(r1.dropped.length, 0);
+});
+
+test('a cloud AI leading (no local model) is named as the one that saw the whole request', async () => {
+  const l = lupa(), p = pool();
+  const r = await legion.research(TOPIC, { order: ['claude', 'gemini'], run: p.run, think: l.think, names, lead: 'Claude', cloud: true });
+  const c = legion.credits(r, names, 'Claude', { cloud: true });
+  assert.match(c, /written by Claude in the cloud \(no local model is set up\)/);
+  assert.match(c, /Only Claude saw your whole request; every other AI got one general question/);
+  assert.match(legion.credits(r, names, 'Lupa'), /No cloud AI saw your whole request/);
+});

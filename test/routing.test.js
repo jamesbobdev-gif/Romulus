@@ -91,3 +91,12 @@ test('the old ask default becomes auto; a saved v2 choice stays', () => {
   routing.useRouting({ v: 1, rules: [], default: 'local' });
   assert.strictEqual(routing.getRouting().default, 'local');
 });
+
+test('a #legion task is the local model’s; without one, a cloud AI leads it on the same lane', () => {
+  routing.useRouting(null);
+  assert.deepStrictEqual(routing.routeTask({ title: '#legion best tents under $200' }), { lane: 'local', reason: 'deep research: a cloud AI leads the legion (no local model is set up)' });
+  routing.init({ readConfig: () => ({ localModel: { url: 'http://mini:11434', model: 'qwen3' } }) });
+  assert.deepStrictEqual(routing.routeTask({ title: '#legion best tents under $200' }), { lane: 'local', reason: 'deep research: your local model leads a legion of cloud AIs' });
+  assert.strictEqual(routing.laneOf({ title: '#legion best tents', lane: 'claude' }), 'local');
+  routing.init({ readConfig: () => ({}) });
+});

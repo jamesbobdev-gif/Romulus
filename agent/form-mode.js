@@ -13,6 +13,7 @@
    No Electron here, so it can be tested on its own (agent/local-lane.js passes in `ask`, which calls Ollama). */
 
 const pageReader = require('./page-reader');
+const { leaksTyped } = require('./helpers');
 
 const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'listbox', 'spinbutton', 'checkbox', 'radio', 'switch']);
 const SITE_CHROME = new Set(['navigation', 'banner', 'contentinfo', 'complementary']);
@@ -134,9 +135,12 @@ async function fill({ browser, state, ask, task, prefs, locked, details }) {
   for (const [i, f0] of fields.entries()) {
     const f = Object.assign({}, current(i) || f0, { id: f0.id, secret: f0.secret });
     if (!current(i)) { left.push('"' + clip(f0.label, 60) + '" (no longer on the page)'); continue; }
-    const v = f.secret ? '' : String(values[f.id] == null ? '' : values[f.id]).trim();
+    const given = String(values[f.id] == null ? '' : values[f.id]).trim();
+    // a secret by its label, or by what would go in it: an SSN or card number stays his to type whatever the field is called
+    const secret = f.secret || (!!given && !!leaksTyped(given, { locked }));
+    const v = secret ? '' : given;
     if (!v || v === f.now) {
-      if (!v && !f.now && (f.req || f.secret)) left.push('"' + clip(f.label, 60) + '"' + (f.secret ? ' (he fills this himself)' : ''));
+      if (!v && !f.now && (f.req || secret)) left.push('"' + clip(f.label, 60) + '"' + (secret ? ' (he fills this himself)' : ''));
       continue;
     }
     if (f.kind === 'text') todo.push({ target: f.node.ref, name: f.label, type: 'textbox', value: v });

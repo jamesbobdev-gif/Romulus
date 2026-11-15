@@ -17,6 +17,7 @@ function draw(s){
   $('shotImg').hidden=!s.shot;
   if(s.shot)$('shotImg').src=s.shot;
   $('shotLabel').hidden=!s.shot;
+  $('shotWarn').hidden=!s.shot||s.lane==='local'; // the cloud sees the whole picture; Lupa keeps it home
   $('shotNote').textContent=s.shotNote||'';
   $('keyHint').textContent=s.shortcut;
   $('doIt').hidden=!s.canDo;

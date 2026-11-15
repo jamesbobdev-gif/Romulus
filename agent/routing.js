@@ -17,6 +17,7 @@ const decider = require('./decider');
 const { isLegion } = require('./legion');
 const { isCoach } = require('./coach');
 const { isVague } = require('./find-out');
+const mediaHub = require('./media-hub');
 const learn = require('./route-learn');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer, scheduleAgentRun, scheduleLocalRun }
@@ -127,17 +128,27 @@ function moneyQuestion(t) {
     .map((x) => String(x || '')).join('\n');
   return MY_MONEY.test(text);
 }
+// a local model is set up (Settings → Local model): the same test as agent/local-lane.js localCfg
+function safeConfig() { try { return (ctx && ctx.readConfig && readConfig()) || {}; } catch (e) { return {}; } }
+function hasLocalModel() {
+  let c = {};
+  try { c = (ctx && ctx.readConfig && readConfig().localModel) || {}; } catch (e) {}
+  return !!(c.url && c.model && c.enabled !== false);
+}
 // → {lane: 'claude' | 'local', reason}: every task goes to one of them
 function routeTask(t) {
   const title = String(t.title || '');
   if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
   if (t.financeSeen) return { lane: 'local', reason: 'private: his finances' }; // not even #claude moves it
   if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: The local model reads Finance' };
-  // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js)
-  if (isLegion(t)) return { lane: 'local', reason: 'deep research: your local model leads a legion of cloud AIs' };
+  // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js);
+  // without a local model the local lane still takes it, with the first cloud AI in his order leading (agent/local-lane.js)
+  if (isLegion(t)) return { lane: 'local', reason: hasLocalModel() ? 'deep research: your local model leads a legion of cloud AIs' : 'deep research: a cloud AI leads the legion (no local model is set up)' };
   // only he can do it (a video, a presentation): Lupa, signed in to his courses, reads the assignment and coaches him (agent/coach.js)
   if (isCoach(t)) return { lane: 'local', reason: 'only you can do this one: your local model reads the assignment and coaches you' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
+  // the TV: only the local model talks to the Media Hub (agent/media-hub.js), once its address is in Settings → Local model
+  if (mediaHub.isTvTask(t) && mediaHub.enabled(safeConfig())) return { lane: 'local', reason: 'the TV: your local model talks to the Media Hub' };
   // "chapter 8" and nothing else: Lupa, signed in to his courses, finds out which class and what it is, then does it (agent/find-out.js)
   if (isVague(t)) return { lane: 'local', reason: 'only names the work: your local model finds it in your classes, then does it' };
   const priv = privateMatch(t);

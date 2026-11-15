@@ -98,6 +98,13 @@ function docText(syncKey, doc) {
   return doc.text || '';
 }
 
+// The Locked profile for a cloud AI: its text only when he switched "Let the Agent's cloud AIs read it too" on in
+// Settings (the row's own `cloud: true`, kept plain next to the ciphertext); '' for a row without the flag, so the
+// profile stays with the local model unless he says otherwise. The local lane reads the row whatever the flag says.
+function lockedCloudText(syncKey, doc) {
+  return doc && typeof doc === 'object' && doc.cloud === true ? docText(syncKey, doc) : '';
+}
+
 // The text of a {v, text} doc row (decrypted when it is a v:2 row), '' when it's missing, unreachable or unreadable
 async function readText(a, suffix, opts) {
   try {
@@ -125,4 +132,4 @@ async function cleanupAttachments(a, { fetch: f = fetch } = {}) {
   } catch (e) { return null; }
 }
 
-module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow, lockedKey, decryptLocked, docText, cleanupAttachments, LOCKED_INFO };
+module.exports = { base, headers, rpcUrl, channel, deriveSyncKey, rpc, readRow, readText, writeRow, lockedKey, decryptLocked, docText, lockedCloudText, cleanupAttachments, LOCKED_INFO };

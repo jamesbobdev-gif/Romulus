@@ -125,7 +125,7 @@ function famTodoLines(md){
   const out=[];
   String(md||'').split(/\r?\n/).forEach(function(line){
     const m=/^\s*(?:[-*+•]|\d{1,2}[.)])\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line); if(!m)return;
-    const t=m[1].replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
+    const t=m[1].replace(/!?\[([^\[\]]*)\]\([^()]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
     if(t.length>=3&&out.indexOf(t)===-1)out.push(t.slice(0,200));
   });
   return out.slice(0,15);

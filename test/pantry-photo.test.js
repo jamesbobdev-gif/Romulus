@@ -30,7 +30,47 @@ test('a meal answer keeps sure, and an unusable answer is empty', () => {
   assert.strictEqual(r.meal, 'Fried rice');
   assert.deepStrictEqual(r.used.map((u) => u.sure), [true, false, true]);
   assert.deepStrictEqual(pp.parse('meal', 'sorry, I can\'t see that'), { meal: '', used: [] });
-  assert.deepStrictEqual(pp.parse('food', 'no'), { items: [] });
+  assert.deepStrictEqual(pp.parse('food', 'no'), { items: [], retake: '', more: '' });
+});
+
+test('the food and shop prompts ask about the picture itself: retake when none of it reads, more when part of it', () => {
+  ['food', 'shop'].forEach((mode) => {
+    const q = pp.prompt(mode, []);
+    assert.match(q, /items is empty and retake is one short sentence/);
+    assert.match(q, /make more one short sentence saying what another picture should show/);
+    assert.match(q, /"retake":"","more":""/);
+  });
+  assert.match(pp.prompt('food', []), /back of the package/);
+  assert.match(pp.prompt('shop', []), /cut off at the bottom/);
+  assert.doesNotMatch(pp.prompt('meal', []), /retake/);
+});
+
+test('retake and more come through the parse as one clean sentence each, and "none" counts as nothing', () => {
+  const r = pp.parse('food', '{"items":[],"retake":"Too dark to read the labels.  Take it again with the light on.","more":"none"}');
+  assert.deepStrictEqual(r, { items: [], retake: 'Too dark to read the labels. Take it again with the light on.', more: '' });
+  const m = pp.parse('shop', '{"items":[{"name":"eggs"}],"retake":null,"more":"The bottom of the list is cut off."}');
+  assert.deepStrictEqual(m, { items: [{ name: 'eggs', amount: '' }], retake: '', more: 'The bottom of the list is cut off.' });
+  assert.strictEqual(pp.parse('food', '{"items":[],"retake":"N/A","more":"Clear."}').retake, '');
+  assert.strictEqual(pp.parse('food', '{"items":[],"retake":123}').retake, '');
+});
+
+test('result: nothing read is a retake (the AI’s reason, or a plain one), part read is the list with more', () => {
+  assert.deepStrictEqual(pp.result('food', { items: [], retake: 'Too blurry.', more: '' }, 'Lupa'),
+    { items: [], via: 'Lupa', retake: 'Too blurry.' });
+  assert.deepStrictEqual(pp.result('food', { items: [], retake: '', more: '' }, 'Claude'),
+    { items: [], via: 'Claude', retake: 'Claude didn’t see any food in that picture or receipt.' });
+  assert.deepStrictEqual(pp.result('shop', { items: [], retake: '', more: '' }, 'Claude'),
+    { items: [], via: 'Claude', retake: 'Claude didn’t see anything to buy in that picture.' });
+  const eggs = [{ name: 'eggs', amount: '12' }];
+  assert.deepStrictEqual(pp.result('food', { items: eggs, retake: '', more: 'The cans at the back face away.' }, 'Lupa'),
+    { items: eggs, via: 'Lupa', more: 'The cans at the back face away.' });
+  assert.deepStrictEqual(pp.result('food', { items: eggs, retake: '', more: '' }, 'Lupa'), { items: eggs, via: 'Lupa', more: '' });
+  // a retake beside a list it still read is a more
+  assert.strictEqual(pp.result('food', { items: eggs, retake: 'Half of it is dark.', more: '' }, 'Lupa').more, 'Half of it is dark.');
+  // a meal is as before: the match, or why not
+  assert.deepStrictEqual(pp.result('meal', { meal: 'Fried rice', used: [{ name: 'rice', amount: '1 cup', sure: true }] }, 'Lupa'),
+    { meal: 'Fried rice', used: [{ name: 'rice', amount: '1 cup', sure: true }], via: 'Lupa' });
+  assert.deepStrictEqual(pp.result('meal', { meal: '', used: [] }, 'Lupa'), { why: 'Lupa couldn’t match that meal to anything in the pantry.' });
 });
 
 test('a typed meal is asked in his words, with no picture', () => {
@@ -48,5 +88,5 @@ test('a shopping-list photo asks for things to buy and reads back like food', ()
   assert.match(q, /"items"/);
   assert.doesNotMatch(q, /rice/);
   assert.deepStrictEqual(pp.parse('shop', '{"items":[{"name":"Paper towels"},{"name":"milk","amount":"1 gal"}]}'),
-    { items: [{ name: 'Paper towels', amount: '' }, { name: 'milk', amount: '1 gal' }] });
+    { items: [{ name: 'Paper towels', amount: '' }, { name: 'milk', amount: '1 gal' }], retake: '', more: '' });
 });

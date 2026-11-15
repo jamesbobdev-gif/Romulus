@@ -29,7 +29,7 @@ function stripBlocks(h) {
   }
   return out + h.slice(at);
 }
-const htmlText = (h) => stripBlocks(String(h).slice(0, 1500000)).replace(/<[^>]+>/g, ' ')
+const htmlText = (h) => stripBlocks(String(h).slice(0, 1500000)).replace(/<[^<>]+>/g, ' ') // [^<>]: a run of "<" can't send it backtracking
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 async function localWebSearch(query) {
   // SearXNG on the mini PC (config localModel.search): asks several engines, so no single one blocks it

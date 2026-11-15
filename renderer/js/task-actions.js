@@ -10,6 +10,8 @@ let legionOn=false;
    legion stays private; this one AI sees the trip, which he agrees to here. It finds the exact times and prices,
    gets the booking ready and stops for his yes before paying (agent/skills/tickets.md). */
 function isLegionTask(t){ return /(^|\s)#(legion|research)\b/i.test(String(t&&t.title||'')); }
+// no local model set up: the first cloud AI in his order leads the legion instead (agent/local-lane.js)
+function cloudLedLegion(t){ return isLegionTask(t)&&!(localStat&&localStat.configured); }
 function bookFromLegion(t,o,label){
   const topic=String(t.title).replace(/(^|\s)#(legion|research)\b/ig,' ').replace(/\s+/g,' ').trim();
   if(!confirm('Book “'+label+'”?\n\nOne AI with a browser gets this trip (your request, not your private profile) so it can find the exact times and prices and get the booking ready.\n\nNothing is paid for until you reply yes on the booking task.'))return;
@@ -27,7 +29,7 @@ function bookFromLegion(t,o,label){
 function sendAsLegion(t){
   t.title='#legion '+t.title; t.lane='local'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
   t.status='queued'; t.waitUntil=null; t.stuck=null; t.reply=null;
-  agentSay(t,'sys','Sent out as a legion of agents: your local model splits it into pieces for the other AIs, then writes the report');
+  agentSay(t,'sys','Sent out as a legion of agents: '+(localStat&&localStat.configured?'your local model':'the first AI in your order')+' splits it into pieces for the other AIs, then writes the report');
   touch();
 }
 /* Coach me, on a task only he can do (record the video, give the presentation): an Agent task of its own goes to
@@ -126,7 +128,7 @@ async function addTask(){
     if(lead.test(t.title)){ t.title='#legion '+t.title.replace(lead,''); legionOn=true; }
   }
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
-  if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
+  if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } if(typeof repeatOfferFor==='function')repeatOfferFor(t,t.title); } // "every weekday at 9" in the words: offers a repeat (repeat-offer.js)
   if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);

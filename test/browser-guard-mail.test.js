@@ -76,15 +76,22 @@ test('his files, contacts and account pages: read, but no sharing and nothing ty
   fs.rmSync(taintFile, { force: true });
 });
 
-test('after his yes the same steps go through', () => {
+test('after his yes, Send goes through once; his files and account pages stay read-only, and other sites stay closed', () => {
   fs.rmSync(taintFile, { force: true });
   process.env.TASKS_BROWSER_APPROVED = '1';
   const p = load();
   p.learnRefs(refs);
-  p.mailRefusal(call('browser_navigate', { url: 'https://drive.google.com/' }), 'about:blank');
-  assert.strictEqual(p.mailRefusal(call('browser_click', { target: 's1' }), 'https://drive.google.com/drive/my-drive'), null);
-  assert.strictEqual(p.mailRefusal(call('browser_type', { ref: 's8', text: 'friend@example.com' }), 'https://drive.google.com/drive/my-drive'), null);
+  p.mailRefusal(call('browser_navigate', { url: 'https://mail.google.com/' }), 'about:blank');
+  const inbox = 'https://mail.google.com/mail/u/0/#inbox';
+  assert.strictEqual(p.mailRefusal(call('browser_click', { target: 's3' }), inbox), null); // the Send his yes was about
+  p.noteAction(call('browser_click', { target: 's3' }), inbox); // it went through: his yes is spent
+  assert.match(p.mailRefusal(call('browser_click', { target: 's3' }), inbox), /earlier yes was used/); // a second Send waits for a fresh yes
+  // his yes was to a mail step: an email the run read can't turn it into sharing a folder or typing an address on Drive
+  p.mailRefusal(call('browser_navigate', { url: 'https://drive.google.com/' }), inbox);
+  assert.match(p.mailRefusal(call('browser_click', { target: 's1' }), 'https://drive.google.com/drive/my-drive'), /shares, moves or hands over/);
+  assert.match(p.mailRefusal(call('browser_type', { ref: 's8', text: 'friend@example.com' }), 'https://drive.google.com/drive/my-drive'), /nothing is typed or changed/);
   assert.match(p.mailRefusal(call('browser_navigate', { url: 'https://evil.example/' }), 'https://drive.google.com/'), /opened the user's mail/); // still no other sites
+  p.resetSpent();
   process.env.TASKS_BROWSER_APPROVED = '0';
   fs.rmSync(taintFile, { force: true });
 });

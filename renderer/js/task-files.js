@@ -16,11 +16,28 @@ function taskFilesOn(){ return !!(taskFileProfile()&&window.crypto&&crypto.subtl
 function taskFileBase(p){ return String(p.url).replace(/\/+$/,''); }
 function tfB64u(bytes){ return syncB64Url(bytes); }
 function tfUnB64u(s){ s=String(s).replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; return syncUnB64(s); }
+async function tfSha256Hex(s){ const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return Array.from(new Uint8Array(h),function(b){ return b.toString(16).padStart(2,'0'); }).join(''); }
+// a row key's id part: without the list prefix or a side-row suffix (sync_account_of in supabase/setup.sql)
+function tfIdOf(rowKey){ return String(rowKey).replace(/^tk_(work_|agent_|school_)?/,'').replace(/:.*$/,''); }
 // the account folder for a row key (pure, for tests): the same hash the database counts space by
-async function taskFilesFolder(rowKey){
-  const id=String(rowKey).replace(/^tk_(work_|agent_|school_)?/,'').replace(/:.*$/,'');
-  const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(id));
-  return 'acct_'+Array.from(new Uint8Array(h),function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+async function taskFilesFolder(rowKey){ return 'acct_'+await tfSha256Hex(tfIdOf(rowKey)); }
+/* The proof an upload carries (an x-romulus-proof header), from the id part like the folder. The server keeps only its hash
+   (sync_files_proof_set, supabase/migrations/20261120_task_files_proof.sql) and lets an upload into the folder only with
+   the proof, so neither the key nor the id reaches the storage server, and nobody who knows the folder's name (it is in
+   every file address) can fill the account's space. Pure, for tests. */
+async function taskFilesProof(rowKey){ return tfSha256Hex('romulus-task-files-v1|'+tfIdOf(rowKey)); }
+/* Once per session: this account's proof hash goes to the server; from then on only uploads with the proof land in its
+   folder (an account that never did this is taken as before). Quiet when the project is older than the rule or the
+   account has no row yet (its first sync makes one): tried again next time. → true once registered */
+let taskFilesProofFor=null;
+async function taskFilesRegister(){
+  const p=taskFileProfile(); if(!p||!window.crypto||!crypto.subtle)return false;
+  const rk=await syncRowKey(p); if(taskFilesProofFor===rk)return true;
+  try{
+    const ok=await syncRpc(p,'sync_files_proof_set',{p_sync_key:rk,p_proof_hash:await tfSha256Hex(await taskFilesProof(rk))});
+    if(ok===true)taskFilesProofFor=rk;
+    return ok===true;
+  }catch(e){ return false; }
 }
 function taskFileName(){ return tfB64u(crypto.getRandomValues(new Uint8Array(18))); } // random, url-safe
 // encrypt / decrypt one file's bytes (pure, for tests)
@@ -41,7 +58,7 @@ function taskFileError(status,text){
   text=String(text||'');
   if(/bucket not found/i.test(text))return 'this sync project has no place for files yet: run the latest setup.sql in it';
   if(status===413||/too large|maximum allowed size/i.test(text))return 'that file is over 10 MB';
-  if(status===401||status===403||/row-level security|unauthorized/i.test(text))return 'your online space is full (Settings > Device sync shows it)';
+  if(status===401||status===403||/row-level security|unauthorized/i.test(text))return 'the upload was refused: your online space is full (Settings > Device sync shows it), or Romulus on this device is older than on your others and needs an update';
   return 'upload failed ('+status+')';
 }
 // one picked/pasted/dropped file → a t.files entry, uploaded
@@ -51,8 +68,10 @@ async function taskFileUpload(file){
   if(/^image\//.test(type)&&!/^image\/(gif|svg)/.test(type)){ blob=await shrinkImage(file); type='image/jpeg'; name=name.replace(/\.[^.]+$/,'')+'.jpg'; }
   if(blob.size>TASK_FILE_MAX_BYTES)throw new Error('that file is over 10 MB');
   const sealed=await taskFileSeal(new Uint8Array(await blob.arrayBuffer()));
-  const path=(await taskFilesFolder(await syncRowKey(p)))+'/'+taskFileName();
-  const r=await fetch(taskFileBase(p)+'/storage/v1/object/task-files/'+path,{method:'POST',headers:{apikey:p.key,Authorization:'Bearer '+p.key,'Content-Type':'application/octet-stream'},body:sealed.ct});
+  const rk=await syncRowKey(p);
+  await taskFilesRegister();
+  const path=(await taskFilesFolder(rk))+'/'+taskFileName();
+  const r=await fetch(taskFileBase(p)+'/storage/v1/object/task-files/'+path,{method:'POST',headers:{apikey:p.key,Authorization:'Bearer '+p.key,'Content-Type':'application/octet-stream','x-romulus-proof':await taskFilesProof(rk)},body:sealed.ct});
   if(!r.ok){ let txt=''; try{ txt=await r.text(); }catch(e){} throw new Error(taskFileError(r.status,txt)); }
   return {id:uid(),name:String(name).slice(0,120),type:type,size:blob.size,path:path,k:sealed.k,iv:sealed.iv,at:Date.now()};
 }
@@ -71,9 +90,10 @@ async function taskFileUrl(f){
 async function taskFilesRemove(files){
   const p=taskFileProfile(); const paths=(files||[]).map(function(f){ return f&&f.path; }).filter(Boolean);
   if(!p||!paths.length)return;
-  const base=taskFileBase(p), h={apikey:p.key,Authorization:'Bearer '+p.key,'Content-Type':'application/json'};
+  const base=taskFileBase(p), rk=await syncRowKey(p);
+  const h={apikey:p.key,Authorization:'Bearer '+p.key,'Content-Type':'application/json','x-romulus-proof':await taskFilesProof(rk)};
   try{
-    const r=await fetch(base+'/functions/v1/task-files-remove',{method:'POST',headers:h,body:JSON.stringify({key:await syncRowKey(p),paths:paths})});
+    const r=await fetch(base+'/functions/v1/task-files-remove',{method:'POST',headers:h,body:JSON.stringify({key:rk,paths:paths})});
     if(r.ok)return;
   }catch(e){}
   try{ await fetch(base+'/storage/v1/object/task-files',{method:'DELETE',headers:h,body:JSON.stringify({prefixes:paths})}); }catch(e){}
@@ -111,4 +131,4 @@ async function taskFilesToAgent(c){
   touch();
 }
 
-if(typeof module!=='undefined')module.exports={taskFilesFolder,taskFileSeal,taskFileOpenBytes,taskFileError,taskFileSize};
+if(typeof module!=='undefined')module.exports={taskFilesFolder,taskFilesProof,taskFileSeal,taskFileOpenBytes,taskFileError,taskFileSize};

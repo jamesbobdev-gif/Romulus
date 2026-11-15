@@ -100,3 +100,34 @@ test('offline(): a try that never reached its AI', () => {
   assert.ok(!helpers.offline({ text: 'here is the answer', log: 'exit 0' }));
   assert.ok(!helpers.offline(null));
 });
+
+test('leaksTyped: secrets from the locked profile, card and SSN shapes and private words stay untyped; the rest of the profile may go', () => {
+  const locked = ['# Me', 'Name: Sam Example', 'Address: 12 Elm St, Springfield', 'Phone: 555-0100', 'SSN: 123-45-6789', 'Passport number: X1234567', 'Card: 4111 1111 1111 1111'].join('\n');
+  assert.deepStrictEqual(helpers.lockedSecrets(locked), ['123-45-6789', 'x1234567', '4111 1111 1111 1111']);
+  assert.match(helpers.leaksTyped('X1234567', { locked }), /secret from his locked profile/);
+  assert.match(helpers.leaksTyped('my number is 987-65-4321', { locked }), /social security/);
+  assert.match(helpers.leaksTyped('4111111111111111', { locked }), /card number/);
+  assert.match(helpers.leaksTyped('Riverside Clinic appointment', { locked, privateWords: 'riverside clinic, ex-wife' }), /private words/);
+  for (const ok of ['Sam Example', '12 Elm St, Springfield', '555-0100', 'hello', '']) assert.strictEqual(helpers.leaksTyped(ok, { locked }), null, ok);
+});
+
+test('privateValues: his private words, where he is and his Link street, never a short one', () => {
+  const v = helpers.privateValues({ here: { lat: 41.499, lng: -81.694, accuracyM: 50 }, address: { name: 'Sam', line_1: '12 Elm St', line_2: '', postal_code: '44101', country_code: 'US' }, privateWords: 'Riverside Clinic, ab, ex-wife' });
+  assert.deepStrictEqual(v, ['Riverside Clinic', 'ex-wife', '41.499', '-81.694', '12 Elm St', '44101']);
+  assert.deepStrictEqual(helpers.privateValues({}), []);
+  assert.deepStrictEqual(helpers.privateValues({ here: null, address: null, privateWords: '' }), []);
+});
+
+test('resolvesPublic: an address on this computer or the LAN is private however it is written; a public one is not', async () => {
+  for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.1.9', '172.16.0.1', '169.254.1.1', '100.64.0.1', '0.0.0.0', '::1', '::', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '224.0.0.1'])
+    assert.ok(helpers.privateIp(ip), ip);
+  for (const ip of ['8.8.8.8', '93.184.216.34', '2606:4700::1111', '172.32.0.1', '100.128.0.1']) assert.ok(!helpers.privateIp(ip), ip);
+  assert.strictEqual(await helpers.resolvesPublic('http://127.0.0.1:9334/json'), false);
+  assert.strictEqual(await helpers.resolvesPublic('http://[::1]/'), false);
+  assert.strictEqual(await helpers.resolvesPublic('https://8.8.8.8/'), true);
+  assert.strictEqual(await helpers.resolvesPublic('not a url'), false);
+  // a name: judged by what it resolves to (localhost always points home; a name that resolves nowhere is left to the fetch)
+  assert.strictEqual(await helpers.resolvesPublic('http://localhost/'), false);
+  assert.strictEqual(await helpers.resolvesPublic('https://no-such-host.invalid/'), true);
+  await assert.rejects(helpers.fetchPublic('http://127.0.0.1:1/'), /not a public web address/);
+});

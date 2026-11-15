@@ -142,7 +142,7 @@ async function recentMail(gmail) {
     const m = await gmail('messages/' + id + '?format=metadata&metadataHeaders=Subject&metadataHeaders=From');
     const h = (n) => ((m.payload && m.payload.headers) || []).find((x) => x.name.toLowerCase() === n)?.value || '';
     const at = m.internalDate ? new Date(+m.internalDate) : null;
-    out.push({ date: at ? dayOf(at) : '', from: h('from').replace(/\s*<[^>]+>/, '').replace(/"/g, '').slice(0, 60),
+    out.push({ date: at ? dayOf(at) : '', from: h('from').replace(/\s*<[^<>]+>/, '').replace(/"/g, '').slice(0, 60),
       subject: h('subject').replace(/\s+/g, ' ').slice(0, 120), snippet: String(m.snippet || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').slice(0, 200) });
   }
   return out;

@@ -64,6 +64,21 @@ if(window.desktop&&window.desktop.onAgentResults){
   // Claude is out of usage: these wait (no failure) until the reset, then run by themselves
   if(window.desktop.onAgentWaiting)window.desktop.onAgentWaiting(function(info){
     let changed=false;
+    // only the local model may do these, and none is set up (agent/local-lane.js tellNoLocal): the card says so
+    // (lists.js) instead of "Routing to a model" for good. Not pinned to the local lane: a #claude tag in the title still frees it
+    if(info.noLocal){
+      (info.ids||[]).forEach(function(id){
+        const t=state.tasks.find(function(x){ return x.id===id; });
+        if(!t||taskWs(t)!=='agent'||t.done||t.status!=='queued')return;
+        const why=(info.reasons||{})[id]||'only your local model may do it';
+        if(noLocalWait[id]===why)return;
+        noLocalWait[id]=why;
+        if(!t.lane&&!(Array.isArray(t.history)?t.history:[]).some(function(h){ return h.who==='sys'&&/^Routed → The local model/.test(String(h.text||'')); }))agentSay(t,'sys','Routed → The local model ('+why+')');
+        changed=true;
+      });
+      if(changed)touch();
+      return;
+    }
     (info.ids||[]).forEach(function(id){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(!t||taskWs(t)!=='agent'||t.done)return;
@@ -167,6 +182,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(u.lane!=='local'&&typeof u.model==='string'&&u.model)extra.model=u.model.slice(0,80); // which model wrote it (lists.js shows it by the name)
       if(t.shot)extra.images=[t.shot];
       if(Array.isArray(u.plan)&&u.plan.length>=2){ t.goalPlan=u.plan; extra.plan=u.plan; } // a goal's steps: Start button (goals.js planBox)
+      if(Array.isArray(u.jobs)&&u.jobs.length){ extra.jobs=u.jobs; if(typeof convOpen!=='undefined')convOpen.add(t.id); } // the setup task's suggested jobs, a Start each (jobs.js jobsBox), shown open
       if(thoughts){
         extra.thoughts=thoughts;
         // only the newest few keep theirs: each is up to 6000 characters, synced with the task

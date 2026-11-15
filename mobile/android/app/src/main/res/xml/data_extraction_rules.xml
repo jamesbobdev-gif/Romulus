@@ -7,7 +7,9 @@
     <cloud-backup>
         <exclude domain="sharedpref" path="cal_accounts.xml" />
         <exclude domain="sharedpref" path="finance_vault.xml" />
+        <exclude domain="sharedpref" path="ai_keys.xml" />
         <exclude domain="file" path="finance.vault" />
+        <exclude domain="file" path="vosk-model" />
         <exclude domain="root" path="app_webview" />
         <exclude domain="root" path="app_textures" />
         <exclude domain="database" path="webview.db" />
@@ -17,7 +19,9 @@
     <device-transfer>
         <exclude domain="sharedpref" path="cal_accounts.xml" />
         <exclude domain="sharedpref" path="finance_vault.xml" />
+        <exclude domain="sharedpref" path="ai_keys.xml" />
         <exclude domain="file" path="finance.vault" />
+        <exclude domain="file" path="vosk-model" />
         <exclude domain="root" path="app_webview" />
         <exclude domain="root" path="app_textures" />
         <exclude domain="database" path="webview.db" />

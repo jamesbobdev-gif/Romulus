@@ -30,10 +30,10 @@ that says what it does; read that first, then this for how the pieces fit and th
 | Kitchen | `kitchen.js` | `main/kitchen-ai.js`, `agent/meal-ideas.js` |
 | Family / Group | `family.js` | `supabase/migrations` |
 | Notes, Hours, Calendar, Year in review | `ideas.js`, `hours.js`, `calendar-view.js`, `year-review*.js` | |
-| Calendars and email accounts | `calendars.js`, `connect-accounts.js` | `agent/calendars.js`, `main/calendar-accounts.js`, `main/gcal-sync.js`, `mobile/cal-phone.js` |
+| Calendars and email accounts | `calendars.js`, `connect-accounts.js`, `google-first.js` (first launch) | `agent/calendars.js`, `main/calendar-accounts.js`, `main/gcal-sync.js`, `mobile/cal-phone.js` |
 | Settings | `settings.js`, `tab-picker.js`, `local-model.js`, `setup-list.js`, `welcome.js`, `demo.js` (example to-dos), `backup.js` (backup file) | `main/store.js` |
 | Screen helper | `renderer/overlay.*` | `main/overlay.js`, `agent/overlay-ask.js`, `agent/pc-control.js` |
-| Updates | `update-desktop.js` | `main/updater.js`, `mobile/update-phone.js`, `scripts/release.js` |
+| Updates | `update-desktop.js`, `whats-new.js` (what changed, after an update) | `main/updater.js`, `mobile/update-phone.js`, `scripts/release.js`, `scripts/whats-new.js` |
 
 ## Rules for the page scripts
 
@@ -60,8 +60,8 @@ that says what it does; read that first, then this for how the pieces fit and th
 ## Ground rules (also in CONTRIBUTING.md)
 
 - The Agent never buys, sends, submits, books or deletes without a yes from the user on that task.
-- Keys go through `main/store.js` (encrypted) and are never synced. Finance and the Locked profile are
-  never sent to a cloud AI.
+- Keys go through `main/store.js` (encrypted) and are never synced. Finance is never sent to a cloud AI, and
+  the Locked profile only while the user's switch for that is on in Settings (off to start).
 - No personal details in the repo: this repository is public. Fixtures use example names.
 - UI text is plain English for someone who has never seen the code. No emoji in UI text, notes or
   prompts (`no-emoji.js` strips ones that come in from outside).
@@ -75,3 +75,6 @@ that says what it does; read that first, then this for how the pieces fit and th
 - Supabase migrations are applied by hand in the SQL editor; add the file under `supabase/migrations/`
   and keep `setup.sql` in step.
 - `npm start` runs the app from source; `npm run dist` builds the installer.
+- Every update tells the person what changed. When a change is worth telling them about, add a line under the
+  top entry (version `'next'`) of `renderer/js/whats-new.js`, in plain English. `npm run release` puts the version
+  in and refuses a release with no lines there.

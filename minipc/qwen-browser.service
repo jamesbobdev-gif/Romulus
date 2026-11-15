@@ -10,7 +10,12 @@ PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
-ExecStartPre=/usr/bin/mkdir -p %h/qwen-browser/profile
+# the profile holds the logins (cookies): this user only. Chromium keeps its own 0700 when it makes the folder, but
+# an earlier mkdir left it open; and with auto-login the keyring stays locked, so the cookies are only as safe as the
+# folder they sit in
+ExecStartPre=/usr/bin/install -d -m 700 %h/qwen-browser/profile
+ExecStartPre=/usr/bin/chmod 700 %h/qwen-browser/profile
+UMask=077
 # --disable-gpu: pages drawn by the CPU. The model box froze twice mid browser task (Oct 10-11) with the Intel
 # graphics driver struggling; model-only load for hours never froze it
 ExecStart=/snap/bin/chromium --disable-gpu --user-data-dir=%h/qwen-browser/profile --remote-debugging-port=9334 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling --window-size=1280,900 about:blank

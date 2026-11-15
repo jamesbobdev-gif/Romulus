@@ -10,10 +10,17 @@
    the answer back, and the phone uses it (kpCollect): the same checklist, or the meal taken out of the pantry.
    - Shopping list → "Photo": a handwritten list, an empty package, a recipe page or a screenshot. His AIs list what
      to buy; he ticks what to add and it goes on the shopping list (kitchen.js addToShop). Mode 'shop', same asks.
-   The phone's "Suggest meals" (kitchen.js kAskIdeas) rides the same asks, mode 'ideas': the computer that takes
-   it asks main/kitchen-ai.js kitchen:ideas and puts the meals in state.kitchen.ideas, which syncs to every device. */
+   When a pantry or shopping picture can't be read (too dark, blurry, far away) the answer says so (retake) and the
+   card has a Retake button in place of the list. When part of it can't be read (labels turned away, the receipt
+   cut off, a size on the back of the package) the list comes with that (more) and a "Take another picture" button:
+   the next picture is read the same way and its items join the list (kpJoin), so the back of a package or the other
+   shelf adds to what the first picture found. Both work the same through a computer (the ask's result carries them).
+   The phone's "Suggest meals" (kitchen.js kAskIdeas) rides the same asks, mode 'ideas', when the phone has no keys
+   of its own: the computer that takes it asks main/kitchen-ai.js kitchen:ideas and puts the meals in
+   state.kitchen.ideas, which syncs to every device. With his keys on the phone it asks them itself (kIdeasFromPhone). */
 
-const kpUI={busy:'',why:'',whyFor:'',food:null,meal:null,shop:null}; // food, shop: {items:[{line, on, have}], via, askId?}; meal: {name, took, asked, todoId, before, via}
+// food, shop: {items:[{line, on, have}], via, retake, more, askId?, moreAskId?}; meal: {name, took, asked, todoId, before, via}
+const kpUI={busy:'',why:'',whyFor:'',food:null,meal:null,shop:null};
 
 function kpAvailable(){ return kpLocal()||kpPhoneAi()||kpRemote(); }
 // the phone with his AI keys copied over (phone-ai.js): it reads the photo itself, no computer needed
@@ -25,9 +32,7 @@ async function kpRead(mode,image,pantry,said){
   if(mode==='meal'&&!pantry.length)return {why:'The pantry is empty, so there is nothing to take out.'};
   const r=await window.phoneAi.ask(pantryPhotoPrompt(mode,pantry,said),said?null:image);
   if(!r||!r.text)return {why:(r&&r.why)||'No answer.'};
-  const out=pantryPhotoParse(mode,r.text), n=mode==='meal'?out.used.length:out.items.length;
-  if(!n)return {why:mode==='meal'?r.via+' couldn’t match that meal to anything in the pantry.':mode==='shop'?r.via+' didn’t see anything to buy in that picture.':r.via+' didn’t see any food in that picture or receipt.'};
-  return Object.assign(out,{via:r.via});
+  return pantryPhotoResult(mode,pantryPhotoParse(mode,r.text),r.via);
 }
 function kpLocal(){ return !!(window.desktop&&window.desktop.kitchenPhoto); }
 // the phone: through a computer, which needs the kitchen to sync and somewhere to put the picture
@@ -55,18 +60,44 @@ function kpShrink(file){
 function kpRedraw(){ if(typeof window.renderKitchen==='function')window.renderKitchen(); }
 function kpPantryList(){ return state.kitchen.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }); }
 
-async function kpAsk(mode,file){
+// into: the food or shop checklist already up, when this is the other picture it asked for (its items join it)
+async function kpAsk(mode,file,into){
   if(kpUI.busy||!file)return;
-  kpUI.busy=mode; kpUI.why=''; kpUI.whyFor=mode; if(mode==='food'){ kpUI.food=null; kpUI.foodFile=file; } if(mode==='shop')kpUI.shop=null; kpRedraw();
-  if(!kpLocal()&&!kpPhoneAi()){ await kpSend(mode,file); kpUI.busy=''; kpRedraw(); return; }
+  kpUI.busy=mode; kpUI.why=''; kpUI.whyFor=mode;
+  if(mode==='food'){ if(!into)kpUI.food=null; kpUI.foodFile=into?null:file; }
+  if(mode==='shop'&&!into)kpUI.shop=null;
+  kpRedraw();
+  if(!kpLocal()&&!kpPhoneAi()){
+    const id=await kpSend(mode,file);
+    if(into&&id)into.moreAskId=id; // the list waits for it (kpCollect joins the answer)
+    kpUI.busy=''; kpRedraw(); return;
+  }
   try{
     const image=await kpShrink(file);
     const r=await kpRead(mode,image,kpPantryList());
     if(!r||r.why)kpUI.why=(r&&r.why)||'No answer. Try again.';
-    else if(mode==='food'||mode==='shop')kpUI[mode]=kpChecklist(mode,r);
+    else if(mode==='food'||mode==='shop')kpUI[mode]=into?kpJoin(into,kpChecklist(mode,r)):kpChecklist(mode,r);
     else kpMealApply(r);
   }catch(e){ kpUI.why=e&&e.message==='not a picture'?'That file isn’t a picture.':'Couldn’t read the picture: '+(e&&e.message||e); }
   kpUI.busy=''; kpRedraw();
+}
+// Retake: the unreadable picture's card goes (and its ask is done with), and the new picture is read fresh
+function kpRetake(mode,file){ if(kpUI.busy||!file)return; kpDone(mode); kpAsk(mode,file); }
+/* the other picture's list joins the one up: a food the list already has stays as he left it, the rest go on
+   the end. What that picture said about itself (unclear again, or more still hidden) becomes the list's more. */
+function kpJoin(cur,add){
+  cur.items=cur.items.concat(add.items.filter(function(x){
+    const n=(parseIngredient(x.line)||{name:x.line}).name;
+    return !cur.items.some(function(y){ return sameFood((parseIngredient(y.line)||{name:y.line}).name,n); });
+  }));
+  cur.more=add.retake||add.more||'';
+  if(add.via)cur.via=add.via;
+  cur.moreAskId=null;
+  return cur;
+}
+// the other picture a list asked for is still out with a computer (so its button waits)
+function kpMoreLive(f){
+  return !!(f.moreAskId&&(state.kitchen.asks||[]).some(function(a){ return a.id===f.moreAskId&&(a.state==='waiting'||a.state==='reading'); }));
 }
 
 // a meal he typed ("chicken and rice"): the same as a photo of it, with no picture
@@ -118,14 +149,16 @@ function kpMealUndo(){
   if(m.todoId)state.tasks=state.tasks.filter(function(t){ return t.id!==m.todoId; });
   kpUI.meal=null; persist(); voiceToast('Put back the way it was'); kpRedraw();
 }
-// what a picture listed → the checklist he ticks: {via, items:[{line, on, have}]}. have: in the pantry already (food),
-// or on the shopping list already (shop)
+// what a picture listed → the checklist he ticks: {via, items:[{line, on, have}], retake, more}. have: in the pantry
+// already (food), or on the shopping list already (shop). retake: the picture couldn't be read (no items); more:
+// what another picture should show
 function kpChecklist(mode,r,askId){
   const k=state.kitchen;
   const out={via:r.via||'',items:(Array.isArray(r.items)?r.items:[]).map(function(x){
     const have=mode==='shop'?(k.extra||[]).some(function(e){ return sameFood(e.name,x.name); }):!!pantryFind(k.items,x.name);
     return {line:(x.amount?x.amount+' ':'')+x.name,on:true,have:have};
-  })};
+  }),retake:String(r.retake||'').slice(0,200),more:String(r.more||'').slice(0,200)};
+  if(out.items.length)out.retake=''; else if(!out.retake)out.retake='Nothing in that picture could be read.';
   if(askId)out.askId=askId;
   return out;
 }
@@ -156,13 +189,14 @@ function kpFoodAdd(){
   kpRedraw();
 }
 
-function kpPickBtn(mode,label,title){
+// onPick(mode, file): what the picture is for; kpAsk, a fresh read, unless told otherwise
+function kpPickBtn(mode,label,title,onPick){
   const pick=document.createElement('input'); pick.type='file'; pick.accept='image/*'; pick.hidden=true;
   pick.setAttribute('capture','environment'); // the camera on a phone or tablet; a file picker on a computer
   const b=el('button',mode==='meal'?'btn-accent':'ghost',kpUI.busy===mode?'Reading the picture…':label);
   b.title=title; b.disabled=!!kpUI.busy;
   b.addEventListener('click',function(){ pick.click(); });
-  pick.addEventListener('change',function(){ const f=pick.files&&pick.files[0]; pick.value=''; kpAsk(mode,f); });
+  pick.addEventListener('change',function(){ const f=pick.files&&pick.files[0]; pick.value=''; (onPick||kpAsk)(mode,f); });
   const wrap=el('span'); wrap.appendChild(b); wrap.appendChild(pick);
   return wrap;
 }
@@ -183,9 +217,10 @@ function kpDraw(mode,box,under){
     box.appendChild(pick);
     under=under||box;
     kpDrawWaiting('shop',under);
-    if(kpUI.why&&kpUI.busy===''&&!kpUI.shop&&kpUI.whyFor==='shop')under.appendChild(el('div','kit-empty',kpUI.why));
+    if(kpUI.why&&kpUI.busy===''&&kpUI.whyFor==='shop')under.appendChild(el('div','kit-empty',kpUI.why)); // with a list up too: its other picture failed
     const f=kpUI.shop; if(!f)return;
-    kpDrawChecklist(under,f,'Found in the picture','Untick anything you don’t want, and fix an amount if it’s off.','already on the list','Add to shopping list',kpShopAdd,function(){ kpDone('shop'); persist(); kpRedraw(); });
+    if(f.retake)kpDrawRetake(under,'shop',f,'Take it again closer, holding the phone still, with the whole list in the picture.');
+    else kpDrawChecklist(under,'shop',f,'Found in the picture','Untick anything you don’t want, and fix an amount if it’s off.','already on the list','Add to shopping list',kpShopAdd,function(){ kpDone('shop'); persist(); kpRedraw(); });
     return;
   }
   if(mode==='food'){
@@ -194,9 +229,10 @@ function kpDraw(mode,box,under){
     if(kpUI.busy==='food')pb.textContent='…';
     box.appendChild(plus);
     kpDrawWaiting('food',box);
-    if(kpUI.why&&kpUI.busy===''&&!kpUI.food&&kpUI.whyFor==='food')box.appendChild(el('div','kit-empty',kpUI.why));
+    if(kpUI.why&&kpUI.busy===''&&kpUI.whyFor==='food')box.appendChild(el('div','kit-empty',kpUI.why));
     const f=kpUI.food; if(!f)return;
-    kpDrawChecklist(box,f,'Found in the picture','Untick anything you don’t want added, and fix an amount if it’s off.','adds to what you have','Add to pantry',kpFoodAdd,function(){ kpDone('food'); persist(); kpRedraw(); });
+    if(f.retake)kpDrawRetake(box,'food',f,'Take it again closer, with the light on and the labels facing the camera.');
+    else kpDrawChecklist(box,'food',f,'Found in the picture','Untick anything you don’t want added, and fix an amount if it’s off.','adds to what you have','Add to pantry',kpFoodAdd,function(){ kpDone('food'); persist(); kpRedraw(); });
     return;
   }
   // typing what he made is the main way; a photo is there for anyone who'd rather
@@ -225,8 +261,9 @@ function kpDraw(mode,box,under){
   btns.appendChild(undo); card.appendChild(btns);
   box.appendChild(card);
 }
-// the ticklist a picture came back as, with its one button
-function kpDrawChecklist(box,f,title,hint,haveText,addText,onAdd,onClose){
+// the ticklist a picture came back as, with its one button; and, when part of the picture couldn't be read, what
+// another picture should show with a button to take it (that picture's items join this list)
+function kpDrawChecklist(box,mode,f,title,hint,haveText,addText,onAdd,onClose){
   const card=kpCard(title+(f.via?' (read by '+f.via+')':''),onClose);
   card.appendChild(el('div','kit-hint',hint));
   f.items.forEach(function(x){
@@ -239,9 +276,26 @@ function kpDrawChecklist(box,f,title,hint,haveText,addText,onAdd,onClose){
     if(x.have)r.appendChild(el('span','kit-hint',haveText));
     card.appendChild(r);
   });
+  if(f.more&&!kpMoreLive(f)){
+    const row=el('div','kit-after-row kp-more');
+    row.appendChild(el('span','kit-hint','Not all of it could be read. '+f.more));
+    row.appendChild(kpPickBtn(mode,'Take another picture','What it finds is added to this list',function(m,file){ kpAsk(m,file,f); }));
+    card.appendChild(row);
+  }
   const btns=el('div','kit-card-btns');
   const add=el('button','btn-accent',addText); add.addEventListener('click',onAdd);
   btns.appendChild(add); card.appendChild(btns);
+  box.appendChild(card);
+}
+// a picture nothing could be read from: why, how to take it again, and a Retake button in place of the list
+function kpDrawRetake(box,mode,f,how){
+  const card=kpCard('Couldn’t read that picture'+(f.via?' (read by '+f.via+')':''),function(){ kpDone(mode); persist(); kpRedraw(); });
+  card.appendChild(el('div','kit-after-row',f.retake));
+  card.appendChild(el('div','kit-hint',how));
+  const btns=el('div','kit-card-btns');
+  const again=kpPickBtn(mode,'Retake','Take the picture again',kpRetake);
+  again.querySelector('button').className='btn-accent';
+  btns.appendChild(again); card.appendChild(btns);
   box.appendChild(card);
 }
 // the checklist closed (added, or he closed it): a phone's ask for it is done with
@@ -252,16 +306,18 @@ function kpDone(mode){
 }
 
 /* ── the phone: send the picture to a computer ── */
+// → the ask's id, or null when the picture couldn't be sent
 async function kpSend(mode,file){
   try{
     const blob=await shrinkImage(file);
     const url=await uploadAttachment(blob);
-    const now=Date.now();
+    const now=Date.now(), id=uid();
     if(!Array.isArray(state.kitchen.asks))state.kitchen.asks=[];
-    state.kitchen.asks.push({id:uid(),mode:mode,url:url,from:kpMe(),at:now,updatedAt:now,state:'waiting',reader:'',readAt:0,why:''});
+    state.kitchen.asks.push({id:id,mode:mode,url:url,from:kpMe(),at:now,updatedAt:now,state:'waiting',reader:'',readAt:0,why:''});
     persist(); if(typeof schedulePush==='function')schedulePush();
     voiceToast('Sent to your computer to read');
-  }catch(e){ kpUI.why='Couldn’t send the picture: '+(e&&e.message||e); }
+    return id;
+  }catch(e){ kpUI.why='Couldn’t send the picture: '+(e&&e.message||e); return null; }
 }
 // his photos still out with a computer, with a way to stop waiting
 function kpDrawWaiting(mode,box){
@@ -289,9 +345,18 @@ function kpCollect(){
     if(a.mode==='meal'){
       kpUI.meal=kpMealUse(a.result); voiceToast(kpMealToast(kpUI.meal));
       kpSetAsk(a,{state:'applied',result:null}); changed=true;
-    } else if((a.mode==='food'||a.mode==='shop')&&!kpUI[a.mode]){ // the checklist; the ask is applied once he adds or closes it
-      kpUI[a.mode]=kpChecklist(a.mode,a.result,a.id);
-      voiceToast('Your photo is read: check what to add under Kitchen, '+(a.mode==='shop'?'Shopping list':'Pantry'));
+    } else if(a.mode==='food'||a.mode==='shop'){ // the checklist; the ask is applied once he adds or closes it
+      const cur=kpUI[a.mode];
+      if(cur&&cur.moreAskId===a.id){ // the other picture a list asked for: its items join the list, which this ask now carries
+        const first=cur.askId&&(state.kitchen.asks||[]).find(function(x){ return x.id===cur.askId; });
+        if(first){ kpSetAsk(first,{state:'applied',result:null}); changed=true; }
+        kpJoin(cur,kpChecklist(a.mode,a.result,a.id)); cur.askId=a.id;
+        voiceToast('Your other photo is read: check the list under Kitchen, '+(a.mode==='shop'?'Shopping list':'Pantry'));
+      } else if(!cur){
+        kpUI[a.mode]=kpChecklist(a.mode,a.result,a.id);
+        voiceToast(kpUI[a.mode].retake?'Your photo couldn’t be read: see Kitchen, '+(a.mode==='shop'?'Shopping list':'Pantry')
+          :'Your photo is read: check what to add under Kitchen, '+(a.mode==='shop'?'Shopping list':'Pantry'));
+      }
     }
   });
   return changed;
@@ -335,7 +400,7 @@ async function kpServe(){
         state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:a.said,meals:r.meals};
         kpSetAsk(cur,{state:'applied'}); kpRedraw();
       }
-      else kpSetAsk(cur,{state:'done',result:a.mode==='meal'?{meal:r.meal,used:r.used,via:r.via}:{items:r.items,via:r.via}});
+      else kpSetAsk(cur,{state:'done',result:a.mode==='meal'?{meal:r.meal,used:r.used,via:r.via}:{items:r.items,via:r.via,retake:r.retake||'',more:r.more||''}});
       persist();
     }
   }catch(e){

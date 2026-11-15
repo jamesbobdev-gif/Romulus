@@ -139,6 +139,7 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
     TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120) };
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
   if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
+  if (opts.privateFile) j.mcpServers.browser.env.TASKS_BROWSER_PRIVATE = opts.privateFile; // his private values: never in an address or typed (leakRefusal)
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
   if (opts.link && opts.link.cli) Object.assign(j.mcpServers.browser.env, { TASKS_LINK_CLI: opts.link.cli, TASKS_LINK_AUTH: opts.link.auth || '',
     TASKS_LINK_TEST: opts.link.test ? '1' : '0', TASKS_LINK_PENDING: opts.link.pending || '' });
@@ -151,19 +152,24 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
   return f;
 }
 const hookArg = (x) => '"' + String(x).replace(/\\/g, '/') + '"'; // forward slashes: fine for node, and for whichever shell runs hooks
-function webGuardHooks() { // → the hook, for a run's --settings (agent/runner.js), or null
+function webGuardHooks(privateFile) { // → the hook, for a run's --settings (agent/runner.js), or null. privateFile: his private values (agent/helpers.js privateValues)
   const node = findNode();
   if (!node) return null;
   // Agent too: a helper run has its own tools, and the store checkers' browser connections, to carry mail off with
   return { PreToolUse: [{ matcher: 'WebFetch|WebSearch|Agent',
-    hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()), timeout: 15 }] }] };
+    hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()) + (privateFile ? ' ' + hookArg(privateFile) : ''), timeout: 15 }] }] };
 }
 // his latest reply is a yes to something Claude asked him to say yes to (to a cancel ask, "yes, cancel it" too: helpers.isYesTo)
 function saidYes(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
-  return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
+  return isYesTo(lastYou, asked) && /reply[ \t]{0,3}\**[ \t]{0,3}yes/i.test(asked); // bounded gaps: a note padded with spaces can't send it backtracking
+}
+// what Claude last asked him on this task (the note his yes answers): what a mail run's send or trash may cover (agent/mail-mcp.js)
+function lastAsk(t) {
+  const hist = Array.isArray(t.history) ? t.history : [];
+  return String((hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '');
 }
 const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
 /* The sites his yes was about: where the run stopped to ask (t.page), the cart's or options' links, and links he
@@ -173,9 +179,13 @@ const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); 
 function approvedHostsFor(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const his = [t.title, t.notes, t.reply].concat(hist.filter((h) => h && h.who === 'you').map((h) => h.text)).join('\n');
-  const urls = [t.page].concat(his.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
-    (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url), (Array.isArray(t.options) ? t.options : []).map((o) => o && o.url));
-  return [...new Set(urls.map(hostOf).filter(Boolean))];
+  const own = [...new Set((his.match(/https?:\/\/[^\s"'<>)\]]+/g) || []).map(hostOf).filter(Boolean))];
+  // the page the run stopped on: the app names it in the note he answers (agent/runner.js), so his yes is to it knowingly
+  const page = hostOf(t.page);
+  // the cart's and options' links are the AI's own words: they count only on a site he named, the page he saw, or a store
+  const okHost = (h) => !!h && (own.includes(h) || h === page || STORE_HOSTS.some((s) => h === s || h.endsWith('.' + s)));
+  const ai = (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url).concat((Array.isArray(t.options) ? t.options : []).map((o) => o && o.url)).map(hostOf).filter(okHost);
+  return [...new Set(own.concat(page ? [page] : [], ai))];
 }
 // the stores a shopping run may use (agent/runner.js keeps such a run to these plus the task's own links)
 const STORE_HOSTS = ['instacart.com', 'walmart.com', 'amazon.com', 'aldi.us', 'kroger.com', 'gianteagle.com', 'marcs.com', 'wholefoodsmarket.com',
@@ -226,4 +236,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, lastAsk, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

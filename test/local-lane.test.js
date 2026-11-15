@@ -34,6 +34,23 @@ test('claimableWhileDown leaves a task to a computer that reaches the mini PC, t
   assert.ok(!held.has('a'));
 });
 
+test('waitingForLocal: what a missing local model leaves waiting; legions run on the cloud AIs instead', () => {
+  const bank = { id: 'a', title: 'my bank statement' }, research = { id: 'b', title: 'compare laptops #legion' };
+  assert.deepStrictEqual(lane.waitingForLocal([bank, research]), [bank]);
+  assert.deepStrictEqual(lane.waitingForLocal([]), []);
+});
+
+test('workingNotice: the reason comes with every task that wasn’t the local model’s yet', () => {
+  const fresh = { id: 'a', title: 'draft a letter' }, own = { id: 'c', title: 'write the essay', lane: 'local' };
+  const moved = { id: 'b', title: 'book a dentist', lane: 'claude', history: [{ who: 'you', text: 'use my bank account' }] }; // a private word came in on Claude
+  const n = lane.workingNotice([fresh, moved, own]);
+  assert.deepStrictEqual(n.ids, ['a', 'b', 'c']);
+  assert.strictEqual(n.lane, 'local');
+  assert.strictEqual(n.reasons.b, 'private: bank');
+  assert.ok(n.reasons.a && !('c' in n.reasons));
+  assert.ok(n.types.a && !('b' in n.types)); // the type is for the first routing only (agent/route-learn.js)
+});
+
 test('claimableWhileDown waits longer for a worker it has heard from, and never gives up a private task', () => {
   const held = new Map(), a = { id: 'a' }, p = { id: 'p', private: true };
   const opts = { holdMs: lane.WORKER_HOLD_MS, waitsForWorker: (t) => !!t.private };
