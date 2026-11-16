@@ -411,7 +411,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 #hostedDeleteBtn:disabled{opacity:.45;cursor:default}
 .list.donelist .row{padding:10px 4px 10px 0}
 .empty{color:var(--muted);text-align:center;margin:56px 0;font-size:14px}
-.agent-examples{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:520px;margin:-36px auto 40px}
+.agent-examples{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:520px;margin:20px auto 40px}
+/* tuck up under the "No tasks yet" line only when it shows; without it (phone, unconnected) it would ride up into the bar above */
+.empty:not([hidden])+.agent-examples{margin-top:-36px}
 .agent-examples[hidden]{display:none}
 .agent-examples-head{width:100%;text-align:center;color:var(--faint);font-size:12px}
 .agent-example{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:7px 13px;cursor:pointer;transition:border-color .15s}
