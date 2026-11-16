@@ -119,10 +119,15 @@ contextBridge.exposeInMainWorld('desktop', {
   financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
   financeSetEbtOn: (on) => ipcRenderer.invoke('finance:setEbtOn', !!on),
   financeEbtReceipt: (pic) => ipcRenderer.invoke('finance:ebtReceipt', pic),
-  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why}
+  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why};
+  // {pantry, follow: {meal, talk, said}} → {reply, meal|null, via}, a question or change on one idea
   kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   // a pantry item's picture from its product page (agent/previews.js): url → image url or null
   kitchenPicture: (url) => ipcRenderer.invoke('kitchen:picture', url),
+  // a pantry item's picture looked up on Instacart by its name (agent/previews.js): name → image url or null
+  kitchenPictureFor: (name) => ipcRenderer.invoke('kitchen:pictureFor', name),
+  // pantry photos (main/kitchen-ai.js): {mode: 'food'|'meal', image: {mime, b64}, pantry} → {items|meal, used, via} or {why}
+  kitchenPhoto: (req) => ipcRenderer.invoke('kitchen:photo', req),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),

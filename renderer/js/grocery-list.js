@@ -292,7 +292,9 @@ function orderFood(t,items,bought){
   const stock=food.reduce(function(out,it){ // ×2 of "Rice, 20 lb" is 40 lb: once per one bought, so the sizes add up
     const pic=it.image&&/^https:\/\//i.test(String(it.image))?String(it.image):undefined;
     const n=it.qty>1?it.qty:1;
-    if(it.name.indexOf(',')===-1)out.push({name:it.name+', '+n+' ct',image:pic});
+    // a size in the name ("Rice, 20 lb", "Bananas (10.2 lb)": kitchen.js kSized) goes in once per one bought; with none it's a count
+    const sized=typeof kSized==='function'?kSized(it.name).qty!=null:it.name.indexOf(',')!==-1;
+    if(!sized)out.push({name:it.name+', '+n+' ct',image:pic});
     else for(let i=0;i<n;i++)out.push({name:it.name,image:pic});
     return out;
   },[]);
@@ -301,14 +303,15 @@ function orderFood(t,items,bought){
 /* orders he placed himself, outside the app, that a run found in his store account (the answer's `ordered`,
    agent/task-context.js cleanOrdered): each one's food goes into the Kitchen pantry once, and the order joins
    t.orders with its number, so no later run stocks it again and the Finance tab can match its charge.
-   → [{store, date, n: how many went into the pantry}] for the orders that were new */
+   → [{store, date, n: how many went into the pantry, covered: the names on bought (his list's words) it stands
+   for, so applyListUpdate doesn't stock those again without a size}] for the orders that were new */
 const orderKey=function(o){ return String(o.store||'').toLowerCase()+'|'+(o.id?String(o.id).toLowerCase():String(o.date||'')+'|'+((o.items||[]).length)); };
 function knownOrderKeys(){
   const keys=[];
   state.tasks.forEach(function(x){ (Array.isArray(x.orders)?x.orders:[]).forEach(function(o){ if(o&&o.store&&(o.id||o.date))keys.push(orderKey(o)); }); });
   return keys;
 }
-function stockOrdered(t,orders){
+function stockOrdered(t,orders,bought){
   if(!Array.isArray(orders)||!orders.length)return [];
   const known=knownOrderKeys(), out=[];
   orders.forEach(function(o){
@@ -321,14 +324,14 @@ function stockOrdered(t,orders){
     if(!items.length||known.indexOf(orderKey(rec))!==-1)return;
     known.push(orderKey(rec));
     // unmarked items count as food on a grocery task or from a food-only store, as on an order placed here
-    const food=orderFood({ws:'agent',title:String(t.title||'')+' '+o.store,list:t.list},items,null);
+    const food=orderFood({ws:'agent',title:String(t.title||'')+' '+o.store,list:t.list},items,bought);
     if(typeof kitchenBought==='function'&&food.stock.length)kitchenBought(food.stock);
     const at=o.date?new Date(o.date+'T12:00:00').getTime():Date.now();
     rec.at=isNaN(at)?Date.now():at; rec.self=true;
     if(o.total)rec.total=o.total;
     t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([rec]).slice(-12);
     if(!t.lastOrder||!(t.lastOrder.at>=rec.at))t.lastOrder={at:rec.at,items:items};
-    out.push({store:String(o.store),date:o.date||'',n:food.stock.length});
+    out.push({store:String(o.store),date:o.date||'',n:food.stock.length,covered:food.covered});
   });
   return out;
 }

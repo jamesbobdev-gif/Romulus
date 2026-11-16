@@ -1235,6 +1235,9 @@ body.review-open .top-right{display:none!important}
 .kit-card-top{display:flex;align-items:center;gap:8px}
 .kit-card-name{font-weight:600;font-size:14.5px;flex:1}
 .kit-card-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.kit-talk{margin-top:8px;padding-left:10px;border-left:2px solid var(--hairline)}
+.kit-talk-q{font-size:13px;font-weight:600}
+.kit-follow{margin-top:8px}
 .kit-card-meta{font-size:11.5px;color:var(--faint);margin-top:3px}
 .kit-card-btns{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
 .kit-like,.kit-plan{border:1px solid var(--hairline);background:none;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;font-family:var(--display)}
@@ -1260,8 +1263,52 @@ body.review-open .top-right{display:none!important}
 .kit-after{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:12px;padding:8px 12px;margin-bottom:10px}
 .kit-after-head{display:flex;align-items:center;justify-content:space-between}
 .kit-after-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
+/* pantry photos (kitchen-photo.js) */
+.kp-row{align-items:center;margin:6px 0}
+.kp-plus{width:34px;height:34px;padding:0;border-radius:999px;font-size:20px;line-height:1;margin:8px 0}
+.kp-row .kit-hint{margin:0}
+.kp-item{justify-content:flex-start}
+.kp-item .kit-hint{margin:0;white-space:nowrap}
 @media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
 .kit-idea-more{margin-top:6px}
 .kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
 .kit-idea-steps{margin:6px 0 0 18px;padding:0;font-size:13px;color:var(--ink)}
 .kit-idea-steps li{margin:2px 0}
+.kit-drop{margin-top:8px;padding:8px 10px;border:1px solid var(--hairline);border-radius:8px}
+.kit-drop .kit-k{margin-top:4px}
+.kit-drop-ings{margin:4px 0 6px 18px;padding:0;font-size:13px;color:var(--ink)}
+.kit-drop-ings li{margin:2px 0}
+.kit-find{width:100%;margin:10px 0 0}
+.kit-filter{flex-wrap:wrap;align-items:center}
+.kit-filter .kit-find{flex:1;min-width:150px;width:auto;margin:0}
+.kit-serv{width:54px}
+.kit-portion{color:var(--muted);font-size:12.5px;margin-left:auto}
+.kit-amt{display:inline-flex;align-items:center;gap:3px;flex:none}
+.kit-amt .kit-qty{width:74px;text-align:center}
+.kit-step{flex:none;width:26px;height:26px;padding:0;border:1px solid var(--hairline);background:none;border-radius:999px;color:var(--muted);font-size:15px;line-height:1;cursor:pointer}
+.kit-step:hover:not(:disabled){color:var(--ink);border-color:var(--muted)}
+.kit-step:disabled{opacity:.35;cursor:default}
+.kit-where{flex:none;border:0;background:none;color:var(--faint);font-size:11.5px;font-family:var(--display);cursor:pointer;padding:2px}
+@media(max-width:520px){.kit-row{flex-wrap:wrap;row-gap:4px}.kit-row-name{flex-basis:55%}.kit-amt{margin-left:auto}.kit-step{width:32px;height:32px}}
+/* pantry as picture cards (kitchen.js kDrawPantry): lit = have some, tapped dark = none left */
+.kit-undo-bar{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;margin-bottom:6px;pointer-events:none}
+.kit-undo-bar[hidden]{display:none}
+.kit-undo{pointer-events:auto;background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:12.5px;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+.kit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:0 0 6px}
+.kit-tile{position:relative;display:flex;flex-direction:column;gap:4px;background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:6px;cursor:pointer;color:var(--ink);transition:opacity .2s,border-color .2s,filter .2s,transform .1s;user-select:none}
+.kit-tile:active{transform:scale(.97)}
+.kit-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kit-tile.off{border-color:var(--hairline);opacity:.4;filter:grayscale(1)}
+.kit-tile.off .kit-tile-name{text-decoration:line-through}
+.kit-tile-pic{height:100px;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:26px;color:var(--faint);overflow:hidden}
+.kit-tile-pic img{max-width:100%;max-height:100%;object-fit:contain}
+.kit-tile-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;line-height:20px;text-align:center}
+.kit-tile.off .kit-tile-check{background:var(--chip);color:transparent;border:1px solid var(--hairline)}
+.kit-tile-name{font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kit-tile-amt{display:flex;align-items:center;gap:3px;margin-top:auto}
+.kit-tile-amt .kit-qty{flex:1;min-width:0;width:auto;text-align:center;padding:3px 4px;font-size:12px}
+.kit-tile .kit-where{align-self:flex-start;padding:0}
+.kit-tile-del{position:absolute;top:2px;left:2px;width:22px;height:22px;background:var(--surface);border-radius:50%;opacity:.5}
+.kit-tile:hover .kit-tile-del,.kit-tile-del:focus-visible{opacity:1}
+.kit-tile-cam{position:absolute;top:80px;left:8px;width:24px;height:24px;background:var(--surface);border-radius:50%;opacity:.75}
+.kit-tile:hover .kit-tile-cam,.kit-tile-cam:focus-visible{opacity:1}
