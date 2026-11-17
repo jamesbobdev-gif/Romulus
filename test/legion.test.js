@@ -68,7 +68,21 @@ test('Lupa splits it, each AI gets one general question and never the request, a
   assert.match(write.prompt, /gemini answered: Which strollers/);
   assert.match(r.report, /get A/);
   assert.deepEqual(r.options, [{ label: 'A', desc: '$350', url: 'https://a.example/a' }]); // http links dropped
-  assert.match(legion.credits(r, names, 'Lupa Au Palatine'), /written by Lupa Au Palatine.*Folded size \(Gemini\)/);
+  assert.match(legion.credits(r, names, 'Lupa Au Palatine'), /written by Lupa Au Palatine on your own machine.*Folded size \(Gemini\)/);
+  const cloud = legion.credits(r, names, 'Gemini', { cloud: true });
+  assert.match(cloud, /written by Gemini \(your local model wasn’t available\)/);
+  assert.match(cloud, /Only Gemini saw your whole request/);
+  assert.doesNotMatch(cloud, /No cloud AI saw/);
+});
+
+test('with no local model, the cloud AI with the most usage left leads and the others take the pieces', () => {
+  assert.deepEqual(legion.cloudLead(['claude', 'gemini', 'openrouter'], 'gemini'), { lead: 'gemini', scouts: ['claude', 'openrouter'] });
+  // the one with most room isn't connected (or unknown): the first in his order leads
+  assert.deepEqual(legion.cloudLead(['claude', 'gemini'], 'openai'), { lead: 'claude', scouts: ['gemini'] });
+  assert.deepEqual(legion.cloudLead(['claude', 'gemini'], null), { lead: 'claude', scouts: ['gemini'] });
+  // alone in the pool, it takes the pieces too
+  assert.deepEqual(legion.cloudLead(['gemini'], 'gemini'), { lead: 'gemini', scouts: ['gemini'] });
+  assert.equal(legion.cloudLead([], 'gemini'), null);
 });
 
 test('a revealing piece is rewritten by Lupa, and one still revealing is kept back', async () => {

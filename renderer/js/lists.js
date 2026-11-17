@@ -196,7 +196,8 @@ function buildPanel(t){
   if(agentBusy){
     const sb=el('div','agent-note agent-busy');
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
-    const local=t.lane==='local';
+    // a #legion task is the local model's whatever lane it was saved with (agent/routing.js laneOf)
+    const local=t.lane==='local'||isLegionTask(t);
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
     const cloudName=cloudNameOf(t);
     if(t.status==='working')sb.classList.add('running');
@@ -208,7 +209,7 @@ function buildPanel(t){
       sb.appendChild(busyLine(t,t.status==='working'?'working':(local||t.lane)?'routing':'picking',who));
     } else sb.appendChild(el('b',null,offline?'The local model isn’t reachable':cloudName+' is out of usage'));
     sb.appendChild(document.createTextNode(local
-      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
+      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? '+(isLegionTask(t)?'If it stays out of reach, your cloud AIs run the legion without it after about 15 minutes.':'Or switch this task to Claude below.')
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
         :localWaitText(localStat)||'It starts within a few seconds while your computer has Tasks running.')
       :t.status==='working'
