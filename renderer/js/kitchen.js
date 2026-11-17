@@ -486,7 +486,7 @@ if(typeof document!=='undefined'){
 
 // portions: {recipe id: servings he's making this time}; findItem, findRec: what he typed in the two Find boxes
 // undo: foods he marked out, last first; going: pantry ids tapped dark, waiting a moment before they leave
-const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideasBusy:false,ideasWhy:'',aim:'',portions:{},findItem:'',findRec:'',undo:[],going:{},autoAsked:false};
+const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideasBusy:false,ideasWhy:'',aim:'',portions:{},findItem:'',findRec:'',undo:[],going:{},autoAsked:false,shown:{},follow:{}};
 const kBrokenPics=new Set(); // pantry pictures that would not load this session; pantry-pictures.js replaces them
 function kSave(){ persist(); renderKitchen(); }
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
@@ -687,6 +687,29 @@ function kPortionBox(r){
   l.appendChild(i);
   return l;
 }
+/* "Show recipe": the whole recipe (ingredients for the servings picked, and the steps) opens under the card,
+   so he can read it without leaving Meals. Which ones are open is kept in kitchenUI.shown across redraws. */
+function kRecipeDrop(r,btns,card){
+  const open=!!kitchenUI.shown[r.id];
+  const b=el('button','kit-plan kit-show'+(open?' on':''),open?'Hide recipe':'Show recipe');
+  b.setAttribute('aria-expanded',String(open));
+  btns.appendChild(b);
+  const panel=el('div','kit-drop'); panel.hidden=!open;
+  const ings=kScale(r.ingredients,kPortion(r)/(r.servings||1));
+  panel.appendChild(el('div','kit-k','Ingredients'+(kPortion(r)>1?' for '+kPortion(r)+' servings':'')));
+  const ul=document.createElement('ul'); ul.className='kit-drop-ings';
+  ings.forEach(function(i){ ul.appendChild(el('li','',fmtIngredient(i))); });
+  panel.appendChild(ul);
+  panel.appendChild(el('div','kit-k','Steps'));
+  if(r.steps&&r.steps.length){ const ol=document.createElement('ol'); ol.className='kit-idea-steps'; r.steps.forEach(function(st){ ol.appendChild(el('li','',st)); }); panel.appendChild(ol); }
+  else panel.appendChild(el('div','kit-card-meta','No steps yet. Add them under Recipes with the pencil.'));
+  card.appendChild(panel);
+  b.addEventListener('click',function(){
+    const now=panel.hidden;
+    panel.hidden=!now; b.textContent=now?'Hide recipe':'Show recipe'; b.classList.toggle('on',now); b.setAttribute('aria-expanded',String(now));
+    if(now)kitchenUI.shown[r.id]=true; else delete kitchenUI.shown[r.id];
+  });
+}
 function kMadeBtn(r){
   const b=el('button','btn-accent','Made it');
   b.title='Take what it used out of the pantry';
@@ -762,6 +785,7 @@ function kDrawMeals(){
       const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',r.name)); top.appendChild(kLikeBtn(r)); card.appendChild(top);
       card.appendChild(el('div','kit-card-sub',s.missing.length?'Need: '+s.missing.map(function(m){ return (m.need!=null?kFmtQty(m.need,m.unit)+' ':'')+m.name; }).join(', '):kLastMade(r)));
       const btns=el('div','kit-card-btns'); if(!s.missing.length)btns.appendChild(kMadeBtn(r)); btns.appendChild(kPlanBtn(r)); btns.appendChild(kPortionBox(r)); card.appendChild(btns);
+      kRecipeDrop(r,btns,card);
       box.appendChild(card);
     });
   };
