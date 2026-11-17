@@ -355,9 +355,11 @@ async function startAgentRun() {
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
   // first; its pill follows whichever AI takes over. (Inbox runs: his order, each with the Gmail tools.)
-  const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
+  const final = tasks.length === 1 && saidYes(tasks[0]);
+  const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady, final });
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
-  if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
+  if (!mailRun && final && order[0] === 'claude') agentLog('his yes: Claude first (only its browser may place the order)');
+  else if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer', tries = 0;
   let wasOnline = false; // some AI this run got through to: a later network error is that AI's, not the Wi-Fi
   const answered = []; // every update gets {_via, _sawMail} from the try that answered it

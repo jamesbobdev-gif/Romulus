@@ -224,7 +224,12 @@ function couldntDo(u) {
   if (typeof u.cant === 'string' && u.cant.trim()) return true;
   return CANT.test(String(u.note || '')) || HANDOFF.test(String(u.note || ''));
 }
-function runOrder({ order, pinned, ready }) {
+// a task on an AI tries that AI first, then the rest of his order.
+// final = his yes to an order started this run: only Claude's browser may press the last button (the others get
+// it without his yes), so Claude goes first. Each AI before it would only work up to the button, give up, and
+// pass it on: his yes once waited 4 hours that way. Inbox runs keep his order (every AI gets the same mail tools)
+function runOrder({ order, pinned, ready, final, mailRun }) {
+  if (final && !mailRun && order.includes('claude')) pinned = 'claude';
   if (!pinned) return order.slice();
   return (ready(pinned) ? [pinned] : []).concat(order.filter((id) => id !== pinned));
 }
