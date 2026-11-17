@@ -487,6 +487,7 @@ if(typeof document!=='undefined'){
 // portions: {recipe id: servings he's making this time}; findItem, findRec: what he typed in the two Find boxes
 // undo: foods he marked out, last first; going: pantry ids tapped dark, waiting a moment before they leave
 const kitchenUI={view:'meals',editing:null,recipeFilter:'all',afterCook:null,ideasBusy:false,ideasWhy:'',aim:'',portions:{},findItem:'',findRec:'',undo:[],going:{},autoAsked:false};
+const kBrokenPics=new Set(); // pantry pictures that would not load this session; pantry-pictures.js replaces them
 function kSave(){ persist(); renderKitchen(); }
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
 
@@ -945,7 +946,10 @@ function kDrawPantry(){
     const letter=function(){ pic.textContent=p.name.charAt(0).toUpperCase(); };
     if(p.image&&/^https:\/\//i.test(String(p.image))){ // the picture from the order it came on
       const im=document.createElement('img'); im.src=p.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
-      im.addEventListener('error',function(){ im.remove(); letter(); }); pic.appendChild(im);
+      im.addEventListener('error',function(){ // a dead picture: show the letter, and let pantry-pictures.js find another
+        im.remove(); letter();
+        if(!kBrokenPics.has(String(p.image))){ kBrokenPics.add(String(p.image)); if(typeof window.ppFillSoon==='function')window.ppFillSoon(); }
+      }); pic.appendChild(im);
     } else letter();
     card.appendChild(pic);
     card.appendChild(el('span','kit-tile-check','✓'));

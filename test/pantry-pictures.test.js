@@ -8,7 +8,7 @@ test('ppSources: pantry items without a picture get one from the order they came
     { id: 'a', name: 'Large eggs' },
     { id: 'b', name: 'Whole milk' },
     { id: 'c', name: 'Rice', image: 'https://x.com/rice.jpg' }, // has one already
-    { id: 'd', name: 'Onions' }, // typed in, on no order: looked up by name, since he shops on Instacart
+    { id: 'd', name: 'Onions' }, // typed in, on no order: looked up by name
   ];
   const tasks = [
     { orders: [{ store: 'instacart', items: [{ name: 'Large eggs, 18 ct', url: 'https://www.instacart.com/products/1' }, { name: 'Whole milk, 1 gal', url: 'https://x.com/milk-page' }] }] },
@@ -17,20 +17,20 @@ test('ppSources: pantry items without a picture get one from the order they came
   ];
   assert.deepStrictEqual(ppSources(items, tasks, sameFood), [
     { id: 'a', image: 'https://x.com/eggs.jpg' }, // a picture beats a page to fetch
-    { id: 'b', url: 'https://x.com/milk-page' },
+    { id: 'b', url: 'https://x.com/milk-page', find: 'Whole milk' }, // the name if the page has no picture
     { id: 'd', find: 'Onions' },
   ]);
-  assert.deepStrictEqual(ppSources(items, [], sameFood), []);
+  assert.deepStrictEqual(ppSources(items, [], sameFood), [{ id: 'a', find: 'Large eggs' }, { id: 'b', find: 'Whole milk' }, { id: 'd', find: 'Onions' }]);
   assert.deepStrictEqual(ppSources(null, null, sameFood), []);
 });
 
-test('ppSources: with an Instacart order, what no order pictures is looked up by name; without one it keeps its letter', () => {
+test('ppSources: what no order pictures is looked up by name, whatever store the order names', () => {
   const items = [{ id: 'a', name: 'Bananas' }, { id: 'b', name: 'Sweet potatoes' }, { id: 'c', name: 'Pier33 Atlantic Salmon' }];
   const order = { store: 'instacart', self: true, items: [{ name: 'Bananas (10.2 lb)' }, { name: 'Pier33 Atlantic Salmon, Boneless, Skin On Portions (2 lb)', url: 'https://x.com/salmon' }] };
   assert.deepStrictEqual(ppSources(items, [{ orders: [order] }], sameFood), [
-    { id: 'a', find: 'Bananas' }, { id: 'b', find: 'Sweet potatoes' }, { id: 'c', url: 'https://x.com/salmon' },
+    { id: 'a', find: 'Bananas' }, { id: 'b', find: 'Sweet potatoes' }, { id: 'c', url: 'https://x.com/salmon', find: 'Pier33 Atlantic Salmon' },
   ]);
-  assert.deepStrictEqual(ppSources(items, [{ orders: [Object.assign({}, order, { store: 'walmart' })] }], sameFood), [{ id: 'c', url: 'https://x.com/salmon' }]);
+  assert.deepStrictEqual(ppSources(items, [{ orders: [Object.assign({}, order, { store: 'Giant Eagle' })] }], sameFood), ppSources(items, [{ orders: [order] }], sameFood));
 });
 
 test('ppAmounts: an item with no amount gets the size on its newest order, times how many he got', () => {
@@ -54,6 +54,13 @@ test('instacartPick: the search result closest to the name, the food itself abov
   assert.strictEqual(instacartPick(page, 'Sweet potatoes'), pic('yam'));
   assert.strictEqual(instacartPick(page, 'Dish soap'), null);
   assert.strictEqual(instacartPick('', 'Yams'), null);
+});
+
+test('ppSources: a picture that would not load counts as none', () => {
+  const items = [{ id: 'a', name: 'Hummus', image: 'https://x.com/dead.jpg' }, { id: 'b', name: 'Bananas', image: 'https://x.com/ok.jpg' }];
+  const tasks = [{ orders: [{ store: 'instacart', items: [{ name: 'Hummus (17 oz)' }] }] }];
+  assert.deepStrictEqual(ppSources(items, tasks, sameFood), []);
+  assert.deepStrictEqual(ppSources(items, tasks, sameFood, new Set(['https://x.com/dead.jpg'])), [{ id: 'a', find: 'Hummus' }]);
 });
 
 test('ppRecheck: pictures off his own order history are checked against the product page; his own photos are not', () => {

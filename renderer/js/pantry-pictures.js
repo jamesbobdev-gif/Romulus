@@ -1,10 +1,9 @@
 /* Pictures for pantry items that came in without one. An item the Agent bought, or found on an order he placed
    himself, is matched by name to that order's item: its picture if the order had one, otherwise the picture on
-   its product page (main: agent/previews.js kitchen:picture). An order read from his Instacart account can come
-   with neither, so once he has an Instacart order, anything still without a picture is looked up there by name
-   (kitchen:pictureFor: the closest product's picture). Runs on the computer a little after start-up and every
-   half hour; the phone gets the pictures through sync. With no Instacart order, items he typed in himself keep
-   their letter. The same pass moves a size left in a name into the amount (kitchen.js kFixSized) and, once,
+   its product page (main: agent/previews.js kitchen:picture). An order read from his account can come with
+   neither, and items he typed in have no order at all, so anything still without a picture is looked up by name
+   in Instacart's search (kitchen:pictureFor: the closest product's picture). Runs on the computer a little after
+   start-up and every half hour; the phone gets the pictures through sync. The same pass moves a size left in a name into the amount (kitchen.js kFixSized) and, once,
    gives amounts to items that came from an order with none (ppAmounts). */
 
 // a store's product name without its size: "Salmon, Skin On (2 lb)" → "Salmon"
@@ -22,14 +21,13 @@ function ppOrdered(tasks){
   return out;
 }
 /* the pantry items with no picture and where one can come from: [{id, image}] when the order item had a picture,
-   [{id, url}] when only its product page is known, [{id, find: name}] to look up by name when he shops on
-   Instacart. same(a, b): whether two food names are the same food */
-function ppSources(items,tasks,same){
-  const https=function(s){ return !!s&&/^https:\/\//i.test(String(s)); };
+   [{id, url}] when only its product page is known, [{id, find: name}] to look up by name
+   (with url too when there is a page: the name is the fallback when the page has no picture).
+   same(a, b): whether two food names are the same food. broken: pictures that would not load on this device,
+   which count as none */
+function ppSources(items,tasks,same,broken){
+  const https=function(s){ return !!s&&/^https:\/\//i.test(String(s))&&!(broken&&broken.has(String(s))); };
   const ordered=ppOrdered(tasks);
-  const instacart=(Array.isArray(tasks)?tasks:[]).some(function(t){
-    return t&&(Array.isArray(t.orders)?t.orders:[]).some(function(o){ return o&&/instacart/i.test(String(o.store||'')); });
-  });
   const out=[];
   (Array.isArray(items)?items:[]).forEach(function(p){
     if(!p||!p.id||!p.name||https(p.image)||p.picOwn)return; // a picture he took himself stays, even one that won't load here
@@ -37,8 +35,10 @@ function ppSources(items,tasks,same){
     const pic=match.find(function(it){ return https(it.image); });
     if(pic){ out.push({id:p.id,image:String(pic.image)}); return; }
     const page=match.find(function(it){ return https(it.url); });
-    if(page){ out.push({id:p.id,url:String(page.url)}); return; }
-    if(instacart&&ppBase(p.name))out.push({id:p.id,find:ppBase(p.name)});
+    const s={id:p.id};
+    if(page)s.url=String(page.url);
+    if(ppBase(p.name))s.find=ppBase(p.name);
+    if(s.url||s.find)out.push(s);
   });
   return out;
 }
@@ -114,22 +114,27 @@ if (typeof document !== 'undefined') {
         }
         try{ localStorage.setItem('ppRecheck1','1'); }catch(e){}
       }
-      for(const s of ppSources(state.kitchen.items,state.tasks,sameFood)){
+      const broken=typeof kBrokenPics!=='undefined'?kBrokenPics:null;
+      for(const s of ppSources(state.kitchen.items,state.tasks,sameFood,broken)){
         let img=s.image||null;
-        if(!img&&s.url&&ask&&!ppTried.has(s.url)&&asked<25){
+        if(!img&&s.url&&ask&&!ppTried.has(s.url)&&asked<80){
           ppTried.add(s.url); asked++;
           img=await ask(s.url).catch(function(){ return null; });
         }
-        if(!img&&s.find&&find&&!ppTried.has('find:'+s.find)&&asked<25){
+        if(!img&&s.find&&find&&!ppTried.has('find:'+s.find)&&asked<80){
           ppTried.add('find:'+s.find); asked++;
           img=await find(s.find).catch(function(){ return null; });
         }
-        const p=img&&/^https:\/\//i.test(String(img))&&state.kitchen.items.find(function(i){ return i.id===s.id; });
-        if(p&&!p.picOwn&&!p.image){ p.image=String(img).slice(0,600); p.updatedAt=Date.now(); changed=true; }
+        const ok=img&&/^https:\/\//i.test(String(img))&&!(broken&&broken.has(String(img)));
+        const p=ok&&state.kitchen.items.find(function(i){ return i.id===s.id; });
+        if(p&&!p.picOwn&&(!p.image||(broken&&broken.has(String(p.image))))){ p.image=String(img).slice(0,600); p.updatedAt=Date.now(); changed=true; }
       }
       if(changed&&typeof kSave==='function')kSave();
     }finally{ ppBusy=false; }
   };
+  // a pantry picture that would not load (kitchen.js): look again a few seconds later instead of in half an hour
+  let ppSoon=null;
+  window.ppFillSoon=function(){ clearTimeout(ppSoon); ppSoon=setTimeout(ppFill,3000); };
   window.addEventListener('load',function(){
     setTimeout(ppFill,8000); // after start-up and the first sync
     setInterval(ppFill,30*60*1000);
