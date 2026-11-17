@@ -79,3 +79,24 @@ test('the computer asks for room for whole recipes, and the cloud when Lupa answ
   assert.strictEqual(seen.usable('Sorry, I can\'t help with that.'), false);
   assert.strictEqual(seen.usable(six), true);
 });
+
+const { followPrompt, followInput, parseFollow } = require('../agent/meal-ideas');
+
+test('a follow-up carries the meal, what he asked before, his pantry and what he says now', () => {
+  const t = followInput({ meal: { name: 'Egg fried rice', why: 'quick', ingredients: ['2 eggs', '1 cup rice'], steps: ['Cook rice', 'Add eggs'] },
+    talk: [{ q: 'how long?', a: 'About 15 minutes.' }], said: 'add spinach', pantry: [{ name: 'Spinach' }], prefs: '' });
+  assert.match(t, /## The meal\nEgg fried rice\nquick\nIngredients:\n- 2 eggs\n- 1 cup rice\nSteps:\n1\. Cook rice\n2\. Add eggs/);
+  assert.match(t, /He: how long\?\nYou: About 15 minutes\./);
+  assert.match(t, /- Spinach/);
+  assert.match(t, /## What he says now\nadd spinach$/);
+  assert.match(followPrompt(), /"meal" is null/);
+});
+
+test('a follow-up answer: a reply alone, a reply with the meal rewritten, or plain words', () => {
+  assert.deepStrictEqual(parseFollow('{"reply":"About 15 minutes.","meal":null}'), { reply: 'About 15 minutes.', meal: null });
+  const c = parseFollow('{"reply":"Added spinach.","meal":{"name":"Egg fried rice with spinach","why":"quick","ingredients":["2 eggs","1 cup rice","1 cup spinach"],"steps":["Cook"]}}');
+  assert.strictEqual(c.reply, 'Added spinach.');
+  assert.deepStrictEqual(c.meal.ingredients, ['2 eggs', '1 cup rice', '1 cup spinach']);
+  assert.deepStrictEqual(parseFollow('It takes about 15 minutes.'), { reply: 'It takes about 15 minutes.', meal: null });
+  assert.strictEqual(parseFollow(''), null);
+});

@@ -1422,6 +1422,9 @@ body.review-open .top-right{display:none!important}
 .kit-drop .kit-k{margin-top:4px}
 .kit-drop-ings{margin:4px 0 6px 18px;padding:0;font-size:13px;color:var(--ink)}
 .kit-drop-ings li{margin:2px 0}
+.kit-talk{margin-top:8px;padding-left:10px;border-left:2px solid var(--hairline)}
+.kit-talk-q{font-size:13px;font-weight:600}
+.kit-follow{margin-top:8px}
 
 /* pantry photos (kitchen-photo.js) */
 .kp-row{align-items:center;margin:6px 0}

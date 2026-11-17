@@ -281,7 +281,8 @@ function kpCollect(){
   let changed=false;
   kpMyAsks().forEach(function(a){
     if(a.state==='failed'){
-      if(a.mode==='ideas'){ if(typeof window.kitchenIdeasFailed==='function')window.kitchenIdeasFailed('Your computer couldn’t suggest meals: '+(a.why||'no answer')); }
+      if(a.mode==='ideas'&&a.meal){ if(typeof window.kitchenFollowFailed==='function')window.kitchenFollowFailed(a.meal,'Your computer couldn’t answer: '+(a.why||'no answer')); }
+      else if(a.mode==='ideas'){ if(typeof window.kitchenIdeasFailed==='function')window.kitchenIdeasFailed('Your computer couldn’t suggest meals: '+(a.why||'no answer')); }
       else{ kpUI.why='Your computer couldn’t read the photo: '+(a.why||'no answer'); kpUI.whyFor=a.mode; }
       kpSetAsk(a,{state:'applied'}); changed=true; return;
     }
@@ -316,7 +317,12 @@ async function kpServe(){
     kpSetAsk(a,{state:'reading',reader:(window.devState&&devState.info&&devState.info.name)||'Your computer',readAt:Date.now()});
     persist(); if(typeof schedulePush==='function')schedulePush(); // other computers see it's taken
     let r;
-    if(a.mode==='ideas'){ // the phone's Suggest meals: this computer's pantry is the same synced one
+    if(a.mode==='ideas'&&a.meal){ // the phone's follow-up on one idea
+      const m=state.kitchen.ideas&&state.kitchen.ideas.meals.find(function(x){ return x.name.toLowerCase()===a.meal.toLowerCase(); });
+      r=!m?{why:'That idea isn’t there any more.'}:window.desktop.kitchenIdeas?await window.desktop.kitchenIdeas({pantry:kpPantryList(),
+        follow:{meal:{name:m.name,why:m.why,ingredients:m.ingredients,steps:m.steps},talk:m.talk||[],said:a.said}}):{why:'Romulus on that computer needs an update first.'};
+    }
+    else if(a.mode==='ideas'){ // the phone's Suggest meals: this computer's pantry is the same synced one
       r=window.desktop.kitchenIdeas?await window.desktop.kitchenIdeas({pantry:kpPantryList(),
         recipes:state.kitchen.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),aim:a.said}):{why:'Romulus on that computer needs an update first.'};
       if(r&&!r.why&&!(r.meals&&r.meals.length))r={why:'No ideas came back.'};
@@ -331,8 +337,12 @@ async function kpServe(){
     const cur=(state.kitchen.asks||[]).find(function(x){ return x.id===a.id; }); // still there, and not moved on elsewhere
     if(cur&&cur.state==='reading'){
       if(!r||r.why)kpSetAsk(cur,{state:'failed',why:String((r&&r.why)||'No answer.').slice(0,200)});
+      else if(a.mode==='ideas'&&a.meal){ // the answer goes on the idea, which syncs
+        state.kitchen.ideas=kIdeaFollowed(state.kitchen.ideas,a.meal,a.said,r,Date.now());
+        kpSetAsk(cur,{state:'applied'}); kpRedraw();
+      }
       else if(a.mode==='ideas'){ // nothing for the phone to collect: the ideas themselves sync
-        state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:a.said,meals:r.meals};
+        state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:a.said,meals:kKeepTalked(state.kitchen.ideas,r.meals)};
         kpSetAsk(cur,{state:'applied'}); kpRedraw();
       }
       else kpSetAsk(cur,{state:'done',result:a.mode==='meal'?{meal:r.meal,used:r.used,via:r.via}:{items:r.items,via:r.via}});

@@ -341,3 +341,32 @@ test('recipes keep their steps through a sync, numbering taken off', () => {
   assert.deepStrictEqual(kt.recipes[0].steps, ['Toast it']);
   assert.ok(!('steps' in kt.recipes[1]));
 });
+
+test('a follow-up on an idea: the question and reply go on it, and a change rewrites it', () => {
+  const ideas = { at: 1, via: 'Lupa', aim: '', meals: [
+    { name: 'Egg fried rice', why: 'quick', ingredients: ['2 eggs', '1 cup rice'], steps: ['Cook'] },
+    { name: 'Omelet', why: '', ingredients: ['3 eggs'], steps: ['Cook'] }] };
+  const asked = k.kIdeaFollowed(ideas, 'egg fried rice', 'how long?', { reply: 'About 15 minutes.', meal: null }, 5);
+  assert.deepStrictEqual(asked.meals[0].talk, [{ q: 'how long?', a: 'About 15 minutes.' }]);
+  assert.strictEqual(asked.meals[0].changed, undefined);
+  assert.strictEqual(asked.at, 5);
+  const changed = k.kIdeaFollowed(asked, 'Egg fried rice', 'add chicken', { reply: 'Added chicken; it isn’t in your pantry.',
+    meal: { name: 'Chicken fried rice', why: 'more protein', ingredients: ['2 eggs', '1 cup rice', '6 oz chicken'], steps: ['Cook'] } }, 6);
+  const m = changed.meals[0];
+  assert.strictEqual(m.name, 'Chicken fried rice');
+  assert.strictEqual(m.changed, true);
+  assert.strictEqual(m.talk.length, 2);
+  assert.strictEqual(k.kIdeaFollowed(ideas, 'Gone', 'x', { reply: 'y' }, 7), ideas);
+  // it survives the sync clean-up, and new ideas keep it at the top
+  const norm = k.normKitchen({ ideas: changed });
+  assert.deepStrictEqual(norm.ideas.meals[0].talk, m.talk);
+  assert.strictEqual(norm.ideas.meals[0].changed, true);
+  const next = k.kKeepTalked(changed, [{ name: 'Rice bowl', ingredients: ['rice'] }, { name: 'chicken fried rice', ingredients: ['x'] }]);
+  assert.deepStrictEqual(next.map((x) => x.name), ['Chicken fried rice', 'Rice bowl']);
+});
+
+test('a phone follow-up ask keeps the idea it is about', () => {
+  const norm = k.normKitchen({ asks: [{ id: 'a1', mode: 'ideas', meal: 'Omelet', said: 'add cheese', state: 'waiting' }] });
+  assert.strictEqual(norm.asks[0].meal, 'Omelet');
+  assert.strictEqual(norm.asks[0].said, 'add cheese');
+});

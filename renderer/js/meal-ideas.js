@@ -144,6 +144,56 @@ function mealIdeasParse(text) {
   }).slice(0, 8);
 }
 
+/* A follow-up on one idea: he asks about it ("how long does it take?") or asks for a change ("add rice", "make
+   it spicier"). The answer is a short reply, and when he asked for a change, the meal rewritten. It still leans on
+   his pantry; something he asks to add that he doesn't have is fine (the card then says what he'd need). */
+function mealIdeasFollowPrompt() {
+  return 'You are helping one person with a meal idea you suggested from the food he has at home.\n' +
+    '- Answer his question or make the change he asks for. Keep the reply short and plain: 1 to 4 sentences.\n' +
+    '- Keep the meal mostly from his pantry (salt, pepper, water and oil count as always there) unless he asks ' +
+    'to add something; if he does, add it, and say in the reply if it isn\'t in his pantry.\n' +
+    '- Follow his preferences strictly: never use a food he avoids or is allergic to.\n' +
+    '- If he only asked a question, "meal" is null. If he asked for any change to the meal, "meal" is the whole ' +
+    'meal rewritten: name, why, ingredients (short lines with amounts), steps (3 to 8 short lines).\n' +
+    '- Plain words, no emoji, no markdown.\n' +
+    'Answer with ONLY a JSON object, no other words and no code fence:\n' +
+    '{"reply":"...","meal":null}\n';
+}
+
+// {meal:{name, why, ingredients, steps}, talk:[{q, a}], said, pantry, prefs} → the question's data part
+function mealIdeasFollowInput({ meal, talk, said, pantry, prefs }) {
+  const m = meal || {};
+  const amt = (x) => (x.qty != null ? x.qty + (x.unit ? ' ' + x.unit : '') + ' ' : '');
+  const lines = [];
+  lines.push('## The meal\n' + miClean(m.name, 80) + (miClean(m.why, 160) ? '\n' + miClean(m.why, 160) : '') +
+    '\nIngredients:\n' + (m.ingredients || []).map((x) => '- ' + miClean(x, 80)).join('\n') +
+    '\nSteps:\n' + (m.steps || []).map((x, i) => (i + 1) + '. ' + miClean(x, 240)).join('\n'));
+  const t = (talk || []).filter((x) => x && miClean(x.q)).slice(-6);
+  if (t.length) lines.push('## What he asked before\n' + t.map((x) => 'He: ' + miClean(x.q, 300) + '\nYou: ' + miClean(x.a, 600)).join('\n'));
+  lines.push('## His preferences\n' + (String(prefs || '').trim().slice(0, 4000) || '(none saved)'));
+  lines.push('## His pantry (what he has now)\n' + ((pantry || []).filter((x) => x && miClean(x.name)).slice(0, 300)
+    .map((x) => '- ' + amt(x) + miClean(x.name)).join('\n') || '(empty)'));
+  lines.push('## What he says now\n' + miClean(said, 300));
+  return lines.join('\n\n');
+}
+
+// the AI's text → {reply, meal|null}; null when there's nothing to show. A plain-words answer still answers
+function mealIdeasParseFollow(text) {
+  const t = miStrip(text);
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== '{') continue;
+    const end = miSpan(t, i);
+    if (end < 0) break;
+    const j = miJson(t.slice(i, end + 1));
+    if (!j || typeof j !== 'object' || !('reply' in j || 'meal' in j)) continue;
+    const reply = miClean(j.reply, 1200), meal = miMeal(j.meal);
+    return reply || meal ? { reply: reply || 'Changed it.', meal } : null;
+  }
+  const said = miClean(t, 1200);
+  return said ? { reply: said, meal: null } : null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { prompt: mealIdeasPrompt, input: mealIdeasInput, parse: mealIdeasParse, planLines: mealIdeasPlanLines };
+  module.exports = { prompt: mealIdeasPrompt, input: mealIdeasInput, parse: mealIdeasParse, planLines: mealIdeasPlanLines,
+    followPrompt: mealIdeasFollowPrompt, followInput: mealIdeasFollowInput, parseFollow: mealIdeasParseFollow };
 }

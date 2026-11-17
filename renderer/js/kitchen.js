@@ -178,7 +178,12 @@ function kIdeas(x){
   const s=function(v,n){ return String(v==null?'':v).trim().slice(0,n); };
   const lines=function(a,each,max){ return (Array.isArray(a)?a:[]).map(function(v){ return s(v,each); }).filter(Boolean).slice(0,max); };
   const meals=x.meals.map(function(m){
-    return m&&typeof m==='object'?{name:s(m.name,80),why:s(m.why,160),ingredients:lines(m.ingredients,80,25),steps:lines(m.steps,240,10)}:null;
+    if(!m||typeof m!=='object')return null;
+    const o={name:s(m.name,80),why:s(m.why,160),ingredients:lines(m.ingredients,80,25),steps:lines(m.steps,240,10)};
+    const talk=(Array.isArray(m.talk)?m.talk:[]).filter(function(t){ return t&&s(t.q,300); }).map(function(t){ return {q:s(t.q,300),a:s(t.a,1200)}; }).slice(-8);
+    if(talk.length)o.talk=talk;
+    if(m.changed===true)o.changed=true; // he asked for a change: kept even if it now needs something he doesn't have
+    return o;
   }).filter(function(m){ return m&&m.name&&m.ingredients.length; }).slice(0,8);
   return meals.length?{at:Number(x.at)||0,via:s(x.via,60),aim:s(x.aim,300),meals:meals}:null;
 }
@@ -186,7 +191,8 @@ function kIdeas(x){
    adds one of these (or, for a meal he typed, just his words in said, no picture); a computer with AI connections (or Lupa) reads it and writes the result back; the phone
    that asked (from) uses the result and marks it applied.
    mode 'ideas' is the phone asking for meal ideas (said = what to aim for, which may be nothing): the computer
-   that answers puts them in ideas, where every device sees them, and marks the ask applied itself. */
+   that answers puts them in ideas, where every device sees them, and marks the ask applied itself. With meal set
+   (an idea's name) it's a follow-up on that idea instead: said is his question, and the answer goes on the idea. */
 const KITCHEN_ASK_STATES=['waiting','reading','failed','done','applied'];
 function kAsk(x){
   const ideas=!!x&&x.mode==='ideas';
@@ -194,6 +200,7 @@ function kAsk(x){
   if(!x||!x.id||(x.mode!=='food'&&x.mode!=='meal'&&x.mode!=='shop'&&!ideas)||(!ideas&&!said&&!kPic(x.url)))return null;
   const a={id:String(x.id),mode:x.mode,url:said||ideas?'':String(x.url).slice(0,600),said:said,from:String(x.from||'').slice(0,80),at:Number(x.at)||0,updatedAt:Number(x.updatedAt)||0,
     state:KITCHEN_ASK_STATES.indexOf(x.state)>=0?x.state:'waiting',reader:String(x.reader||'').slice(0,60),readAt:Number(x.readAt)||0,why:String(x.why||'').slice(0,200)};
+  if(ideas&&typeof x.meal==='string'&&x.meal.trim())a.meal=x.meal.trim().slice(0,80); // a follow-up on that idea: said is his question
   if(x.result&&typeof x.result==='object'&&JSON.stringify(x.result).length<20000)a.result=x.result;
   return a;
 }
@@ -474,9 +481,31 @@ function pantryRanOut(k,names,now){
   return gone;
 }
 
+/* A follow-up answer on one idea ({reply, meal|null}) → the ideas with his question and the reply on that idea,
+   and the meal rewritten when he asked for a change. Same ideas back when that idea is gone. */
+function kIdeaFollowed(ideas,name,said,out,now){
+  if(!ideas||!out)return ideas;
+  const low=String(name||'').toLowerCase();
+  let hit=false;
+  const meals=ideas.meals.map(function(m){
+    if(hit||m.name.toLowerCase()!==low)return m;
+    hit=true;
+    const n=Object.assign({},m,out.meal?{name:out.meal.name||m.name,why:out.meal.why,ingredients:out.meal.ingredients,steps:out.meal.steps,changed:true}:{});
+    n.talk=(m.talk||[]).concat([{q:String(said).slice(0,300),a:String(out.reply||'').slice(0,1200)}]).slice(-8);
+    return n;
+  });
+  return hit?Object.assign({},ideas,{at:now||Date.now(),meals:meals}):ideas;
+}
+// new ideas in: the ones he's been talking about stay at the top (up to 3), the rest are the new ones
+function kKeepTalked(old,fresh){
+  const kept=(old&&old.meals||[]).filter(function(m){ return m.talk&&m.talk.length; }).slice(0,3);
+  const names=kept.map(function(m){ return m.name.toLowerCase(); });
+  return kept.concat((fresh||[]).filter(function(m){ return names.indexOf(m.name.toLowerCase())<0; })).slice(0,8);
+}
+
 if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kPantryLines:kPantryLines,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
-    mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
+    mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,kIdeaFollowed:kIdeaFollowed,kKeepTalked:kKeepTalked,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
     shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
     uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized,kSteps:kSteps};
 }
@@ -849,12 +878,58 @@ async function kAskIdeas(){
       pantry:k.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
       recipes:k.recipes.map(function(x){ return {name:x.name,liked:x.liked}; }),
       aim:kitchenUI.aim, plan:kPlan()});
-    if(r&&r.meals&&r.meals.length){ state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:kitchenUI.aim.trim().slice(0,300),meals:r.meals}; persist(); }
+    if(r&&r.meals&&r.meals.length){ state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:kitchenUI.aim.trim().slice(0,300),meals:kKeepTalked(state.kitchen.ideas,r.meals)}; persist(); }
     else kitchenUI.ideasWhy=(r&&r.why)||'No ideas came back. Try again.';
   }catch(e){ kitchenUI.ideasWhy='Couldn’t ask your AIs: '+(e&&e.message||e); }
   kitchenUI.ideasBusy=false; renderKitchen();
 }
 function kIdeaSaved(m){ return state.kitchen.recipes.some(function(r){ return r.name.toLowerCase()===m.name.toLowerCase(); }); }
+/* a follow-up on one idea: kitchenUI.follow[name] = {text he's typing, busy, why}. On a phone it goes to a
+   computer as an ideas ask with meal set (kitchen-photo.js kpServe answers it) */
+function kFollowState(name){ const k=name.toLowerCase(); return kitchenUI.follow[k]||(kitchenUI.follow[k]={text:'',busy:false,why:''}); }
+function kFollowWaiting(name){
+  return kIdeasRemote()&&kpMyAsks().some(function(a){ return a.mode==='ideas'&&a.meal&&a.meal.toLowerCase()===name.toLowerCase()&&(a.state==='waiting'||a.state==='reading'); });
+}
+async function kAskFollow(m){
+  const f=kFollowState(m.name), said=f.text.trim().slice(0,300);
+  if(!said||f.busy)return;
+  f.why='';
+  if(!kIdeasLocal()){
+    if(!kIdeasRemote()||kFollowWaiting(m.name))return;
+    const now=Date.now();
+    if(!Array.isArray(state.kitchen.asks))state.kitchen.asks=[];
+    state.kitchen.asks.push({id:uid(),mode:'ideas',meal:m.name,url:'',said:said,from:kpMe(),at:now,updatedAt:now,state:'waiting',reader:'',readAt:0,why:''});
+    f.text=''; kSave(); return;
+  }
+  f.busy=true; renderKitchen();
+  try{
+    const r=await window.desktop.kitchenIdeas({pantry:state.kitchen.items.map(function(i){ return {name:i.name,qty:i.qty,unit:i.unit}; }),
+      follow:{meal:{name:m.name,why:m.why,ingredients:m.ingredients,steps:m.steps},talk:m.talk||[],said:said}});
+    if(r&&!r.why){ state.kitchen.ideas=kIdeaFollowed(state.kitchen.ideas,m.name,said,r,Date.now()); f.text=''; persist(); }
+    else f.why=(r&&r.why)||'No answer. Try again.';
+  }catch(e){ f.why='Couldn’t ask your AIs: '+(e&&e.message||e); }
+  f.busy=false; renderKitchen();
+}
+// what he asked about an idea and what came back, then the box to ask more (can: this device can ask)
+function kDrawFollow(m,card,can){
+  (m.talk||[]).forEach(function(t){
+    const row=el('div','kit-talk');
+    row.appendChild(el('div','kit-talk-q',t.q)); row.appendChild(el('div','kit-card-sub',t.a));
+    card.appendChild(row);
+  });
+  if(!can)return;
+  const f=kFollowState(m.name), waiting=kFollowWaiting(m.name);
+  const form=el('div','kit-form kit-follow');
+  const box=document.createElement('input'); box.className='sm kit-grow'; box.value=f.text;
+  box.placeholder='Ask about it or change it: add rice, make it spicier, how long?'; box.setAttribute('aria-label','Ask about '+m.name);
+  box.addEventListener('input',function(){ f.text=box.value.slice(0,300); });
+  box.addEventListener('keydown',function(e){ if(e.key==='Enter')kAskFollow(m); });
+  const go=el('button','ghost',f.busy?'Thinking…':waiting?'Asked your computer…':'Ask');
+  go.disabled=f.busy||waiting;
+  go.addEventListener('click',function(){ kAskFollow(m); });
+  form.appendChild(box); form.appendChild(go); card.appendChild(form);
+  if(f.why)card.appendChild(el('div','kit-hint',f.why));
+}
 function kDrawIdeas(){
   const box=$('kitIdeas'); if(!box)return;
   const ideas=state.kitchen.ideas, can=kIdeasLocal()||kIdeasPhoneAi()||kIdeasRemote(), waiting=kIdeasWaiting();
@@ -898,6 +973,7 @@ function kDrawIdeas(){
     more.appendChild(el('div','kit-card-sub',m.ingredients.join(', ')));
     if(m.steps.length){ const ol=document.createElement('ol'); ol.className='kit-idea-steps'; m.steps.forEach(function(st){ ol.appendChild(el('li','',st)); }); more.appendChild(ol); }
     card.appendChild(more);
+    kDrawFollow(m,card,kIdeasLocal()||kIdeasRemote());
     const btns=el('div','kit-card-btns');
     const saved=kIdeaSaved(m), save=el('button',saved?'ghost':'btn-accent',saved?'Saved to recipes':'Save recipe');
     save.disabled=saved;
@@ -1197,6 +1273,7 @@ window.renderKitchen=renderKitchen;
 window.kitchenSync=kitchenSync;
 window.kitchenProfile=kitchenProfile;
 window.kitchenProfile=kitchenProfile;
+window.kitchenFollowFailed=function(name,why){ kFollowState(String(name||'')).why=String(why||'').slice(0,300); };
 // kitchen-photo.js kpCollect: the computer couldn't come up with the meal ideas this phone asked for
 window.kitchenIdeasFailed=function(why){ kitchenUI.ideasWhy=String(why||'').slice(0,300); };
 }

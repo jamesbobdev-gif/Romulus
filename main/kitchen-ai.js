@@ -2,6 +2,7 @@
    page, his preferences from the synced ':prefs' row and his usual groceries from his grocery orders. One ask,
    Lupa first so it stays home when it can, then his cloud AIs in his order (main/overlay.js readPicture with no
    picture). The prompt and the answer's clean-up are in agent/meal-ideas.js.
+   With follow set it's a question or change on one idea instead (follow below).
    kitchen:photo — the Kitchen tab's pantry photos: groceries to add, or a meal that used some of the pantry.
    Same order (readPicture with the picture); the prompt and clean-up are in renderer/js/pantry-photo.js.
    kitchen:week — the Kitchen tab's "Plan your week": the same data, one Sunday cook for Monday to Sunday
@@ -39,6 +40,7 @@ async function ideas(_e, req) {
   req = req || {};
   const pantry = Array.isArray(req.pantry) ? req.pantry : [];
   if (!pantry.length) return { why: 'Add some food to the Pantry first.' };
+  if (req.follow) return follow(req.follow, pantry);
   asking = true;
   try {
     const question = mealIdeas.prompt() + '\n' + await askData(req, pantry);
@@ -51,6 +53,26 @@ async function ideas(_e, req) {
   } catch (e) {
     return { why: String(e && e.message || e).slice(0, 200) };
   } finally { asking = false; }
+}
+
+/* A follow-up on one idea: {meal, talk, said} → {reply, meal|null, via} or {why}. Same order of AIs. */
+let following = false;
+async function follow(f, pantry) {
+  const said = typeof f.said === 'string' ? f.said.trim().slice(0, 300) : '';
+  if (!said || !f.meal || typeof f.meal !== 'object') return { why: 'Nothing to ask.' };
+  if (following) return { why: 'Still answering the last one.' };
+  following = true;
+  try {
+    const prefs = await agentRow(':prefs').catch(() => '');
+    const question = mealIdeas.followPrompt() + '\n' + mealIdeas.followInput({ meal: f.meal, talk: f.talk, said, pantry, prefs });
+    const r = await ctx.readPicture(question, null);
+    if (!r || !r.text) { ctx.agentLog('meal follow-up: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
+    const out = mealIdeas.parseFollow(r.text);
+    ctx.agentLog('meal follow-up: ' + (out ? (out.meal ? 'changed' : 'answered') : 'unusable') + ' from ' + r.via);
+    return out ? Object.assign(out, { via: r.via }) : { why: r.via + ' answered, but not usefully. Try again.' };
+  } catch (e) {
+    return { why: String(e && e.message || e).slice(0, 200) };
+  } finally { following = false; }
 }
 
 /* {mode: 'food'|'shop'|'meal', image: {mime, b64}, pantry} → food: {items, via}; meal: {meal, used, via}; or {why}.
