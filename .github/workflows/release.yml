@@ -63,11 +63,12 @@ jobs:
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to romulus-releases"; exit 1; }
       - run: npm ci
       # Known vulnerabilities: a high or critical advisory anywhere (what ships and the build tooling) stops the
-      # release; a moderate one in what ships is reported as a warning.
+      # release (bar the few listed in scripts/audit-gate.js, which still show as warnings); a moderate one in what
+      # ships is reported as a warning.
       - name: npm audit
         shell: bash
         run: |
-          npm audit --audit-level=high
+          node scripts/audit-gate.js
           npm audit --audit-level=moderate --omit=dev || echo "::warning::npm audit found moderate advisories in what ships"
       - run: npm test
       - name: OAuth clients

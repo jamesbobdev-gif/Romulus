@@ -379,9 +379,37 @@ grant execute on function public.sync_usage(text) to anon, authenticated, servic
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
   values ('agent-attachments', 'agent-attachments', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
   on conflict (id) do nothing;
+-- Only a well-formed name in a 40-hex hashed folder, at most 300 pictures per folder, 60 uploads an hour per network.
+-- (supabase/migrations/20261120_attachment_upload_guard.sql)
+create table if not exists public.sync_upload_tries (
+  ip_hash text,
+  hour timestamptz,
+  n integer default 0,
+  primary key (ip_hash, hour)
+);
+alter table public.sync_upload_tries enable row level security;
+revoke all on table public.sync_upload_tries from anon, authenticated;
+create or replace function public.attachment_upload_allowed(p_name text)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare folder text; cnt int;
+begin
+  if p_name is null or p_name !~ '^tk_agent_att_[0-9a-f]{40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$' then return false; end if;
+  folder := split_part(p_name, '/', 1);
+  begin
+    select count(*) into cnt from storage.objects where bucket_id = 'agent-attachments' and name like folder || '/%';
+    if cnt >= 300 then return false; end if;
+  exception when others then null; end; -- cannot read the bucket's table here: the per-network cap still holds
+  delete from public.sync_upload_tries where hour < now() - interval '1 day';
+  insert into public.sync_upload_tries as u (ip_hash, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), date_trunc('hour', now()), 1)
+    on conflict (ip_hash, hour) do update set n = u.n + 1
+    returning u.n into cnt;
+  return cnt <= 60;
+end $$;
+grant execute on function public.attachment_upload_allowed(text) to anon, authenticated, service_role;
 drop policy if exists "agent attachments: app can upload" on storage.objects;
 create policy "agent attachments: app can upload" on storage.objects for insert to anon
-  with check (bucket_id = 'agent-attachments' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  with check (bucket_id = 'agent-attachments' and public.attachment_upload_allowed(name));
 
 -- ───────────── the local model's downloads ─────────────
 -- Files the local model's browser downloaded on its own computer (a worksheet off Blackboard) reach the other
