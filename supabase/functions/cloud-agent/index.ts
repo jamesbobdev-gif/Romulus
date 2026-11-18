@@ -119,6 +119,9 @@ class SayError extends Error {}
 // (or any other single word: a key in a newer format)
 const AI_KEY_CLEAN = (AI_KEY.match(/sk-ant-[A-Za-z0-9_-]+/) || [""])[0] || (/^\S{20,}$/.test(AI_KEY.trim()) ? AI_KEY.trim() : "");
 
+// for the status call: whether the key secret is there and usable, never anything about its value
+const KEY_STATE = AI_KEY_CLEAN ? "ok" : AI_KEY ? "unusable" : "missing";
+
 // ── one task, start to finish ─────────────────────────────────────────────
 async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, today: string, cfg: any) {
   let cents = 0;
@@ -182,7 +185,7 @@ Deno.serve(async (req: Request) => {
   try {
     if (b.action === "status") {
       const s = await rpc("cloud_agent_status", { p_sync_key: b.syncKey });
-      return json({ enabled: !!s.enabled && !!AI_KEY_CLEAN, plan: s.plan || null, used: s.used || 0, limit: s.limit || 0 });
+      return json({ enabled: !!s.enabled && !!AI_KEY_CLEAN, plan: s.plan || null, used: s.used || 0, limit: s.limit || 0, key: KEY_STATE });
     }
     if (b.action === "take") {
       if (!okJob(b.job)) return json({ error: "bad request" }, 400);
