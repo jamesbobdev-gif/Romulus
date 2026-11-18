@@ -408,11 +408,13 @@ function canonTasks(tasks){
   return stableJson(tasks.slice().sort(function(a,b){ return a.id<b.id?-1:1; }));
 }
 function stripWs(t){ const c=Object.assign({},t); delete c.ws; return c; }
+// a task as it goes up: also without the old conversation of a long-finished Agent task, which stays on this device (history-trim.js)
+function upTask(t){ return stripWs(histUpForm(t)); }
 // Doc pushed to a channel: only that workspace's tasks, without the ws field —
 // remote docs stay compatible with devices that know nothing about workspaces.
 // The family list (shared with other people) carries only its own deletions and the devices on it (family-list.js).
 function wsDoc(ws,remoteDoc){
-  const d={v:1,tasks:state.tasks.filter(function(t){ return taskWs(t)===ws; }).map(stripWs),tombstones:state.tombstones};
+  const d={v:1,tasks:state.tasks.filter(function(t){ return taskWs(t)===ws; }).map(upTask),tombstones:state.tombstones};
   if(ws==='family'&&typeof familyDocExtras==='function')Object.assign(d,familyDocExtras(remoteDoc));
   return d;
 }
@@ -434,6 +436,7 @@ function mergeRemoteWs(remoteDoc,ws){
     if(!prev||(t.updatedAt||0)>(prev.updatedAt||0)){
       // a lane is only ever changed (switching), never removed: a newer copy that hasn't heard of it yet keeps it
       if(prev&&prev.lane&&!t.lane){ t=Object.assign({},t,{lane:prev.lane}); }
+      if(prev)t=histCarry(t,prev); // the online copy comes without the old conversation: this device's stays (history-trim.js)
       byId[t.id]=t;
     } else if(t.lane&&!prev.lane){ byId[t.id]=Object.assign({},prev,{lane:t.lane}); }
   });
@@ -459,7 +462,9 @@ function mergeRemoteWs(remoteDoc,ws){
   }
   const changedLocal=canonTasks(merged)!==canonTasks(localWs)||Object.keys(movedOut).length>0;
   const upTombs=ws==='family'&&typeof familyTombs==='function'?familyTombs(mergedTombs,remoteDoc):mergedTombs; // what wsDoc sends
-  const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw)||upTombs.length!==rTombs.length;
+  // the online copy is read the way this device would send it, so one that still carries an old conversation
+  // (sent by an older build) is left as it is rather than fought over
+  const changedRemote=canonTasks(merged.map(upTask))!==canonTasks(rTasksRaw.map(histUpForm))||upTombs.length!==rTombs.length;
   state.tasks=others.concat(merged);
   state.tombstones=mergedTombs;
   if(changedLocal&&typeof billAlerts==='function')billAlerts(); // a bill to-do came from the computer (bill-reminders.js)
@@ -486,6 +491,8 @@ async function syncOnce(){
   }
   let firstErr=null, anyLocal=false;
   const list=profileList();
+  // long-finished Agent tasks stop sending their old conversation (history-trim.js); saved here below like any change
+  if(list.indexOf('agent')!==-1&&histArchive(state.tasks,Date.now()))anyLocal=true;
   for(let i=0;i<list.length;i++){
     const ws=list[i], p=syncState.cfg[ws];
     try{
