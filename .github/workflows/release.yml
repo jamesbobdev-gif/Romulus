@@ -63,12 +63,14 @@ jobs:
           echo "token permissions on romulus-releases: $perms"
           echo "$perms" | grep -q '"push":true' || { echo "RELEASES_TOKEN has no write (Contents: read and write) access to romulus-releases"; exit 1; }
       - run: npm ci
-      # Known vulnerabilities: a high or critical advisory anywhere (what ships and the build tooling) stops the
-      # release; a moderate one in what ships is reported as a warning.
+      # Known vulnerabilities: a high or critical advisory in what ships stops the release. One in the build tooling
+      # only (never in the app) is a warning: an advisory with no fixed version yet (picomatch, 2026-11) would
+      # otherwise stop every release. A moderate one in what ships is a warning too.
       - name: npm audit
         shell: bash
         run: |
-          npm audit --audit-level=high
+          npm audit --audit-level=high --omit=dev
+          npm audit --audit-level=high || echo "::warning::npm audit found high advisories in the build tooling (not shipped)"
           npm audit --audit-level=moderate --omit=dev || echo "::warning::npm audit found moderate advisories in what ships"
       - run: npm test
       - name: OAuth clients
