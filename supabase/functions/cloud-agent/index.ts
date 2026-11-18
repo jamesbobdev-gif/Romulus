@@ -21,7 +21,9 @@ import { CLOUD_PROMPT } from "./prompt.ts";
 
 const BASE = Deno.env.get("SUPABASE_URL")!;
 const SKEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
+// the secret's name in any capitals (Anthropic_Api_key works too): the dashboard keeps names as typed
+const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY") ||
+  (Object.entries(Deno.env.toObject()).find(([k]) => k.toUpperCase() === "ANTHROPIC_API_KEY") || ["", ""])[1] || "";
 const H = { apikey: SKEY, Authorization: `Bearer ${SKEY}`, "Content-Type": "application/json" };
 const CORS = {
   "Access-Control-Allow-Origin": "*",
