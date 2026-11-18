@@ -636,9 +636,12 @@ const MAX_BATCH = 20;
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (!TOKEN || Object.values(LISTS).some((k) => !k)) return new Response("Not configured", { status: 503 });
-  // Authorization: Bearer <token> only: a token in the address would land in request logs and proxies
+  // Authorization: Bearer <token>, or ?token= in the address. Claude's custom connectors can't send a header (they
+  // only know a plain address or OAuth), so the address form stays, even though it lands in the gateway's request
+  // logs: if it leaks, make a new one in app_secrets tasks_mcp_token and paste the new address into the connector.
   const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim() || null;
-  if (!(await tokenOk(bearer))) return new Response("Not found", { status: 404 });
+  const given = bearer || new URL(req.url).searchParams.get("token");
+  if (!(await tokenOk(given))) return new Response("Not found", { status: 404 });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: CORS });
 
   let body: unknown;
