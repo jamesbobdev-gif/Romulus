@@ -214,7 +214,9 @@ function buildPanel(t){
       :t.status==='working'
       ?(cloudName==='Claude'?'Write below to steer it: it reads your message after its next step.':'Usually under a minute.')
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
-      :'It starts within a few seconds while your computer has Tasks running.'));
+      :localStat&&localStat.via==='worker'&&!localStat.quiet
+      ?'It starts within a few seconds while your computer has Romulus running. If it’s off, '+(localStat.name||'your local model’s computer')+' takes it after about 3 minutes.'
+      :'It starts within a few seconds while your computer has Romulus running.'));
     if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
     panel.appendChild(sb);
     // its chain of thought, one box: Claude's checklist (agent/run-live.js) on top, what it's doing under it,

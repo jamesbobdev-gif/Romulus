@@ -141,3 +141,20 @@ test('lookAgain reads the row afresh but keeps what was last heard', async (t) =
   assert.ok(await worker.present(b), 'a failed read keeps the last heartbeat');
   assert.strictEqual(reads, 2);
 });
+
+test('standIn takes cloud tasks nobody claimed for a few minutes, never inbox ones', () => {
+  const now = 10 * 60 * 1000;
+  const old = { id: 'a', updatedAt: now - worker.STANDIN_MS - 1 };
+  const fresh = { id: 'b', updatedAt: now - 60 * 1000 };
+  const mail = { id: 'c', updatedAt: 0, mail: true };
+  const r = worker.standIn([old, fresh, mail], { isMail: (t) => !!t.mail, now });
+  assert.deepStrictEqual(r.ready.map((t) => t.id), ['a']);
+  assert.strictEqual(r.wait, worker.STANDIN_MS - 60 * 1000, 'looks again when the fresh one is old enough');
+  assert.deepStrictEqual(worker.standIn([mail], { isMail: (t) => !!t.mail, now }), { ready: [], wait: 0 });
+});
+
+test('standsIn: only the worker, unless turned off', () => {
+  assert.strictEqual(worker.standsIn({}), false);
+  assert.strictEqual(worker.standsIn({ localModel: { worker: true } }), true);
+  assert.strictEqual(worker.standsIn({ localModel: { worker: true, cloudStandIn: false } }), false);
+});

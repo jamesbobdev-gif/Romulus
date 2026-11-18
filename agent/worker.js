@@ -135,4 +135,23 @@ function share(tasks, { worker, workerUp, isMoney, now = Date.now() }) {
   return tasks;
 }
 
-module.exports = { SUFFIX, BEAT_MS, FRESH_MS, GRACE_MS, MONEY_WAIT_MS, isWorker, freshWorker, returningWorker, heartbeat, beat, lastBeatError, nextBeatIn, BEAT_RETRY_MS, present, lastSeen, forget, lookAgain, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };
+/* Cloud tasks when his other computers are off (pure, for tests). The worker normally leaves the cloud lane to
+   them, but a cloud task nobody has picked up for STANDIN_MS means no computer is on (or awake), so the worker
+   runs it with its own cloud AIs instead of leaving him waiting. Inbox tasks stay for a computer with his
+   mailboxes. config localModel.cloudStandIn: false turns it off.
+   → { ready: the tasks to run now, wait: ms until the next one is old enough, or 0 when none is waiting } */
+const STANDIN_MS = 3 * 60 * 1000;
+function standIn(tasks, { isMail = () => false, now = Date.now(), waitMs = STANDIN_MS } = {}) {
+  const ready = [];
+  let wait = 0;
+  for (const t of tasks) {
+    if (isMail(t)) continue;
+    const left = (Number(t.updatedAt) || 0) + waitMs - now;
+    if (left <= 0) ready.push(t);
+    else if (!wait || left < wait) wait = left;
+  }
+  return { ready, wait };
+}
+const standsIn = (cfg) => isWorker(cfg) && ((cfg && cfg.localModel) || {}).cloudStandIn !== false;
+
+module.exports = { SUFFIX, BEAT_MS, FRESH_MS, GRACE_MS, MONEY_WAIT_MS, STANDIN_MS, standIn, standsIn, isWorker, freshWorker, returningWorker, heartbeat, beat, lastBeatError, nextBeatIn, BEAT_RETRY_MS, present, lastSeen, forget, lookAgain, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };

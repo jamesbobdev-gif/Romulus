@@ -110,6 +110,22 @@ function groceryDone(raw) {
   const g = loadSkills().find((s) => s.name === 'groceries');
   if (g && g.match && fresh.some((t) => g.match.test(skillText(t)))) closeTabsAfterRun = true;
 }
+/* On the local model's own computer: the queued cloud tasks no other computer has taken for a few minutes
+   (agent/worker.js standIn). Timed: it looks again when the next waiting one is old enough, since nothing else
+   would wake it then. */
+const workerMod = require('./worker');
+let standInTimer = null, standInLogged = '';
+function standInQueued(queued, timed) {
+  const { ready, wait } = workerMod.standIn(queued, { isMail: (t) => wantsInbox(t) });
+  if (timed) {
+    clearTimeout(standInTimer); standInTimer = null;
+    if (wait) standInTimer = setTimeout(() => { standInTimer = null; scheduleAgentRun(); }, wait + 2000);
+  }
+  const key = ready.map((t) => t.id).sort().join(',');
+  if (key && timed && key !== standInLogged) agentLog('stand-in: ' + ready.length + ' cloud task(s) unclaimed for ' + (workerMod.STANDIN_MS / 60000) + ' min, taking them');
+  if (timed) standInLogged = key;
+  return ready;
+}
 function scheduleAgentRun(raw) {
   if (raw != null) groceryDone(raw);
   if (closeTabsAfterRun && !isBusy()) {
@@ -118,11 +134,14 @@ function scheduleAgentRun(raw) {
   }
   if (live && raw != null) live.forward(raw); // he wrote on a task Claude is working on: it hears it now
   if ((readConfig().agentRunner || {}).enabled === false) return;
-  if ((readConfig().localModel || {}).worker) return; // the local model's own computer only works the local lane (agent/worker.js)
+  // the local model's own computer works the local lane; cloud tasks only once they've sat unclaimed (no other computer on)
+  const worker = workerMod.isWorker(readConfig());
+  if (worker && !workerMod.standsIn(readConfig())) return;
   if (!decided(raw)) return; // d1 is looking at new tasks first: this runs again when it's done
-  const queued = queuedAgentTasks(raw);
+  const queued = worker ? standInQueued(queuedAgentTasks(raw), true) : queuedAgentTasks(raw);
   const n = queued.length;
   if (!n) return;
+  if (worker && !cloudOrder().length) { agentLog('stand-in: ' + n + ' cloud task(s) waiting, but no cloud AI is set up here'); return; }
   // Claude out of usage and no other AI connected: mark new ones as waiting, the timer starts them
   if (Date.now() < usage.blockedUntil() && !cloudOrder().some((id) => id !== 'claude')) {
     sendToRenderer('agent:waiting', { ids: queued.map((t) => t.id), until: usage.blockedUntil() });
@@ -144,7 +163,7 @@ async function startAgentRun() {
   if (agentProc || ctx.memoryTidying()) { agentLog('skip: a run is already going'); return; } // it re-checks the queue when it exits
   if (!decided()) return; // a task came in after the timer started: d1 looks first, then this is scheduled again
   const cfg = readConfig().agentRunner || {};
-  const all = queuedAgentTasks();
+  const all = workerMod.isWorker(readConfig()) ? standInQueued(queuedAgentTasks(), false) : queuedAgentTasks();
   if (!all.length) { agentLog('skip: nothing queued any more'); return; }
   // Gmail and the web never share a run: an email (or a page) could tell the AI to send his mail to
   // some server, and a run that can read mail has no way to reach one. Inbox tasks go first, on their
