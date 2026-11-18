@@ -114,7 +114,8 @@ const okPub = (p: any) => p && p.kty === "EC" && p.crv === "P-256" && typeof p.x
 // a failure in words written here, safe to show the person (anything else is replaced by a plain message)
 class SayError extends Error {}
 // the key as pasted: a whole "curl ... x-api-key: sk-ant-..." snippet from the console works too
-const AI_KEY_CLEAN = (AI_KEY.match(/sk-ant-[A-Za-z0-9_-]+/) || [""])[0];
+// (or any other single word: a key in a newer format)
+const AI_KEY_CLEAN = (AI_KEY.match(/sk-ant-[A-Za-z0-9_-]+/) || [""])[0] || (/^\S{20,}$/.test(AI_KEY.trim()) ? AI_KEY.trim() : "");
 
 // ── one task, start to finish ─────────────────────────────────────────────
 async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, today: string, cfg: any) {
