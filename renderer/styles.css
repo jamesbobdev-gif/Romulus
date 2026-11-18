@@ -273,6 +273,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 @media(prefers-reduced-motion:reduce){.busy-star{animation-duration:6s}.busy-verb,.busy-verb.swap{animation:none;-webkit-text-fill-color:var(--accent)}}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
 .agent-busy.running b{color:var(--accent)}
+.cloud-offer{margin-top:10px;padding-top:9px;border-top:1px solid var(--hairline);white-space:normal}
+.cloud-offer p{margin:4px 0 8px;color:var(--muted)}
+.cloud-offer-row{display:flex;flex-wrap:wrap;gap:6px}
 .tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */
 .tab.busy::after{content:'';position:absolute;top:50%;right:5px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
 @keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}

@@ -218,6 +218,7 @@ function buildPanel(t){
       ?'It starts within a few seconds while your computer has Romulus running. If it’s off, '+(localStat.name||'your local model’s computer')+' takes it after about 3 minutes.'
       :'It starts within a few seconds while your computer has Romulus running.'));
     if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
+    if(t.status==='queued'&&typeof window.cloudAgOffer==='function')window.cloudAgOffer(t,sb); // nobody took it: Romulus cloud can (cloud-agent.js)
     panel.appendChild(sb);
     // its chain of thought, one box: Claude's checklist (agent/run-live.js) on top, what it's doing under it,
     // both filled live without a re-render (agent-results.js onAgentLive)

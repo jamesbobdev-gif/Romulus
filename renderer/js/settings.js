@@ -77,6 +77,7 @@ function setSettingsOpen(open){
     drawThemeColors(); drawThemeSaved();
     if(gcalRefreshFn)gcalRefreshFn();
     if(typeof drawSetupList==='function')drawSetupList();
+    if(typeof window.cloudAgDraw==='function')window.cloudAgDraw(); // Romulus cloud's choice and this month's use (cloud-agent.js)
     prefsLoad();
   }
   window.scrollTo(0,0);

@@ -74,8 +74,12 @@ if(window.desktop&&window.desktop.onAgentResults){
     });
     if(changed)touch();
   });
-  window.desktop.onAgentResults(function(updates){
-    updates.forEach(function(u){
+  window.desktop.onAgentResults(function(updates){ updates.forEach(agentApplyResult); touch(); });
+}
+/* One answer onto its task: the desktop runner's (above) and Romulus cloud's (cloud-agent.js). The caller saves
+   (touch) after its batch. */
+function agentApplyResult(u){
+    {
       const t=state.tasks.find(function(x){ return x.id===u.id; });
       // only answer tasks still waiting on this run (not ones the user moved, finished or deleted meanwhile).
       // Queued counts too: a reply sent mid-run from a device without this fix puts it back in the queue,
@@ -185,9 +189,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       (Array.isArray(u.wanted)?u.wanted:[]).slice(0,3).forEach(function(h){ agentSay(t,'sys','It wanted to open '+h+', which isn’t on the sites it may open. A to-do on your To do list allows it; check that off and this runs again.',{siteWant:String(h)}); });
       // a step he said it needn't ask about again (its `allow`): Allow / Keep asking (standing.js), never saved by itself
       if(typeof u.allow==='string'&&u.allow.trim())agentSay(t,'sys','It would like to stop asking before this step. Allow it from now on? (Buying, sending, submitting and booking still wait for your yes.)',{allow:u.allow.trim().slice(0,160)});
-    });
-    touch();
-  });
+    }
 }
 /* "chapter 8" turned out to be ECN 201's Chapter 8 Homework (agent/find-out.js pin_down_task): his task says so
    now, with its class, name, instructions and link, so this run's answer and every later one start from it.
