@@ -35,10 +35,11 @@ const json = (body: unknown, status = 200) =>
 
 // list prices in dollars per million tokens, and per web search, to count what each task cost (for the limits;
 // Anthropic's bill is the real number). A model not listed here is counted at the Opus price.
-const PRICES: Record<string, { in: number; out: number }> = {
-  "claude-opus-5-5": { in: 4, out: 20 },
-  "claude-sonnet-5-5": { in: 2, out: 10 },
-  "claude-haiku-5-5": { in: 0.1, out: 0.5 },
+// read: what a cached input token costs, as a share of a fresh one (a cache write costs 1.25 times a fresh one)
+const PRICES: Record<string, { in: number; out: number; read: number }> = {
+  "claude-opus-5-5": { in: 4, out: 20, read: 0.05 },
+  "claude-sonnet-5-5": { in: 2, out: 10, read: 0.05 },
+  "claude-haiku-5-5": { in: 0.1, out: 0.5, read: 0.1 },
 };
 const SEARCH_CENTS = 1; // $10 per 1,000 searches
 const RUN_MS = 330 * 1000; // the function may live 400 s on this plan: stop in time to save the answer
@@ -138,8 +139,14 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
       const left = RUN_MS - (Date.now() - started);
       if (left < 20 * 1000) break;
       // deno-lint-ignore no-explicit-any
+      // prompt caching, two ways: the instructions and tools are the same for every task from everyone (nothing that
+      // changes per task is in them; today's date goes in the message), so a marker on them is read back by every task
+      // within 5 minutes of the last; and the top-level marker caches the growing conversation, so each pause_turn
+      // round reads what the last one already sent instead of paying for it again
       const params: any = {
-        model, max_tokens: 16000, system: CLOUD_PROMPT, messages,
+        model, max_tokens: 16000, messages,
+        system: [{ type: "text", text: CLOUD_PROMPT, cache_control: { type: "ephemeral" } }],
+        cache_control: { type: "ephemeral" },
         output_config: { effort: String(cfg.effort || "medium") },
         tools: [
           { type: "web_search_20260209", name: "web_search", max_uses: 8 },
@@ -150,10 +157,11 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
       };
       const msg = await client.beta.messages.stream(params, { timeout: left }).finalMessage();
       const u: any = msg.usage || {};
-      cents += ((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)) * price.in / 1e4
-        + (u.cache_read_input_tokens || 0) * price.in / 1e5
+      cents += ((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) * 1.25 + (u.cache_read_input_tokens || 0) * price.read) * price.in / 1e4
         + (u.output_tokens || 0) * price.out / 1e4
         + ((u.server_tool_use && u.server_tool_use.web_search_requests) || 0) * SEARCH_CENTS;
+      // token counts only (never the task), so the logs show whether caching works: "read" should be most of the input
+      console.log(`cloud-agent round ${turn + 1}: input ${u.input_tokens || 0}, cache write ${u.cache_creation_input_tokens || 0}, cache read ${u.cache_read_input_tokens || 0}, output ${u.output_tokens || 0}, searches ${(u.server_tool_use && u.server_tool_use.web_search_requests) || 0}`);
       if (msg.stop_reason === "refusal") throw new SayError("The AI wouldn’t answer this one. Try wording it differently.");
       text = msg.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
       if (msg.stop_reason !== "pause_turn") break;
