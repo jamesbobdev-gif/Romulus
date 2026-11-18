@@ -69,6 +69,7 @@ test('the answer becomes a normal Agent result', () => {
 });
 
 test('every refusal reads as plain words', () => {
-  for (const why of ['limit', 'spend', 'server', 'ip', 'off', 'no_account', 'other']) assert.match(c.cloudAgWhyText(why, { limit: 20 }), /computer/);
+  for (const why of ['limit', 'spend', 'server', 'ip', 'off', 'no_account', 'new_account', 'other']) assert.match(c.cloudAgWhyText(why, { limit: 20 }), /computer/);
+  assert.match(c.cloudAgWhyText('busy'), /starts when one of them finishes/);
   assert.match(c.cloudAgWhyText('limit', { limit: 20 }), /20 Romulus cloud tasks/);
 });

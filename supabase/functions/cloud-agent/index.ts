@@ -52,7 +52,10 @@ async function rpc(fn: string, args: Record<string, unknown>) {
 const okKey = (k: unknown) => typeof k === "string" && /^tk_[A-Za-z0-9_-]{20,120}$/.test(k);
 const okJob = (j: unknown) => typeof j === "string" && /^[0-9a-f-]{36}$/.test(j);
 async function ipHash(req: Request): Promise<string | null> {
-  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim();
+  // the address Cloudflare saw (it replaces any cf-connecting-ip the caller sends), then the gateway's own; the
+  // left of x-forwarded-for is whatever the caller wrote, so only its right-most entry (added by the proxy) is used
+  const xff = (req.headers.get("x-forwarded-for") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || xff[xff.length - 1] || "";
   if (!ip) return null;
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("romulus-cloud|" + ip));
   return Array.from(new Uint8Array(d).slice(0, 12), (b) => b.toString(16).padStart(2, "0")).join("");

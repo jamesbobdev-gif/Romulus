@@ -106,6 +106,8 @@ function cloudAgWhyText(why,r){
   if(why==='server'||why==='ip')return 'Romulus cloud is full right now. It waits for your computer; try again tomorrow.';
   if(why==='off')return 'Romulus cloud isn’t switched on yet. It waits for your computer.';
   if(why==='no_account')return 'Romulus cloud works with lists that sync on the Romulus server. It waits for your computer.';
+  if(why==='new_account')return 'New accounts get a few Romulus cloud tasks on their first day, and the full allowance from the next. It waits for your computer until then.';
+  if(why==='busy')return 'Romulus cloud is still on your other tasks. This one starts when one of them finishes.';
   return 'Romulus cloud couldn’t take it. It waits for your computer.';
 }
 
@@ -158,6 +160,7 @@ if(typeof document!=='undefined'){
       const r=await cloudAgCall(p,{action:'start',syncKey:await syncRowKey(p),pub:keys.pub,task:cloudAgTask(t),prefs:prefs,today:today});
       const cur=state.tasks.find(function(x){ return x.id===t.id; });
       if(!cur||cur.done||cur.status!=='queued')return; // a computer took it meanwhile: the answer, if any, is dropped
+      if(r&&r.why==='busy')return; // two of theirs are being answered: this one goes on a later tick, no note
       if(!r||!r.ok){
         cur.cloudTried=(cur.history||[]).length; agentSay(cur,'sys',cloudAgWhyText(r&&r.why,r)); touch(); return;
       }
