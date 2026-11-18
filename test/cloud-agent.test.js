@@ -60,6 +60,28 @@ test('only the device with the private key opens the answer', async () => {
   await assert.rejects(c.cloudAgOpen(other.priv, sealed));
 });
 
+test('lines of their notes with private things are left out, headings stay', () => {
+  const notes = '## About him\n- Lives near the library\n- Doctor appointments on Fridays\n- Card 4111 1111 1111 1111\n## Shopping\n- Likes oat milk';
+  assert.strictEqual(c.cloudAgPrefs(notes), '## About him\n- Lives near the library\n## Shopping\n- Likes oat milk');
+  assert.strictEqual(c.cloudAgPrefs('- plan the surprise party', 'surprise'), '');
+  assert.strictEqual(c.cloudAgPrivateIn('my SSN is 123-45-6789'), 'it mentions “ssn”, one of your private words');
+});
+
+test('the account goes as the same hash the server makes, never the key', async () => {
+  const crypto = require('crypto');
+  const want = 'tk_acct_' + crypto.createHash('sha256').update('abc123XYZ_secret-part').digest('hex');
+  assert.strictEqual(await c.cloudAgAccount('tk_agent_abc123XYZ_secret-part'), want);
+  assert.strictEqual(await c.cloudAgAccount('tk_abc123XYZ_secret-part:prefs'), want, 'same account for every list and side row');
+  assert.ok(!(await c.cloudAgAccount('tk_agent_abc123XYZ_secret-part')).includes('secret'));
+});
+
+test('a locked key pair opens answers but its private half cannot be exported', async () => {
+  const k = await c.cloudAgKeyPair(true);
+  const sealed = await c.cloudAgSeal(k.pub, { status: 'done', note: 'ok' });
+  assert.deepStrictEqual(await c.cloudAgOpen(k.priv, sealed), { status: 'done', note: 'ok' });
+  await assert.rejects(require('crypto').webcrypto.subtle.exportKey('jwk', k.priv));
+});
+
 test('the answer becomes a normal Agent result', () => {
   const r = c.cloudAgResult('t1', { status: 'done', note: 'Here.', options: [{ label: 'Cafe', url: 'https://cafe.example' }, { label: 'Bad', url: 'javascript:alert(1)' }, { url: 'https://x' }] });
   assert.strictEqual(r.status, 'done'); assert.strictEqual(r.lane, 'claude'); assert.strictEqual(r.model, 'Romulus cloud');

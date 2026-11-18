@@ -17,7 +17,8 @@ import { CLOUD_PROMPT } from "./prompt.ts";
 // POST {action: 'status', syncKey}                          → {enabled, plan, used, limit}
 // POST {action: 'start', syncKey, pub, task, prefs, today}  → {ok, job, used, limit} | {ok: false, why}
 // POST {action: 'take', syncKey, job}                       → {state: 'working'|'done'|'failed'|'gone', sealed?, why?}
-// syncKey is the lookup id the device already syncs under (the server never sees the real key).
+// syncKey names the account: tk_acct_ + the hash sync_account_of makes (the app since v1.3.28, so no sync key is
+// sent), or a lookup id / sync key from older versions (cloud_agent_account_of, migration 20261122).
 
 const BASE = Deno.env.get("SUPABASE_URL")!;
 const SKEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -50,6 +51,21 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   return r.json();
 }
 const okKey = (k: unknown) => typeof k === "string" && /^tk_[A-Za-z0-9_-]{20,120}$/.test(k);
+// a brake on one address sending junk: each running copy of this function counts requests per address per minute
+const PER_MINUTE = 60;
+const seen = new Map<string, { at: number; n: number }>();
+function tooMany(ip: string | null): boolean {
+  if (!ip) return false;
+  const now = Date.now(), e = seen.get(ip);
+  if (!e || now - e.at > 60 * 1000) {
+    if (seen.size > 5000) seen.clear(); // a flood of addresses: start counting again rather than grow
+    seen.set(ip, { at: now, n: 1 });
+    return false;
+  }
+  return ++e.n > PER_MINUTE;
+}
+// link shorteners and redirectors: a page can hide where they lead, so the agent doesn't open them
+const REDIRECTORS = ["bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly", "rebrand.ly", "cutt.ly", "shorturl.at", "tiny.cc", "rb.gy"];
 const okJob = (j: unknown) => typeof j === "string" && /^[0-9a-f-]{36}$/.test(j);
 async function ipHash(req: Request): Promise<string | null> {
   // the address Cloudflare saw (it replaces any cf-connecting-ip the caller sends), then the gateway's own; the
@@ -153,7 +169,7 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
         output_config: { effort: String(cfg.effort || "medium") },
         tools: [
           { type: "web_search_20260209", name: "web_search", max_uses: 8 },
-          { type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, max_content_tokens: 20000 },
+          { type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, max_content_tokens: 20000, blocked_domains: REDIRECTORS },
         ],
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default", // a request one model declines is retried on the one Anthropic picks for it
@@ -193,6 +209,8 @@ Deno.serve(async (req: Request) => {
   let b: any;
   try { b = await req.json(); } catch { return json({ error: "bad request" }, 400); }
   if (!b || !okKey(b.syncKey)) return json({ error: "bad request" }, 400);
+  const ip = await ipHash(req);
+  if (tooMany(ip)) return json({ error: "slow down" }, 429);
   try {
     if (b.action === "status") {
       const s = await rpc("cloud_agent_status", { p_sync_key: b.syncKey });
@@ -206,7 +224,7 @@ Deno.serve(async (req: Request) => {
       const task = cleanTask(b.task);
       if (!task || !okPub(b.pub)) return json({ error: "bad request" }, 400);
       if (!AI_KEY_CLEAN) return json({ ok: false, why: "off" });
-      const r = await rpc("cloud_agent_start", { p_sync_key: b.syncKey, p_ip_hash: await ipHash(req) });
+      const r = await rpc("cloud_agent_start", { p_sync_key: b.syncKey, p_ip_hash: ip });
       if (!r.ok) return json({ ok: false, why: r.why, used: r.used, limit: r.limit });
       const today = clip(b.today, 80) || new Date().toUTCString();
       EdgeRuntime.waitUntil(answer(r.job, b.pub, task, clip(b.prefs, 6000), today, r));
