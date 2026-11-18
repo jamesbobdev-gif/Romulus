@@ -111,11 +111,16 @@ async function seal(pub: JsonWebKey, data: unknown) {
 }
 const okPub = (p: any) => p && p.kty === "EC" && p.crv === "P-256" && typeof p.x === "string" && typeof p.y === "string" && !p.d;
 
+// a failure in words written here, safe to show the person (anything else is replaced by a plain message)
+class SayError extends Error {}
+// the key as pasted: a whole "curl ... x-api-key: sk-ant-..." snippet from the console works too
+const AI_KEY_CLEAN = (AI_KEY.match(/sk-ant-[A-Za-z0-9_-]+/) || [""])[0];
+
 // ── one task, start to finish ─────────────────────────────────────────────
 async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, today: string, cfg: any) {
   let cents = 0;
   try {
-    const client = new Anthropic({ apiKey: AI_KEY, timeout: RUN_MS, maxRetries: 1 });
+    const client = new Anthropic({ apiKey: AI_KEY_CLEAN, timeout: RUN_MS, maxRetries: 1 });
     const model = String(cfg.model || "claude-opus-5-5");
     const price = PRICES[model] || PRICES["claude-opus-5-5"];
     const capCents = Number(cfg.task_cents) || 60;
@@ -143,7 +148,7 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
         + (u.cache_read_input_tokens || 0) * price.in / 1e5
         + (u.output_tokens || 0) * price.out / 1e4
         + ((u.server_tool_use && u.server_tool_use.web_search_requests) || 0) * SEARCH_CENTS;
-      if (msg.stop_reason === "refusal") throw new Error("The AI wouldn’t answer this one. Try wording it differently.");
+      if (msg.stop_reason === "refusal") throw new SayError("The AI wouldn’t answer this one. Try wording it differently.");
       text = msg.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
       if (msg.stop_reason !== "pause_turn") break;
       if (cents >= capCents) break; // long enough: answer with what it has
@@ -152,12 +157,14 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
       else messages.push({ role: "assistant", content: msg.content });
     }
     const a = readAnswer(text);
-    if (!a) throw new Error("No answer came back. Try again.");
+    if (!a) throw new SayError("No answer came back. Try again.");
     await rpc("cloud_agent_finish", { p_job: job, p_sealed: await seal(pub, a), p_why: null, p_cents: Math.round(cents * 100) / 100 });
   } catch (e) {
-    const why = e instanceof Anthropic.APIError
+    // only our own words go back to the person: a library's error text can carry the request's headers, key and all
+    const why = e instanceof SayError ? e.message
+      : e instanceof Anthropic.APIError
       ? (e.status === 429 || (e.status || 0) >= 500 ? "Romulus cloud is busy right now. Try again in a few minutes." : "Romulus cloud couldn’t ask the AI (HTTP " + e.status + ").")
-      : String((e as Error).message || e).slice(0, 200);
+      : "Romulus cloud couldn’t ask the AI. Try again later.";
     console.error("cloud-agent job failed:", e instanceof Anthropic.APIError ? `HTTP ${e.status}` : (e as Error).name); // never the task
     await rpc("cloud_agent_finish", { p_job: job, p_sealed: null, p_why: why, p_cents: Math.round(cents * 100) / 100 }).catch(() => {});
   }
@@ -172,7 +179,7 @@ Deno.serve(async (req: Request) => {
   try {
     if (b.action === "status") {
       const s = await rpc("cloud_agent_status", { p_sync_key: b.syncKey });
-      return json({ enabled: !!s.enabled && !!AI_KEY, plan: s.plan || null, used: s.used || 0, limit: s.limit || 0 });
+      return json({ enabled: !!s.enabled && !!AI_KEY_CLEAN, plan: s.plan || null, used: s.used || 0, limit: s.limit || 0 });
     }
     if (b.action === "take") {
       if (!okJob(b.job)) return json({ error: "bad request" }, 400);
@@ -181,7 +188,7 @@ Deno.serve(async (req: Request) => {
     if (b.action === "start") {
       const task = cleanTask(b.task);
       if (!task || !okPub(b.pub)) return json({ error: "bad request" }, 400);
-      if (!AI_KEY) return json({ ok: false, why: "off" });
+      if (!AI_KEY_CLEAN) return json({ ok: false, why: "off" });
       const r = await rpc("cloud_agent_start", { p_sync_key: b.syncKey, p_ip_hash: await ipHash(req) });
       if (!r.ok) return json({ ok: false, why: r.why, used: r.used, limit: r.limit });
       const today = clip(b.today, 80) || new Date().toUTCString();
