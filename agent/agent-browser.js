@@ -166,16 +166,20 @@ function saidYes(t) {
   return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
 }
 const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
-/* The sites his yes was about: where the run stopped to ask (t.page), the cart's or options' links, and links he
-   wrote himself (title, notes, replies). Not the links in the AI's ask: a page can put its own address into
-   that note, and his yes would then unlock the final step there too. Empty when none is known, and then the yes
-   unlocks nothing (browser-proxy.js buyRefusal): the run must stop on the page and ask again. */
+/* The sites his yes was about: where the run stopped to ask (t.page), links he wrote himself (title, notes,
+   replies), and the cart's or options' links when they are on one of those sites or on a store. Not the links
+   in the AI's ask: a page can put its own address into that note, and his yes would then unlock the final step
+   there too. The cart and the options are the AI's words as well, so a link in them to some other site (one a
+   page talked the AI into) counts for nothing either. Empty when none is known, and then the yes unlocks
+   nothing (browser-proxy.js buyRefusal): the run must stop on the page and ask again. */
+const sameSite = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
 function approvedHostsFor(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
   const his = [t.title, t.notes, t.reply].concat(hist.filter((h) => h && h.who === 'you').map((h) => h.text)).join('\n');
-  const urls = [t.page].concat(his.match(/https?:\/\/[^\s"'<>)\]]+/g) || [],
-    (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url), (Array.isArray(t.options) ? t.options : []).map((o) => o && o.url));
-  return [...new Set(urls.map(hostOf).filter(Boolean))];
+  const own = [t.page].concat(his.match(/https?:\/\/[^\s"'<>)\]]+/g) || []).map(hostOf).filter(Boolean);
+  const ai = (Array.isArray(t.cart) ? t.cart : []).map((it) => it && it.url).concat((Array.isArray(t.options) ? t.options : []).map((o) => o && o.url))
+    .map(hostOf).filter((h) => h && (own.some((o) => sameSite(o, h)) || STORE_HOSTS.some((s) => sameSite(s, h))));
+  return [...new Set(own.concat(ai))];
 }
 // the stores a shopping run may use (agent/runner.js keeps such a run to these plus the task's own links)
 const STORE_HOSTS = ['instacart.com', 'walmart.com', 'amazon.com', 'aldi.us', 'kroger.com', 'gianteagle.com', 'marcs.com', 'wholefoodsmarket.com',

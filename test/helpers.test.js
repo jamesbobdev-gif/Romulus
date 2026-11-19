@@ -31,6 +31,28 @@ test('isPublicUrl: the web, not this computer or its network', () => {
     assert.ok(!helpers.isPublicUrl(u), u);
 });
 
+test('fetchPublic: a name that resolves to this computer or the LAN is refused before the fetch, each hop', async () => {
+  helpers._net.setLookup(async (h) => {
+    const m = /^(\d+)-(\d+)-(\d+)-(\d+)\.nip\.example$/.exec(h);
+    if (m) return [{ address: m.slice(1, 5).join('.'), family: 4 }];
+    if (h === 'gone.example') throw new Error('ENOTFOUND');
+    return [{ address: '93.184.216.34', family: 4 }];
+  });
+  assert.strictEqual(await helpers.resolvesPrivate('http://127-0-0-1.nip.example:9222/json'), true);
+  assert.strictEqual(await helpers.resolvesPrivate('https://example.com/'), false);
+  assert.strictEqual(await helpers.resolvesPrivate('https://gone.example/'), false);
+  assert.strictEqual(await helpers.resolvesPrivate('http://127.0.0.1/'), false); // an address: isPublicUrl's job
+  const realFetch = global.fetch;
+  const hits = [];
+  global.fetch = async (u) => { hits.push(u); return u.includes('redir') ? { status: 302, headers: { get: () => 'http://192-168-1-1.nip.example/admin' }, body: { cancel: async () => {} } } : { status: 200 }; };
+  try {
+    await assert.rejects(helpers.fetchPublic('http://10-0-0-5.nip.example/'), /not a public web address/);
+    await assert.rejects(helpers.fetchPublic('https://ok.example/redir'), /redirected somewhere private/);
+    assert.strictEqual((await helpers.fetchPublic('https://ok.example/page')).status, 200);
+    assert.deepStrictEqual(hits, ['https://ok.example/redir', 'https://ok.example/page']); // the private ones were never fetched
+  } finally { global.fetch = realFetch; }
+});
+
 test('trimRunLog: tool calls stay, long strings are cut, the tail is kept', () => {
   const page = 'x'.repeat(5000);
   const log = [JSON.stringify({ type: 'tool', name: 'browser_snapshot', result: page }), 'short line', 'y'.repeat(1000)].join('\n');
