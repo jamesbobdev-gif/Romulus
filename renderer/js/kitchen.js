@@ -780,7 +780,7 @@ function kRecipeDrop(r,btns,card){
   panel.appendChild(ul);
   panel.appendChild(el('div','kit-k','Steps'));
   if(r.steps&&r.steps.length){ const ol=document.createElement('ol'); ol.className='kit-idea-steps'; r.steps.forEach(function(st){ ol.appendChild(el('li','',st)); }); panel.appendChild(ol); }
-  else panel.appendChild(el('div','kit-card-meta','No steps yet. Add them under Recipes with the pencil.'));
+  else panel.appendChild(el('div','kit-card-meta','No steps yet.'));
   card.appendChild(panel);
   b.addEventListener('click',function(){
     const now=panel.hidden;
@@ -1218,8 +1218,8 @@ function kDrawRecipes(){
     const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',r.name)); top.appendChild(kLikeBtn(r)); card.appendChild(top);
     card.appendChild(el('div','kit-card-sub',r.ingredients.map(fmtIngredient).join(', ')||'No ingredients yet'));
     if(r.steps&&r.steps.length){ const ol=document.createElement('ol'); ol.className='kit-idea-steps'; r.steps.forEach(function(s){ ol.appendChild(el('li','',s)); }); card.appendChild(ol); }
-    else card.appendChild(el('div','kit-card-meta','No steps yet. Tap the pencil to add how to make it.'));
-    card.appendChild(el('div','kit-card-meta',(r.servings?'makes '+r.servings+' servings · ':'')+kLastMade(r)));
+    const meta=[r.servings?'makes '+r.servings+' servings':'',r.made.length?kLastMade(r):''].filter(Boolean).join(' · ');
+    if(meta)card.appendChild(el('div','kit-card-meta',meta));
     const btns=el('div','kit-card-btns'); btns.appendChild(kPlanBtn(r));
     const ed=iconBtn(I.pen,'Edit '+r.name); ed.addEventListener('click',function(){ kEditRecipe(r); }); btns.appendChild(ed);
     const del=iconBtn(I.x,'Delete '+r.name); del.addEventListener('click',function(){
