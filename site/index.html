@@ -122,29 +122,29 @@
 <link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Layout: one narrow column (72ch) like the app window itself, with a wider hero for the screenshots.
-   The tokens are the app's own (renderer/styles.css light theme; the dark theme from the README). */
+   The tokens are the app's own (renderer/styles.css, light and dark: ink on parchment, one Roman purple). */
 :root{
-  --bg:#FBFBFA;--surface:#FFFFFF;--ink:#161616;--muted:#71716C;--faint:#9A9A94;
-  --hairline:#E9E9E5;--chip:#F1F1EE;--accent:#2742C8;--accent-dim:#1F36AC;--accent-ink:#FFFFFF;
-  --accent-soft:#EEF1FC;--good:#1F7A3E;--good-bg:#E8F5EC;--late:#C03B2B;--late-bg:#FAEBE8;
-  --shadow:0 1px 2px rgba(22,22,22,.06),0 12px 32px -16px rgba(22,22,22,.18);
+  --bg:#F5F1E8;--surface:#FCFAF5;--ink:#1B1814;--muted:#6E665A;--faint:#9C9382;
+  --hairline:#E3DBCB;--chip:#ECE5D7;--accent:#5C2D4E;--accent-dim:#4A2340;--accent-ink:#FFFFFF;
+  --accent-soft:#EEE3E8;--good:#1F7A3E;--good-bg:#E6EFE0;--late:#B8382A;--late-bg:#F7E6DF;
+  --shadow:0 1px 2px rgba(27,24,20,.06),0 12px 32px -16px rgba(27,24,20,.18);
   --display:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'Spline Sans Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
-    --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--accent-dim:#A7B6FF;--accent-ink:#0F1330;
-    --accent-soft:#232842;--good:#7CD69A;--good-bg:#1D2E24;--late:#F09383;--late-bg:#3A2420;
+    --bg:#151311;--surface:#1D1A17;--ink:#ECE5D6;--muted:#A69D8C;--faint:#7A7264;
+    --hairline:#312C26;--chip:#28231F;--accent:#9C6B8A;--accent-dim:#8A5C79;--accent-ink:#FFFFFF;
+    --accent-soft:#2F242B;--good:#7CD69A;--good-bg:#1D2E24;--late:#FF8B7B;--late-bg:#3A201C;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
-  --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--accent-dim:#A7B6FF;--accent-ink:#0F1330;
-  --accent-soft:#232842;--good:#7CD69A;--good-bg:#1D2E24;--late:#F09383;--late-bg:#3A2420;
+  --bg:#151311;--surface:#1D1A17;--ink:#ECE5D6;--muted:#A69D8C;--faint:#7A7264;
+  --hairline:#312C26;--chip:#28231F;--accent:#9C6B8A;--accent-dim:#8A5C79;--accent-ink:#FFFFFF;
+  --accent-soft:#2F242B;--good:#7CD69A;--good-bg:#1D2E24;--late:#FF8B7B;--late-bg:#3A201C;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
   color-scheme:dark;
 }
@@ -173,8 +173,8 @@ h3{font-size:17px;letter-spacing:-.01em}
 .sub{color:var(--muted);max-width:60ch;margin-bottom:28px}
 
 /* top bar */
-.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;max-width:1040px;margin:0 auto}
-.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:700;font-size:17px;letter-spacing:-.01em}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;max-width:1040px;margin:0 auto;border-bottom:3px double var(--faint)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-family:'Cinzel',Georgia,serif;font-weight:600;font-size:17px;letter-spacing:.14em;text-transform:uppercase}
 .brand img{width:28px;height:28px;border-radius:7px}
 .brand:hover{text-decoration:none}
 .nav{display:flex;gap:4px 22px;flex-wrap:wrap;justify-content:flex-end}
@@ -293,7 +293,7 @@ footer .supporters{flex-basis:100%;margin:6px 0 0;line-height:1.6}
 <section class="hero wide">
   <div class="eyebrow">
     <span class="mono">Open source · MIT</span>
-    <span class="mono" id="ver">v1.3.19</span>
+    <span class="mono" id="ver">v1.3.34</span>
     <span class="mono">Windows · macOS · Linux · Android</span>
   </div>
   <h1>A to-do list with an agent in it.</h1>
@@ -357,44 +357,44 @@ footer .supporters{flex-basis:100%;margin:6px 0 0;line-height:1.6}
   <div class="dl" id="dl">
     <a data-os="windows" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 11 4.4v7.1H3zm0 13 8 1.1V12.5H3zM12 4.2 21 3v8.5h-9zm0 8.3h9V21l-9-1.2z"/></svg>Windows<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-Setup-1.3.19.exe</b> <span data-size></span></span>
+      <span class="file"><b data-file>Romulus-Setup-1.3.34.exe</b> <span data-size></span></span>
       <span class="note">Windows 10 or 11. Not code-signed yet, so SmartScreen warns: <b>More info → Run anyway</b>.</span>
     </a>
     <a data-os="mac" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.5-.2-2.8.8-3.6.8-.7 0-1.9-.8-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.5.8 1.2 1.8 2.4 3 2.4 1.2-.1 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.6-3.9zM14.1 5.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>macOS<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-1.3.19-arm64.dmg</b> <span data-size></span></span>
-      <span class="note">Apple silicon; an Intel Mac takes <b data-intel>Romulus-1.3.19.dmg</b> from the release page. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
+      <span class="file"><b data-file>Romulus-1.3.34-arm64.dmg</b> <span data-size></span></span>
+      <span class="note">Apple silicon; an Intel Mac takes <b data-intel>Romulus-1.3.34.dmg</b> from the release page. Unsigned for now: on first open, <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</span>
     </a>
     <a data-os="linux" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Linux<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-1.3.19-amd64.deb</b> <span data-size></span></span>
+      <span class="file"><b data-file>Romulus-1.3.34-amd64.deb</b> <span data-size></span></span>
       <span class="note" data-linux-note hidden>Make it executable (<code>chmod +x</code>) and run it. On Ubuntu 22.04 or newer, install <code>libfuse2t64</code> first.</span>
       <span class="note" data-deb-note>Ubuntu, Debian, Mint: open it to install (or <code>sudo apt install ./</code> the file). Other distributions: the <b>.AppImage</b> on the release page, made executable (<code>chmod +x</code>).</span>
     </a>
     <a data-os="android" href="https://github.com/jamesbobdev-gif/romulus-releases/releases/latest">
       <span class="os"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>Android<span class="you" hidden>Your device</span></span>
-      <span class="file"><b data-file>Romulus-1.3.19.apk</b> <span data-size></span></span>
+      <span class="file"><b data-file>Romulus-1.3.34.apk</b> <span data-size></span></span>
       <span class="note">Open the APK and <b>allow installs from this source</b>. Then pair it from the desktop app in <b>Settings → Device sync</b>.</span>
     </a>
   </div>
   <div class="fine">
     <p>Then the <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/docs/SETUP.md">setup guide</a>. No telemetry; keys never leave the device. <a href="https://github.com/jamesbobdev-gif/Romulus/blob/main/SECURITY.md">Security</a>.</p>
-    <p><b>This page counts clicks, not people.</b> A private tally per button per day. No cookies, no IP address kept with it, and nothing at all when your browser sends Do Not Track.</p>
+    <p><b>This page counts clicks, not people.</b> No cookies, and nothing at all when your browser sends Do Not Track.</p>
   </div>
 </section>
 
 <section class="wrap" id="plans">
   <h2>Free, for nearly everyone.</h2>
-  <p class="sub">The whole app is free: every tab, the Agent, your own AI keys, your phone and computer kept in sync. A paid plan only adds room on the Romulus sync server and a few extras, and most people never need one.</p>
+  <p class="sub">The whole app is free. A paid plan only adds sync space and a few extras.</p>
   <div class="plans">
     <div class="plan pick">
       <span class="tag">Most people</span>
       <h3>Free</h3>
       <p class="price">$0</p>
       <ul>
-        <li><b>Everything in the app</b>, on every platform</li>
-        <li>Sync across your devices, end-to-end encrypted</li>
-        <li>50 MB on the Romulus server, or as much as you like on your own Supabase</li>
+        <li><b>Everything in the app</b></li>
+        <li>Encrypted sync across your devices</li>
+        <li>50 MB of sync, or your own Supabase</li>
       </ul>
       <a class="btn btn-primary" href="#download" data-count="plan:free">Download</a>
     </div>
@@ -415,14 +415,14 @@ footer .supporters{flex-basis:100%;margin:6px 0 0;line-height:1.6}
       <p class="price"><span class="personal-only" hidden>$6</span><span class="group-alone">$5</span><small>a month</small></p>
       <p class="year">or <span class="personal-only" hidden>$60</span><span class="group-alone">$50</span> a year, 2 months free</p>
       <ul>
-        <li><b>Up to 5 people</b>, each with 600 MB for photos and files, 30 days of history and new versions early</li>
-        <li>A family list you keep together, and to-dos you send each other</li>
+        <li><b>Up to 5 people</b>, each with 600 MB, 30 days of history and new versions early</li>
+        <li>Shared lists, and to-dos you send each other</li>
         <li class="personal-only" hidden>$2 more a month than going alone</li>
       </ul>
       <a class="btn btn-ghost" href="#download" data-count="plan:group">Turn on in the app</a>
     </div>
   </div>
-  <p class="plans-fine">Paid plans are turned on inside the app on a computer, under <b>Settings → Device sync</b>, through Stripe. Cancel any time: your lists stay on your devices, and nothing is deleted.</p>
+  <p class="plans-fine">Turn a plan on in the desktop app under <b>Settings → Device sync</b>. Cancel any time; nothing is deleted.</p>
 </section>
 
 <section class="wrap" id="faq">
