@@ -253,6 +253,11 @@ test('the week, workouts, food and training goals come from the readings alone',
   };
   const today = '2026-11-09';
   assert.deepStrictEqual(H.healthLatest(days, 'weightKg', today, 30), { day: '2026-11-08', value: 82 });
+  // the top of the tab: today once the phone sent it, else its newest day this past week, else nothing
+  assert.strictEqual(H.healthShownDay(days, today), '2026-11-09');
+  assert.strictEqual(H.healthShownDay(days, '2026-11-10'), '2026-11-09');
+  assert.strictEqual(H.healthShownDay(days, '2026-11-20'), '');
+  assert.strictEqual(H.healthShownDay({}, today), '');
   assert.deepStrictEqual(H.healthSeries(days, 'steps', today, 7).map((x) => x.value), [6000, 9000, 10000]);
   assert.deepStrictEqual(H.healthWorkouts(days, today, 14).map((w) => w.day + ' ' + w.type), ['2026-11-09 run', '2026-11-08 run', '2026-11-06 strength', '2026-11-03 run', '2026-10-30 run']);
   const wk = H.healthWeekSum(days, today);

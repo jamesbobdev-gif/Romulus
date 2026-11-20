@@ -312,6 +312,13 @@ function healthLatest(days,field,today,within){
   const k=Object.keys(days).filter(function(d){ return d<=today&&d>cut&&days[d][field]!=null; }).sort().pop();
   return k?{day:k,value:days[k][field]}:null;
 }
+// the day the top of the tab shows on a computer: today once the phone has sent it, else the phone's newest day
+// in the last week, so the cards don't vanish until the phone's first sync of the day → day key, or ''
+function healthShownDay(days,today){
+  if(days[today])return today;
+  const cut=healthYmdAdd(today,-7);
+  return Object.keys(days).filter(function(d){ return d<today&&d>cut; }).sort().pop()||'';
+}
 // the field across the last n days, oldest first, the days without it left out → [{day, value}]
 function healthSeries(days,field,today,n){
   const out=[];
@@ -421,7 +428,7 @@ if(typeof module!=='undefined'&&module.exports){
     healthWeek:healthWeek,healthTarget:healthTarget,healthSleepWord:healthSleepWord,healthPct:healthPct,
     macroPlanClean:macroPlanClean,macroPlanUntil:macroPlanUntil,macroPlanDaysLeft:macroPlanDaysLeft,macroPlanSay:macroPlanSay,macroPlanMerge:macroPlanMerge,
     weightClean:weightClean,weightFromStore:weightFromStore,weightNewer:weightNewer,weightSay:weightSay,macroRowText:macroRowText,
-    healthDayClean:healthDayClean,healthLatest:healthLatest,healthSeries:healthSeries,healthWorkouts:healthWorkouts,healthWeekSum:healthWeekSum,
+    healthDayClean:healthDayClean,healthLatest:healthLatest,healthShownDay:healthShownDay,healthSeries:healthSeries,healthWorkouts:healthWorkouts,healthWeekSum:healthWeekSum,
     healthWeekSay:healthWeekSay,healthFoodSay:healthFoodSay,healthTraining:healthTraining,healthWorkoutSay:healthWorkoutSay};
 }
 
@@ -647,8 +654,12 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     if(pct!==null){ const bar=el('div','health-bar'), fill=el('div','health-fill'); fill.style.width=pct+'%'; bar.appendChild(fill); c.appendChild(bar); }
     return c;
   };
-  const drawTop=function(t){
+  // the date words for a day the phone sent: "Nov 19"
+  const hDay=function(d){ return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+  const drawTop=function(t,day){
     const tk=today(), w=healthWeek(state.health.days,Date.now());
+    // an earlier day's numbers (today's haven't come from the phone yet) say which day they're from
+    const old=day&&day!==tk, on=old?', '+hDay(day):'';
     // a week's aim: 7 of his daily exercise goal, or the usual 150 minutes
     const exDaily=healthTarget(state.tasks,'exercise',tk,0,taskWs), exGoal=exDaily||30;
     const stepGoal=healthTarget(state.tasks,'steps',tk,10000,taskWs), sleepGoal=healthTarget(state.tasks,'sleep',tk,7*60,taskWs);
@@ -658,15 +669,17 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
     const steps=t&&t.steps, ex=t&&t.exerciseMin, sl=t&&t.sleepMin;
     // which apps wrote each number: the phone itself, a watch, Samsung Health, Garmin, Oura...
     const from=function(p,kind,v){ const f=t&&t.from&&t.from[kind]; if(f&&f.length&&typeof v==='number'){ const x=el('div','health-tile-s',f.join(', ')); x.title='From '+f.join(', '); p.appendChild(x); } return p; };
-    pills.appendChild(from(pill('steps','Steps today',fmt('steps',steps),'of '+fmt('steps',stepGoal),healthPct(steps,stepGoal)),'steps',steps));
-    pills.appendChild(from(pill('exercise','Exercise today',fmt('exercise',ex),'of '+fmt('exercise',exGoal),healthPct(ex,exGoal)),'exercise',ex));
-    pills.appendChild(from(pill('sleep','Sleep last night',fmt('sleep',sl),healthSleepWord(sl,sleepGoal),healthPct(sl,sleepGoal)),'sleep',sl));
+    pills.appendChild(from(pill('steps',old?'Steps'+on:'Steps today',fmt('steps',steps),'of '+fmt('steps',stepGoal),healthPct(steps,stepGoal)),'steps',steps));
+    pills.appendChild(from(pill('exercise',old?'Exercise'+on:'Exercise today',fmt('exercise',ex),'of '+fmt('exercise',exGoal),healthPct(ex,exGoal)),'exercise',ex));
+    pills.appendChild(from(pill('sleep',old?'Sleep, night before '+hDay(day):'Sleep last night',fmt('sleep',sl),healthSleepWord(sl,sleepGoal),healthPct(sl,sleepGoal)),'sleep',sl));
     top.appendChild(pills);
     return top;
   };
   // today's numbers: on the phone with Connect or Manage above them; on a computer what the phone synced
   const drawNumbers=function(){
-    const cap=healthCap(), t=state.health.days[today()]||null, wrap=el('div','health-numbers');
+    // a connected phone reads its own today; a computer shows the phone's newest day until today's arrives
+    const cap=healthCap(), live=!!(cap&&healthOn()), sd=live?today():healthShownDay(state.health.days,today());
+    const t=(sd&&state.health.days[sd])||null, wrap=el('div','health-numbers');
     if(cap){
       const head=el('div','health-head');
       if(!healthOn()){
@@ -687,15 +700,16 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'&&document.getEleme
       if(msg)wrap.appendChild(el('p','settings-hint',msg));
       else if(!healthOn())wrap.appendChild(el('p','settings-hint','Not connected. Once connected, the daily totals of steps, exercise and sleep reach your computer too, encrypted.'));
     }
-    if(t||(cap&&healthOn())){
-      wrap.appendChild(drawTop(t));
+    if(t||live){
+      if(!live&&sd!==today())wrap.appendChild(el('p','settings-hint','Today’s numbers come once Romulus opens on your phone. These are from '+hDay(sd)+'.'));
+      wrap.appendChild(drawTop(t,sd));
       // the rest of the day, and the latest weight: only the ones the phone has something for
       const days=state.health.days, tk=today(), extra=el('div','health-tiles health-tiles-more');
       const wk=healthLatest(days,'weightKg',tk,30), wkept=healthWeight(), hr=healthLatest(days,'restHr',tk,7);
       const tile=function(k,v,s){ const c=el('div','health-tile'); c.appendChild(el('div','health-tile-k',k)); c.appendChild(el('div','health-tile-v',v)); if(s)c.appendChild(el('div','health-tile-s',s)); extra.appendChild(c); };
       const when=function(d){ return d===tk?'today':new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
-      if(t&&t.activeKcal)tile('Active calories',t.activeKcal.toLocaleString('en-US'),'today');
-      if(t&&t.distM)tile('Distance today',hMi(t.distM)+' mi','walking, running, riding');
+      if(t&&t.activeKcal)tile('Active calories',t.activeKcal.toLocaleString('en-US'),when(sd));
+      if(t&&t.distM)tile(sd===tk?'Distance today':'Distance, '+when(sd),hMi(t.distM)+' mi','walking, running, riding');
       if(hr)tile('Resting heart rate',hr.value+' bpm',when(hr.day));
       if(wk)tile('Weight',hLb(wk.value)+' lb',when(wk.day));
       else if(wkept)tile('Weight',(wkept.lb%1?wkept.lb.toFixed(1):wkept.lb)+' lb',wkept.at?when(healthYmd(new Date(wkept.at))):'');
