@@ -1315,8 +1315,27 @@ function kDrawShop(){
   if(order)box.appendChild(order);
   const plan=state.kitchen.recipes.filter(function(r){ return r.planned; });
   const list=shoppingList(state.kitchen);
+  // dishes the Agent put on the grocery order ("two cranberry blueberry pies"): their items are tagged with the meal
+  const gt=typeof groceryTask==='function'?groceryTask():null;
+  const orderMeals=gt&&typeof groceryMeals==='function'?groceryMeals(gt.list).filter(function(m){
+    return !plan.some(function(r){ return r.name.toLowerCase()===m.name.toLowerCase(); }); }):[];
   box.appendChild(el('div','kit-k kit-sec','Meals you’re buying for'));
-  if(!plan.length){
+  if(orderMeals.length){
+    const chips=el('div','kit-chips');
+    orderMeals.forEach(function(m){
+      const c=el('span','kit-meal',m.name);
+      c.title='On the next grocery order: '+m.items.join(', ');
+      const x=iconBtn(I.x,'Take '+m.name+' off the plan (its '+m.items.length+' item'+(m.items.length===1?'':'s')+' come off the grocery list)');
+      x.addEventListener('click',function(){
+        if(!confirm('Take '+m.name+' off the plan? Its '+m.items.length+' item'+(m.items.length===1?'':'s')+' come off the grocery list.'))return;
+        const left=normList(gt.list).filter(function(y){ return !(y.for&&y.for.toLowerCase()===m.name.toLowerCase()&&m.items.indexOf(y.name)!==-1); });
+        gt.list=left.length?left:null; touch();
+      });
+      c.appendChild(x); chips.appendChild(c);
+    });
+    box.appendChild(chips);
+  }
+  if(!plan.length&&!orderMeals.length){
     box.appendChild(kEmpty('No meals planned.'));
     const liked=state.kitchen.recipes.filter(function(r){ return r.liked; });
     if(liked.length){
@@ -1324,7 +1343,7 @@ function kDrawShop(){
       b.addEventListener('click',function(){ const now=Date.now(); liked.forEach(function(r){ r.planned=true; r.updatedAt=now; }); kSave(); });
       box.appendChild(b);
     }
-  } else {
+  } else if(plan.length){
     const chips=el('div','kit-chips');
     plan.forEach(function(r){
       const c=el('span','kit-meal'+(r.liked?' liked':''),r.name);
@@ -1333,6 +1352,8 @@ function kDrawShop(){
     });
     box.appendChild(chips);
   }
+  // nothing extra to buy and the next grocery order is right above: no empty To buy section under it
+  if(!list.length&&order)return;
   box.appendChild(el('div','kit-k kit-sec','To buy'));
   if(!list.length){ box.appendChild(kEmpty(plan.length?'You have everything these meals need.':'Nothing yet.')); return; }
   list.forEach(function(e){

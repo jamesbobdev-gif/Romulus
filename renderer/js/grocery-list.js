@@ -8,7 +8,21 @@ function listItem(x){
   if(typeof x==='string')return {name:x.trim(),every:1,last:null,out:false}; // the first version kept plain lines
   if(!x||!String(x.name||'').trim())return null;
   const every=Math.max(1,Math.min(52,Math.round(Number(x.every)||1)));
-  return {name:String(x.name).trim().slice(0,120),every:every,last:/^\d{4}-\d{2}-\d{2}$/.test(x.last)?x.last:null,out:!!x.out};
+  const it={name:String(x.name).trim().slice(0,120),every:every,last:/^\d{4}-\d{2}-\d{2}$/.test(x.last)?x.last:null,out:!!x.out};
+  const meal=String(x.for||'').replace(/\s+/g,' ').trim().slice(0,80);
+  if(meal)it.for=meal; // the dish it's for: the Kitchen tab lists it under Meals you're buying for
+  return it;
+}
+// the dishes the next order is buying for (items tagged with a meal that are still due) → [{name, items:[names]}]
+function groceryMeals(list,now){
+  const out=[];
+  normList(list).forEach(function(it){
+    if(!it.for||!itemDue(it,now))return;
+    let m=out.find(function(x){ return x.name.toLowerCase()===it.for.toLowerCase(); });
+    if(!m){ m={name:it.for,items:[]}; out.push(m); }
+    m.items.push(it.name);
+  });
+  return out;
 }
 function normList(list){ return (Array.isArray(list)?list:[]).map(listItem).filter(Boolean).slice(0,200); }
 const sameItem=function(a,b){ const n=function(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }; return n(a)===n(b); };
@@ -29,7 +43,11 @@ function applyListUpdate(t,ch,covered){
   if(!normList(t.list).length){ const k=groceryTask(); if(k&&k!==t)t.list=normList(k.list); } // a new grocery task starts from his list
   const list=normList(t.list), today=new Date().toISOString().slice(0,10);
   (Array.isArray(ch.remove)?ch.remove:[]).forEach(function(n){ for(let i=list.length-1;i>=0;i--)if(sameItem(list[i].name,n))list.splice(i,1); });
-  (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const it=listItem(a); if(it&&!list.some(function(x){ return sameItem(x.name,it.name); }))list.push(it); });
+  (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){
+    const it=listItem(a); if(!it||list.some(function(x){ return sameItem(x.name,it.name); }))return;
+    if(it.for){ it.every=52; it.out=true; } // for one dish: on the next order, not a weekly usual
+    list.push(it);
+  });
   (Array.isArray(ch.bought)?ch.bought:[]).forEach(function(n){ list.forEach(function(x){ if(sameItem(x.name,n)){ x.last=today; x.out=false; } }); });
   t.list=list.length?list:null;
   const skip=Array.isArray(covered)?covered:[];
@@ -404,6 +422,14 @@ function groceryOrderBox(){
       const row=el('div','kit-row');
       row.appendChild(el('span','kit-row-name',it.name));
       if(it.out)row.appendChild(el('span','kit-row-for','ran out'));
+      // x takes it off his grocery list, so it's not on this order or later ones
+      const x=iconBtn(I.x,'Take '+it.name+' off the grocery list');
+      x.title='Take it off the grocery list';
+      x.addEventListener('click',function(){
+        const list=normList(g.list).filter(function(y){ return !sameItem(y.name,it.name); });
+        g.list=list.length?list:null; touch();
+      });
+      row.appendChild(x);
       box.appendChild(row);
     });
   }

@@ -25,6 +25,10 @@ test('the run sees each item with how often and whether it is due; plain old lin
 test('the answer can only add, mark bought or remove, never replace the list', () => {
   assert.deepStrictEqual(groceryChanges({ add: [{ name: 'Milk, 2%', every: 99 }, 'Bread'], bought: ['Eggs'], remove: [] }),
     { add: [{ name: 'Milk, 2%', every: 52 }, { name: 'Bread', every: 1 }], bought: ['Eggs'], remove: [] });
+  // ingredients for one dish keep the dish they're for
+  assert.deepStrictEqual(groceryChanges({ add: [{ name: 'Cranberries, 24 oz', for: '  Cranberry blueberry pie, 2 ' }] }),
+    { add: [{ name: 'Cranberries, 24 oz', every: 1, for: 'Cranberry blueberry pie, 2' }], bought: [], remove: [] });
+  assert.strictEqual(groceryBrief([{ name: 'Cranberries', for: 'Pie' }], day('2026-10-16'))[0].forMeal, 'Pie');
   assert.strictEqual(groceryChanges(['Eggs', 'Milk']), undefined); // a whole list: ignored
   assert.strictEqual(groceryChanges({ add: [], bought: [] }), undefined);
   assert.strictEqual(groceryChanges(null), undefined);
