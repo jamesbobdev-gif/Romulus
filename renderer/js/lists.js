@@ -3,6 +3,26 @@
 'use strict';
 
 /* ── main task row ── */
+// "Settings → AI connections" in a title (the reconnect to-dos, agent/reconnect.js) becomes a link to that spot
+const SETTINGS_SPOTS={
+  'AI connections':function(){ return ['agentGroup',typeof isDesktopApp!=='undefined'&&!isDesktopApp?'aiPhoneSection':'aiSection']; },
+  'Local model':function(){ return ['agentGroup','localSection']; },
+  'Device sync':function(){ return [null,'syncSection']; },
+  'Calendar & email':function(){ return ['calGroup','gcalSection']; }
+};
+const SETTINGS_LINK_RE=/Settings → (AI connections|Local model|Device sync|Calendar & email)/g;
+function titleWithSettingsLinks(text){
+  const span=el('span','title');
+  let last=0, m; SETTINGS_LINK_RE.lastIndex=0;
+  while((m=SETTINGS_LINK_RE.exec(text))){
+    if(m.index>last)span.appendChild(document.createTextNode(text.slice(last,m.index)));
+    const a=el('a','title-link',m[0]); a.href='#'; const spot=SETTINGS_SPOTS[m[1]]();
+    a.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); openSettingsAt(spot[0],spot[1]); });
+    span.appendChild(a); last=m.index+m[0].length;
+  }
+  if(last<text.length)span.appendChild(document.createTextNode(text.slice(last)));
+  return span;
+}
 function buildRow(t,canDrag){
   const li=el('li','task'+(t.done?' done':'')+(t.id===state.selectedId?' selected':''));
   li.dataset.id=t.id;
@@ -16,7 +36,7 @@ function buildRow(t,canDrag){
   const check=el('button','check'+(t.done?' on':'')); check.innerHTML=I.check;
   check.setAttribute('aria-label',t.done?'Mark as not done':'Mark as done');
   check.addEventListener('click',function(e){ e.stopPropagation(); toggleDone(t,li,check); });
-  const title=el('span','title',t.title);
+  const title=titleWithSettingsLinks(t.title);
   const meta=el('div','meta'), chips=el('div','chips'), dateSlot=el('span','date-slot'); // chips wrap in their own box; the date gets a column of its own after them (styles.css), so dates line up down the list; the buttons sit beside it
 
   // subtask progress — turn red if any sub is overdue

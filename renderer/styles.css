@@ -227,6 +227,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .check:hover{border-color:var(--ink)}
 .check.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
 .title{font-size:15px;flex:1 1 14em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
+.title-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 .task.done .title{color:var(--muted);text-decoration:line-through;text-decoration-color:#C9C9C3}
 .title-edit{flex:1;min-width:0;font-family:var(--display);font-size:15px;border:0;outline:0;background:transparent;border-bottom:1px solid var(--accent);padding:2px 0;color:var(--ink)}
 .meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0}
