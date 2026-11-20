@@ -615,6 +615,7 @@ function renderKitchen(){
   view.querySelectorAll('.kit-tab').forEach(function(b){ const on=b.dataset.v===kitchenUI.view; b.classList.toggle('on',on); b.setAttribute('aria-selected',String(on)); });
   ['meals','pantry','recipes','shop'].forEach(function(v){ $('kit-'+v).hidden=kitchenUI.view!==v; });
   kSyncNote();
+  kDrawConnect();
   if(kitchenUI.view==='meals')kDrawMeals();
   else if(kitchenUI.view==='pantry')kDrawPantry();
   else if(kitchenUI.view==='recipes')kDrawRecipes();
@@ -629,6 +630,7 @@ function kBuild(view){
       '<button type="button" class="kit-tab" data-v="shop" role="tab">Shopping list</button>'+
     '</div>'+
     '<div id="kitSyncNote" class="kit-note" hidden></div>'+
+    '<div id="kitConnect"></div>'+
     '<section id="kit-meals"><div id="kitAfter"></div><div id="kitPhotoMeal"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
     '<section id="kit-pantry" hidden>'+
       '<div class="kit-undo-bar" hidden><button id="kitUndo" type="button" class="ghost kit-undo" hidden>Undo</button></div>'+
@@ -689,6 +691,52 @@ function kBuild(view){
   $('kitRecSave').addEventListener('click',kSaveRecipe);
   $('kitRecCancel').addEventListener('click',function(){ kEditRecipe(null); });
   $('kitRecName').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); $('kitRecIngs').focus(); } });
+}
+/* The first time he opens Kitchen: what to connect so it fills itself in (an AI, a grocery store through the
+   Agent, his phone), each with a button to the place it's set up. "Got it" puts it away for good on this
+   device; "How to connect" under the tabs brings it back. */
+const KIT_CONNECT_KEY='tasks.kitchenConnect.v1';
+function kConnectSeen(){ try{ return !!localStorage.getItem(KIT_CONNECT_KEY); }catch(e){ return false; } }
+function kDrawConnect(){
+  const box=$('kitConnect'); if(!box)return;
+  box.innerHTML='';
+  const desk=!!(window.desktop&&window.desktop.aiStatus);
+  if(kConnectSeen()&&!kitchenUI.connectOpen){
+    const again=el('button','ghost kit-connect-again','How to connect');
+    again.type='button';
+    again.addEventListener('click',function(){ kitchenUI.connectOpen=true; kDrawConnect(); });
+    box.appendChild(again);
+    return;
+  }
+  const card=el('div','kit-connect');
+  card.appendChild(el('div','kit-connect-title','Connect Kitchen to the rest of your apps'));
+  card.appendChild(el('div','kit-hint','You can type everything in by hand. Connecting these makes Kitchen fill itself in.'));
+  const step=function(head,text,label,go){
+    const row=el('div','kit-connect-step');
+    const words=el('div','kit-connect-words');
+    words.appendChild(el('div','kit-connect-head',head));
+    words.appendChild(el('div','kit-hint',text));
+    row.appendChild(words);
+    if(label){ const b=el('button','ghost',label); b.type='button'; b.addEventListener('click',go); row.appendChild(b); }
+    card.appendChild(row);
+  };
+  step('1. An AI',
+    desk?'Thinks of meals from what you have and reads photos of food, shopping lists and empty packages. Connect one in Settings, under Agent.'
+        :'Thinks of meals and reads your photos. Your computer does this while Romulus is open there, or copy your AI keys to this phone once from the computer (Settings, Agent, "Use these on your phone").',
+    desk?'Connect an AI':'AI on this phone',
+    function(){ openSettingsAt('agentGroup',desk?'aiSection':'aiPhoneSection'); });
+  step('2. Your grocery store',
+    'Ask the Agent to order your groceries, for example "Order my groceries from Walmart". It works with Walmart (including EBT), Instacart, Amazon Fresh and others. The first time, it asks you to sign in to the store. What it buys goes into your pantry on its own, and anything you mark as used up goes on the next order. It never places an order without your yes.',
+    'Open the Agent',
+    function(){ switchTab('agent'); window.scrollTo(0,0); });
+  step('3. Your '+(desk?'phone':'computer'),
+    'Turn on device sync so your pantry, recipes and shopping list are the same on every device'+(desk?', and so you can take a photo of what you have from your phone.':'.'),
+    syncEnabled()?'':'Set up sync',
+    function(){ openSettingsAt(null,'syncSection'); });
+  const done=el('button','btn-accent','Got it'); done.type='button';
+  done.addEventListener('click',function(){ try{ localStorage.setItem(KIT_CONNECT_KEY,String(Date.now())); }catch(e){} kitchenUI.connectOpen=false; kDrawConnect(); });
+  const foot=el('div','kit-form-btns'); foot.appendChild(done); card.appendChild(foot);
+  box.appendChild(card);
 }
 function kEmpty(text){ return el('div','kit-empty',text); }
 function kLikeBtn(r){

@@ -1300,6 +1300,15 @@ body.review-open .top-right{display:none!important}
 .kit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:0 0 6px}
 .kit-tile{position:relative;display:flex;flex-direction:column;gap:4px;background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:6px;cursor:pointer;color:var(--ink);transition:opacity .2s,border-color .2s,filter .2s,transform .1s;user-select:none}
 .kit-tile:active{transform:scale(.97)}
+.kit-connect{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.kit-connect-title{font-family:var(--display);font-weight:600;font-size:15px;color:var(--ink)}
+.kit-connect-step{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--hairline)}
+.kit-connect-step .kit-hint{margin:2px 0 0}
+.kit-connect-words{flex:1;min-width:0}
+.kit-connect-head{font-size:13.5px;font-weight:600;color:var(--ink)}
+.kit-connect-step>button{flex:none}
+.kit-connect .kit-form-btns{padding-top:8px}
+.kit-connect-again{font-size:12px;padding:2px 8px;margin:-4px 0 10px}
 .kit-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .kit-tile.off{border-color:var(--hairline);opacity:.4;filter:grayscale(1)}
 .kit-tile.off .kit-tile-name{text-decoration:line-through}
