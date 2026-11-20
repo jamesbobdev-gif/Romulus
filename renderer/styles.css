@@ -1334,7 +1334,6 @@ body.review-open .top-right{display:none!important}
 .kit-connect-head{font-size:13.5px;font-weight:600;color:var(--ink)}
 .kit-connect-step>button{flex:none}
 .kit-connect .kit-form-btns{padding-top:8px}
-.kit-connect-again{font-size:12px;padding:2px 8px;margin:-4px 0 10px}
 .kit-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .kit-tile.off{border-color:var(--hairline);opacity:.4;filter:grayscale(1)}
 .kit-tile.off .kit-tile-name{text-decoration:line-through}

@@ -713,20 +713,14 @@ function kBuild(view){
 }
 /* The first time he opens Kitchen: what to connect so it fills itself in (an AI, a grocery store through the
    Agent, his phone), each with a button to the place it's set up. "Got it" puts it away for good on this
-   device; "How to connect" under the tabs brings it back. */
+   device, with nothing left in its place. */
 const KIT_CONNECT_KEY='tasks.kitchenConnect.v1';
 function kConnectSeen(){ try{ return !!localStorage.getItem(KIT_CONNECT_KEY); }catch(e){ return false; } }
 function kDrawConnect(){
   const box=$('kitConnect'); if(!box)return;
   box.innerHTML='';
   const desk=!!(window.desktop&&window.desktop.aiStatus);
-  if(kConnectSeen()&&!kitchenUI.connectOpen){
-    const again=el('button','ghost kit-connect-again','How to connect');
-    again.type='button';
-    again.addEventListener('click',function(){ kitchenUI.connectOpen=true; kDrawConnect(); });
-    box.appendChild(again);
-    return;
-  }
+  if(kConnectSeen())return;
   const card=el('div','kit-connect');
   card.appendChild(el('div','kit-connect-title','Connect Kitchen'));
   const step=function(head,text,label,go){
@@ -771,7 +765,7 @@ function kDrawConnect(){
       if(add&&box&&box.hidden)add.click();
     });
   const done=el('button','btn-accent','Got it'); done.type='button';
-  done.addEventListener('click',function(){ try{ localStorage.setItem(KIT_CONNECT_KEY,String(Date.now())); }catch(e){} kitchenUI.connectOpen=false; kDrawConnect(); });
+  done.addEventListener('click',function(){ try{ localStorage.setItem(KIT_CONNECT_KEY,String(Date.now())); }catch(e){} kDrawConnect(); });
   const foot=el('div','kit-form-btns'); foot.appendChild(done); card.appendChild(foot);
   box.appendChild(card);
 }
