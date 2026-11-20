@@ -1286,6 +1286,19 @@ body.review-open .top-right{display:none!important}
 .kp-item{justify-content:flex-start}
 .kp-item .kit-hint{margin:0;white-space:nowrap}
 @media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
+.kit-ideas-head{display:flex;align-items:center;gap:12px;margin:18px 2px 8px}
+.kit-ideas-words{flex:1;min-width:0}
+.kit-ideas-meta{font-size:12px;color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kit-ideas-go{flex:none;display:inline-flex;align-items:center;gap:7px}
+.kit-ideas-go[hidden]{display:none}
+.kit-spin::before{content:"";width:11px;height:11px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:kit-spin .8s linear infinite}
+@keyframes kit-spin{to{transform:rotate(360deg)}}
+.kit-aim{display:block;width:100%;box-sizing:border-box;margin-bottom:10px;padding:9px 12px;border-radius:10px;background:var(--chip);border-color:transparent}
+.kit-aim:focus,.kit-follow input:focus{background:var(--surface);border-color:var(--hairline)}
+.kit-form.kit-follow{background:none;border:0;padding:0;gap:6px}
+.kit-follow input{background:var(--chip);border-color:transparent;border-radius:10px}
+.kit-aim[hidden]{display:none}
+.kit-ideas-stale .kit-card{opacity:.5;transition:opacity .2s}
 .kit-idea-more{margin-top:6px}
 .kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
 .kit-idea-steps{margin:6px 0 0 18px;padding:0;font-size:13px;color:var(--ink)}

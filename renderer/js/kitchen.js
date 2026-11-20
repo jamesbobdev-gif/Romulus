@@ -1015,23 +1015,28 @@ function kDrawIdeas(){
   const box=$('kitIdeas'); if(!box)return; box.innerHTML='';
   const ideas=state.kitchen.ideas, can=kIdeasLocal()||kIdeasRemote(), waiting=kIdeasWaiting();
   if(!can&&!ideas)return;
-  box.appendChild(el('div','kit-k kit-sec','Ideas from your pantry'));
-  const form=el('div','kit-form'); form.hidden=!can;
-  const aim=document.createElement('input'); aim.className='sm kit-grow'; aim.id='kitAim'; aim.value=kitchenUI.aim;
-  aim.placeholder='Anything to aim for? High protein, under 600 calories, quick'; aim.setAttribute('aria-label','What to aim for');
+  // one line: the heading, when and by which AI, and the button; the aim box sits under it, light
+  const head=el('div','kit-ideas-head');
+  const words=el('div','kit-ideas-words'); words.appendChild(el('div','kit-k','Ideas from your pantry'));
+  if(ideas)words.appendChild(el('div','kit-ideas-meta',kIdeasAgo(ideas.at).replace(/^./,function(c){ return c.toUpperCase(); })+(ideas.via?' · '+ideas.via:'')+(ideas.aim?' · for '+ideas.aim:'')));
+  head.appendChild(words);
+  const busy=kitchenUI.ideasBusy;
+  const go=el('button','btn-accent kit-ideas-go'+(busy||waiting?' kit-spin':''),busy?'Thinking':waiting?'Asked your computer':ideas?'New ideas':'Suggest meals');
+  go.disabled=busy||waiting||!state.kitchen.items.length; go.hidden=!can;
+  go.addEventListener('click',function(){ kitchenUI.ideasWhy=''; kAskIdeas(); });
+  head.appendChild(go); box.appendChild(head);
+  const aim=document.createElement('input'); aim.className='sm kit-aim'; aim.id='kitAim'; aim.value=kitchenUI.aim; aim.hidden=!can;
+  aim.placeholder='Aim for anything? High protein, under 600 calories, quick'; aim.setAttribute('aria-label','What to aim for');
   aim.addEventListener('input',function(){ kitchenUI.aim=aim.value.slice(0,300); });
   aim.addEventListener('keydown',function(e){ if(e.key==='Enter')kAskIdeas(); });
-  const go=el('button','btn-accent',kitchenUI.ideasBusy?'Thinking…':waiting?'Asked your computer…':ideas?'New ideas':'Suggest meals');
-  go.disabled=kitchenUI.ideasBusy||waiting||!state.kitchen.items.length;
-  go.addEventListener('click',function(){ kitchenUI.ideasWhy=''; kAskIdeas(); });
-  form.appendChild(aim); form.appendChild(go); box.appendChild(form);
+  box.appendChild(aim);
+  box.classList.toggle('kit-ideas-stale',!!(busy&&ideas)); // old ideas fade while new ones come
   if(!state.kitchen.items.length&&!ideas){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
   if(can)box.appendChild(el('div','kit-hint','Uses your pantry and what you’ve told the Agent (foods you avoid, goals).'+(kIdeasRemote()?' Your computer thinks of them, so Romulus needs to be open there.':'')));
   if(waiting)kpDrawWaiting('ideas',box); // kitchen-photo.js
   kAutoIdeas();
   if(kitchenUI.ideasBusy&&!ideas)box.appendChild(kEmpty('Thinking of meals you can make with what you have…'));
   if(kitchenUI.ideasWhy)box.appendChild(kEmpty(kitchenUI.ideasWhy));
-  if(ideas)box.appendChild(el('div','kit-hint','These are from '+kIdeasAgo(ideas.at)+(ideas.via?', by '+ideas.via:'')+(ideas.aim?', aiming for: '+ideas.aim:'')+'.'));
   const fit=ideas?ideas.meals.filter(function(m){ return kIdeaShown(state.kitchen.items,m); }):[]; // the pantry may have changed since
   if(ideas&&!fit.length)box.appendChild(kEmpty('None of these fit what’s in your pantry now. Ask for new ideas.'));
   fit.forEach(function(m){
