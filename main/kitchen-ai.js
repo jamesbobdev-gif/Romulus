@@ -69,7 +69,7 @@ async function follow(f, pantry) {
     const prefs = await agentRow(':prefs').catch(() => '');
     const question = mealIdeas.followPrompt() + '\n' + mealIdeas.followInput({ meal: f.meal, talk: f.talk, said, pantry, prefs });
     const r = await ctx.readPicture(question, null);
-    if (!r || !r.text) { ctx.agentLog('meal follow-up: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
+    if (!r || !r.text) { ctx.agentLog('meal follow-up: ' + ((r && (r.detail || r.why)) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
     const out = mealIdeas.parseFollow(r.text);
     ctx.agentLog('meal follow-up: ' + (out ? (out.meal ? 'changed' : 'answered') : 'unusable') + ' from ' + r.via);
     return out ? Object.assign(out, { via: r.via }) : { why: r.via + ' answered, but not usefully. Try again.' };
@@ -93,7 +93,7 @@ async function photo(_e, req) {
   reading = true;
   try {
     const r = await ctx.readPicture(pantryPhoto.prompt(mode, pantry, said), said ? null : { mime, b64 });
-    if (!r || !r.text) { ctx.agentLog('pantry photo: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
+    if (!r || !r.text) { ctx.agentLog('pantry photo: ' + ((r && (r.detail || r.why)) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
     const out = pantryPhoto.parse(mode, r.text);
     const n = mode === 'meal' ? out.used.length : out.items.length;
     ctx.agentLog('pantry photo (' + mode + '): ' + n + ' from ' + r.via);
