@@ -8,18 +8,17 @@
 const askDrafts={}; // task id → {i, picks:[[...]], other:[...]}
 
 // Has he opened this task's questions on the Agent tab yet? Until he has, they're asked on the To do tab
-// too (drawAskPrompts). Kept on this device per task and question set, so a new set of questions asks again.
-const ASK_SEEN_KEY='agent.askSeen';
-function askKey(t){ return t.id+'|'+t.ask.map(function(a){ return a.q; }).join('|'); }
-function askSeenMap(){ try{ return JSON.parse(localStorage.getItem(ASK_SEEN_KEY)||'{}')||{}; }catch(e){ return {}; } }
-function askSeen(t){ return !!askSeenMap()[askKey(t)]; }
+// too (drawYesPrompts). The mark is t.askSeen, a short hash of the questions, kept on the task so it syncs:
+// opened on the phone, the computer stops asking too. A new set of questions has another hash and asks again.
+function askKey(ask){
+  const s=ask.map(function(a){ return String(a.q||'')+'\u0001'+(a.choices||[]).join('\u0002'); }).join('\u0003');
+  let h=5381; for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;
+  return (h>>>0).toString(36)+'.'+ask.length;
+}
+function askSeen(t){ return !!t.askSeen&&t.askSeen===askKey(t.ask); }
 function markAskSeen(t){
-  const m=askSeenMap(), k=askKey(t); if(m[k])return;
-  m[k]=Date.now();
-  // only the tasks still asking are worth remembering
-  const live={}; state.tasks.forEach(function(x){ if(Array.isArray(x.ask)&&x.ask.length)live[x.id]=true; });
-  Object.keys(m).forEach(function(key){ if(!live[key.split('|')[0]])delete m[key]; });
-  try{ localStorage.setItem(ASK_SEEN_KEY,JSON.stringify(m)); }catch(e){}
+  const lt=liveTask(t), k=askKey(lt.ask); if(lt.askSeen===k)return;
+  lt.askSeen=k; persist(); // saved and synced; no redraw needed (this runs while the Agent tab draws)
 }
 // the To do tab's card: the same questions, answered right there; tap the title to open the task
 function askPromptCard(t){
@@ -94,7 +93,7 @@ function askSteps(t){
       const lines=t.ask.map(function(q,i){ const ans=askAnswer(d.picks[i],d.other[i]); return (n>1?(i+1)+'. ':'')+q.q.replace(/\?\s*$/,'')+': '+(ans||'(no answer)'); });
       const msg=lines.join('\n');
       const lt=liveTask(t);
-      lt.reply=msg; agentSay(lt,'you',msg); lt.status='queued'; delete askDrafts[t.id];
+      lt.reply=msg; agentSay(lt,'you',msg); lt.status='queued'; delete askDrafts[t.id]; delete lt.askSeen; // answered: the same questions again later ask again
       buzz('send'); touch();
     });
     nav.appendChild(next);
