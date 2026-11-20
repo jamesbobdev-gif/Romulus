@@ -728,8 +728,7 @@ function kDrawConnect(){
     return;
   }
   const card=el('div','kit-connect');
-  card.appendChild(el('div','kit-connect-title','Connect Kitchen to the rest of your apps'));
-  card.appendChild(el('div','kit-hint','You can type everything in by hand. Connecting these makes Kitchen fill itself in.'));
+  card.appendChild(el('div','kit-connect-title','Connect Kitchen'));
   const step=function(head,text,label,go){
     const row=el('div','kit-connect-step');
     const words=el('div','kit-connect-words');
@@ -740,16 +739,16 @@ function kDrawConnect(){
     card.appendChild(row);
   };
   step('1. An AI',
-    desk?'Thinks of meals from what you have and reads photos of food, shopping lists and empty packages. Connect one in Settings, under Agent.'
-        :'Thinks of meals and reads your photos. Your computer does this while Romulus is open there, or copy your AI keys to this phone once from the computer (Settings, Agent, "Use these on your phone").',
+    desk?'Meal ideas and reading photos.'
+        :'Meal ideas and reading photos. Your computer does it while Romulus is open, or copy your AI keys here from it.',
     desk?'Connect an AI':'AI on this phone',
     function(){ openSettingsAt('agentGroup',desk?'aiSection':'aiPhoneSection'); });
   step('2. Your grocery store',
-    'Ask the Agent to order your groceries, for example "Order my groceries from Walmart". It works with Walmart (including EBT), Instacart, Amazon Fresh and others. The first time, it asks you to sign in to the store. What it buys goes into your pantry on its own, and anything you mark as used up goes on the next order. It never places an order without your yes.',
+    'Ask the Agent to order groceries. What it buys goes in your pantry. It always asks before ordering.',
     'Open the Agent',
     function(){ switchTab('agent'); window.scrollTo(0,0); });
   step('3. Your '+(desk?'phone':'computer'),
-    'Turn on device sync so your pantry, recipes and shopping list are the same on every device'+(desk?', and so you can take a photo of what you have from your phone.':'.'),
+    'Sync keeps Kitchen the same on every device.',
     syncEnabled()?'':'Set up sync',
     function(){ openSettingsAt(null,'syncSection'); });
   const done=el('button','btn-accent','Got it'); done.type='button';

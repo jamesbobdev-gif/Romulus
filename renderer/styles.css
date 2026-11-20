@@ -161,14 +161,14 @@ select option,select optgroup{color:var(--ink);background:var(--surface)}
 .live-bar .live-bigger:hover{color:var(--ink)}
 /* grocery list (grocery-list.js) and the one-tap yes */
 .agent-yes{display:block;width:100%;margin:10px 0 6px;padding:10px 14px;font-size:14px}
-.yes-prompts{display:grid;gap:8px;margin:0 0 12px}
+.yes-prompts{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 12px} /* minmax: a long no-wrap title can't widen the card past the list */
 .yes-card{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;cursor:pointer}
 .yes-card:hover,.yes-card:focus-visible{border-color:var(--muted);border-left-color:var(--accent);outline:0}
 .suggest-card{cursor:default;border-left-color:var(--muted)}
 .suggest-card:hover{border-color:var(--hairline);border-left-color:var(--muted)}
 .yes-head{display:flex;align-items:baseline;gap:8px;min-width:0}
 .yes-who{flex:none;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.yes-title{font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yes-title{min-width:0;font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yes-ctx{margin:5px 0 0;font-size:12.5px;line-height:1.4;color:var(--muted)}
 .ask-card{cursor:default}
 .ask-card .yes-title{cursor:pointer}
