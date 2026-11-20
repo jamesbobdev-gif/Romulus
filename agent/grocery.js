@@ -16,8 +16,10 @@ function groceryBrief(list, now = Date.now()) {
     .filter((x) => x && clean(x.name)).slice(0, 200)
     .map((x) => {
       const it = { name: clean(x.name), every: Math.max(1, Math.round(Number(x.every) || 1)), last: x.last || null, out: !!x.out };
-      return { name: it.name, every: it.every === 1 ? 'weekly' : 'every ' + it.every + ' weeks', lastBought: it.last || undefined,
+      const b = { name: it.name, every: it.every === 1 ? 'weekly' : 'every ' + it.every + ' weeks', lastBought: it.last || undefined,
         ranOut: it.out || undefined, due: itemDue(it, now) };
+      if (clean(x.for)) b.forMeal = clean(x.for); // the dish it's on the list for
+      return b;
     });
   return items.length ? items : undefined;
 }
@@ -26,9 +28,14 @@ function groceryBrief(list, now = Date.now()) {
 function groceryChanges(ch) {
   if (!ch || typeof ch !== 'object' || Array.isArray(ch)) return undefined;
   const names = (a) => (Array.isArray(a) ? a : []).map((x) => clean(x && typeof x === 'object' ? x.name : x)).filter(Boolean).slice(0, 100);
-  const add = (Array.isArray(ch.add) ? ch.add : []).map((x) => x && typeof x === 'object'
-    ? { name: clean(x.name), every: Math.max(1, Math.min(52, Math.round(Number(x.every) || 1))) } : { name: clean(x), every: 1 })
-    .filter((x) => x.name).slice(0, 100);
+  // for: the dish it's being bought for ("Cranberry blueberry pie, 2"): the Kitchen tab shows that meal
+  const add = (Array.isArray(ch.add) ? ch.add : []).map((x) => {
+    if (!x || typeof x !== 'object') return { name: clean(x), every: 1 };
+    const it = { name: clean(x.name), every: Math.max(1, Math.min(52, Math.round(Number(x.every) || 1))) };
+    const meal = clean(x.for).slice(0, 80);
+    if (meal) it.for = meal;
+    return it;
+  }).filter((x) => x.name).slice(0, 100);
   const out = { add, bought: names(ch.bought), remove: names(ch.remove) };
   return out.add.length || out.bought.length || out.remove.length ? out : undefined;
 }

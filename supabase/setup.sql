@@ -415,6 +415,8 @@ grant execute on function public.sync_usage(text) to anon, authenticated, servic
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
   values ('agent-attachments', 'agent-attachments', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
   on conflict (id) do nothing;
+-- Only a well-formed name in a 40-hex hashed folder, at most 300 pictures per folder, 60 uploads an hour per network.
+-- (supabase/migrations/20261120_attachment_upload_guard.sql)
 create or replace function public.attachment_upload_allowed(p_name text)
 returns boolean
 language plpgsql security definer

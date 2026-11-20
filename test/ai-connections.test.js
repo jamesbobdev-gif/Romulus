@@ -25,6 +25,12 @@ test('a pinned AI that isn’t set up is skipped, the others still try', () => {
   assert.deepStrictEqual(runOrder({ order: [], pinned: 'openai', ready: () => false }), []);
 });
 
+test('his yes to an order stays on the AI that asked: any AI may place it', () => {
+  const mine = ['gemini', 'openai', 'nvidia', 'claude'];
+  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'nvidia', ready }), ['nvidia', 'gemini', 'openai', 'claude']);
+  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'openai', ready: (id) => id !== 'claude' }), ['openai', 'gemini', 'nvidia', 'claude']);
+});
+
 test('a task stays on the AI that answered it last', () => {
   assert.strictEqual(homeCloud({ history: [] }), null);
   assert.strictEqual(homeCloud({ history: [{ who: 'claude', text: 'x' }] }), 'claude');

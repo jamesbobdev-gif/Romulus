@@ -421,8 +421,14 @@ async function keepBillsNow() {
     // worked out from the vault before the wait below, in case it locks meanwhile
     const list = billsLib.billsOf((vault.cache && vault.cache.accounts) || [], vault.kinds);
     // and charges worth a second look (renderer/js/finance-insights.js): the to-do's words only, no amount
-    const odd = insights.oddCharges((vault.cache && vault.cache.accounts) || [], vault.kinds, Date.now(), 7)
+    const accts = (vault.cache && vault.cache.accounts) || [];
+    const odd = insights.oddCharges(accts, vault.kinds, Date.now(), 7)
       .map((o) => ({ id: o.id, title: insights.oddTitle(o) }));
+    // a trial that turned paid, or a subscription that just started, with where to cancel it (only the name is in the link)
+    const subs = insights.subscriptionCheck([].concat(...accts.map((a) => a.transactions || [])), vault.kinds, Date.now());
+    (subs.trials || []).concat(subs.fresh || []).forEach((o) => {
+      odd.push({ id: 'sub|' + o.key, title: insights.newSubTitle(o), link: insights.cancelPage(o.name).url });
+    });
     const old = await readBills(), cutoff = Date.now() - 90 * DAY_MS;
     const reminded = {};
     Object.keys(old.reminded).forEach((id) => { if (old.reminded[id] > cutoff) reminded[id] = old.reminded[id]; });
@@ -451,7 +457,7 @@ async function billsNowInTurn() {
   b.odd.forEach((o) => {
     if (b.reminded['odd|' + o.id]) return;
     b.reminded['odd|' + o.id] = Date.now();
-    due.push({ title: o.title, prefix: o.title, due: billsLib.billYmd(today), kind: 'charge' });
+    due.push({ title: o.title, prefix: o.title, due: billsLib.billYmd(today), kind: 'charge', link: o.link || null });
   });
   if (due.length) { await writeBills(b); log('bills: ' + due.length + ' reminder(s) or charge check(s) to the Human list'); }
   return { due, paid };

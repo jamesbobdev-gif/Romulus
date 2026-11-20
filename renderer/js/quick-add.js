@@ -7,7 +7,7 @@
 'use strict';
 
 const QA_DOW=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-function qaYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function qaYmd(d){ return (typeof dayKey==='function'?dayKey:require('./util').dayKey)(d); }
 function qaTidy(s){ return s.replace(/\s+/g,' ').replace(/\s+([,.;:!?])/g,'$1').replace(/^[\s,.;:-]+|[\s,;:-]+$/g,'').trim(); }
 
 // → {title, every, due} or null. every is a recur.js rule (day, weekday, week, 2week, month, year);

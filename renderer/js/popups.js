@@ -187,8 +187,7 @@ function buildDayCell(date,otherMonth,todayStr){
   const ds=formatDate(date);
   const isToday=ds===todayStr;
   const cell=el('div','cal-cell'+(otherMonth?' other':'')+(isToday?' today':''));
-  const num=el('span','cal-num',String(date.getDate())); cell.appendChild(num);
-  if(otherMonth) return cell;
+  const num=el('span','cal-num',String(date.getDate())); cell.appendChild(num);  if(otherMonth) return cell;
   const dayTasks=state.tasks.filter(function(t){ return t.due===ds; })
     .sort(function(a,b){ return Number(a.done)-Number(b.done); });
   if(dayTasks.length){

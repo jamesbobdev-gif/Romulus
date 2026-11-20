@@ -16,8 +16,7 @@ const isSweep = (t) => !!t && (t.id === CLASS_SWEEP_ID || t.classSweep === true)
 const KINDS = ['assignment', 'quiz', 'exam', 'project', 'discussion', 'reading', 'other'];
 const MAX_ITEMS = 60, MAX_UNDATED = 15;
 const COURSE = /^\s*([A-Za-z]{2,5})[ -]?(\d{3,4}[A-Za-z]?)\s*$/;
-const pad = (n) => String(n).padStart(2, '0');
-const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const { pad2: pad, dayKey: ymd } = require('./util');
 
 const ADD_ITEM_TOOL = { type: 'function', function: { name: 'add_class_item', description: 'Put one piece of work still to do in a class on his School list. Call it as soon as you read it on the page: your memory only keeps the latest page. One call per assignment, quiz, exam, discussion or reading.', parameters: { type: 'object', properties: {
   course: { type: 'string', description: 'the course code only, like "BIO 101"' },

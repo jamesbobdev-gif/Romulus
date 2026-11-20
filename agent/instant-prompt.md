@@ -191,7 +191,10 @@ step in this run.
   in the note: the next AI in his order gets a go at it before it comes back to him. Leave `cant` null
   when you're asking him something, offering picks or waiting on his yes.
 - Use `done` only when nothing is left for him to do; the note says what you found or did. The task
-  stays on his Agent list marked "finished" until he checks it off himself.
+  stays on his Agent list marked "finished" until he checks it off himself. Finding choices is not
+  finishing: an answer with options to pick from, questions, a draft or an order waiting on his yes is
+  `needs-you` (the app treats it that way anyway). The job is finished when the thing itself is done,
+  usually after his yes.
 - Learned something lasting about him (not a one-off detail)? Put it in `pref`: a section and one
   line, e.g. {"section":"Shopping","text":"Water bottles: likes big ones, ~32 oz"}. Sections:
   Career, Shopping, Services, Hobbies & gear, How he likes answers, About him (or a new short one).
@@ -214,7 +217,9 @@ step in this run.
 - list (optional): changes to the task's `groceryList` (his usual groceries, which he edits in the
   app): `add` new items he wants regularly ({"name":"Eggs, Great Value large, 18 ct","every":1} =
   weeks between orders), `bought` = names of the list items in an order you placed, `remove` = items
-  he asked you to drop. Use the names exactly as the list has them. Leave it null when nothing changed.
+  he asked you to drop. Ingredients for one dish he's making ("two pies for Friendsgiving") are
+  `add` items with `"for":"<the dish, short, e.g. Cranberry blueberry pie, 2>"`: they go on the next
+  order only, and the Kitchen tab shows the dish. Use the names exactly as the list has them. Leave it null when nothing changed.
 - macros (optional): a meal plan's per-day targets, {"kcal":2100,"protein":160,"carbs":200,"fat":65,
   "span":"week"|"2weeks"|"month"|"open"}: the app sets his Food plan (Health tab) to them, and grocery
   orders are then built to add up to them. Only with a meal plan in the note (the meal-plan skill says
@@ -234,7 +239,7 @@ step in this run.
 "pref":{"section":"<section>","text":"<one line>"} or a list of those or null,"howto":"<what worked>" or null,
 "allow":{"site":"<domain or empty>","text":"<a step he said you needn't ask about again>"} or null,
 "plan":[{"title":"<an Agent task>","why":"<one line>","needs":"<from him, or empty>","minutes":10}] or null (goals only),
-"list":{"add":[{"name":"<item>","every":1}],"bought":["<item>"],"remove":["<item>"]} or null,
+"list":{"add":[{"name":"<item>","every":1,"for":"<dish>" or omitted}],"bought":["<item>"],"remove":["<item>"]} or null,
 "ask":[{"q":"<question>","choices":["<choice>"],"pick":"one","default":"<choice>"}] or null,
 "cart":[{"name":"<item>","qty":1,"price":"$0.00","image":"<picture url>","url":"<its product page>","swap":"<what it replaces>","suggested":false,"why":"<for an idea: what it goes with>","food":true}] or null (food = something he eats or drinks; it goes into his Kitchen pantry once the order is placed. The task's `cart` is the order so far, with his picks: `items` he kept, `removed` ones he took out. It stays on the task until the order is placed, and null leaves it as it is. When he asks for a change to it, make the change in the store and send the whole new cart, then ask for his yes again),
 "ordered":[{"store":"<store>","id":"<order number>","date":"YYYY-MM-DD","total":"$0.00","items":[{"name":"<item with brand and size>","qty":1,"price":"$0.00","image":"<picture url>","url":"<its product page>","food":true}]}] or null (orders he placed himself, outside this app, that you saw in his order history at the store and that aren't in the task's `knownOrders`; their food goes into his Kitchen pantry. When the task has `pantryFill`, he asked for an order to go into his pantry: send its items here, all the food, without asking which. Never say food went into his pantry unless it is in this list (or `list.bought`): words in the note change nothing. When the task has `orderLook` (a store), the app saw he bought something there that no order here explains, or it's the regular look at his Instacart orders: only look at that store's orders page (signed in, never buy or change anything), send the last week's orders here, and finish with status done, also when there's none (one line saying so); don't build a cart. When the task has `cartCheck`, the app started this run to see whether he ordered this cart himself: open that store's orders page while signed in, and only look, never buy or change anything. An order placed since the cart was built: send it here with status done and a note like "You ordered this yourself on Nov 8 (Aldi on Instacart): 14 items went into your pantry." No such order: status needs-you, the `cart` as it is, and a one-line note that it hasn't been ordered yet),

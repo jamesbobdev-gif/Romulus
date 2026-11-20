@@ -17,7 +17,7 @@ if(calApi){
     });
   });
   const calErr=function(m){ $('calErr').textContent=m||''; };
-  const escH=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  const escH=escapeHtml;;
   const PROV={google:'Google',microsoft:'Microsoft',ics:'Calendar link'};
   let calData=null;
   // sign in again with this account (Google opens on its address); the account keeps its calendars and switches
@@ -190,7 +190,7 @@ if(calApi){
       if(!tick)return;
       const open=state.tasks.filter(function(t){ return !t.done&&taskWs(t)==='personal'&&t.title.startsWith(MAIL_RENEW); });
       if(st.connected&&st.expired&&!open.length){
-        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendars & email';
+        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendar & email';
         state.tasks.push({id:uid(),title:title,done:false,due:null,dueTime:null,tag:null,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
         voiceToast(title,true); touch();
       } else if(!st.expired&&open.length){ open.forEach(function(t){ t.done=true; }); touch(); }

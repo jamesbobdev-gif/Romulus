@@ -21,6 +21,7 @@ mobile/school-sync-config.json
 mobile/android/app/src/main/res/raw/sync_config.json
 mobile/android/app/src/main/res/raw/agent_sync_config.json
 mobile/android/app/src/main/res/raw/oauth_clients.json
+mobile/ios/App/App/oauth_clients.json
 mobile/android/app/src/main/res/raw/school_sync_config.json
 
 # local safety copies made before installs

@@ -99,13 +99,16 @@ If none of your computers is on to take an Agent task, your phone can offer to s
 goes until you say yes, on that device ("Always", "Just this once" or "No thanks"; Settings, Agent changes it).
 
 - **What is sent**: that one task (its title, your notes and the conversation on it) and your "What Claude knows
-  about you" notes. Never your other lists, Finance, the Locked profile, photos, or a task with one of your private
-  words, a card number or an ID number in it.
+  about you" notes, leaving out any line with one of your private words, a card number or an ID number. The app
+  won't send your other lists, Finance, the Locked profile, photos, or a task with a private word, a card number or
+  an ID number in it. These checks run in the app, before anything leaves your phone. Your account is named by a
+  one-way code made from your sync key; the key itself isn't sent.
 - **Who sees it**: the Romulus server passes it to Anthropic's Claude, which answers it with web search. Anthropic
   handles it under its commercial terms (API data is not used to train its models). The server keeps the task only in
   memory while it is answered; it is never saved or logged.
 - **The answer** is sealed with a one-time key that only the phone that asked has, kept until that phone picks it up,
-  then deleted (after 2 days if it never does).
+  then deleted (after 2 days if it never does). Its links come from the web and aren't checked, and the app says so
+  under the answer.
 - **What is kept**: per account per month, how many cloud tasks you used and roughly what they cost, to apply your
   plan's allowance; and for a day, a hash of your IP address, to stop people making accounts to use free tasks.
 - The code that does this is public: `supabase/functions/cloud-agent` and `renderer/js/cloud-agent.js`.

@@ -241,6 +241,10 @@ async function claimSealed(a, id, worker, lane) {
     return await supabase.writeRow(a, '', doc, row.updated_at);
   } catch (e) { return null; }
 }
+/* the lane a claim names: the server only lets a lane claim a task saved with that lane (or none). A task saved
+   on Claude that the app moves to the local model itself (a #legion title, his Finance, a private word:
+   routing.js laneOf) is claimed under the lane it's saved with, or nobody could ever take it. Still atomic */
+const claimLane = (t, lane) => (lane === 'local' && t && t.lane === 'claude' ? 'claude' : lane);
 // claim on the server first (atomic: only one worker can win a queued task) → the tasks we may run
 async function claimAgentTasks(tasks, lane = 'claude') {
   const a = supabase.channel(readConfig());
@@ -249,13 +253,14 @@ async function claimAgentTasks(tasks, lane = 'claude') {
   const won = [];
   for (const t of tasks) {
     let ok = null;
+    const as = claimLane(t, lane);
     for (let i = 0; i < 3 && ok !== true; i++) { // our own reply may still be uploading: try a few times
       if (i) await new Promise((r) => setTimeout(r, 4000));
-      if (a.v2) { ok = await claimSealed(a, t.id, worker, lane); if (ok === null) break; continue; }
+      if (a.v2) { ok = await claimSealed(a, t.id, worker, as); if (ok === null) break; continue; }
       try {
         const r = await fetch(supabase.base(a) + '/rpc/agent_claim_task', {
           method: 'POST', headers: supabase.headers(a, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ p_sync_key: a.syncKey, p_task_id: t.id, p_worker: worker, p_lane: lane }), signal: AbortSignal.timeout(10000) });
+          body: JSON.stringify({ p_sync_key: a.syncKey, p_task_id: t.id, p_worker: worker, p_lane: as }), signal: AbortSignal.timeout(10000) });
         ok = r.ok ? (await r.json()) === true : null;
       } catch (e) { ok = null; }
       if (ok === null) break; // server unreachable: nobody else can claim it either — go ahead
@@ -267,4 +272,4 @@ async function claimAgentTasks(tasks, lane = 'claude') {
 }
 
 module.exports = { init, handlers, wantsCalendar, calendarForAgent, loadSkills, wantsNearby, siteNoteDirs, taskLinks, howtos, howtoFile, howtosFor, learnHowto,
-  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, missingPictures };
+  siteNotesFor, skillText, cartBrief, wantsInbox, agentRow, prefLine, cleanAsk, cleanCart, cleanOrdered, cleanDraft, claimAgentTasks, claimLane, missingPictures };

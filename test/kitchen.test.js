@@ -81,6 +81,19 @@ test('the shopping list adds up planned meals and takes off what he has', () => 
   ]);
 });
 
+test('planning a meal finds what the pantry is missing for that meal alone', () => {
+  const kt = kitchen(['8 oz ground beef', 'tortillas'], [
+    { name: 'Tacos', ings: ['1 lb ground beef', 'tortillas', '1 cup cheese', 'salt'] },
+    { name: 'Chili', ings: ['1 can kidney beans'], planned: true },
+  ]);
+  assert.deepStrictEqual(k.planNeeds(kt, kt.recipes[0]), [
+    { name: 'cheese', qty: 1, unit: 'cup', for: ['Tacos'] },
+    { name: 'ground beef', qty: 0.5, unit: 'lb', for: ['Tacos'] },
+  ]);
+  assert.strictEqual(kt.recipes[0].planned, false); // only looked, nothing changed
+  assert.deepStrictEqual(k.planNeeds(kt, null), []);
+});
+
 test('groceries bought go into the pantry, with their size when the name has one', () => {
   const kt = kitchen(['1 lb rice'], []);
   const added = k.stockPantry(kt, ['Rice, 20 lb', 'Eggs', 'Milk, 1 gallon'], 1, id);
@@ -308,6 +321,20 @@ test('things he adds himself go on the shopping list, with or without a meal pla
   assert.deepStrictEqual(back.extra.map((e) => e.name).sort(), ['eggs', 'milk']);
 });
 
+test('the x on a meal row puts the food in the pantry so the list stops asking; on his own row it just comes off', () => {
+  const kt = kitchen(['4 oz chicken breast'], [{ name: 'Sheet pan', planned: true, ings: ['6 oz chicken breast', '1 tsp olive oil', '1/2 orange pepper'] }]);
+  k.addToShop(kt, ['paper towels'], 1, id);
+  let list = k.shoppingList(kt);
+  assert.deepStrictEqual(list.map((e) => e.name), ['chicken breast', 'olive oil', 'orange pepper', 'paper towels']);
+  assert.strictEqual(k.shopRowGone(kt, list.find((e) => e.name === 'olive oil'), 2, id), 'pantry');
+  assert.strictEqual(k.shopRowGone(kt, list.find((e) => e.name === 'chicken breast'), 2, id), 'pantry');
+  assert.strictEqual(k.shopRowGone(kt, list.find((e) => e.name === 'paper towels'), 2, id), 'dropped');
+  list = k.shoppingList(kt);
+  assert.deepStrictEqual(list.map((e) => e.name), ['orange pepper']);
+  assert.strictEqual(kt.items.find((i) => i.name === 'chicken breast').qty, 6); // 4 he had + the 2 the list wanted
+  assert.strictEqual(kt.items.find((i) => i.name === 'olive oil').qty, null);
+});
+
 test('a size in brackets at the end of a product name is the amount, the way Instacart writes it', () => {
   assert.deepStrictEqual(k.kSized('Bananas (10.2 lb)'), { base: 'Bananas', qty: 10.2, unit: 'lb' });
   assert.deepStrictEqual(k.kSized('Kiwi (1 each)'), { base: 'Kiwi', qty: 1, unit: '' });
@@ -334,10 +361,53 @@ test('pantry items that went in with the size in their name get it as their amou
   assert.strictEqual(k.kFixSized(kt, 10), 0); // nothing left to do the next time
 });
 
+test('meal ideas only keep meals he has everything for, salt and pepper aside', () => {
+  const items = k.normKitchen({ items: [{ id: 'a', name: 'Sweet potatoes' }, { id: 'b', name: 'Salmon', qty: 2, unit: 'lb' }, { id: 'c', name: 'Avocado' }] }).items;
+  const meals = [
+    { name: 'Salmon and sweet potato', ingredients: ['8 oz salmon', '1 sweet potato', 'salt and pepper to taste', 'a pinch of salt'] },
+    { name: 'Hash with egg', ingredients: ['1 sweet potato', '1 egg', 'salt and pepper to taste'] },
+    { name: 'Salmon wraps', ingredients: ['8 oz salmon', '1 avocado', '1 tbsp olive oil'] },
+    { name: 'Too much salmon', ingredients: ['3 lb salmon'] },
+  ];
+  assert.deepStrictEqual(k.kIdeasCanMake(items, meals).map((m) => m.name), ['Salmon and sweet potato']);
+});
+
 test('recipes keep their steps through a sync, numbering taken off', () => {
   assert.deepStrictEqual(k.kSteps('1. Heat the oven\n\nStep 2: Roast 25 minutes\n  Serve  '), ['Heat the oven', 'Roast 25 minutes', 'Serve']);
   assert.deepStrictEqual(k.kSteps(null), []);
   const kt = k.normKitchen({ recipes: [{ id: 'a', name: 'Toast', ingredients: ['1 slice bread'], steps: ['Toast it', ''] }, { id: 'b', name: 'Tea', ingredients: [] }] });
   assert.deepStrictEqual(kt.recipes[0].steps, ['Toast it']);
   assert.ok(!('steps' in kt.recipes[1]));
+});
+
+test('a follow-up on an idea: the question and reply go on it, a change rewrites it and keeps it shown', () => {
+  const ideas = { at: 1, via: 'Lupa', aim: '', meals: [
+    { name: 'Egg fried rice', why: 'quick', ingredients: ['2 eggs', '1 cup rice'], steps: ['Cook'] },
+    { name: 'Omelet', why: '', ingredients: ['3 eggs'], steps: ['Cook'] }] };
+  const asked = k.kIdeaFollowed(ideas, 'egg fried rice', 'how long?', { reply: 'About 15 minutes.', meal: null }, 5);
+  assert.deepStrictEqual(asked.meals[0].talk, [{ q: 'how long?', a: 'About 15 minutes.' }]);
+  assert.strictEqual(asked.meals[0].changed, undefined);
+  assert.strictEqual(asked.at, 5);
+  const changed = k.kIdeaFollowed(asked, 'Egg fried rice', 'add chicken', { reply: 'Added chicken; it isn’t in your pantry.',
+    meal: { name: 'Chicken fried rice', why: 'more protein', ingredients: ['2 eggs', '1 cup rice', '6 oz chicken'], steps: ['Cook'] } }, 6);
+  const m = changed.meals[0];
+  assert.strictEqual(m.name, 'Chicken fried rice');
+  assert.strictEqual(m.changed, true);
+  assert.strictEqual(m.talk.length, 2);
+  const pantry = [{ name: 'Eggs' }, { name: 'Rice' }];
+  assert.strictEqual(k.kIdeaShown(pantry, m), true); // needs chicken, but he asked for it
+  assert.strictEqual(k.kIdeaShown([], ideas.meals[1]), false);
+  assert.strictEqual(k.kIdeaFollowed(ideas, 'Gone', 'x', { reply: 'y' }, 7), ideas);
+  // it survives the sync clean-up, and new ideas keep it at the top
+  const norm = k.normKitchen({ ideas: changed });
+  assert.deepStrictEqual(norm.ideas.meals[0].talk, m.talk);
+  assert.strictEqual(norm.ideas.meals[0].changed, true);
+  const next = k.kKeepTalked(changed, [{ name: 'Rice bowl', ingredients: ['rice'] }, { name: 'chicken fried rice', ingredients: ['x'] }]);
+  assert.deepStrictEqual(next.map((x) => x.name), ['Chicken fried rice', 'Rice bowl']);
+});
+
+test('a phone follow-up ask keeps the idea it is about', () => {
+  const norm = k.normKitchen({ asks: [{ id: 'a1', mode: 'ideas', meal: 'Omelet', said: 'add cheese', state: 'waiting' }] });
+  assert.strictEqual(norm.asks[0].meal, 'Omelet');
+  assert.strictEqual(norm.asks[0].said, 'add cheese');
 });

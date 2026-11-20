@@ -19,8 +19,7 @@ const SCHEMA = {
   required: ['proposals'],
 };
 
-const pad = (n) => String(n).padStart(2, '0');
-const dayOf = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const { pad2: pad, dayKey: dayOf } = require('./util');
 
 function prompt(now) {
   const day = now.toLocaleDateString('en-US', { weekday: 'long' });

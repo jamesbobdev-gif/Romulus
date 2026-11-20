@@ -13,8 +13,9 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, routeInfo, isClaudeLane, decided } = require('./routing');
-const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS } = require('./ai-connections');
-const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
+const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS, acctCfg, nameOf } = require('./ai-connections');
+const accounts = require('./ai-accounts');
+const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, spentFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
 const { trimRunLog, offline } = require('./helpers');
 const agentFiles = require('./agent-files');
 const supabase = require('./supabase');
@@ -141,9 +142,9 @@ function scheduleAgentRun(raw) {
   const queued = worker ? standInQueued(queuedAgentTasks(raw), true) : queuedAgentTasks(raw);
   const n = queued.length;
   if (!n) return;
-  if (worker && !cloudOrder().length) { agentLog('stand-in: ' + n + ' cloud task(s) waiting, but no cloud AI is set up here'); return; }
+  if (worker && !cloudOrder({ accounts: true }).length) { agentLog('stand-in: ' + n + ' cloud task(s) waiting, but no cloud AI is set up here'); return; }
   // Claude out of usage and no other AI connected: mark new ones as waiting, the timer starts them
-  if (Date.now() < usage.blockedUntil() && !cloudOrder().some((id) => id !== 'claude')) {
+  if (Date.now() < usage.blockedUntil() && !cloudOrder({ accounts: true }).some((id) => id !== 'claude')) {
     sendToRenderer('agent:waiting', { ids: queued.map((t) => t.id), until: usage.blockedUntil() });
     if (!usage.isHolding()) holdForUsage(queued.map((t) => t.id), usage.blockedUntil() - 60 * 1000);
     return;
@@ -351,11 +352,14 @@ async function startAgentRun() {
   // his yes unlocks the order button only on the sites the ask was about
   const yesHosts = tasks.length === 1 && saidYes(tasks[0]) ? approvedHostsFor(tasks[0]) : [];
   const browserOpts = { hosts: runHosts, approvedHosts: yesHosts, task: tasks.map((t) => t.title).join(' · '), link };
+  // a new run, a new yes: whatever the last run's yes placed doesn't hold this one back (browser-proxy.js isSpent)
+  try { fs.rmSync(spentFile(), { force: true }); } catch (e) {}
   // the cloud AIs he connected, in his order (Settings → AI connections): a task one of them fails
   // (out of usage, signed out, crashed, no usable answer, or skipped it) goes to the next, until all are
   // answered. A task already on an AI (pinned = the pill, or whoever answered it last) tries that one
   // first; its pill follows whichever AI takes over. (Inbox runs: his order, each with the Gmail tools.)
-  const order = runOrder({ order: cloudOrder(), pinned, mailRun, ready: cloudReady });
+  // (his extra accounts are entries of their own: Claude 2 takes over when Claude is out of usage)
+  const order = runOrder({ order: cloudOrder({ accounts: true }), pinned, mailRun, ready: cloudReady });
   if (!order.length) { failAgentTasks(ids, pinned ? providers.NAMES[pinned] + ' isn’t set up: connect it in Settings → AI connections' : 'no AI is connected: turn one on in Settings → AI connections'); agentLastKey = ''; return; }
   if (pinned && order[0] !== pinned) agentLog(providers.NAMES[pinned] + ' isn’t set up: trying the others');
   let pending = ids.slice(), claudeResetAt = null, lastWhy = 'no usable answer', tries = 0;
@@ -384,32 +388,36 @@ async function startAgentRun() {
     for (const id of order) {
       if (!pending.length || runRetried || slept) break;
       if (id === 'claude' && Date.now() < usage.blockedUntil()) continue; // still out of usage
-      agentLog('asking ' + providers.NAMES[id] + ' (' + pending.length + ' task(s))');
+      // an extra account (agent/ai-accounts.js) runs as its AI with its own key or sign-in; tasks and the pill only ever see the AI
+      const base = accounts.baseOf(id), name = nameOf(id), runCfg = acctCfg(id), extra = accounts.isAccount(id);
+      if (extra && accounts.heldUntil(id)) continue; // out of usage earlier in this run
+      agentLog('asking ' + name + ' (' + pending.length + ' task(s))');
       // its pill moves to this AI, and the task stays on it; limitMs = when this try gets killed (the app's watchdog waits that long)
-      sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: id, limitMs: runTimeoutMs });
+      sendToRenderer('agent:working', { ids: pending, lane: 'claude', cloud: base, limitMs: runTimeoutMs });
       try { fs.rmSync(mailSeenFile(), { force: true }); } catch (e) {} // each try starts with his mail unseen
-      const prompt = promptFor(pending, id);
+      const prompt = promptFor(pending, base);
       // live steps: Claude's come from its own stream; the others' from what the browser launcher writes down
       // (agent/run-live.js tail). A line says who is on it whenever that isn't plainly Claude alone
-      if (id !== 'claude' || tries) live.note('-- ' + providers.NAMES[id] + (tries ? ' takes over' : ' is on it'));
+      if (base !== 'claude' || extra || tries) live.note('-- ' + name + (tries ? ' takes over' : ' is on it'));
       tries++;
-      const untail = id !== 'claude' && browserCfg ? live.tail(stepsFile()) : null;
-      // the other AIs get the same site limit on a shopping run as Claude (browserOpts.hosts), never his yes
-      const steps = { steps: true, hosts: runHosts, task: browserOpts.task };
+      const untail = base !== 'claude' && browserCfg ? live.tail(stepsFile()) : null;
+      // the other AIs get the same site limit on a shopping run as Claude (browserOpts.hosts), and his yes the same
+      // way: one final click, on the sites his yes was about (browser-proxy.js buyRefusal)
+      const steps = { steps: true, hosts: runHosts, approvedHosts: yesHosts, task: browserOpts.task };
       // the other AIs' tools: the agent browser, or in an inbox run his Gmail (read-only) and no web search
       const otherTools = (st) => mailRun ? { browserMcpFile: mailCfg, browserDenied: [], mail: true }
-        : { browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', false, startTab, st), browserDenied: BROWSER_DENIED };
-      const r = id === 'claude' ? await runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt,
+        : { browserMcpFile: browserCfg && browserCfgFor(browserCfg, 'block', tasks.length === 1 && saidYes(tasks[0]), startTab, st), browserDenied: BROWSER_DENIED };
+      const r = base === 'claude' ? await runClaudeOnce({ exe, cfg, aiCfg: runCfg, mailRun, mailCfg, workDir, prompt,
           browserCfg: browserCfg && browserCfgFor(browserCfg, 'taint', tasks.length === 1 && saidYes(tasks[0]), startTab, browserOpts) }).finally(() => live.close())
-        : id === 'gemini' ? await providers.runGemini(readConfig(), { prompt, workDir, ...otherTools(steps),
+        : base === 'gemini' ? await providers.runGemini(runCfg, { prompt, workDir, ...otherTools(steps),
           timeoutMs: runTimeoutMs, node: findNode(), onProc: (p) => { agentProc = p; }, noLite: !!browserCfg && needsBrowsing(pending) })
-        : id === 'openai' ? await providers.runOpenAI(readConfig(), { prompt, timeoutMs: runTimeoutMs, node: findNode(),
+        : base === 'openai' ? await providers.runOpenAI(runCfg, { prompt, timeoutMs: runTimeoutMs, node: findNode(),
           ...otherTools(steps), onProc: (p) => { agentProc = p; } })
         // the ones answering one request at a time get the browser through the app's tool loop (agent/tool-loop.js);
         // the free ones only when he turned it on for that one (<id>Browser)
-        : providers.COMPAT[id] ? await providers.runCompat(id, readConfig(), { prompt, timeoutMs: runTimeoutMs,
+        : providers.COMPAT[base] ? await providers.runCompat(base, runCfg, { prompt, timeoutMs: runTimeoutMs,
           ...otherTools(steps), onProc: (p) => { agentProc = p; } })
-        : await providers.runOpenRouter(readConfig(), { prompt, timeoutMs: runTimeoutMs,
+        : await providers.runOpenRouter(runCfg, { prompt, timeoutMs: runTimeoutMs,
           ...otherTools(steps), onProc: (p) => { agentProc = p; } });
       if (untail) untail();
       if (Date.now() - beat > FROZE_MS) froze(); // it came back before the next beat
@@ -423,37 +431,39 @@ async function startAgentRun() {
       const isLast = order.indexOf(id) === order.length - 1;
       // its key expired or its sign-in ran out: a to-do on his Human list says to reconnect it
       // (and once it answers again, that to-do gets checked off)
-      if (Array.isArray(updates)) sendToRenderer('agent:reconnected', { id, prefix: 'Reconnect ' + providers.NAMES[id] + ':' });
-      else if (r.auth && !r.limit) sendToRenderer('agent:reconnect', { id, title: reconnectTitle(id, r.why) });
+      if (Array.isArray(updates)) sendToRenderer('agent:reconnected', { id, prefix: 'Reconnect ' + name + ':' });
+      else if (r.auth && !r.limit) sendToRenderer('agent:reconnect', { id, title: reconnectTitle(base, r.why, name) });
       if (Array.isArray(updates)) {
         wasOnline = true;
         const sawMail = mailRun || mailSeen();
         const got = updates.filter((u) => u && pending.includes(u.id) && !answered.some((a) => a.id === u.id));
-        got.forEach((u) => { u._via = id; u._model = r.model || null; u._sawMail = sawMail; u.thoughts = live.thoughts(u.id); if (id === 'claude') u.heard = live.heard(u.id); });
+        got.forEach((u) => { u._via = base; u._who = name; u._model = r.model || null; u._sawMail = sawMail; u.thoughts = live.thoughts(u.id); if (base === 'claude') u.heard = live.heard(u.id); });
         const cant = isLast ? [] : got.filter(couldntDo);
-        cant.forEach((u) => { held[u.id] = u; (gaveUp[u.id] = gaveUp[u.id] || []).push(providers.NAMES[id]); });
+        cant.forEach((u) => { held[u.id] = u; (gaveUp[u.id] = gaveUp[u.id] || []).push(name); });
         const ok = got.filter((u) => !cant.includes(u));
         answered.push(...ok);
         pending = pending.filter((x) => !ok.some((u) => u.id === x));
         if (!pending.length) break;
-        if (cant.length) agentLog(providers.NAMES[id] + ' couldn’t do ' + cant.length + ' task(s), trying the next one');
+        if (cant.length) agentLog(name + ' couldn’t do ' + cant.length + ' task(s), trying the next one');
         // what it said, so a later look at the log shows why it was passed on (its own run log gets overwritten)
-        cant.forEach((u) => agentLog('  ' + providers.NAMES[id] + ' said: ' + String(u.cant || u.note || '').replace(/\s+/g, ' ').slice(0, 400)));
+        cant.forEach((u) => agentLog('  ' + name + ' said: ' + String(u.cant || u.note || '').replace(/\s+/g, ' ').slice(0, 400)));
         if (pending.length === cant.length) continue;
         lastWhy = 'it skipped this task';
-        agentLog(providers.NAMES[id] + ' skipped ' + (pending.length - cant.length) + ' task(s)' + (isLast ? '' : ', trying the next one'));
+        agentLog(name + ' skipped ' + (pending.length - cant.length) + ' task(s)' + (isLast ? '' : ', trying the next one'));
         continue;
       }
       if (id === 'claude' && r.resetAt) claudeResetAt = r.resetAt;
+      // an extra account out of usage sits out until it resets (the main Claude account has its own hold)
+      if (extra && (r.limit || r.resetAt)) { accounts.hold(id, r.resetAt); agentLog(name + ' is out of usage: skipped until ' + new Date(accounts.heldUntil(id)).toLocaleString()); }
       lastWhy = r.limit && id === 'gemini' ? 'Gemini’s free daily limit is used up; it resets at ' +
           new Date(meter.nextPacificMidnight()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Switch this to Claude to do it now'
-        : r.limit || r.resetAt ? providers.NAMES[id] + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : providers.NAMES[id] + ' needs signing in again')
+        : r.limit || r.resetAt ? name + ' is out of usage' : r.auth ? (/key/i.test(r.why || '') ? r.why : name + ' needs signing in again')
         // the connection, not the AI: says so instead of "no usable answer"
-        : offline(r) ? (wasOnline ? providers.NAMES[id] + ' couldn’t be reached' : 'no internet connection: this computer couldn’t reach ' + (tries > 1 ? 'any of the AIs' : providers.NAMES[id]) + '. Check the Wi-Fi')
+        : offline(r) ? (wasOnline ? name + ' couldn’t be reached' : 'no internet connection: this computer couldn’t reach ' + (tries > 1 ? 'any of the AIs' : name) + '. Check the Wi-Fi')
         : (r.why || 'no usable answer');
       if (!offline(r)) wasOnline = true;
-      if (runRetried) { agentLog(providers.NAMES[id] + ' stopped: he pressed Retry'); break; }
-      agentLog(providers.NAMES[id] + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
+      if (runRetried) { agentLog(name + ' stopped: he pressed Retry'); break; }
+      agentLog(name + ': ' + lastWhy + (isLast ? '' : ', trying the next one'));
     }
   } finally {
     agentProc = null; runIds = []; if (live) live.stop(); live = null;
@@ -470,9 +480,10 @@ async function startAgentRun() {
   }
   // a later AI took over: the note says who tried before it
   for (const u of answered) {
-    const before = (gaveUp[u.id] || []).filter((n) => n !== providers.NAMES[u._via]);
+    const who = u._who || providers.NAMES[u._via];
+    const before = (gaveUp[u.id] || []).filter((n) => n !== who);
     if (before.length) u.note = String(u.note || '') + '\n\n(' + (held[u.id] === u ? 'Also tried: ' + before.join(', ') + '.'
-      : before.join(' and ') + ' couldn’t do this, so ' + providers.NAMES[u._via] + ' took over.') + ')';
+      : before.join(' and ') + ' couldn’t do this, so ' + who + ' took over.') + ')';
   }
   const valid = answered;
   const endPage = await endPageP;
@@ -480,7 +491,7 @@ async function startAgentRun() {
     // a web try that opened his mail in the agent browser is treated like an inbox run from here on
     const sawMail = u._sawMail, via = u._via;
     if (u._model) u.model = String(u._model).slice(0, 80); // which model wrote it, shown beside the AI's name
-    delete u._sawMail; delete u._via; delete u._model;
+    delete u._sawMail; delete u._via; delete u._model; delete u._who;
     if (sawMail && !mailRun) agentLog(providers.NAMES[via] + ' opened his mail in the browser: nothing from its answer is remembered, and its links are not opened');
     u.status = u.status === 'done' ? 'done' : 'needs-you';
     u.page = !sawMail && u.status === 'needs-you' ? endPage : null; // ◉ Watch opens this page for him
@@ -541,7 +552,8 @@ async function startAgentRun() {
   if (!claudeResetAt || !pending.length) scheduleAgentRun(); // anything queued while this run was going
 }
 // one Claude Code run → {text, log, resetAt, auth, why}
-function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg }) {
+// aiCfg: the config whose key or sign-in it runs on (an extra Claude account's, agent/ai-accounts.js)
+function runClaudeOnce({ exe, cfg, aiCfg, mailRun, mailCfg, workDir, prompt, browserCfg }) {
   return new Promise((resolve) => {
     let out = '', err = '', proc, killer = null, settled = false;
     const finish = (r) => { if (!settled) { settled = true; clearTimeout(killer); resolve(r); } };
@@ -589,7 +601,7 @@ function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg
         catch (e) { agentLog('hooks: ' + e.message); }
       }
       args.push('--allowedTools', allowed.join(','), '--disallowedTools', denied.join(','));
-      proc = require('child_process').spawn(exe, args, { cwd: workDir, windowsHide: true, env: claudeEnv(readConfig()) });
+      proc = require('child_process').spawn(exe, args, { cwd: workDir, windowsHide: true, env: claudeEnv(aiCfg || readConfig()) });
       agentProc = proc;
     } catch (e) { agentLog('spawn failed: ' + e.message); return resolve({ why: 'could not start Claude' }); }
     agentLog('started Claude (pid ' + proc.pid + ')');
@@ -605,7 +617,8 @@ function runClaudeOnce({ exe, cfg, mailRun, mailCfg, workDir, prompt, browserCfg
     proc.on('close', (code) => {
       agentLog('Claude exited (code ' + code + ')' + (code ? ': ' + String(err || out).replace(/\s+/g, ' ').slice(0, 300) : ''));
       let text = '';
-      text = meter.readClaudeStream(out);
+      // the usage bars are the main account's: another account's limits aren't noted there
+      text = meter.readClaudeStream(out, { note: !(aiCfg && aiCfg.ai && aiCfg.ai.accountId) });
       const log = 'exit ' + code + '\n' + err + '\n' + out;
       // the stream's first line (system init) names the model that ran
       const model = (out.match(/"type":"system"[^\n]*?"model":"([^"]+)"/) || [])[1] || null;

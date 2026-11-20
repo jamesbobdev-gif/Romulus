@@ -3,7 +3,9 @@
    the app in a browser) whose lists sync on the Romulus server (hosted-sync.js), and only after they say yes:
    the first time, the waiting task asks "Always / Just this once / No thanks" (Settings → Agent changes it).
    - What goes: this one task (title, notes, their conversation on it) and their "What Claude knows about you"
-     notes. Never Finance, the Locked profile, photos, or a task with private words, a card or ID number in it.
+     notes, minus any line with a private word or a card or ID number. The app doesn't send Finance, the Locked
+     profile, photos, or a task with private words, a card or ID number in it. The account goes as a hash
+     (cloudAgAccount), never a sync key. The one-time private key can't be exported (IndexedDB, cloudAgIdb).
    - The server (supabase/functions/cloud-agent) asks the AI with web search, then keeps the answer sealed with a
      one-time key made here, so only this device can open it; it's deleted once picked up. The task itself is
      never stored there.
@@ -28,6 +30,16 @@ function cloudAgTheirText(t){
   return [t.title,t.notes,t.reply].concat((Array.isArray(t.history)?t.history:[]).filter(function(h){ return h&&h.who==='you'; }).map(function(h){ return h.text; }))
     .map(function(x){ return String(x||''); }).join('\n');
 }
+/* → what makes this text private (plain words), or '': one of their private words, a card number or an ID number */
+function cloudAgPrivateIn(text,privateWords){
+  const low=String(text||'').toLowerCase();
+  const words=String(privateWords==null?CLOUD_AG_PRIVATE:privateWords).split(',').map(function(w){ return w.trim().toLowerCase(); }).filter(Boolean);
+  const hit=words.find(function(w){ return new RegExp('(^|[^a-z0-9])'+cloudAgEsc(w)+'([^a-z0-9]|$)').test(low); });
+  if(hit)return 'it mentions “'+hit+'”, one of your private words';
+  if(/(^|[^0-9])(\d[ -]?){12,18}\d([^0-9]|$)/.test(low))return 'it has a card number in it';
+  if(/(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)/.test(low))return 'it has an ID number in it';
+  return '';
+}
 /* → why this task stays off Romulus cloud (plain words), or '' when it may go. privateWords: their routing list */
 function cloudAgWhyNot(t,privateWords){
   if(!t||t.done)return 'finished';
@@ -35,12 +47,9 @@ function cloudAgWhyNot(t,privateWords){
   if(t.financeSeen)return 'it’s about your finances';
   if(t.cart||t.list)return 'it shops in your store accounts';
   if(t.replyImages&&t.replyImages.length)return 'it has photos';
-  const text=cloudAgTheirText(t), low=text.toLowerCase();
-  const words=String(privateWords==null?CLOUD_AG_PRIVATE:privateWords).split(',').map(function(w){ return w.trim().toLowerCase(); }).filter(Boolean);
-  const hit=words.find(function(w){ return new RegExp('(^|[^a-z0-9])'+cloudAgEsc(w)+'([^a-z0-9]|$)').test(low); });
-  if(hit)return 'it mentions “'+hit+'”, one of your private words';
-  if(/(^|[^0-9])(\d[ -]?){12,18}\d([^0-9]|$)/.test(text))return 'it has a card number in it';
-  if(/(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)/.test(text))return 'it has an ID number in it';
+  const text=cloudAgTheirText(t);
+  const priv=cloudAgPrivateIn(text,privateWords);
+  if(priv)return priv;
   if(CLOUD_AG_MONEY.test(text))return 'it’s about your own money';
   if(CLOUD_AG_MAIL.test(text))return 'it needs your email';
   return '';
@@ -50,6 +59,18 @@ function cloudAgTask(t){
   const hist=(Array.isArray(t.history)?t.history:[]).filter(function(h){ return h&&(h.who==='you'||h.who==='claude')&&h.text; }).slice(-20)
     .map(function(h){ return {who:h.who==='you'?'you':'assistant',text:String(h.text).slice(0,3000)}; });
   return {title:String(t.title||'').slice(0,500),notes:String(t.notes||'').slice(0,4000),reply:String(t.reply||'').slice(0,3000),history:hist};
+}
+/* their "What Claude knows about you" notes as they go with a cloud task: a line with a private word, a card number
+   or an ID number is left out (headings stay, so the rest still reads in context) */
+function cloudAgPrefs(text,privateWords){
+  return String(text||'').split('\n').filter(function(l){ return /^\s*#/.test(l)||!cloudAgPrivateIn(l,privateWords); }).join('\n').slice(0,6000);
+}
+/* the account the server should count this task against, without sending any sync key: 'tk_acct_' + the same
+   SHA-256 of the key's id part that sync_account_of makes (supabase/setup.sql), from the row key this device syncs under */
+async function cloudAgAccount(rowKey){
+  const id=String(rowKey||'').replace(/^tk_(work_|agent_|school_)?([^:]+)(:.*)?$/,'$2');
+  const d=await cloudAgCrypto().subtle.digest('SHA-256',new TextEncoder().encode(id));
+  return 'tk_acct_'+Array.from(new Uint8Array(d),function(b){ return b.toString(16).padStart(2,'0'); }).join('');
 }
 // is this task waiting with nobody on it, long enough to offer the cloud? (queued since queuedAt)
 function cloudAgDue(t,now,workerUp){
@@ -64,11 +85,14 @@ function cloudAgTriedThisRound(t){ return t.cloudTried!=null&&t.cloudTried===(Ar
 /* sealing: the device makes a one-time P-256 key pair, sends the public half, keeps the private half until the
    answer comes; the server derives the same AES-GCM key from its own one-time pair (index.ts seal) */
 function cloudAgCrypto(){ return (typeof crypto!=='undefined'&&crypto.subtle)?crypto:require('crypto').webcrypto; }
-async function cloudAgKeyPair(){
+/* → {pub (JWK, to send), priv}. With locked: true the private half is a CryptoKey that can't be exported, so a script
+   running in the page could use it while the app is open but never copy it out (it is stored as is, in IndexedDB);
+   otherwise a JWK (tests, and devices without IndexedDB) */
+async function cloudAgKeyPair(locked){
   const c=cloudAgCrypto();
-  const k=await c.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveKey']);
-  const pub=await c.subtle.exportKey('jwk',k.publicKey), priv=await c.subtle.exportKey('jwk',k.privateKey);
-  return {pub:{kty:pub.kty,crv:pub.crv,x:pub.x,y:pub.y},priv:priv};
+  const k=await c.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},!locked,['deriveKey']);
+  const pub=await c.subtle.exportKey('jwk',k.publicKey); // the public half is always exportable
+  return {pub:{kty:pub.kty,crv:pub.crv,x:pub.x,y:pub.y},priv:locked?k.privateKey:await c.subtle.exportKey('jwk',k.privateKey)};
 }
 function cloudAgB64(u){ let s=''; for(let i=0;i<u.length;i++)s+=String.fromCharCode(u[i]); return typeof btoa==='function'?btoa(s):Buffer.from(s,'binary').toString('base64'); }
 function cloudAgUnB64(s){ const b=typeof atob==='function'?atob(s):Buffer.from(s,'base64').toString('binary'); const u=new Uint8Array(b.length); for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i); return u; }
@@ -83,9 +107,10 @@ async function cloudAgSeal(pub,data){
   const epk=await c.subtle.exportKey('jwk',mine.publicKey);
   return {v:1,epk:{kty:epk.kty,crv:epk.crv,x:epk.x,y:epk.y},iv:cloudAgB64(iv),ct:cloudAgB64(ct)};
 }
+// priv: the CryptoKey kept in IndexedDB, or a JWK
 async function cloudAgOpen(priv,sealed){
   const c=cloudAgCrypto();
-  const mine=await c.subtle.importKey('jwk',priv,{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
+  const mine=priv&&priv.type==='private'&&priv.algorithm?priv:await c.subtle.importKey('jwk',priv,{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
   const theirs=await c.subtle.importKey('jwk',sealed.epk,{name:'ECDH',namedCurve:'P-256'},false,[]);
   const key=await c.subtle.deriveKey({name:'ECDH',public:theirs},mine,{name:'AES-GCM',length:256},false,['decrypt']);
   const pt=await c.subtle.decrypt({name:'AES-GCM',iv:cloudAgUnB64(sealed.iv)},key,cloudAgUnB64(sealed.ct));
@@ -111,7 +136,10 @@ function cloudAgWhyText(why,r){
   return 'Romulus cloud couldn’t take it. It waits for your computer.';
 }
 
-if(typeof module!=='undefined'&&module.exports)module.exports={cloudAgWhyNot,cloudAgTask,cloudAgDue,cloudAgTriedThisRound,cloudAgKeyPair,cloudAgSeal,cloudAgOpen,cloudAgResult,cloudAgWhyText,CLOUD_AG_WAIT_MS,CLOUD_AG_WORKER_WAIT_MS};
+// said under every Romulus cloud answer that has links: a web page could have planted one
+const CLOUD_AG_LINK_NOTE='Answered by Romulus cloud with web search. Its links come from the web and aren’t checked: look at the address before you sign in or pay anywhere.';
+
+if(typeof module!=='undefined'&&module.exports)module.exports={cloudAgPrivateIn,cloudAgPrefs,cloudAgAccount,CLOUD_AG_LINK_NOTE,cloudAgWhyNot,cloudAgTask,cloudAgDue,cloudAgTriedThisRound,cloudAgKeyPair,cloudAgSeal,cloudAgOpen,cloudAgResult,cloudAgWhyText,CLOUD_AG_WAIT_MS,CLOUD_AG_WORKER_WAIT_MS};
 
 if(typeof document!=='undefined'){
   const cloudAgUI={privateWords:null,privateAt:0,workerUp:false,workerAt:0,status:null,statusAt:0,busy:{},timer:null};
@@ -127,6 +155,33 @@ if(typeof document!=='undefined'){
   function cloudAgSetPref(v){ try{ if(v)localStorage.setItem(CLOUD_AG_PREF,v); else localStorage.removeItem(CLOUD_AG_PREF); }catch(e){} }
   function cloudAgJobs(){ try{ const j=JSON.parse(localStorage.getItem(CLOUD_AG_JOBS)||'[]'); return Array.isArray(j)?j:[]; }catch(e){ return []; } }
   function cloudAgSaveJobs(j){ try{ localStorage.setItem(CLOUD_AG_JOBS,JSON.stringify(j)); }catch(e){} }
+
+  /* the one-time private keys, as CryptoKeys that can't be exported, in IndexedDB (job → key). Unavailable (an old
+     web view, private mode): null, and the key goes in the job list as a JWK the way it did before */
+  let cloudAgDb=null;
+  function cloudAgIdb(){
+    if(cloudAgDb)return cloudAgDb;
+    cloudAgDb=new Promise(function(ok){
+      try{
+        const r=indexedDB.open('romulus-cloud',1);
+        r.onupgradeneeded=function(){ r.result.createObjectStore('keys'); };
+        r.onsuccess=function(){ ok(r.result); }; r.onerror=function(){ ok(null); };
+      }catch(e){ ok(null); }
+    });
+    return cloudAgDb;
+  }
+  async function cloudAgKeyDo(mode,job,val){
+    const db=await cloudAgIdb(); if(!db)return mode==='put'?false:null;
+    return new Promise(function(ok){
+      try{
+        const tx=db.transaction('keys',mode==='get'?'readonly':'readwrite'), st=tx.objectStore('keys');
+        const q=mode==='put'?st.put(val,job):mode==='get'?st.get(job):st.delete(job);
+        q.onsuccess=function(){ ok(mode==='put'?true:q.result||null); }; q.onerror=function(){ ok(mode==='put'?false:null); };
+      }catch(e){ ok(mode==='put'?false:null); }
+    });
+  }
+  // what the server knows this account by, with no sync key in it (cloudAgAccount)
+  async function cloudAgId(p){ return cloudAgAccount(await syncRowKey(p)); }
 
   async function cloudAgCall(p,body){
     const res=await fetch(p.url.replace(/\/+$/,'')+'/functions/v1/cloud-agent',{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)});
@@ -154,17 +209,19 @@ if(typeof document!=='undefined'){
     cloudAgUI.busy[t.id]=true;
     try{
       let prefs='';
-      try{ const pp=typeof prefsProfile==='function'&&prefsProfile(); if(pp){ const r=await syncPullRow(pp); prefs=(r&&r.doc&&r.doc.text)||''; } }catch(e){}
-      const keys=await cloudAgKeyPair();
+      try{ const pp=typeof prefsProfile==='function'&&prefsProfile(); if(pp){ const r=await syncPullRow(pp); prefs=cloudAgPrefs((r&&r.doc&&r.doc.text)||'',cloudAgUI.privateWords); } }catch(e){}
+      let keys; try{ keys=await cloudAgKeyPair(!!(await cloudAgIdb())); }catch(e){ keys=await cloudAgKeyPair(false); }
       const today=new Date().toLocaleString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});
-      const r=await cloudAgCall(p,{action:'start',syncKey:await syncRowKey(p),pub:keys.pub,task:cloudAgTask(t),prefs:prefs,today:today});
+      const r=await cloudAgCall(p,{action:'start',syncKey:await cloudAgId(p),pub:keys.pub,task:cloudAgTask(t),prefs:prefs,today:today});
       const cur=state.tasks.find(function(x){ return x.id===t.id; });
       if(!cur||cur.done||cur.status!=='queued')return; // a computer took it meanwhile: the answer, if any, is dropped
       if(r&&r.why==='busy')return; // two of theirs are being answered: this one goes on a later tick, no note
       if(!r||!r.ok){
         cur.cloudTried=(cur.history||[]).length; agentSay(cur,'sys',cloudAgWhyText(r&&r.why,r)); touch(); return;
       }
-      const jobs=cloudAgJobs(); jobs.push({job:r.job,id:t.id,priv:keys.priv,at:Date.now()}); cloudAgSaveJobs(jobs);
+      // the private half stays in IndexedDB as an unexportable key; only without IndexedDB does a JWK go in the list
+      const kept=keys.priv&&keys.priv.type==='private'&&await cloudAgKeyDo('put',r.job,keys.priv);
+      const jobs=cloudAgJobs(); jobs.push(Object.assign({job:r.job,id:t.id,at:Date.now()},kept?{}:{priv:keys.priv})); cloudAgSaveJobs(jobs);
       cur.status='working'; cur.lane='claude'; cur.claimedBy=CLOUD_AG_NAME; cur.claimedAt=Date.now(); cur.runFrom=Date.now(); delete cur.cloud;
       agentSay(cur,'sys','Sent to '+CLOUD_AG_NAME+(r.limit?' ('+r.used+' of '+r.limit+' this month)':'')+'. Usually a minute or two.');
       cloudAgUI.status=null; touch(); cloudAgTick();
@@ -174,15 +231,21 @@ if(typeof document!=='undefined'){
   // collect finished answers for this device
   async function cloudAgCollect(p){
     const jobs=cloudAgJobs(); if(!jobs.length)return;
-    const keep=[]; let changed=false; const key=await syncRowKey(p);
+    const keep=[]; let changed=false; const key=await cloudAgId(p);
     for(const j of jobs){
       let r; try{ r=await cloudAgCall(p,{action:'take',syncKey:key,job:j.job}); }catch(e){ keep.push(j); continue; }
       if(r.state==='working'){ keep.push(j); continue; }
       const t=state.tasks.find(function(x){ return x.id===j.id; });
       const waiting=t&&!t.done&&t.status==='working'&&t.claimedBy===CLOUD_AG_NAME;
-      if(r.state==='done'&&r.sealed&&waiting){
-        let res=null; try{ res=cloudAgResult(t.id,await cloudAgOpen(j.priv,r.sealed)); }catch(e){}
-        if(res){ agentApplyResult(res); delete t.claimedBy; delete t.claimedAt; changed=true; continue; }
+      const priv=j.priv||await cloudAgKeyDo('get',j.job);
+      cloudAgKeyDo('del',j.job); // handed over once: the key is no use any more
+      if(r.state==='done'&&r.sealed&&waiting&&priv){
+        let res=null; try{ res=cloudAgResult(t.id,await cloudAgOpen(priv,r.sealed)); }catch(e){}
+        if(res){
+          agentApplyResult(res); delete t.claimedBy; delete t.claimedAt;
+          if(res.options&&res.options.some(function(o){ return o.url; }))agentSay(t,'sys',CLOUD_AG_LINK_NOTE);
+          changed=true; continue;
+        }
       }
       if(waiting){ // failed, lost, or couldn't be opened: back in the queue for a computer
         t.status='queued'; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; t.cloudTried=(t.history||[]).length;
@@ -243,7 +306,7 @@ if(typeof document!=='undefined'){
     const row=el('div','settings-row'); row.appendChild(sel); sec.appendChild(row);
     const use=el('p','settings-hint',''); sec.appendChild(use);
     try{
-      if(!cloudAgUI.status||Date.now()-cloudAgUI.statusAt>60*1000){ cloudAgUI.status=await cloudAgCall(p,{action:'status',syncKey:await syncRowKey(p)}); cloudAgUI.statusAt=Date.now(); }
+      if(!cloudAgUI.status||Date.now()-cloudAgUI.statusAt>60*1000){ cloudAgUI.status=await cloudAgCall(p,{action:'status',syncKey:await cloudAgId(p)}); cloudAgUI.statusAt=Date.now(); }
       const s=cloudAgUI.status;
       use.textContent=!s.enabled?'Romulus cloud isn’t switched on yet.':s.used+' of '+s.limit+' cloud tasks used this month'+(s.plan==='free'?' (free plan)':'')+'.';
     }catch(e){ use.textContent=''; }

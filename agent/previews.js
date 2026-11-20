@@ -97,9 +97,24 @@ async function enrichOption(o, lane) {
       price: price || null, rating: rating ? rating + '/5' : null });
   } catch (e) { return amazonViaBrowser(base, clean, lane); }
 }
-// Amazon showed the app its bot check (or didn't answer): keep the link, and get the photo through
-// Claude's browser (a real Chrome, which Amazon lets through) so the card isn't blank.
+// Amazon's picture for a product number, from its image server (no product page, so no bot check).
+// A product it has no picture for comes back as a 1-pixel gif: null then.
+async function amazonAsinPicture(url) {
+  const m = String(url).match(/\/dp\/([A-Z0-9]{10})/i);
+  if (!m) return null;
+  const img = 'https://m.media-amazon.com/images/P/' + m[1].toUpperCase() + '.01._SCLZZZZZZZ_.jpg';
+  try {
+    const r = await fetch(img, { headers: { 'User-Agent': PREVIEW_UA }, signal: AbortSignal.timeout(8000) });
+    const ok = r.ok && /^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '') && (await r.arrayBuffer()).byteLength > 1000;
+    return ok ? img : null;
+  } catch (e) { return null; }
+}
+// Amazon showed the app its bot check (or didn't answer): keep the link, and get the photo from Amazon's
+// image server, or failing that through Claude's browser, so the card isn't blank. (The browser's
+// cookie-free tab now usually gets the same "Continue shopping" check, so it is the last resort.)
 async function amazonViaBrowser(base, url, lane) {
+  const asinImg = await amazonAsinPicture(url);
+  if (asinImg) return Object.assign(base, { url, image: asinImg });
   const img = await agentBrowserPreview(url, lane).catch(() => null);
   return Object.assign(base, { url }, img && !/\.gif$/i.test(img) ? { image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1') } : {});
 }
@@ -176,4 +191,4 @@ async function kitchenPictureFor(_e, name) {
 }
 const handlers = { 'kitchen:picture': kitchenPicture, 'kitchen:pictureFor': kitchenPictureFor };
 
-module.exports = { init, handlers, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption, instacartPick };
+module.exports = { init, handlers, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption, instacartPick, amazonAsinPicture };

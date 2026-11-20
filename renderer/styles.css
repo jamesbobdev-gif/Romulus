@@ -38,6 +38,8 @@ main{max-width:620px;margin:0 auto;padding:60px 20px 100px}
 
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
+/* the wordmark, cut in Roman inscription capitals (fonts.css Cinzel); everything else stays in the grotesk */
+.top h1{font-family:'Cinzel',Georgia,serif;font-weight:600;font-size:24px;letter-spacing:.14em;text-transform:uppercase}
 .mono{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.09em}
 .stamp{color:var(--muted);background:transparent;border:0;cursor:pointer;padding:2px 4px;border-radius:5px;transition:background .15s,color .15s}
 .stamp:hover{background:var(--chip);color:var(--ink)}
@@ -168,15 +170,19 @@ select option,select optgroup{color:var(--ink);background:var(--surface)}
 .live-bar .live-bigger:hover{color:var(--ink)}
 /* grocery list (grocery-list.js) and the one-tap yes */
 .agent-yes{display:block;width:100%;margin:10px 0 6px;padding:10px 14px;font-size:14px}
-.yes-prompts{display:grid;gap:8px;margin:0 0 12px}
+.yes-prompts{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 12px} /* minmax: a long no-wrap title can't widen the card past the list */
 .yes-card{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;cursor:pointer}
 .yes-card:hover,.yes-card:focus-visible{border-color:var(--muted);border-left-color:var(--accent);outline:0}
 .suggest-card{cursor:default;border-left-color:var(--muted)}
 .suggest-card:hover{border-color:var(--hairline);border-left-color:var(--muted)}
 .yes-head{display:flex;align-items:baseline;gap:8px;min-width:0}
 .yes-who{flex:none;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.yes-title{font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yes-title{min-width:0;font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yes-ctx{margin:5px 0 0;font-size:12.5px;line-height:1.4;color:var(--muted)}
+.ask-card{cursor:default}
+.ask-card .yes-title{cursor:pointer}
+.ask-card .yes-title:hover,.ask-card .yes-title:focus-visible{text-decoration:underline;outline:0}
+.ask-card .ask-box{margin-top:8px}
 .yes-btns{display:flex;gap:8px;margin-top:9px}
 .yes-btns .btn-accent{margin-left:0;padding:7px 18px}
 .yes-btns .btn-ghost{background:none;border:1px solid var(--hairline);border-radius:8px;padding:7px 16px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer}
@@ -194,8 +200,25 @@ select option,select optgroup{color:var(--ink);background:var(--surface)}
 .sm{border:1px solid var(--hairline);border-radius:7px;background:transparent;font-family:var(--mono);font-size:11.5px;color:var(--ink);padding:5px 8px;outline:0}
 .sm:focus-visible{border-color:var(--accent)}
 #newTag{width:110px}
-#newDue{color:var(--muted)}
-#newTime{width:92px;color:var(--muted)}
+/* the add box's Date button and its popup (due-picker.js) */
+.due-wrap{position:relative;display:inline-flex;align-items:center;gap:2px}
+.due-btn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted)}
+.due-btn.set{color:var(--accent);border-color:var(--accent)}
+.due-btn.from-words{color:var(--accent);border-style:dashed}
+.due-clear{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;padding:0}
+.due-clear:hover{background:var(--chip);color:var(--ink)}
+.due-clear[hidden],.due-pop[hidden]{display:none}
+.due-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:250px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--hairline);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:6px;display:flex;flex-direction:column}
+.due-quick{display:flex;flex-direction:column}
+.due-quick button{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;background:transparent;border:0;border-radius:6px;padding:7px 8px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer;text-align:left}
+.due-quick button:hover,.due-quick button:focus-visible{background:var(--chip);outline:0}
+.due-quick button.on{color:var(--accent);font-weight:600}
+.due-when{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.due-row{display:flex;align-items:center;gap:8px;padding:6px 8px 2px;font-size:12px;color:var(--muted)}
+.due-row:first-of-type{border-top:1px solid var(--hairline);margin-top:4px;padding-top:8px}
+.due-row span{width:34px}
+.due-row input{flex:1;min-width:0;color:var(--ink)}
+.due-hint{font-size:11px;color:var(--faint);padding:8px 8px 4px}
 input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
 .sm:disabled{opacity:.4;cursor:not-allowed}
 .btn-accent{margin-left:auto;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:7px 15px;font-family:var(--display);font-weight:600;font-size:12.5px;cursor:pointer}
@@ -221,7 +244,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .task.dragging{opacity:.35}
 .task.drop-above{box-shadow:inset 0 2px 0 var(--accent)}
 .task.drop-below{box-shadow:inset 0 -2px 0 var(--accent)}
-.row{display:flex;align-items:center;gap:12px;padding:13px 4px 13px 0}
+.row{display:flex;align-items:center;gap:12px;row-gap:4px;flex-wrap:wrap;padding:13px 4px 13px 0} /* when the chips + date + buttons don't fit beside the title, they move to one line under it */
 .grip{width:12px;flex:none;color:#C9C9C3;opacity:0;cursor:grab;display:grid;place-items:center;padding:6px 0;user-select:none;-webkit-user-select:none;transition:opacity .12s}
 .row:hover .grip{opacity:1}
 .grip:active{cursor:grabbing}
@@ -230,15 +253,23 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .check:hover{border-color:var(--ink)}
 .check.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
 .title{font-size:15px;flex:1 1 14em;min-width:min(14em,45%);cursor:pointer;padding:2px 0;overflow-wrap:anywhere} /* never squeezed by a long row of chips */
+.title-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 .task.done .title{color:var(--muted);text-decoration:line-through;text-decoration-color:#C9C9C3}
 .title-edit{flex:1;min-width:0;font-family:var(--display);font-size:15px;border:0;outline:0;background:transparent;border-bottom:1px solid var(--accent);padding:2px 0;color:var(--ink)}
-.meta{display:flex;align-items:center;gap:7px;flex:0 1 auto;min-width:0}
-.chips{display:flex;align-items:center;gap:7px;row-gap:6px;min-width:0;flex-wrap:wrap;justify-content:flex-end} /* chips wrap instead of crushing the title */
+.meta{display:flex;align-items:center;gap:7px;row-gap:4px;flex:0 1 auto;min-width:0;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.chips{display:flex;align-items:center;gap:7px;row-gap:6px;min-width:auto;flex-wrap:wrap;justify-content:flex-end} /* never narrower than its widest chip, so a chip can't spill left over the title */
 .chips:empty{display:none}
 .acts{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;min-width:103px} /* five buttons' worth (snooze is only on today's and overdue rows), so the date column keeps one right edge */
 /* the date chip has a column of its own after the chips, so dates line up down the list and the tags line up before them */
-.date-slot{flex:none;display:flex;justify-content:flex-end}
+.date-slot{flex:none;display:flex;justify-content:flex-start} /* dates start at the column's left edge, so the chips always sit one gap before them (a short date used to leave a hole there) */
 .list.has-dates .date-slot{min-width:123px} /* "tomorrow 11:00AM"; a longer one just takes more */
+/* the chips dropped under the title (lists.js markWrappedRows): start that line under the title, buttons at the right */
+@media(min-width:521px){ /* phones have their own version of this below */
+  .row.wrapped .meta{flex:1 1 100%;padding-left:31px}
+  .row.wrapped .grip~.meta{padding-left:55px}
+  .row.wrapped .chips{flex:1 1 auto;justify-content:flex-start}
+  .row.wrapped .date-slot{order:-1;min-width:0}.row.wrapped .date-slot:empty{display:none} /* the date leads the line, as on phones */
+}
 @media(max-width:520px){.row .date-slot{order:-1}.list.has-dates .date-slot{min-width:0}.date-slot:empty{display:none}} /* a phone: the date leads the line under the title, as before */
 .progress{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .progress.sub-late{color:var(--late)}
@@ -269,6 +300,10 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .busy-verb.swap{animation:busyShimmer 2.2s linear infinite,busySwap .35s ease-out}
 @keyframes busyShimmer{from{background-position:100% 0}to{background-position:-150% 0}}
 @keyframes busySwap{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+/* the same line under a folded-up task row, lined up with the title */
+.busy-line.mini{margin:-8px 0 0;padding:0 4px 11px 31px;font-size:13px;font-weight:500}
+.busy-line.mini.after-grip{padding-left:55px}
+.busy-line.mini .busy-star{width:12px;height:12px}
 .busy-meta{flex:none;font-family:var(--mono);font-size:11px;font-weight:400;color:var(--faint);font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.busy-star{animation-duration:6s}.busy-verb,.busy-verb.swap{animation:none;-webkit-text-fill-color:var(--accent)}}
 .agent-busy.running{box-shadow:inset 3px 0 0 var(--accent)}
@@ -276,14 +311,14 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .cloud-offer{margin-top:10px;padding-top:9px;border-top:1px solid var(--hairline);white-space:normal}
 .cloud-offer p{margin:4px 0 8px;color:var(--muted)}
 .cloud-offer-row{display:flex;flex-wrap:wrap;gap:6px}
-.tab.busy{position:relative;padding-right:16px} /* room for the dot: a phone narrows the tab padding to 6–9px, which put it over the last letter */
-.tab.busy::after{content:'';position:absolute;top:50%;right:5px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
+.tab.busy{position:relative;padding-right:13px} /* room for the dot, so it never sits on the last letter */
+.tab.busy::after{content:'';position:absolute;top:50%;right:3px;width:6px;height:6px;margin-top:-4px;border-radius:50%;background:var(--accent);animation:tabpulse 1.2s ease-in-out infinite}
 @keyframes tabpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tab.busy::after{animation:none}}
 .chip.st.needs{background:#FFF3D6;border-color:#F0D9A0;color:#8A5A00}
-.chip.st.tap{cursor:pointer;user-select:none;transition:filter .15s,transform .1s}
-.chip.st.tap:hover{filter:brightness(.95)}
-.chip.st.tap:active{transform:scale(.95)}
+.chip.st.tap,.chip.recur.tap{cursor:pointer;user-select:none;transition:filter .15s,transform .1s}
+.chip.st.tap:hover,.chip.recur.tap:hover{filter:brightness(.95)}
+.chip.st.tap:active,.chip.recur.tap:active{transform:scale(.95)}
 .chip.st.ready{background:#E6F4EA;border-color:#B7DEC2;color:#1E6B3A} /* Claude finished; waits for the user to check it off */
 .agent-note{font-size:13px;line-height:1.55;color:var(--ink);background:var(--chip);border-radius:8px;padding:9px 11px;margin:0 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
 /* a markdown answer (markdown.js): headings, lists, links and tables as real text */
@@ -395,6 +430,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .log-kind.action{color:#1E6B3A}.log-kind.you{color:var(--accent)}.log-kind.runner{color:#8A5A00}
 .goal-plan .goal-step{margin:3px 0}.goal-plan .goal-needs,.goal-plan .goal-total,.goal-plan .goal-hint{font-family:var(--mono);font-size:10.5px;color:var(--muted)}.goal-plan .goal-total{margin-top:6px}.goal-plan .goal-hint{margin-left:8px}
 .trigger-row{flex-wrap:wrap}.trigger-row .what{flex:1 1 180px;min-width:0}.trigger-row .url{flex:1 1 100%;min-width:0}.trigger-row .hours{width:62px}
+/* your reply: no fill, a blue edge, set in from the left, with a gap above, so it never reads as part of the model's message */
+.agent-note.agent-mine{background:transparent;border:1px solid var(--hairline);border-left:3px solid var(--accent);margin:16px 0 12px 24px}
+.agent-note.agent-mine b{color:var(--accent)}
 .agent-note b{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:500;display:block;margin-bottom:3px}
 .chip.date{border:1px solid var(--hairline);color:var(--muted)}
 .chip.date.today{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -444,7 +482,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 #hostedDeleteBtn:disabled{opacity:.45;cursor:default}
 .list.donelist .row{padding:10px 4px 10px 0}
 .empty{color:var(--muted);text-align:center;margin:56px 0;font-size:14px}
-.agent-examples{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:520px;margin:-36px auto 40px}
+.agent-examples{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:520px;margin:20px auto 40px}
+/* tuck up under the "No tasks yet" line only when it shows; without it (phone, unconnected) it would ride up into the bar above */
+.empty:not([hidden])+.agent-examples{margin-top:-36px}
 .agent-examples[hidden]{display:none}
 .agent-examples-head{width:100%;text-align:center;color:var(--faint);font-size:12px}
 .agent-example{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:7px 13px;cursor:pointer;transition:border-color .15s}
@@ -470,8 +510,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
   .cal-grid{gap:2px}
   .cal-grid .cal-dow{font-size:8.5px;letter-spacing:.03em;padding:2px 0}
   .cal-grid .cal-cell{min-height:58px;padding:3px 2px;border-radius:6px}
-  .cal-grid .cal-num{font-size:9.5px;min-width:16px;height:16px;margin-bottom:3px}
-  /* names don't fit in a phone-width day, so each task is a colored bar (blue today, red overdue) */
+  .cal-grid .cal-num{font-size:9.5px;min-width:16px;height:16px;margin-bottom:3px}  /* names don't fit in a phone-width day, so each task is a colored bar (blue today, red overdue) */
   .cal-grid .cal-chip{color:transparent;font-size:1px;line-height:0;height:5px;padding:0;border-radius:3px;margin:0 1px 3px;background:#C9C9C3}
   .cal-grid .cal-chip.accent{background:var(--accent)}
   .cal-grid .cal-chip.late{background:var(--late)}
@@ -513,7 +552,7 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .idea-group:hover .idea-gsize::after,.idea-gsize.on::after{opacity:.6}
 body.idea-sizing,body.idea-sizing *{cursor:ew-resize!important;user-select:none}
 @media(max-width:520px),(pointer:coarse){.idea-gsize{display:none}}
-.idea-groups{display:grid;grid-template-columns:repeat(auto-fit,min(var(--idea-w,280px),100%));grid-auto-rows:1px;justify-content:center;column-gap:14px;row-gap:0;align-items:start} /* rows are 1px: ideaPack() stacks each group in its column */
+.idea-groups{display:grid;grid-template-columns:repeat(auto-fit,min(var(--idea-w,280px),100%));grid-auto-rows:1px;justify-content:center;column-gap:14px;row-gap:0;align-items:start} /* rows are 1px: ideaPack() stacks each group in the shortest column */
 .idea-group{position:relative;background:color-mix(in srgb,var(--g,var(--chip)) 30%,var(--surface));border:1px solid var(--hairline);border-radius:14px;padding:8px 10px 12px;min-height:120px;transition:border-color .15s,box-shadow .15s}
 .idea-group.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(39,66,200,.08)}
 .idea-ghead{display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -663,6 +702,12 @@ body.ideas-mode .ideas-bar{justify-content:center}
 .settings-collapse>summary::before{content:'▸';display:inline-block;width:12px;transition:transform .15s}
 .settings-collapse[open]>summary::before{transform:rotate(90deg)}
 .settings-collapse:not([open])>summary{margin-bottom:0}
+/* the title of each top-level Settings panel: a heading with a small drawn icon (settings.js picks it from
+   the words), so the sections tell apart at a glance; titles nested inside a panel keep the small caps look */
+#settingsPanel>.settings-panel>.settings-label{font-family:var(--display);font-size:15.5px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);display:flex;align-items:center;gap:10px}
+#settingsPanel>.settings-collapse>summary.settings-label::before{order:3;margin-left:auto;color:var(--faint);font-size:11px;text-align:center}
+.settings-icon{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+.settings-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 /* a group panel holds several settings, each under its own small heading, split by a hairline */
 .settings-subhead{font-family:var(--display);font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
 .settings-sub:not([hidden])~.settings-sub:not([hidden]){border-top:1px solid var(--hairline);margin-top:18px;padding-top:16px}
@@ -689,6 +734,9 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .settings-back{border:1px solid var(--hairline);background:var(--surface);color:var(--ink);border-radius:8px;padding:5px 11px;font-family:var(--mono);font-size:11.5px;cursor:pointer}
 .settings-back:hover{border-color:var(--ink)}
 /* on/off switch */
+.tab-pick-group{margin-bottom:12px} /* Settings > Tabs, sorted into groups (tab-picker.js) */
+.tab-pick-head{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.tab-pick-row{display:flex;flex-wrap:wrap;gap:8px 22px}
 .switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;color:var(--ink);user-select:none}
 .switch input{position:absolute;opacity:0;width:1px;height:1px}
 .switch .track{flex:none;width:34px;height:20px;border-radius:10px;background:var(--hairline);position:relative;transition:background .15s}
@@ -696,9 +744,6 @@ body.settings-open .top-right>*:not(#settingsBtn){display:none!important}
 .switch input:checked+.track{background:var(--accent)}
 .switch input:checked+.track::after{transform:translateX(14px)}
 .switch input:focus-visible+.track{outline:2px solid var(--accent);outline-offset:2px}
-/* Settings > Tabs: each group a column, the columns side by side; they wrap under each other on a narrow screen (tab-picker.js) */
-#tabPicker{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 24px;align-items:start}
-.tab-kind{min-width:0}
 .gcal-ok{font-family:var(--mono);font-size:11px;color:#2A7A3B;flex:1}
 .cal-acct{border-top:1px solid var(--hairline);padding:12px 0 4px;margin-top:12px}
 .cal-acct-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -882,6 +927,9 @@ textarea.ask-other{min-height:70px}
 .fin-ebt-update{margin-top:8px}
 .fin-ebt-tools{display:flex;gap:8px;margin-top:8px}
 .fin-alert{margin:4px 0;padding:6px 10px;border:1px solid var(--late-line);border-radius:8px;background:var(--late-bg);color:var(--late);font-size:12.5px}
+.fin-cancel-link{color:var(--accent);font-size:12px;white-space:nowrap;text-decoration:underline;text-underline-offset:2px}
+.fin-acct .fin-cancel-link{margin:0 6px}
+.fin-deal{margin:4px 0;padding:6px 10px;border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:8px;font-size:12.5px}
 .fin-mix{margin:4px 0 8px}
 .fin-mix .fin-hbar{grid-template-columns:minmax(0,12em) 1fr auto}
 .fin-acct,.fin-tx{display:flex;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--hairline);font-size:13.5px}
@@ -1378,10 +1426,23 @@ body.review-open .top-right{display:none!important}
 .kit-k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .kit-sec{margin:16px 2px 6px}
 .kit-empty{color:var(--muted);font-size:13px;padding:14px 2px}
+.kit-connect{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.kit-connect-title{font-family:var(--display);font-weight:600;font-size:15px;color:var(--ink)}
+.kit-connect-step{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--hairline)}
+.kit-connect-step .kit-hint{margin:2px 0 0}
+.kit-connect-words{flex:1;min-width:0}
+.kit-connect-head{font-size:13.5px;font-weight:600;color:var(--ink)}
+.kit-connect-step>button{flex:none}
+.kit-connect .kit-form-btns{padding-top:8px}
 .kit-card{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px;margin-bottom:8px}
 .kit-card-top{display:flex;align-items:center;gap:8px}
 .kit-card-name{font-weight:600;font-size:14.5px;flex:1}
 .kit-card-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.kit-have-all{display:block;width:16px;height:16px;margin-top:6px;border-radius:4px;background:var(--accent);position:relative}
+.kit-have-all::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.kit-talk{margin-top:8px;padding-left:10px;border-left:2px solid var(--hairline)}
+.kit-talk-q{font-size:13px;font-weight:600}
+.kit-follow{margin-top:8px}
 .kit-card-meta{font-size:11.5px;color:var(--faint);margin-top:3px}
 .kit-card-btns{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
 .kit-like,.kit-plan{border:1px solid var(--hairline);background:none;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;font-family:var(--display)}
@@ -1397,12 +1458,14 @@ body.review-open .top-right{display:none!important}
 .kit-row-qty{min-width:64px;font-family:var(--mono);font-size:12px;color:var(--muted)}
 .kit-row-for{font-size:11.5px;color:var(--faint);text-align:right;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kit-qty{width:90px}
-.kit-row .icon{opacity:.55}
+.kit-row .icon,.kit-card-btns .icon{opacity:.55}
 .kit-row:hover .icon{opacity:1}
 .kit-chips{display:flex;flex-wrap:wrap;gap:6px}
 .kit-meal{display:inline-flex;align-items:center;gap:2px;background:var(--chip);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px}
 .kit-meal.liked{background:var(--late-bg)}
-.kit-meal .icon{width:22px;height:22px}
+.kit-meal .icon{width:22px;height:22px;opacity:.7}
+.kit-meal:hover .icon{opacity:1}
+#kitShop .kit-row .icon{opacity:.8}
 .kit-shop-btns{margin-top:12px}
 .kit-after{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--accent);border-radius:12px;padding:8px 12px;margin-bottom:10px}
 .kit-after-head{display:flex;align-items:center;justify-content:space-between}
@@ -1414,16 +1477,27 @@ body.review-open .top-right{display:none!important}
 .kp-item{justify-content:flex-start}
 .kp-item .kit-hint{margin:0;white-space:nowrap}
 @media(max-width:520px){.kit-row-for{display:none}.kit-form-btns{margin-left:0;width:100%}.kit-form-btns .btn-accent{flex:1}}
+.kit-ideas-head{display:flex;align-items:center;gap:12px;margin:18px 2px 8px}
+.kit-ideas-words{flex:1;min-width:0}
+.kit-ideas-meta{font-size:12px;color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kit-ideas-go{flex:none;display:inline-flex;align-items:center;gap:7px}
+.kit-ideas-go[hidden]{display:none}
+.kit-spin::before{content:"";width:11px;height:11px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:kit-spin .8s linear infinite}
+@keyframes kit-spin{to{transform:rotate(360deg)}}
+.kit-aim{display:block;width:100%;box-sizing:border-box;margin-bottom:10px;padding:9px 12px;border-radius:10px;background:var(--chip);border-color:transparent}
+.kit-aim:focus,.kit-follow input:focus{background:var(--surface);border-color:var(--hairline)}
+.kit-form.kit-follow{background:none;border:0;padding:0;gap:6px}
+.kit-follow input{background:var(--chip);border-color:transparent;border-radius:10px}
+.kit-aim[hidden]{display:none}
+.kit-ideas-stale .kit-card{opacity:.5;transition:opacity .2s}
 .kit-idea-more{margin-top:6px}
 .kit-idea-more summary{font-size:12.5px;color:var(--muted);cursor:pointer}
 .kit-idea-steps{margin:6px 0 0 18px;padding:0;font-size:13px;color:var(--ink)}
 .kit-idea-steps li{margin:2px 0}
-
-/* pantry photos (kitchen-photo.js) */
-.kp-row{align-items:center;margin:6px 0}
-.kp-row .kit-hint{margin:0}
-.kp-item{justify-content:flex-start}
-.kp-item .kit-hint{margin:0;white-space:nowrap}
+.kit-drop{margin-top:8px;padding:8px 10px;border:1px solid var(--hairline);border-radius:8px}
+.kit-drop .kit-k{margin-top:4px}
+.kit-drop-ings{margin:4px 0 6px 18px;padding:0;font-size:13px;color:var(--ink)}
+.kit-drop-ings li{margin:2px 0}
 .kit-find{width:100%;margin:10px 0 0}
 .kit-filter{flex-wrap:wrap;align-items:center}
 .kit-filter .kit-find{flex:1;min-width:150px;width:auto;margin:0}

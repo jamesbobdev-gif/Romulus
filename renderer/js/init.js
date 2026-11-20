@@ -48,7 +48,7 @@ store.load().then(async function(data){
           if(t.cartAt)out.cartAt=Number(t.cartAt)||null; if(t.cartLooks)out.cartLooks=Number(t.cartLooks)||0; if(t.cartCheck&&(out.status==='queued'||out.status==='working'))out.cartCheck=true; }
         // what a waiting answer brought: tap questions, and ◉ Watch's page
         if(out.status==='needs-you'){
-          if(Array.isArray(t.ask)&&t.ask.length)out.ask=t.ask;
+          if(Array.isArray(t.ask)&&t.ask.length){ out.ask=t.ask; if(t.askSeen)out.askSeen=String(t.askSeen); } // askSeen: opened on some device (agent-ask.js)
           if(t.seats&&Array.isArray(t.seats.rows))out.seats=t.seats;
           if(t.showtimes&&Array.isArray(t.showtimes.days))out.showtimes=t.showtimes;
           if(t.theaters&&Array.isArray(t.theaters.theaters))out.theaters=t.theaters;

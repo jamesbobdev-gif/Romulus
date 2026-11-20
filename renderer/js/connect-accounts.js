@@ -57,7 +57,7 @@ else if(typeof calApi!=='undefined'&&calApi&&document.getElementById('connectPic
   const canDav=!!(desk&&window.desktop.calAddCaldav);
   let hasPush=false; // some calendar already takes the tasks: then a new one doesn't, unless he ticks it
   const step=$('connectStep'), pick=$('connectPick');
-  const esc=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  const esc=escapeHtml;
 
   /* ---------- after connecting: switch on what was ticked ---------- */
   const readPending=function(){ try{ const p=JSON.parse(localStorage.getItem(PENDING_KEY)||'null'); return p&&Date.now()-p.at<15*60*1000?p:null; }catch(e){ return null; } };

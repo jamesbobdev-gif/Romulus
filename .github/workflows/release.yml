@@ -125,6 +125,25 @@ jobs:
           # a signing variable that is set but empty is read as a path (CSC_LINK '' → "<repo> not a file"), so drop those
           for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do [ -n "${!v}" ] || unset "$v"; done
           npx electron-builder ${{ matrix.target }} --publish always "${extra[@]}"
+      # Once Azure signing is set up, check that the installer really came out signed, and fail the job (GitHub
+      # emails on a failed run) if it didn't. The release is already published by now, so this tells you, it doesn't hold it back.
+      - name: Check the Windows signature
+        if: ${{ matrix.name == 'windows' && vars.AZURE_SIGNING_ENDPOINT != '' }}
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem dist -Filter *.exe
+          if (-not $files) { Write-Output "::error::no installer in dist/ to check"; exit 1 }
+          $bad = 0
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            if ($sig.Status -eq 'Valid') {
+              Write-Output "signed: $($f.Name) by $($sig.SignerCertificate.Subject)"
+            } else {
+              Write-Output "::error::$($f.Name) is not properly signed ($($sig.Status)): $($sig.StatusMessage)"
+              $bad++
+            }
+          }
+          if ($bad) { exit 1 }
       # SHA-256 of every installer this job built, so a download can be checked against the release page
       # (SECURITY.md and the releases repository's README say how). One file per OS: SHA256SUMS-<os>.txt.
       - name: Checksums

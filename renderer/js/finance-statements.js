@@ -26,7 +26,7 @@ function stmtIncomeKind(t,a,kinds){
   if(a&&stmtIsInvest(a)&&!STMT_INTEREST.test(text))return 'skip';
   return STMT_COSTS.notSpending.test(text)||(kinds||{})[STMT_COSTS.costKey(t)]==='skip'?'skip':'income';
 }
-function stmtMonth(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function stmtMonth(ms){ return (typeof monthKey==='function'?monthKey:require('./util').monthKey)(ms); }
 const stmtText=function(t){ return [t.description,t.bank,t.memo].join(' '); };
 const stmtSum=function(rows,n){ const out=new Array(n).fill(0); rows.forEach(function(r){ r.vals.forEach(function(v,i){ out[i]+=v; }); }); return out; };
 

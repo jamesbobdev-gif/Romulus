@@ -96,7 +96,7 @@ const getRouting = () => routing;
 const handlers = {
   'routing:changed': async () => { await loadRouting(); ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); return true; },
 };
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const { escapeRe } = require('./util');
 const wordHit = (text, words) => words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(text));
 // → what made a task private (a word from his list, or something shaped like a card / social security number), or null
 function privateMatch(t) {

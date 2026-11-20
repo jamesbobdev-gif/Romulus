@@ -14,7 +14,7 @@ const EBT_DAY=86400000;
 function ebtCents(n){ return Math.round(n*100)/100; }
 // the deposit day in that month, at midnight (the 31st is the 30th in a 30-day month)
 function ebtDepositOn(y,m,day){ const last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(day,last)).getTime(); }
-function ebtYmd(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function ebtYmd(ms){ return (typeof dayKey==='function'?dayKey:require('./util').dayKey)(ms); }
 
 /* The phone and CSV files keep a plain copy of these settings in 'finance.ebtCopy' for the grocery list
    (finance.js finKeepEbtCopy). Saved from Settings → EBT while Finance is locked, the copy gets pending: true,

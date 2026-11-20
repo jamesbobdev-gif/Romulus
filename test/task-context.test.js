@@ -195,3 +195,10 @@ test('missingPictures: items of an order he placed himself get a picture from th
   assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Milk', 'Bread', 'Rice', 'Rice, 5 lb']);
   assert.deepStrictEqual(ctx.missingPictures({}), []);
 });
+
+test('claimLane: a task the app moved off Claude (a #legion) is claimed under the lane it is saved with', () => {
+  assert.strictEqual(ctx.claimLane({ lane: 'claude', title: '#legion usb-c charger' }, 'local'), 'claude');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({}, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'claude'), 'claude'); // Claude never takes the local model's tasks this way
+});

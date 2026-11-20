@@ -10,7 +10,7 @@
 const RECUR_OPTIONS=[['','Doesn’t repeat'],['day','Every day'],['weekday','Weekdays'],['week','Every week'],['2week','Every 2 weeks'],['month','Every month'],['year','Every year']];
 const RECUR_CHIPS={day:'daily',weekday:'weekdays',week:'weekly','2week':'every 2 wks',month:'monthly',year:'yearly'};
 
-function recurYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function recurYmd(d){ return (typeof dayKey==='function'?dayKey:require('./util').dayKey)(d); }
 function recurDate(s){ const p=s.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]); }
 // one step of the rule; months and years keep the anchor day (the 31st stays the 31st, or the month's last day)
 function recurStep(r,d){

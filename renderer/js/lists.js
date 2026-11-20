@@ -3,6 +3,26 @@
 'use strict';
 
 /* ── main task row ── */
+// "Settings → AI connections" in a title (the reconnect to-dos, agent/reconnect.js) becomes a link to that spot
+const SETTINGS_SPOTS={
+  'AI connections':function(){ return ['agentGroup',typeof isDesktopApp!=='undefined'&&!isDesktopApp?'aiPhoneSection':'aiSection']; },
+  'Local model':function(){ return ['agentGroup','localSection']; },
+  'Device sync':function(){ return [null,'syncSection']; },
+  'Calendar & email':function(){ return ['calGroup','gcalSection']; }
+};
+const SETTINGS_LINK_RE=/Settings → (AI connections|Local model|Device sync|Calendar & email)/g;
+function titleWithSettingsLinks(text){
+  const span=el('span','title');
+  let last=0, m; SETTINGS_LINK_RE.lastIndex=0;
+  while((m=SETTINGS_LINK_RE.exec(text))){
+    if(m.index>last)span.appendChild(document.createTextNode(text.slice(last,m.index)));
+    const a=el('a','title-link',m[0]); a.href='#'; const spot=SETTINGS_SPOTS[m[1]]();
+    a.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); openSettingsAt(spot[0],spot[1]); });
+    span.appendChild(a); last=m.index+m[0].length;
+  }
+  if(last<text.length)span.appendChild(document.createTextNode(text.slice(last)));
+  return span;
+}
 function buildRow(t,canDrag){
   const li=el('li','task'+(t.done?' done':'')+(t.id===state.selectedId?' selected':''));
   li.dataset.id=t.id;
@@ -16,7 +36,7 @@ function buildRow(t,canDrag){
   const check=el('button','check'+(t.done?' on':'')); check.innerHTML=I.check;
   check.setAttribute('aria-label',t.done?'Mark as not done':'Mark as done');
   check.addEventListener('click',function(e){ e.stopPropagation(); toggleDone(t,li,check); });
-  const title=el('span','title',t.title);
+  const title=titleWithSettingsLinks(t.title);
   const meta=el('div','meta'), chips=el('div','chips'), dateSlot=el('span','date-slot'); // chips wrap in their own box; the date gets a column of its own after them (styles.css), so dates line up down the list; the buttons sit beside it
 
   // subtask progress — turn red if any sub is overdue
@@ -57,8 +77,16 @@ function buildRow(t,canDrag){
     }
   }
   const isAgentTask=taskWs(t)==='agent';
-  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const sk=recurStreakText(t.recur); const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]+(sk?' · '+sk:'')); rc.title='Repeats: tick it off and the next one appears'+(sk?'. Ticked off on time '+sk+(t.recur.best>t.recur.streak?'; your longest run is '+t.recur.best:''):''); chips.appendChild(rc); }
-  if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); chips.appendChild(rc); }
+  // the repeat chip: tap it to stop the repeat (asks first, so a stray tap doesn't end it)
+  const repeatOffChip=function(rc,label,stop){
+    rc.classList.add('tap'); rc.setAttribute('role','button'); rc.tabIndex=0;
+    rc.title+=' — tap to stop repeating';
+    const off=function(e){ e.stopPropagation(); if(!confirm('Stop repeating “'+t.title+'”?\n\nIt stays in your list; it just won’t come back '+(label==='weekdays'?'on weekdays':label)+'.'))return; stop(); touch(); };
+    rc.addEventListener('click',off);
+    rc.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); off(e); } });
+  };
+  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const sk=recurStreakText(t.recur); const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]+(sk?' · '+sk:'')); rc.title='Repeats: tick it off and the next one appears'+(sk?'. Ticked off on time '+sk+(t.recur.best>t.recur.streak?'; your longest run is '+t.recur.best:''):''); repeatOffChip(rc,RECUR_CHIPS[t.recur.every],function(){ t.recur=null; }); chips.appendChild(rc); }
+  if(isAgentTask&&t.repeat){ const rl=t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly'; const rc=el('span','chip st','↻ '+rl); rc.title=repeatText(t.repeat); repeatOffChip(rc,rl,function(){ t.repeat=null; t.nextRun=null; }); chips.appendChild(rc); }
   if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st',TRIGGER_LABELS[t.trigger.kind]||'trigger'); tc.title='Starts '+triggerText(t.trigger); chips.appendChild(tc); }
   if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; chips.appendChild(gc); }
   if(isAgentTask&&t.goalId){ const sc2=el('span','chip st','step '+(t.goalStep||'?')); const gl=state.tasks.find(function(x){ return x.id===t.goalId; }); sc2.title=gl?'Step '+t.goalStep+' of the goal “'+gl.title+'”':'A step of a goal'; if(gl){ sc2.classList.add('tap'); sc2.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(gl.id); }); } chips.appendChild(sc2); }
@@ -130,7 +158,22 @@ function buildRow(t,canDrag){
   row.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); });
   li.appendChild(row);
   if(isExp) li.appendChild(buildPanel(t));
+  else if(isAgentTask&&!t.done){
+    // folded up but still going: the same live line as the open card, so you can see what it's doing without opening it
+    const bs=agentBusyState(t);
+    if(bs){ const mini=busyLine(t,bs.phase,bs.who); mini.classList.add('mini'); if(canDrag)mini.classList.add('after-grip'); mini.style.cursor='pointer'; mini.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); }); li.appendChild(mini); }
+  }
   return li;
+}
+// an Agent task that's going (working, or being handed to a model): which busy-line phase and who; null when it's
+// waiting on usage, the local model is out of reach, or it isn't busy at all
+function agentBusyState(t){
+  if(taskWs(t)!=='agent'||t.done||(t.status!=='working'&&t.status!=='queued'))return null;
+  const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
+  const local=t.lane==='local'||isLegionTask(t);
+  const offline=local&&localStat&&localStat.configured&&!localStat.online;
+  if(offline||outOfUsage)return null;
+  return { phase:t.status==='working'?'working':(local||t.lane)?'routing':'picking', who:local?'The local model':cloudNameOf(t) };
 }
 // the live log without the runner's "-- Gemini is on it" line: the status card above it already says that
 // a queued local task while the local model's own computer is busy or restarting: why it hasn't started yet
@@ -196,7 +239,8 @@ function buildPanel(t){
   if(agentBusy){
     const sb=el('div','agent-note agent-busy');
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
-    const local=t.lane==='local';
+    // a #legion task is the local model's whatever lane it was saved with (agent/routing.js laneOf)
+    const local=t.lane==='local'||isLegionTask(t);
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
     const cloudName=cloudNameOf(t);
     if(t.status==='working')sb.classList.add('running');
@@ -208,7 +252,7 @@ function buildPanel(t){
       sb.appendChild(busyLine(t,t.status==='working'?'working':(local||t.lane)?'routing':'picking',who));
     } else sb.appendChild(el('b',null,offline?'The local model isn’t reachable':cloudName+' is out of usage'));
     sb.appendChild(document.createTextNode(local
-      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
+      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? '+(isLegionTask(t)?'If it stays out of reach, your cloud AIs run the legion without it after about 15 minutes.':'Or switch this task to Claude below.')
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
         :localWaitText(localStat)||'It starts within a few seconds while your computer has Tasks running.')
       :t.status==='working'
@@ -326,7 +370,7 @@ function buildPanel(t){
   // the local model's own browser on the mini PC, live, right in its card: he clicks and types where it couldn't
   if(taskWs(t)==='agent'&&!t.done&&t.lane==='local'&&(t.status==='needs-you'||t.status==='working')&&liveViewAvailable())lupaEmbed(panel,t);
   // questions to tap through, one at a time (agent-ask.js)
-  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&Array.isArray(t.ask)&&t.ask.length)panel.appendChild(askSteps(t));
+  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&Array.isArray(t.ask)&&t.ask.length){ panel.appendChild(askSteps(t)); markAskSeen(t); } // seen here: the To do tab stops asking
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose
   if(taskWs(t)==='agent'&&Array.isArray(t.options)&&t.options.length){
     const grid=el('div','agent-opts');
@@ -414,7 +458,7 @@ function buildPanel(t){
   // answer Claude's question: the reply goes back with the task, which re-queues it;
   // you can always talk to Claude on an open agent task — even mid-run (it re-runs with your addition)
   if(agentBusy&&(t.reply||(Array.isArray(t.replyImages)&&t.replyImages.length))){
-    const yb=el('div','agent-note');
+    const yb=el('div','agent-note agent-mine'); // styled apart from the model's message above it
     yb.appendChild(el('b',null,'Your answer'));
     yb.appendChild(document.createTextNode(t.reply));
     if(Array.isArray(t.replyImages)&&t.replyImages.length)yb.appendChild(photoStrip(t.replyImages));
@@ -921,6 +965,20 @@ function render(){
     if(state.showDone)doneVis.forEach(function(t){ dlst.appendChild(buildRow(t,false)); });
     dlst.classList.toggle('has-dates',state.showDone&&doneVis.some(function(t){ return !!t.due; }));
   } else { ds.hidden=true; state.confirmClear=false; }
+  markWrappedRows();
+}
+// a row whose chips didn't fit beside the title (they dropped to a line under it) gets 'wrapped', so that line
+// starts under the title instead of floating mid-row, pushed over by the empty date column and the hover buttons
+function markWrappedRows(){
+  const rows=Array.prototype.slice.call(document.querySelectorAll('#openList > .task > .row, #doneList > .task > .row'));
+  rows.forEach(function(r){ r.classList.remove('wrapped'); }); // measure each row as it lays out on its own
+  const wrapped=rows.map(function(r){ const ti=r.querySelector('.title'), m=r.querySelector('.meta'); return !!(ti&&m&&m.getBoundingClientRect().top>=ti.getBoundingClientRect().bottom-1); });
+  rows.forEach(function(r,i){ if(wrapped[i])r.classList.add('wrapped'); });
+}
+if(typeof window!=='undefined'){
+  let wrapTimer=null;
+  window.addEventListener('resize',function(){ clearTimeout(wrapTimer); wrapTimer=setTimeout(markWrappedRows,100); });
+  if(typeof document!=='undefined'&&document.fonts&&document.fonts.ready)document.fonts.ready.then(markWrappedRows);
 }
 
 /* On the Human tab: one card per Agent task waiting on a yes ("Reply yes to submit it"), with a line
@@ -937,7 +995,10 @@ function yesContext(t){
 function drawYesPrompts(needing){
   const box=$('yesPrompts'); box.innerHTML='';
   const asks=needing.filter(wantsYes);
-  box.hidden=!asks.length;
+  // questions he hasn't opened on the Agent tab yet: asked here too (agent-ask.js)
+  const questions=needing.filter(function(t){ return !wantsYes(t)&&Array.isArray(t.ask)&&t.ask.length&&!askSeen(t); });
+  box.hidden=!asks.length&&!questions.length;
+  questions.forEach(function(t){ box.appendChild(askPromptCard(t)); });
   asks.forEach(function(t){
     const c=el('div','yes-card'); c.tabIndex=0; c.title='Open this task on the Agent tab';
     const head=el('div','yes-head');
@@ -978,7 +1039,7 @@ function drawYesPrompts(needing){
 function suggestionContext(t){
   if(t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'){
     const when=t.due?dateInfo(t.due,t.dueTime).text:'';
-    return [when,String(t.notes||'').replace(/\s+/g,' ').trim()].filter(Boolean).join(' · ');
+    return [when,String(t.notes||'').replace(/https:\/\/\S+/g,'').replace(/\s+/g,' ').replace(/:\s*$/,'.').trim()].filter(Boolean).join(' · ');
   }
   const s=String(t.note||'').replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
   return s.length>260?s.slice(0,257).replace(/\s+\S*$/,'')+'…':s;
@@ -1003,6 +1064,9 @@ function drawSuggestions(show){
     c.appendChild(head);
     const ctx=suggestionContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
     const row=el('div','yes-btns');
+    // a new subscription's cancel page (bill-reminders.js): opens in his browser
+    const link=t.suggest==='charge'&&String(t.notes||'').match(/https:\/\/\S+/);
+    if(link){ const a=el('a','btn-ghost','Where to cancel it ↗'); a.href=link[0]; a.target='_blank'; a.rel='noopener'; row.appendChild(a); }
     const y=el('button','btn-accent','Accept');
     y.title=t.suggest==='look-ahead'?'The Agent starts on it':'Put it on your list';
     y.addEventListener('click',function(){ acceptSuggestion(t); });

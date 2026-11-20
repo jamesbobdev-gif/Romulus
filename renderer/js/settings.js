@@ -31,6 +31,34 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
     });
   });
 })();
+// each top-level panel's title gets a small drawn icon picked from its words, so the sections tell apart
+(function(){
+  const P={
+    agent:'<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    about:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+    tabs:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18M9 5v5"/>',
+    calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    sync:'<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 21v-5h-5"/>',
+    import:'<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+    year:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    update:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+    theme:'<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.5-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="11" cy="7.5" r="1"/><circle cx="16" cy="8.5" r="1"/>',
+    health:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'
+  };
+  const pick=function(t){
+    t=t.toLowerCase();
+    if(/agent|\bai\b/.test(t))return 'agent'; if(/about/.test(t))return 'about'; if(/calendar|email/.test(t))return 'calendar';
+    if(/sync|device/.test(t))return 'sync'; if(/import/.test(t))return 'import'; if(/year/.test(t))return 'year';
+    if(/health/.test(t))return 'health'; if(/update/.test(t))return 'update'; if(/theme|look/.test(t))return 'theme'; if(/tab/.test(t))return 'tabs'; return 'more';
+  };
+  document.querySelectorAll('#settingsPanel>.settings-panel>.settings-label').forEach(function(l){
+    if(l.querySelector('.settings-icon'))return;
+    const i=document.createElement('span'); i.className='settings-icon'; i.setAttribute('aria-hidden','true');
+    i.innerHTML='<svg viewBox="0 0 24 24">'+P[pick(l.textContent)]+'</svg>';
+    l.insertBefore(i,l.firstChild);
+  });
+})();
 // a group panel shows only while one of its settings does (each script unhides its own as it finds it applies)
 (function(){
   const groups=document.querySelectorAll('#settingsPanel details.settings-group');
@@ -52,10 +80,22 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
     items.forEach(function(x){
       const b=document.createElement('button'); b.className='settings-alert';
       b.textContent=x.dataset.disconnected; b.appendChild(document.createElement('span')).textContent='Fix ↓';
+      const what=x.dataset.disconnected;
       b.addEventListener('click',function(){
-        for(let d=x.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true;
-        x.scrollIntoView({behavior:'smooth',block:'center'});
-        x.classList.remove('settings-flash'); void x.offsetWidth; x.classList.add('settings-flash');
+        // the row may have been redrawn since this alert was (Calendar & email redraws its accounts each time
+        // Settings opens), so find the one on the page now rather than the old, detached one
+        let t=x;
+        if(!t.isConnected){
+          t=[].slice.call(document.querySelectorAll('#settingsPanel [data-disconnected]')).filter(function(y){
+            return !box.contains(y)&&y.dataset.disconnected===what; })[0];
+          if(!t)return;
+        }
+        for(let d=t.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true;
+        t.scrollIntoView({block:'center'});
+        t.classList.remove('settings-flash'); void t.offsetWidth; t.classList.add('settings-flash');
+        // and put the keyboard on its fix (Renew sign-in), so Enter does it
+        const fix=t.querySelector('[data-renew],#mailRenew:not([hidden])');
+        if(fix)fix.focus({preventScroll:true});
       });
       box.appendChild(b);
     });
@@ -333,14 +373,6 @@ $('prefsSaveBtn').addEventListener('click',async function(){
   }catch(e){ $('prefsStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('prefsStatus').textContent=''; },2500);
 });
-/* Basic / Advanced: .adv panels show only with the switch on (remembered here) */
-const ADV_KEY='tasks.settingsAdvanced.v1';
-function setAdvanced(on){
-  document.body.classList.toggle('show-adv',!!on); $('advOn').checked=!!on;
-  try{ if(on)localStorage.setItem(ADV_KEY,'1'); else localStorage.removeItem(ADV_KEY); }catch(e){}
-}
-try{ setAdvanced(!!localStorage.getItem(ADV_KEY)); }catch(e){}
-$('advOn').addEventListener('change',function(){ setAdvanced(this.checked); });
 function setThemeMode(mode){
   try{ localStorage.setItem(THEME_MODE_KEY,mode); }catch(e){}
   applyThemeMode(mode); drawThemeModes();

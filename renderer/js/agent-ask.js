@@ -7,6 +7,33 @@
 'use strict';
 const askDrafts={}; // task id → {i, picks:[[...]], other:[...]}
 
+// Has he opened this task's questions on the Agent tab yet? Until he has, they're asked on the To do tab
+// too (drawYesPrompts). The mark is t.askSeen, a short hash of the questions, kept on the task so it syncs:
+// opened on the phone, the computer stops asking too. A new set of questions has another hash and asks again.
+function askKey(ask){
+  const s=ask.map(function(a){ return String(a.q||'')+'\u0001'+(a.choices||[]).join('\u0002'); }).join('\u0003');
+  let h=5381; for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;
+  return (h>>>0).toString(36)+'.'+ask.length;
+}
+function askSeen(t){ return !!t.askSeen&&t.askSeen===askKey(t.ask); }
+function markAskSeen(t){
+  const lt=liveTask(t), k=askKey(lt.ask); if(lt.askSeen===k)return;
+  lt.askSeen=k; persist(); // saved and synced; no redraw needed (this runs while the Agent tab draws)
+}
+// the To do tab's card: the same questions, answered right there; tap the title to open the task
+function askPromptCard(t){
+  const c=el('div','yes-card ask-card');
+  const head=el('div','yes-head');
+  head.appendChild(el('span','yes-who','The Agent asks'));
+  const ti=el('b','yes-title',t.title); ti.title='Open this task on the Agent tab'; ti.tabIndex=0;
+  ti.addEventListener('click',function(){ openTaskById(t.id); });
+  ti.addEventListener('keydown',function(e){ if(e.key==='Enter')openTaskById(t.id); });
+  head.appendChild(ti);
+  c.appendChild(head);
+  c.appendChild(askSteps(t));
+  return c;
+}
+
 function askDraft(t){
   let d=askDrafts[t.id];
   if(!d||d.picks.length!==t.ask.length)d=askDrafts[t.id]={i:0,picks:t.ask.map(function(a){ return (a.default||[]).slice(); }),other:t.ask.map(function(){ return ''; }),many:t.ask.map(function(a){ return a.pick==='many'; })};
@@ -66,7 +93,7 @@ function askSteps(t){
       const lines=t.ask.map(function(q,i){ const ans=askAnswer(d.picks[i],d.other[i]); return (n>1?(i+1)+'. ':'')+q.q.replace(/\?\s*$/,'')+': '+(ans||'(no answer)'); });
       const msg=lines.join('\n');
       const lt=liveTask(t);
-      lt.reply=msg; agentSay(lt,'you',msg); lt.status='queued'; delete askDrafts[t.id];
+      lt.reply=msg; agentSay(lt,'you',msg); lt.status='queued'; delete askDrafts[t.id]; delete lt.askSeen; // answered: the same questions again later ask again
       buzz('send'); touch();
     });
     nav.appendChild(next);

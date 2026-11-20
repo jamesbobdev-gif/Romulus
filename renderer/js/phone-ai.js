@@ -171,7 +171,7 @@ function paDraw(){
     if(paState.steps.length){ const f=el('button','ghost mono','Forget them'); f.addEventListener('click',paForget); row.appendChild(f); }
     sec.appendChild(row);
   } else {
-    sec.appendChild(el('p','settings-hint','Copies the keys you pick to your phone with a QR code, once, so the phone can read Kitchen photos without this computer on. They aren’t synced: scan again after you change a key. Claude needs an Anthropic API key for this (your Claude sign-in only works on this computer). Anyone who scans the code gets the keys, so only show it to your own phone. It hides after 2 minutes.'));
+    sec.appendChild(el('p','settings-hint','Scan the code with your phone so it can read Kitchen photos on its own. Only show it to your own phone.'));
     const list=el('div'), box=el('div','fin-qr'); box.hidden=true;
     const btn=el('button','ghost mono','Show the code');
     window.desktop.aiPhoneChoices().then(function(cs){

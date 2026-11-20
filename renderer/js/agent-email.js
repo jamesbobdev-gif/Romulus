@@ -48,7 +48,7 @@ function emailBox(t){
       const a=el('a','email-connect',r&&r.needReconnect&&r.needReconnect.length
         ?'Connect '+r.needReconnect[0]+' again and allow sending'
         :'Connect Gmail or Outlook to send email');
-      a.href='#'; a.title='Opens Settings → Calendars & email';
+      a.href='#'; a.title='Opens Settings → Calendar & email';
       a.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); if(window.openConnect)window.openConnect(r&&r.needReconnect&&r.needReconnect.length?null:'google'); else openSettingsAt('calGroup','gcalSection'); });
       status.textContent=''; status.appendChild(a);
     }

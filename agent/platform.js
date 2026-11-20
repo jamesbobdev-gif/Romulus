@@ -45,10 +45,16 @@ function claudeExe(cfg) {
 function forgetClaude() { claudeOnPath = undefined; }
 const claudeInstalled = (cfg) => isFile(claudeExe(cfg));
 /* The environment for a Claude run. With an Anthropic API key saved (config.json → ai.anthropicKey) the
-   CLI bills that key instead of a Claude subscription sign-in; without one, the CLI's own sign-in is used. */
+   CLI bills that key instead of a Claude subscription sign-in; without one, the CLI's own sign-in is used.
+   An extra Claude account (agent/ai-accounts.js) has its own sign-in folder: ai.claudeConfigDir. */
 function claudeEnv(cfg, base = process.env) {
-  const key = cfg && cfg.ai && String(cfg.ai.anthropicKey || '').trim();
-  return key ? Object.assign({}, base, { ANTHROPIC_API_KEY: key }) : base;
+  const ai = (cfg && cfg.ai) || {};
+  const key = String(ai.anthropicKey || '').trim(), dir = String(ai.claudeConfigDir || '').trim();
+  if (!key && !dir) return base;
+  const env = Object.assign({}, base);
+  if (key) env.ANTHROPIC_API_KEY = key;
+  if (dir) env.CLAUDE_CONFIG_DIR = dir;
+  return env;
 }
 
 function chromeCandidates(env = process.env, win = isWin) {
