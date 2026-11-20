@@ -40,6 +40,8 @@ main{max-width:620px;margin:0 auto;padding:60px 20px 100px}
 
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 h1{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:0}
+/* the wordmark, cut in Roman inscription capitals (fonts.css Cinzel); everything else stays in the grotesk */
+.top h1{font-family:'Cinzel',Georgia,serif;font-weight:600;font-size:24px;letter-spacing:.14em;text-transform:uppercase}
 .mono{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.09em}
 .stamp{color:var(--muted);background:transparent;border:0;cursor:pointer;padding:2px 4px;border-radius:5px;transition:background .15s,color .15s}
 .stamp:hover{background:var(--chip);color:var(--ink)}
