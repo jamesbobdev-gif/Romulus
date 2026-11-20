@@ -126,7 +126,9 @@ registration with the *Trusted Signing Certificate Profile Signer* role, then se
 
 - secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
 - variables `AZURE_SIGNING_ENDPOINT` (for example `https://eus.codesigning.azure.net`),
-  `AZURE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE`
+  `AZURE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE`, and `AZURE_PUBLISHER_NAME`: the name on the certificate
+  (Azure portal → the signing account → Certificate profiles → the profile → Subject name, the part after
+  `CN=`). Without it the installer is built unsigned.
 
 ## Mac: signed and notarized download
 
