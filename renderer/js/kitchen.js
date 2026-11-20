@@ -738,11 +738,23 @@ function kDrawConnect(){
     if(label){ const b=el('button','ghost',label); b.type='button'; b.addEventListener('click',go); row.appendChild(b); }
     card.appendChild(row);
   };
-  step('1. An AI',
+  const aiOn=desk&&typeof anyAiReady==='function'&&anyAiReady(); // welcome.js
+  step('1. An AI'+(aiOn?': connected':''),
     desk?'Meal ideas and reading photos.'
         :'Meal ideas and reading photos. Your computer does it while Romulus is open, or copy your AI keys here from it.',
-    desk?'Connect an AI':'AI on this phone',
-    function(){ openSettingsAt('agentGroup',desk?'aiSection':'aiPhoneSection'); });
+    desk?(aiOn?'AI settings':'Connect an AI'):'AI on this phone',
+    function(){
+      // Settings only lists the AIs with on/off switches, so with none connected the button signs in to
+      // OpenRouter and makes a key, like the Agent tab's "Connect free" (wiring.js quickConnectAi)
+      if(!desk||aiOn||typeof window.quickConnectAi!=='function'){ openSettingsAt('agentGroup',desk?'aiSection':'aiPhoneSection'); return; }
+      const b=this; b.disabled=true; b.textContent='Finish in your browser…';
+      window.quickConnectAi().then(function(r){
+        if(r&&r.ok){ kDrawConnect(); return; }
+        b.disabled=false; b.textContent='Connect an AI';
+        voiceToast('Didn’t connect'+(r&&r.error?': '+r.error:'')+'. Pick an AI in Settings instead.');
+        openSettingsAt('agentGroup','aiSection');
+      }).catch(function(){ b.disabled=false; b.textContent='Connect an AI'; openSettingsAt('agentGroup','aiSection'); });
+    });
   step('2. Your grocery store',
     'Ask the Agent to order groceries. What it buys goes in your pantry. It always asks before ordering.',
     'Open the Agent',
