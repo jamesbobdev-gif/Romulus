@@ -377,6 +377,9 @@ input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-ca
 .log-kind.action{color:#1E6B3A}.log-kind.you{color:var(--accent)}.log-kind.runner{color:#8A5A00}
 .goal-plan .goal-step{margin:3px 0}.goal-plan .goal-needs,.goal-plan .goal-total,.goal-plan .goal-hint{font-family:var(--mono);font-size:10.5px;color:var(--muted)}.goal-plan .goal-total{margin-top:6px}.goal-plan .goal-hint{margin-left:8px}
 .trigger-row{flex-wrap:wrap}.trigger-row .what{flex:1 1 180px;min-width:0}.trigger-row .url{flex:1 1 100%;min-width:0}.trigger-row .hours{width:62px}
+/* your reply: no fill, a blue edge, set in from the left, with a gap above, so it never reads as part of the model's message */
+.agent-note.agent-mine{background:transparent;border:1px solid var(--hairline);border-left:3px solid var(--accent);margin:16px 0 12px 24px}
+.agent-note.agent-mine b{color:var(--accent)}
 .agent-note b{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:500;display:block;margin-bottom:3px}
 .chip.date{border:1px solid var(--hairline);color:var(--muted)}
 .chip.date.today{background:var(--accent);border-color:var(--accent);color:#fff}

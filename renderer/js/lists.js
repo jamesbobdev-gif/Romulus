@@ -398,7 +398,7 @@ function buildPanel(t){
   // answer Claude's question: the reply goes back with the task, which re-queues it;
   // you can always talk to Claude on an open agent task — even mid-run (it re-runs with your addition)
   if(agentBusy&&(t.reply||(Array.isArray(t.replyImages)&&t.replyImages.length))){
-    const yb=el('div','agent-note');
+    const yb=el('div','agent-note agent-mine'); // styled apart from the model's message above it
     yb.appendChild(el('b',null,'Your answer'));
     yb.appendChild(document.createTextNode(t.reply));
     if(Array.isArray(t.replyImages)&&t.replyImages.length)yb.appendChild(photoStrip(t.replyImages));
