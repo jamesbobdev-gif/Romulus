@@ -37,7 +37,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>Romulus uses the camera only to scan the Finance pairing code shown on your computer.</string>
+	<string>Romulus uses the camera to scan the Finance pairing code shown on your computer, and for food photos you take in the Kitchen tab.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID opens Finance on this phone.</string>
 	<key>NSMicrophoneUsageDescription</key>

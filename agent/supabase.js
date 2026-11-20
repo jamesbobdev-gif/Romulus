@@ -36,7 +36,12 @@ function openDoc(a, suffix, doc) {
   return syncCrypto.open(a.syncKey + suffix, doc);
 }
 
+// main/store.js hands back the sealed 'enc:v1:...' text when the OS keyring can't open a key (on Linux: it
+// stayed locked after a restart). Sending that only gets "Invalid API key", again and again: say why instead.
+const LOCKED = 'this computer couldn’t unlock its saved sync key: the system keyring is probably locked. Unlock it, then restart Romulus.';
+const keyLocked = (a) => /^enc:/.test(String((a && a.key) || '')) || /^enc:/.test(String((a && a.syncKey) || ''));
 async function rpc(a, fn, body, { timeout = 10000, fetch: f = fetch } = {}) {
+  if (keyLocked(a)) throw new Error(LOCKED);
   const r = await f(rpcUrl(a, fn), { method: 'POST', headers: headers(a, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) });
   if (!r.ok) {

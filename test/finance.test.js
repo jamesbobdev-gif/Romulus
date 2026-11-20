@@ -93,7 +93,7 @@ test('purchase emails are read after setup and kept in the vault, not in the cle
     mail: { mailAllowed: () => true,
       gmail: async (p) => p.startsWith('messages?') ? { messages: [{ id: 'm1' }] }
         : { id: 'm1', internalDate: String(Date.now()), payload: { mimeType: 'text/plain', body: { data: b64('Total $9.99') }, headers: [{ name: 'Subject', value: 'Your receipt' }] } },
-      claudeJson: async () => JSON.stringify({ receipts: [{ email: 1, store: 'spotify', merchant: 'Spotify', total: 9.99, date: '', items: [] }] }) } });
+      aiJson: async () => JSON.stringify({ receipts: [{ email: 1, store: 'spotify', merchant: 'Spotify', total: 9.99, date: '', items: [] }] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
   await done;
   const d = h['finance:data']();
@@ -114,7 +114,7 @@ test('purchase emails come from every Gmail account switched on, each read from 
       gmail: async (p, acct) => { asked.push(acct); const id = acct + '-m';
         return p.startsWith('messages?') ? { messages: [{ id }] }
           : { id, internalDate: String(Date.now()), payload: { mimeType: 'text/plain', body: { data: b64('Total $5') }, headers: [{ name: 'Subject', value: 'Receipt' }] } }; },
-      claudeJson: async (m) => JSON.stringify({ receipts: [{ email: 1, store: /g-2/.test(m[1].content) ? 'target' : 'spotify', total: 5, date: '', items: [] }] }) } });
+      aiJson: async (m) => JSON.stringify({ receipts: [{ email: 1, store: /g-2/.test(m[1].content) ? 'target' : 'spotify', total: 5, date: '', items: [] }] }) } });
   await h['finance:setup'](null, token, 'correct horse battery');
   await done;
   assert.deepStrictEqual(h['finance:data']().receipts.map((r) => r.id).sort(), ['g-1-m', 'g-2-m']);

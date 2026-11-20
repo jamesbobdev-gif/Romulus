@@ -111,6 +111,8 @@ const mailSeen = () => fs.existsSync(mailSeenFile());
 const actionsLogFile = () => path.join(ctx.userData(), 'agent-actions.log');
 // every browser call of the try going on now, for its live steps (browser-proxy.js noteStep); emptied before each try
 const stepsFile = () => path.join(ctx.userData(), 'agent-run', 'browser-steps.jsonl');
+// there once his yes has placed the order (or sent the form) this run (browser-proxy.js markSpent); removed when a run starts
+const spentFile = () => path.join(ctx.userData(), 'agent-run', 'yes-spent');
 function readActions(max = 200) {
   let text = ''; try { text = fs.readFileSync(actionsLogFile(), 'utf8'); } catch (e) { return []; }
   return text.split('\n').filter(Boolean).slice(-max).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean).reverse();
@@ -132,7 +134,8 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
     TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // the only things an upload may send
-    TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120) };
+    TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120),
+    TASKS_BROWSER_SPENT: spentFile() }; // his yes, once used by any AI's browser this run, is used for all of them
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
   if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
@@ -158,7 +161,7 @@ function saidYes(t) {
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
   return isYes(lastYou) && /reply\s*\**\s*yes/i.test(asked);
 }
-const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
+const { hostOf } = require('./util');
 // the sites his yes was about: where the run stopped to ask, the links in the ask, and the cart's or options' links.
 // Empty when none is known (then the yes unlocks the order button anywhere, as before).
 function approvedHostsFor(t) {
@@ -217,4 +220,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, spentFile,readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

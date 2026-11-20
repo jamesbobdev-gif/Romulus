@@ -25,6 +25,11 @@ test('wantsInbox: internship tasks or useInbox', () => {
   assert.ok(ctx.wantsInbox({ title: 'Daily internship hunt' }));
   assert.ok(ctx.wantsInbox({ title: 'x', useInbox: true }));
   assert.ok(!ctx.wantsInbox({ title: 'internal memo' }));
+  // tasks about his mailbox itself
+  assert.ok(ctx.wantsInbox({ title: 'Clean up my inbox' }));
+  assert.ok(ctx.wantsInbox({ title: 'Archive the newsletters in Gmail' }));
+  assert.ok(ctx.wantsInbox({ title: 'Reply to the landlord email' }));
+  assert.ok(!ctx.wantsInbox({ title: 'Find a cheap flight to Denver' }));
 });
 
 test('skillText is only his words', () => {
@@ -173,6 +178,14 @@ test('missingPictures: items of an order he placed himself get a picture from th
     cart: [{ name: 'Rice', url: 'https://x.com/rice', options: [{ name: 'Rice, 5 lb', url: 'https://x.com/r5' }] }, { name: 'Eggs', image: 'https://x.com/e.jpg', url: 'https://x.com/eggs' }],
     ordered: [{ store: 'Aldi (Instacart)', items: [{ name: 'Milk', url: 'https://www.instacart.com/products/1' }, { name: 'Bread', image: 'https://x.com/b.jpg', url: 'https://x.com/b' }, { name: 'Apples' }] }],
   };
-  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Rice', 'Rice, 5 lb', 'Milk']);
+  // an order item's own picture can be its neighbour's, so its page is asked even when it has one
+  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Milk', 'Bread', 'Rice', 'Rice, 5 lb']);
   assert.deepStrictEqual(ctx.missingPictures({}), []);
+});
+
+test('claimLane: a task the app moved off Claude (a #legion) is claimed under the lane it is saved with', () => {
+  assert.strictEqual(ctx.claimLane({ lane: 'claude', title: '#legion usb-c charger' }, 'local'), 'claude');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({}, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'claude'), 'claude'); // Claude never takes the local model's tasks this way
 });

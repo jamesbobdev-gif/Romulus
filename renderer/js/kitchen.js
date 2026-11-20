@@ -303,7 +303,7 @@ function cookRecipe(k,recipeId,now,servings){
   const out=usePantry(k,kScale(r.ingredients,servings>0?servings/(r.servings||1):1),now);
   out.before={recipeId:r.id,made:r.made.slice(),planned:r.planned,items:was.filter(function(b){
     const a=k.items.find(function(x){ return x.id===b.id; }); return !a||a.qty!==b.qty; })};
-  const d=new Date(now), day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const day=(typeof dayKey==='function'?dayKey:require('./util').dayKey)(now);
   r.made=r.made.concat([day]).slice(-30); r.planned=false; r.updatedAt=now;
   return out;
 }
@@ -536,7 +536,7 @@ if(typeof document!=='undefined'){
 
 // portions: {recipe id: servings he's making this time}; findItem, findRec: what he typed in the two Find boxes
 // undo: foods he marked out, last first; going: pantry ids tapped dark, waiting a moment before they leave
-const kitchenUI={view:'meals',follow:{},editing:null,recipeFilter:'all',afterCook:null,ideasBusy:false,ideasWhy:'',aim:'',portions:{},findItem:'',findRec:'',undo:[],going:{},shown:{}};
+const kitchenUI={view:'meals',follow:{},editing:null,recipeFilter:'all',afterCook:null,ideasBusy:false,ideasWhy:'',ideasQuiet:false,aim:'',portions:{},findItem:'',findRec:'',undo:[],going:{},shown:{}};
 function kSave(){ persist(); renderKitchen(); }
 const kBrokenPics=new Set(); // pantry pictures that would not load this session; pantry-pictures.js replaces them
 function kTomb(id){ state.kitchen.tombstones.push({id:id,deletedAt:Date.now()}); }
@@ -650,7 +650,7 @@ function kBuild(view){
     '</div>'+
     '<div id="kitSyncNote" class="kit-note" hidden></div>'+
     '<div id="kitConnect"></div>'+
-    '<section id="kit-meals"><div id="kitAfter"></div><div id="kitPhotoMeal"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
+    '<section id="kit-meals"><div id="kitAfter"></div><div id="kitIdeas"></div><div id="kitMeals"></div></section>'+
     '<section id="kit-pantry" hidden>'+
       '<div class="kit-undo-bar" hidden><button id="kitUndo" type="button" class="ghost kit-undo" hidden>Undo</button></div>'+
       '<div class="kit-form"><input id="kitAddItem" class="sm kit-grow" placeholder="Add food you have: 2 lb chicken, eggs, 1 bag rice" aria-label="Add food">'+
@@ -663,8 +663,6 @@ function kBuild(view){
         '<input id="kitRecName" class="sm kit-grow" placeholder="Recipe name" aria-label="Recipe name">'+
         '<textarea id="kitRecIngs" class="sm" rows="5" placeholder="Ingredients, one per line:&#10;1 lb ground beef&#10;1 can kidney beans&#10;1 onion" aria-label="Ingredients"></textarea>'+
         '<textarea id="kitRecSteps" class="sm" rows="4" placeholder="How to make it, one step per line:&#10;Brown the beef with the onion&#10;Add the beans and simmer 20 minutes" aria-label="Steps"></textarea>'+
-        '<label class="kit-check"><input id="kitRecLiked" type="checkbox"> I like this one</label>'+
-        '<label class="kit-check">Makes <input id="kitRecServ" class="sm kit-serv" type="number" min="1" max="99" inputmode="numeric" placeholder="1" aria-label="How many servings it makes"> servings</label>'+
         '<div class="kit-form-btns"><button id="kitRecCancel" class="ghost" hidden>Cancel</button><button id="kitRecSave" class="btn-accent">Save recipe</button></div>'+
       '</div>'+
       '<div class="kit-filter" role="radiogroup" aria-label="Which recipes">'+
@@ -734,8 +732,8 @@ function kDrawConnect(){
   };
   const aiOn=desk&&typeof anyAiReady==='function'&&anyAiReady(); // welcome.js
   step('1. An AI'+(aiOn?': connected':''),
-    desk?'Meal ideas and reading photos.'
-        :'Meal ideas and reading photos. Your computer does it while Romulus is open, or copy your AI keys here from it.',
+    desk?'Kitchen uses it to suggest meals from your pantry and to read photos you take of food or a shopping list.'
+        :'Kitchen uses it to suggest meals from your pantry and to read photos you take of food or a shopping list. Your computer does this while Romulus is open there, or copy your AI keys to this phone.',
     desk?(aiOn?'AI settings':'Connect an AI'):'AI on this phone',
     function(){
       // Settings only lists the AIs with on/off switches, so with none connected the button signs in to
@@ -888,7 +886,6 @@ function kDrawAfter(){
 }
 function kDrawMeals(){
   kDrawAfter();
-  if(typeof kpDraw==='function')kpDraw('meal',$('kitPhotoMeal')); // kitchen-photo.js
   kDrawIdeas();
   const box=$('kitMeals'); box.innerHTML='';
   if(!state.kitchen.recipes.length){ box.appendChild(kEmpty('No recipes yet. Add the meals you make under Recipes, and what food you have under Pantry: this shows what you can make.')); return; }
@@ -906,7 +903,7 @@ function kDrawMeals(){
       box.appendChild(card);
     });
   };
-  sec('You can make now',now,'Nothing yet with what’s in the pantry.');
+  if(now.length)sec('You can make now',now,'');
   if(close.length)sec('A few things short',close,'');
 }
 /* ── Ideas from your pantry: his AIs suggest meals from what he has (main/kitchen-ai.js, agent/meal-ideas.js).
@@ -927,7 +924,7 @@ function kIdeasAgo(at){
 function kAutoIdeas(){
   const k=state.kitchen, view=$('kitchenView');
   if(kitchenUI.view!=='meals'||!view||state.activeTab!=='kitchen')return; // only when he's looking at it
-  if(!k.items.length||kitchenUI.ideasBusy||kitchenUI.ideasWhy||kIdeasWaiting())return;
+  if(!k.items.length||kitchenUI.ideasBusy||kitchenUI.ideasWhy||kitchenUI.ideasQuiet||kIdeasWaiting())return;
   if(!kIdeasLocal()&&!kIdeasRemote())return;
   const ideas=k.ideas;
   if(ideas&&kIdeasAgo(ideas.at)==='today'&&ideas.meals.some(function(m){ return kIdeaShown(k.items,m); }))return;
@@ -955,6 +952,7 @@ async function kAskIdeas(auto){
       aim:kitchenUI.aim});
     const fit=r&&r.meals?kIdeasCanMake(state.kitchen.items,r.meals):[];
     if(fit.length){ state.kitchen.ideas={at:Date.now(),via:r.via||'',aim:kitchenUI.aim.trim().slice(0,300),meals:kKeepTalked(state.kitchen.ideas,fit)}; persist(); }
+    else if(r&&r.quiet)kitchenUI.ideasQuiet=true; // the AI answered without meals: no message, and no more asking on its own
     else kitchenUI.ideasWhy=r&&r.meals&&r.meals.length?'Every idea that came back needed something you don’t have. Try again.':(r&&r.why)||'No ideas came back. Try again.';
   }catch(e){ kitchenUI.ideasWhy='Couldn’t ask your AIs: '+(e&&e.message||e); }
   kitchenUI.ideasBusy=false; renderKitchen();
@@ -1017,7 +1015,7 @@ function kDrawIdeas(){
   const busy=kitchenUI.ideasBusy;
   const go=el('button','btn-accent kit-ideas-go'+(busy||waiting?' kit-spin':''),busy?'Thinking':waiting?'Asked your computer':ideas?'New ideas':'Suggest meals');
   go.disabled=busy||waiting||!state.kitchen.items.length; go.hidden=!can;
-  go.addEventListener('click',function(){ kitchenUI.ideasWhy=''; kAskIdeas(); });
+  go.addEventListener('click',function(){ kitchenUI.ideasWhy=''; kitchenUI.ideasQuiet=false; kAskIdeas(); });
   head.appendChild(go); box.appendChild(head);
   const aim=document.createElement('input'); aim.className='sm kit-aim'; aim.id='kitAim'; aim.value=kitchenUI.aim; aim.hidden=!can;
   aim.placeholder='Aim for anything? High protein, under 600 calories, quick'; aim.setAttribute('aria-label','What to aim for');
@@ -1026,7 +1024,7 @@ function kDrawIdeas(){
   box.appendChild(aim);
   box.classList.toggle('kit-ideas-stale',!!(busy&&ideas)); // old ideas fade while new ones come
   if(!state.kitchen.items.length&&!ideas){ box.appendChild(kEmpty('Add food under Pantry, then this suggests meals you can make with it.')); return; }
-  if(can)box.appendChild(el('div','kit-hint','Uses your pantry and what you’ve told the Agent (foods you avoid, goals).'+(kIdeasRemote()?' Your computer thinks of them, so Romulus needs to be open there.':'')));
+  if(can&&kIdeasRemote())box.appendChild(el('div','kit-hint','Your computer thinks of them, so Romulus needs to be open there.'));
   if(waiting)kpDrawWaiting('ideas',box); // kitchen-photo.js
   kAutoIdeas();
   if(kitchenUI.ideasBusy&&!ideas)box.appendChild(kEmpty('Thinking of meals you can make with what you have…'));
@@ -1039,7 +1037,8 @@ function kDrawIdeas(){
     const card=el('div','kit-card');
     const top=el('div','kit-card-top'); top.appendChild(el('span','kit-card-name',m.name)); card.appendChild(top);
     if(m.why)card.appendChild(el('div','kit-card-sub',m.why));
-    card.appendChild(el('div','kit-card-sub',missing.length?'Need: '+missing.map(function(i){ return i.name; }).join(', '):'You have everything for this.'));
+    if(missing.length)card.appendChild(el('div','kit-card-sub','Need: '+missing.map(function(i){ return i.name; }).join(', ')));
+    else { const ok=el('span','kit-have-all'); ok.title='You have everything for this'; ok.setAttribute('role','img'); ok.setAttribute('aria-label','You have everything for this'); card.appendChild(ok); }
     const more=document.createElement('details'); more.className='kit-idea-more';
     const sum=document.createElement('summary'); sum.textContent='Ingredients and steps'; more.appendChild(sum);
     more.appendChild(el('div','kit-card-sub',m.ingredients.join(', ')));
@@ -1204,23 +1203,10 @@ async function kTakePic(id,file){
   kitchenUI.picBusy=''; renderKitchen();
 }
 // a picture → a JPEG blob at most 600 px on its long side: plenty for a pantry card, small to sync
-function kSmallPic(file){
-  return new Promise(function(ok,fail){
-    const src=URL.createObjectURL(file), im=new Image();
-    im.onload=function(){
-      const k=Math.min(1,600/Math.max(im.naturalWidth,im.naturalHeight));
-      const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.naturalWidth*k)); c.height=Math.max(1,Math.round(im.naturalHeight*k));
-      c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(src);
-      c.toBlob(function(b){ if(b)ok(b); else fail(new Error('that isn’t a picture')); },'image/jpeg',0.85);
-    };
-    im.onerror=function(){ URL.revokeObjectURL(src); fail(new Error('that isn’t a picture')); };
-    im.src=src;
-  });
-}
+function kSmallPic(file){ return pictureBlob(file,600,'that isn’t a picture'); }
 function kEditRecipe(r){
   kitchenUI.editing=r?r.id:null;
-  $('kitRecName').value=r?r.name:''; $('kitRecIngs').value=r?r.ingredients.map(fmtIngredient).join('\n'):''; $('kitRecLiked').checked=!!(r&&r.liked);
-  $('kitRecServ').value=r&&r.servings?r.servings:'';
+  $('kitRecName').value=r?r.name:''; $('kitRecIngs').value=r?r.ingredients.map(fmtIngredient).join('\n'):'';
   $('kitRecSteps').value=r&&r.steps?r.steps.join('\n'):'';
   $('kitRecSave').textContent=r?'Save changes':'Save recipe'; $('kitRecCancel').hidden=!r;
   if(r){ $('kitRecName').focus(); $('kitRecName').scrollIntoView({block:'nearest'}); }
@@ -1230,12 +1216,10 @@ function kSaveRecipe(){
   if(!name){ $('kitRecName').classList.add('bad'); $('kitRecName').focus(); return; }
   $('kitRecName').classList.remove('bad');
   const ings=$('kitRecIngs').value.split('\n').map(parseIngredient).filter(Boolean).slice(0,60);
-  const sv=Math.round(Number($('kitRecServ').value));
   const now=Date.now();
   let r=kitchenUI.editing&&state.kitchen.recipes.find(function(x){ return x.id===kitchenUI.editing; });
-  if(r)Object.assign(r,{name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,updatedAt:now});
-  else{ r={id:uid(),name:name.slice(0,100),ingredients:ings,liked:$('kitRecLiked').checked,planned:false,made:[],updatedAt:now}; state.kitchen.recipes.push(r); }
-  if(sv>1&&sv<100)r.servings=sv; else delete r.servings;
+  if(r)Object.assign(r,{name:name.slice(0,100),ingredients:ings,updatedAt:now});
+  else{ r={id:uid(),name:name.slice(0,100),ingredients:ings,liked:false,planned:false,made:[],updatedAt:now}; state.kitchen.recipes.push(r); }
   const st=kSteps($('kitRecSteps').value);
   if(st.length)r.steps=st; else delete r.steps;
   delete kitchenUI.portions[r.id];

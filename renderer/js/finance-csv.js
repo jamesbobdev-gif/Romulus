@@ -162,8 +162,7 @@
   /* ── kept in this browser, encrypted ── */
   const enc = new TextEncoder(), dec = new TextDecoder();
   const AAD = enc.encode('tasks-finance-csv-v1');
-  const b64 = (bytes) => { let s = ''; bytes = new Uint8Array(bytes); for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); };
-  const unb64 = (s) => { const bin = atob(s); const o = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) o[i] = bin.charCodeAt(i); return o; };
+  const b64 = bytesToB64, unb64 = b64ToBytes;
   const readBox = () => { try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { return null; } };
 
   let key = null, salt = null, vault = null, idleTimer = null;

@@ -34,6 +34,8 @@ const FAM_SEND_ICON='<svg width="11" height="11" viewBox="0 0 12 12" fill="none"
 /* ── the document (pure: test/family.test.js) ── */
 function famEmpty(){ return {v:1,people:[],lists:[],items:[],offers:[],tombstones:[]}; }
 function famStr(s,max){ return String(s==null?'':s).replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max); }
+// a note keeps its line breaks (a list sent as a to-do is one line per thing)
+function famNote(s,max){ return String(s==null?'':s).replace(/\r\n?/g,'\n').replace(/[\u0000-\u0009\u000b-\u001f]/g,' ').replace(/\n{3,}/g,'\n\n').trim().slice(0,max); }
 function famRec(coll,r){
   if(!r||typeof r!=='object'||typeof r.id!=='string'||!r.id||r.id.length>80)return null;
   const o={id:r.id,created:Number(r.created)||0,updatedAt:Number(r.updatedAt)||0};
@@ -43,7 +45,7 @@ function famRec(coll,r){
   else if(coll==='offers'){
     o.from=String(r.from||''); o.to=String(r.to||''); o.title=famStr(r.title,300); if(!o.title||!o.to)return null;
     o.due=/^\d{4}-\d{2}-\d{2}$/.test(r.due)?r.due:null;
-    o.note=famStr(r.note,1000)||null;
+    o.note=famNote(r.note,1000)||null;
     o.answer=r.answer==='added'||r.answer==='no'?r.answer:null;
     o.answeredAt=o.answer?Number(r.answeredAt)||0:null;
   }
@@ -167,6 +169,31 @@ function famFeedList(list,open,same){
   });
   return changed?out:null;
 }
+/* lines put on a shared list by name (made if the group has none by that name); a line already open there
+   isn't added twice. → {doc, added} */
+function famWithItems(doc,listName,texts,by,now,mkId){
+  const d=famNorm(doc), want=String(listName||'').trim().toLowerCase();
+  let l=d.lists.find(function(x){ return x.name.trim().toLowerCase()===want; });
+  if(!l){ l={id:mkId(),name:famStr(listName,60)||'List',created:now,updatedAt:now}; d.lists.push(l); }
+  const open={}; d.items.forEach(function(it){ if(it.list===l.id&&!it.done)open[it.text.toLowerCase()]=1; });
+  let added=0;
+  (texts||[]).forEach(function(t,i){
+    const s=famStr(t,200); if(!s||open[s.toLowerCase()])return;
+    open[s.toLowerCase()]=1; added++;
+    d.items.push({id:mkId(),list:l.id,text:s,done:false,by:by||'',created:now+i,updatedAt:now});
+  });
+  return {doc:famMerge(d,{},now),added:added};
+}
+// a list sent to one person rides in the to-do's note as "- " lines; they become its checklist when added
+function famListNote(lines,head){ return famNote([head||''].concat(lines.map(function(x){ return '- '+x; })).join('\n'),1000); }
+function famNoteSplit(note){
+  const subs=[], rest=[];
+  let s=String(note||'');
+  // an older app flattens line breaks to spaces: "- Rice - Eggs"
+  if(s.indexOf('\n')<0&&/^\s*-\s/.test(s))s=s.split(/\s+-\s+/).map(function(x){ return '- '+x.replace(/^\s*-\s*/,''); }).join('\n');
+  s.split('\n').forEach(function(line){ const m=/^\s*-\s+(.+)$/.exec(line); if(m)subs.push(m[1].trim()); else rest.push(line); });
+  return {subs:subs,rest:rest.join('\n').trim()};
+}
 
 /* ── invite codes (pure) ── 'F0B3-65FB-585B' from the server + a 16-letter secret, shown in groups of 4 */
 function famCodeShow(server,secret){
@@ -277,6 +304,7 @@ async function famKeep(p,key){ // keep my copy of the key on the server, sealed 
   try{ ok=await syncRpc(p,'sync_family_key_set2',{p_sync_key:rk,p_sealed:sealed,p_pub:JSON.stringify(keys.pub)}); }
   catch(e){ if(!/HTTP 404/.test(e.message))throw e; ok=await syncRpc(p,'sync_family_key_set',{p_sync_key:rk,p_sealed:sealed}); }
   if(ok!==true)throw new Error('the server didn’t keep the group key');
+  if(typeof tabSwitchOn==='function')tabSwitchOn('family'); // in a group now: the Group tab shows, unless it was switched off by hand (tab-picker.js)
   fam.key=key; fam.keys=keys; fam.me=await famMemberId(p.syncKey); fam.checkedAt=Date.now();
 }
 /* Move the group to a new key (the owner's app, after someone is removed or has left). → {left:[names of
@@ -459,8 +487,10 @@ function famDel(ids){
 }
 function famAnswer(o,answer){
   if(answer==='added'){
-    const notes=['From '+famName(fam.doc,o.from)+'.'].concat(o.note?[o.note]:[]).join('\n\n');
-    state.tasks.push({id:uid(),title:o.title,done:false,due:o.due||null,dueTime:null,tag:null,notes:notes,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
+    const part=famNoteSplit(o.note);
+    const notes=['From '+famName(fam.doc,o.from)+'.'].concat(part.rest?[part.rest]:[]).join('\n\n');
+    const subs=part.subs.map(function(s){ return {id:uid(),title:s,done:false,due:null}; });
+    state.tasks.push({id:uid(),title:o.title,done:false,due:o.due||null,dueTime:null,tag:null,notes:notes,ws:'personal',subs:subs,googleEventId:null,created:Date.now()});
     touch();
   }
   famPut('offers',Object.assign({},o,{answer:answer,answeredAt:Date.now()}));
@@ -521,6 +551,32 @@ function famChatSendBox(t,h){
   wrap.appendChild(open);
   return wrap;
 }
+/* "Send to the group" for a list of things to buy (the Kitchen shopping list): onto the shared Groceries list
+   everyone sees (and every Agent grocery order reads), or to one person as a to-do with a checklist.
+   → the box, or null when there's no group yet */
+function famSendListBox(lines,title,onDone){
+  if(!famOn()||!fam.me||!lines.length)return null;
+  const box=el('div','fam-send fam-chat-box');
+  const to=el('select','sm'); to.setAttribute('aria-label','Send to');
+  const gl=famGroceryList(fam.doc);
+  const o0=el('option',null,'The group’s '+(gl?gl.name:'Groceries')+' list'); o0.value=''; to.appendChild(o0);
+  famOthers().forEach(function(x){ const o=el('option',null,x.name+' (as a to-do)'); o.value=x.id; to.appendChild(o); });
+  const close=function(){ box.remove(); if(onDone)onDone(); };
+  box.appendChild(to);
+  box.appendChild(famBtn('Send','btn-accent',function(){
+    if(!to.value){
+      const r=famWithItems(fam.doc,gl?gl.name:'Groceries',lines,fam.me,Date.now(),uid);
+      fam.doc=r.doc; famChanged();
+      if(typeof voiceToast==='function')voiceToast(r.added?r.added+' item'+(r.added===1?'':'s')+' on the group’s '+(gl?gl.name:'Groceries')+' list':'Those are already on the group’s list');
+    } else {
+      famOffer(to.value,title,null,famListNote(lines));
+      if(typeof voiceToast==='function')voiceToast('Sent to '+famName(fam.doc,to.value)+'. It waits on their To do tab.');
+    }
+    close();
+  }));
+  box.appendChild(famBtn('Cancel','ghost mono',close));
+  return box;
+}
 function famOthers(){ return fam.doc.people.filter(function(x){ return x.id!==fam.me&&x.name; }); }
 function famCanSend(){ return famOn()&&!!fam.me&&famOthers().length>0; }
 
@@ -543,22 +599,47 @@ async function famInviteMake(){
       +'In Romulus, open the Group tab, press I have a code, and type: '+r.code+'. '
       +(covered?'It’s free for you: the Group plan covers you, with 600 MB and 30 days of history.':'It’s free.')+' The code works for 2 days.'};
 }
-async function famJoinPrompt(){
-  const code=prompt('The group code someone gave you:');
-  if(!code||!code.trim())return false;
-  const p=famPersonal(); if(!p){ setSyncStatus('couldn’t join: turn on sync first',true); return false; }
+// → '' when joined, or what went wrong
+async function famJoinCode(code){
+  code=String(code||'').trim(); if(!code)return 'type the code first';
+  const fail=function(why){ setSyncStatus('couldn’t join: '+why,true); return 'Couldn’t join: '+why; };
+  const p=famPersonal(); if(!p)return fail('turn on sync first');
   try{
     let r;
-    try{ r=await famJoin(p,code.trim()); }
+    try{ r=await famJoin(p,code); }
     catch(e){ if(!/HTTP 404/.test(e.message))throw e; r={why:await syncRpc(p,'sync_family_join',{p_sync_key:await syncRowKey(p),p_code:famCodeSplit(code).server})||null,lists:false}; }
-    if(r.why){ setSyncStatus('couldn’t join: '+(typeof HOSTED_FAMILY_WHY!=='undefined'&&HOSTED_FAMILY_WHY[r.why]||r.why),true); return false; }
+    if(r.why)return fail(typeof HOSTED_FAMILY_WHY!=='undefined'&&HOSTED_FAMILY_WHY[r.why]||r.why);
     const said=r.lists?'You’re in '+(r.from?r.from+'’s':'the')+' group. Shared lists and to-dos are on the Group tab.':'You’re in the group. For the shared lists, ask for a new code: this one is from an older version.';
     setSyncStatus(said);
     if(typeof voiceToast==='function')voiceToast(said);
     if(typeof hostedDraw==='function')hostedDraw();
     if(state.activeTab==='family')renderFamily();
-    return true;
-  }catch(e){ setSyncStatus('couldn’t join: '+e.message,true); return false; }
+    return '';
+  }catch(e){ return fail(e.message); }
+}
+// Electron has no window.prompt(), so the code box opens next to the button that asked for it
+function famJoinPrompt(btn,after){
+  if(!btn||!btn.parentNode)return;
+  if(btn._codeBox){ btn._codeBox.querySelector('input').focus(); return; }
+  const box=el('div','fam-row fam-code');
+  const inp=famInput(null,'The code someone gave you','');
+  inp.autocomplete='off'; inp.spellcheck=false;
+  const say=el('span','fam-hint','');
+  const close=function(){ box.remove(); btn._codeBox=null; btn.style.display=''; };
+  const join=famBtn('Join','btn-accent',async function(){
+    if(!inp.value.trim()){ inp.focus(); return; }
+    join.disabled=true; say.textContent='Joining…';
+    const why=await famJoinCode(inp.value);
+    join.disabled=false;
+    if(why){ say.textContent=why; inp.focus(); inp.select(); return; }
+    close(); if(after)after();
+  });
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter')join.click(); else if(e.key==='Escape')close(); });
+  box.appendChild(inp); box.appendChild(join); box.appendChild(famBtn('Cancel','ghost mono',close)); box.appendChild(say);
+  btn._codeBox=box; btn.style.display='none';
+  const host=btn.closest('.fam-row')||btn;
+  host.parentNode.insertBefore(box,host.nextSibling);
+  inp.focus();
 }
 async function famLeave(){
   if(!confirm('Leave the group? The group’s shared lists leave this app, and if the group’s plan covered you, you go back to the free space. Your own lists aren’t touched.'))return false;
@@ -570,8 +651,14 @@ function famCopyButton(text){
   const b=el('button','ghost mono','Copy invite');
   b.addEventListener('click',function(){
     const done=function(){ if(typeof voiceToast==='function')voiceToast('Invite copied. Paste it in a text or email to them.'); };
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,function(){ prompt('Copy this:',text); });
-    else prompt('Copy this:',text);
+    // no window.prompt() in Electron: when the clipboard says no, show the text selected for Ctrl+C
+    const show=function(){
+      if(b._shown){ b._shown.select(); return; }
+      const t=el('textarea','sm fam-copy'); t.readOnly=true; t.value=text; t.rows=4;
+      b.parentNode.insertBefore(t,b.nextSibling); b._shown=t; t.focus(); t.select();
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,show);
+    else show();
   });
   return b;
 }
@@ -605,7 +692,8 @@ function renderFamily(){
     const s=famSection(view,'Start a group','Share lists, like groceries, and send each other to-dos. Everyone keeps their own private lists. Free with one other person; the Group plan makes room for 4 more and covers their space.');
     const row=el('div','fam-row');
     row.appendChild(famBtn('Invite someone','btn-accent',famInviteHere));
-    row.appendChild(famBtn('I have a code','ghost mono',function(){ famJoinPrompt(); }));
+    const have=famBtn('I have a code','ghost mono',function(){ famJoinPrompt(have); });
+    row.appendChild(have);
     s.appendChild(row); famInviteShown(s);
     return;
   }
@@ -716,7 +804,21 @@ function famListCard(l){
   head.appendChild(el('span','fam-list-name',l.name));
   head.appendChild(el('span','fam-hint',open.length?open.length+' to get':'all done'));
   const pen=iconBtn(I.pen,'Rename list'); pen.title='Rename';
-  pen.addEventListener('click',function(){ const n=prompt('Rename the list:',l.name); if(n&&n.trim())famPut('lists',Object.assign({},l,{name:n.trim()})); });
+  // renamed in place: Electron has no window.prompt()
+  pen.addEventListener('click',function(){
+    const nameEl=head.querySelector('.fam-list-name'); if(!nameEl)return;
+    const inp=famInput(null,'List name',l.name,'fam-list-rename');
+    let gone=false;
+    const done=function(save){
+      if(gone)return; gone=true;
+      const n=inp.value.trim();
+      if(save&&n&&n!==l.name)famPut('lists',Object.assign({},l,{name:n}));
+      else inp.replaceWith(nameEl);
+    };
+    inp.addEventListener('keydown',function(e){ if(e.key==='Enter')done(true); else if(e.key==='Escape')done(false); });
+    inp.addEventListener('blur',function(){ if(inp.isConnected)done(true); });
+    nameEl.replaceWith(inp); inp.focus(); inp.select();
+  });
   const del=iconBtn(I.x,'Delete list'); del.title='Delete list';
   del.addEventListener('click',function(){ if(confirm('Delete “'+l.name+'” for everyone in the group?'))famDel([l.id].concat(items.map(function(it){ return it.id; }))); });
   head.appendChild(pen); head.appendChild(del); card.appendChild(head);
@@ -759,4 +861,4 @@ if(typeof document!=='undefined'&&document.getElementById('tabFamily')){
   Promise.resolve(syncState.ready).then(function(){ setTimeout(function(){ famLoadKey().then(function(){ if(fam.key)syncNow(); }); },3000); });
 }
 
-if(typeof module!=='undefined')module.exports={famEmpty,famNorm,famMerge,famTidy,famCanon,famStable,famForMe,famSentByMe,famMention,famTodoLines,famName,famCodeShow,famCodeSplit,famNewSecret,famGone,famWithout,famGroceryList,famOpenGroceries,famFeedList};
+if(typeof module!=='undefined')module.exports={famEmpty,famNorm,famMerge,famTidy,famCanon,famStable,famForMe,famSentByMe,famMention,famTodoLines,famName,famCodeShow,famCodeSplit,famNewSecret,famGone,famWithout,famGroceryList,famOpenGroceries,famFeedList,famWithItems,famListNote,famNoteSplit};

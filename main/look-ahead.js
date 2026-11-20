@@ -1,6 +1,6 @@
 /* Morning look-ahead (agent/look-ahead.js): the renderer asks every 15 minutes; once a day after
    lookAhead.at (07:00 unless changed) this gathers his calendar, recent mail, memory and open tasks,
-   asks Claude in one tool-less call, and hands back the proposals for the renderer to put on the
+   asks his AIs (in his order) in one tool-less call, and hands back the proposals for the renderer to put on the
    Human tab as suggestions to accept or deny. What was suggested is remembered for 60 days so it isn't suggested again. */
 const fs = require('fs');
 const crypto = require('crypto');
@@ -29,7 +29,7 @@ function allTasks() {
   let data; try { data = JSON.parse(fs.readFileSync(ctx.dataFile(), 'utf8')); } catch (e) { return []; }
   return Array.isArray(data.tasks) ? data.tasks : [];
 }
-// his open tasks, soonest first: titles only, so Claude doesn't suggest what's already there. A task with one
+// his open tasks, soonest first: titles only, so the AI doesn't suggest what's already there. A task with one
 // of his private words (or a card or social security number) never goes to the cloud, this way either.
 function openTasks(tasks) {
   const { privateMatch } = require('../agent/routing');
@@ -52,7 +52,8 @@ handle('lookahead:tick', async (_e, force) => {
   if (!lookAhead.isDue(s, new Date(), !!force)) return { skipped: 'not due' };
   if (running) return { skipped: 'busy' };
   if (!force && s.error && Date.now() - (s.last || 0) < 60 * 60 * 1000) return { skipped: 'failed recently' }; // back off an hour
-  if (Date.now() < usage.blockedUntil()) return { skipped: 'Claude is out of usage' };
+  // Claude out of usage only stops it when Claude is the only AI he has
+  if (Date.now() < usage.blockedUntil() && !require('../agent/ai-connections').cloudOrder().some((id) => id !== 'claude')) return { skipped: 'Claude is out of usage' };
   running = true;
   const now = new Date();
   try {
@@ -71,7 +72,7 @@ handle('lookahead:tick', async (_e, force) => {
     const tasks = allTasks();
     const groceryNext = lookAhead.nextGroceryDay(tasks);
     const input = lookAhead.buildInput({ calendar, mails, prefs, tasks: openTasks(tasks), recent, groceryNext });
-    const raw = await gmailDates.claudeJson([{ role: 'system', content: lookAhead.prompt(now) }, { role: 'user', content: input }],
+    const raw = await gmailDates.aiJson([{ role: 'system', content: lookAhead.prompt(now) }, { role: 'user', content: input }],
       lookAhead.SCHEMA, { effort: 'medium' });
     let out; try { out = JSON.parse(raw); } catch (e) { throw new Error('the answer wasn’t JSON'); }
     const items = lookAhead.clean(out && out.proposals, { now, recentKeys: recent.map((r) => r.key), groceryNext })

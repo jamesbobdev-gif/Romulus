@@ -31,8 +31,8 @@ handle('sync:device-info', async () => ({
    it's drawn here and shown only on this screen, never sent anywhere */
 handle('sync:qr', async (_e, text) => {
   text = String(text || '');
-  // a sync code, or a 10-minute pairing code (renderer/js/pair.js)
-  const ok = (text.startsWith('tasks-sync:') && text.length <= 2000) || /^tasks-pair:[0-9A-Z]{12}$/.test(text);
+  // a sync code, or a 10-minute pairing code (renderer/js/pair.js), or Finance's (renderer/js/finance.js finShareFold)
+  const ok = (text.startsWith('tasks-sync:') && text.length <= 2000) || /^tasks-(fin)?pair:[0-9A-Z]{12}$/.test(text);
   if (!ok) return { ok: false, error: 'not a sync code' };
   return { ok: true, svg: await require('qrcode').toString(text, { type: 'svg', errorCorrectionLevel: 'L', margin: 2 }) };
 });

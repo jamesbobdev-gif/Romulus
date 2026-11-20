@@ -11,8 +11,8 @@
   const FIN_SHARE_MIN = 10; // main/finance.js MIN_PASSPHRASE
 
   const subtle = function () { return globalThis.crypto.subtle; };
-  const b64 = function (bytes) { let s = ''; bytes = new Uint8Array(bytes); for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); };
-  const unb64 = function (s) { const bin = atob(String(s)); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
+  const U = typeof bytesToB64 === 'function' ? { bytesToB64: bytesToB64, b64ToBytes: b64ToBytes } : require('./util');
+  const b64 = U.bytesToB64, unb64 = U.b64ToBytes;
 
   async function pbkdf2(pass, salt, len) {
     const k = await subtle().importKey('raw', pass, 'PBKDF2', false, ['deriveBits']);

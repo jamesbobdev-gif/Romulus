@@ -38,6 +38,7 @@ function load(opts) {
   ctx.window.Capacitor = { isPluginAvailable: (n) => n === 'FinanceVault',
     nativePromise: async (p, m, o) => { const f = plugin[m]; if (!f) throw new Error('no ' + m); return f(o || {}); } };
   vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/util.js'), 'utf8'), ctx); // first, as on the page
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-core.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-share.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../mobile/finance-phone.js'), 'utf8'), ctx);

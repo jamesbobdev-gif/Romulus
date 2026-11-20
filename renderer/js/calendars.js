@@ -17,7 +17,7 @@ if(calApi){
     });
   });
   const calErr=function(m){ $('calErr').textContent=m||''; };
-  const escH=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  const escH=escapeHtml;;
   const PROV={google:'Google',microsoft:'Microsoft',ics:'Calendar link'};
   let calData=null;
   // sign in again with this account (Google opens on its address); the account keeps its calendars and switches
@@ -144,8 +144,8 @@ if(calApi){
   // shortly after start (sync has loaded the lists by then), then every 15 minutes
   setTimeout(calTick,45*1000); setInterval(calTick,15*60*1000);
 
-  /* Dates from Gmail: main checks the mailbox (free when nothing's new) and asks Claude
-     about new mail that mentions a date. Each found date is a suggestion on the Human tab with its own id
+  /* Dates from Gmail: main checks the mailbox (free when nothing's new) and asks his AIs
+     (in his order) about new mail that mentions a date. Each found date is a suggestion on the Human tab with its own id
      (lists.js drawSuggestions): Accept puts it on his list, Deny drops it. Added once: one he denied or
      deleted isn't brought back, and one already on a list (same day, same name) isn't doubled. */
   if(window.desktop&&window.desktop.mailCheck){
@@ -190,7 +190,7 @@ if(calApi){
       if(!tick)return;
       const open=state.tasks.filter(function(t){ return !t.done&&taskWs(t)==='personal'&&t.title.startsWith(MAIL_RENEW); });
       if(st.connected&&st.expired&&!open.length){
-        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendars & email';
+        const title=MAIL_RENEW+' press Renew sign-in in Settings → Calendar & email';
         state.tasks.push({id:uid(),title:title,done:false,due:null,dueTime:null,tag:null,ws:'personal',subs:[],googleEventId:null,created:Date.now()});
         voiceToast(title,true); touch();
       } else if(!st.expired&&open.length){ open.forEach(function(t){ t.done=true; }); touch(); }

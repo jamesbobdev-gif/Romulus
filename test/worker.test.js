@@ -23,6 +23,16 @@ test('a heartbeat counts while it is fresh, and not once three are missed', () =
   assert.strictEqual(worker.freshWorker({ v: 1 }, now), null);
 });
 
+test('a worker quiet for a few minutes is returning, not gone; what it is doing rides along', () => {
+  const now = 1_000_000_000;
+  const doc = worker.heartbeat({ name: 'Lupa', model: 'holo4', busy: true, doing: { what: 'running a task', title: 'Draft the essay', step: 3 } }, now);
+  assert.deepStrictEqual(worker.freshWorker(doc, now).doing, { what: 'running a task', title: 'Draft the essay' });
+  assert.strictEqual(worker.returningWorker(doc, now), null); // fresh: not "returning"
+  const r = worker.returningWorker(doc, now + worker.FRESH_MS + 1);
+  assert.strictEqual(r.quiet, true); assert.strictEqual(r.name, 'Lupa');
+  assert.strictEqual(worker.returningWorker(doc, now + worker.GRACE_MS + 1), null); // too long: it's off
+});
+
 test('share: the worker takes all but money questions, which it answers after a wait', () => {
   const now = 10_000_000;
   const plain = { id: 'p', updatedAt: now }, money = { id: 'm', updatedAt: now, money: true }, oldMoney = { id: 'o', updatedAt: now - worker.MONEY_WAIT_MS - 1, money: true };
@@ -130,4 +140,21 @@ test('lookAgain reads the row afresh but keeps what was last heard', async (t) =
   global.fetch = async () => { reads++; throw new Error('fetch failed'); }; // just woke: the network isn't back yet
   assert.ok(await worker.present(b), 'a failed read keeps the last heartbeat');
   assert.strictEqual(reads, 2);
+});
+
+test('standIn takes cloud tasks nobody claimed for a few minutes, never inbox ones', () => {
+  const now = 10 * 60 * 1000;
+  const old = { id: 'a', updatedAt: now - worker.STANDIN_MS - 1 };
+  const fresh = { id: 'b', updatedAt: now - 60 * 1000 };
+  const mail = { id: 'c', updatedAt: 0, mail: true };
+  const r = worker.standIn([old, fresh, mail], { isMail: (t) => !!t.mail, now });
+  assert.deepStrictEqual(r.ready.map((t) => t.id), ['a']);
+  assert.strictEqual(r.wait, worker.STANDIN_MS - 60 * 1000, 'looks again when the fresh one is old enough');
+  assert.deepStrictEqual(worker.standIn([mail], { isMail: (t) => !!t.mail, now }), { ready: [], wait: 0 });
+});
+
+test('standsIn: only the worker, unless turned off', () => {
+  assert.strictEqual(worker.standsIn({}), false);
+  assert.strictEqual(worker.standsIn({ localModel: { worker: true } }), true);
+  assert.strictEqual(worker.standsIn({ localModel: { worker: true, cloudStandIn: false } }), false);
 });

@@ -32,6 +32,7 @@ const runner = require('./agent/runner');
 const memoryTidy = require('./agent/memory-tidy');
 const localTools = require('./agent/local-tools');
 const localLane = require('./agent/local-lane');
+const ollamaSetup = require('./agent/ollama-setup'); // Settings → Local model → Set it up for me
 const liveView = require('./agent/live-view');
 const finance = require('./main/finance');
 const downloads = require('./main/downloads');
@@ -80,7 +81,7 @@ const ctx = {
   openOverlay: () => overlay.toggle(), // the screen helper (main/overlay.js), from the tray
 };
 const modules = [trayMod, speak, feeds, persistence, gcalSync, buyEmails, deviceSync, calendarAccounts, gmailDates, lookAheadMod, triggersMod, agentLogMod,
-  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, liveView, finance, downloads, updater, overlay];
+  usage, routingMod, ai, agentBrowser, taskContext, qwenBrowser, previews, runner, memoryTidy, localTools, localLane, ollamaSetup, liveView, finance, downloads, updater, overlay];
 const allHandlers = {};
 for (const m of modules) {
   m.init(ctx);
@@ -91,8 +92,12 @@ for (const [channel, fn] of Object.entries(allHandlers)) ipcMain.handle(channel,
 const kitchenAi = require('./main/kitchen-ai');
 kitchenAi.init(ctx);
 for (const [channel, fn] of Object.entries(kitchenAi.handlers)) ipcMain.handle(channel, fn);
+// Settings: the QR code that copies his AI keys to the phone (main/phone-ai-code.js)
+const phoneAiCode = require('./main/phone-ai-code');
+phoneAiCode.init(ctx);
+for (const [channel, fn] of Object.entries(phoneAiCode.handlers)) ipcMain.handle(channel, fn);
 const { holdForUsage } = usage;
-const { loadRouting, askForRoutes } = routingMod;
+const { loadRouting, learnFrom } = routingMod;
 const { scheduleAgentRun, queuedAgentTasks } = runner;
 const { scheduleLocalRun } = localLane;
 let situationNow = null;
@@ -171,7 +176,7 @@ if (!gotLock) {
     if (savedHold && savedHold > Date.now()) { holdForUsage(queuedAgentTasks().map((t) => t.id), savedHold - 60 * 1000); }
     setTimeout(() => scheduleAgentRun(), 15 * 1000);
     // his routing rules (edited in Settings, synced): load now, refresh now and then
-    loadRouting().then(() => { scheduleAgentRun(); scheduleLocalRun(); askForRoutes(); });
+    loadRouting().then(() => { scheduleAgentRun(); scheduleLocalRun(); learnFrom(); });
     setInterval(() => loadRouting(), 5 * 60 * 1000);
     // what auto routing knows: is the mini PC answering, is a cloud AI connected, is Claude near its limit
     refreshSituation();

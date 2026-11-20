@@ -12,7 +12,7 @@ const STOP = new Set(('a an the my me i you your our for of on in at to from up 
   'is are be it this that what which who with please can could should would will just also some any all ' +
   'look find get check see go use do make help try want need have has had new next last one ' +
   'what\'s whats im i\'m it\'s due today tomorrow week local claude').split(' '));
-const hostOf = (u) => { try { return new URL(String(u)).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } };
+const { siteOf: hostOf } = require('./util'); // without "www."
 
 // the words that say what a task is about (singular-ish, so "internships" matches "internship")
 function keyWords(text) {

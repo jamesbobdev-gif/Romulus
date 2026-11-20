@@ -2,38 +2,37 @@
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
+/* "Finished" means the job itself is done, which usually takes his yes to something. An answer that still
+   leaves him something to pick, answer, send or okay is waiting on him, whatever the AI called it.
+   t: the task with this answer's pieces already on it; placed: an order went through; newCart: it brought one. */
+function leftForHim(t,u,placed,newCart){
+  if(placed)return false;
+  return !!((Array.isArray(u.options)&&u.options.length)||newCart||(Array.isArray(t.ask)&&t.ask.length)||
+    t.draft||t.email||t.seats||t.showtimes||t.theaters);
+}
+
 /* ── agent runner results (desktop only: main.js runs Claude, we apply + sync) ── */
 if(window.desktop&&window.desktop.onAgentResults){
   window.desktop.onAgentWorking(function(p){
     // a plain list = Claude's run; {ids, lane:'local'} = the mini PC's
     const ids=Array.isArray(p)?p:(p&&p.ids)||[], lane=Array.isArray(p)?'claude':(p&&p.lane)||'claude';
-    const reasons=(p&&p.reasons)||{};
+    const reasons=(p&&p.reasons)||{}, types=(p&&p.types)||{};
     let changed=false;
     ids.forEach(function(id){
       const t=state.tasks.find(function(x){ return x.id===id; });
       if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'){
         t.status='working'; t.runFrom=Date.now(); // what he writes after this, the run can't see: it goes next
         // a #legion title (typed in later with the pencil) goes to Lupa whoever had it before (agent/routing.js laneOf)
-        if(!t.lane||(lane==='local'&&t.lane!=='local'&&/(^|\s)#(legion|research)\b/i.test(t.title))){ t.lane=lane; if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'); }
+        if(!t.lane||(lane==='local'&&t.lane!=='local'&&/(^|\s)#(legion|research)\b/i.test(t.title))){ t.lane=lane;
+          // the lane it was first sent to and its type: agent/route-learn.js counts how each turns out (done, or switched off it)
+          if(!t.routedLane)t.routedLane=lane; const ty=types[id]; if(ty&&ty.type&&!t.taskType)t.taskType=ty.type; delete t.routeAsk;
+          if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'+(ty&&ty.note?'. Type '+ty.note:'')); }
         changed=true;
       }
       // the AI the runner is asking now: the pill shows it, and the task stays with it from here on
       // Claude taking over doesn't pin the task to Claude (only his pick on the pill does), so with "Save Claude for last" his next reply tries the others first
       if(t&&p&&p.cloud&&t.lane!=='local'&&t.status==='working'&&t.cloud!==p.cloud){ if(p.cloud!=='claude')t.cloud=p.cloud; else delete t.cloud; changed=true; }
       if(t&&p&&p.limitMs)runLimit[id]=Date.now()+p.limitMs; // a grocery run gets 40 min, not 15: the watchdog waits for it
-    });
-    if(changed)touch();
-  });
-  // no routing rule matched and his default is "ask me": the task waits for him to pick
-  if(window.desktop.onRouteAsk)window.desktop.onRouteAsk(function(ids){
-    let changed=false;
-    ids.forEach(function(id){
-      const t=state.tasks.find(function(x){ return x.id===id; });
-      if(t&&taskWs(t)==='agent'&&!t.done&&t.status==='queued'&&!t.lane){
-        t.status='needs-you'; t.routeAsk=true; t.note='Who should do this one? No routing rule matched.';
-        agentSay(t,'sys','No routing rule matched: waiting for you to pick Claude or the local model');
-        changed=true;
-      }
     });
     if(changed)touch();
   });
@@ -66,7 +65,9 @@ if(window.desktop&&window.desktop.onAgentResults){
     }
     if(Array.isArray(p.heard)&&p.heard.length!==(liveHeard[p.id]||[]).length){ liveHeard[p.id]=p.heard; redraw=true; }
     const box=document.querySelector('.agent-live[data-id="'+p.id+'"]');
-    if(box&&!redraw){ const stick=box.scrollTop+box.clientHeight>=box.scrollHeight-8; box.textContent=liveText[p.id]; if(stick)box.scrollTop=box.scrollHeight; }
+    const shown=liveShown(liveText[p.id]);
+    if(!box&&shown)redraw=true; // the box shows once there's more than "X is on it" (the status card says that)
+    if(box&&!redraw){ const stick=box.scrollTop+box.clientHeight>=box.scrollHeight-8; box.textContent=shown; if(stick)box.scrollTop=box.scrollHeight; }
     else if(redraw&&typeof render==='function')render();
   });
   // Claude is out of usage: these wait (no failure) until the reset, then run by themselves
@@ -92,6 +93,7 @@ if(window.desktop&&window.desktop.onAgentResults){
       // an answer only counts from the lane that holds the task (he may have switched it meanwhile)
       if((t.lane==='local')!==(u.lane==='local'))return;
       // the mini PC failed (not reachable, crashed): the cloud AIs take it from here, with his reply still on it
+      if(u.pinned)applyPinned(t,u.pinned); // what "chapter 8" turned out to be, before anything else reads the task
       if(u.handoff){
         t.lane='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
         t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
@@ -134,8 +136,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(co.placed)stocked=keepLastOrder(t,(u.note||'')+'\n'+(reviewNote||''),u.list&&u.list.bought);
       // orders he placed himself that it found in his store account: their food goes into the pantry, once
       // each (grocery-list.js stockOrdered). One that finishes the task is the cart it was holding
-      const self=typeof stockOrdered==='function'?stockOrdered(t,u.ordered):[];
-      self.forEach(function(s){ agentSay(t,'sys',orderedLine(s)); });
+      const self=typeof stockOrdered==='function'?stockOrdered(t,u.ordered,u.list&&u.list.bought):[];
+      self.forEach(function(s){ agentSay(t,'sys',orderedLine(s)); if(s.covered&&s.covered.length)stocked=(stocked||[]).concat(s.covered); });
       delete t.cartCheck;
       if(co.cart==='new'){ t.cart=u.cart; delete t.cartOff; t.cartAt=Date.now(); delete t.cartLooks; } // grocery-list.js runCartCheck counts from here
       else if(co.cart==='clear'||(self.length&&u.status==='done')){ t.cart=null; delete t.cartOff; delete t.cartPick; delete t.cartAt; delete t.cartLooks; }
@@ -146,6 +148,8 @@ if(window.desktop&&window.desktop.onAgentResults){
       t.seats=u.seats&&Array.isArray(u.seats.rows)?u.seats:null; if(typeof seatDrafts!=='undefined')delete seatDrafts[t.id]; // seat-map.js: its pick, fresh each answer
       t.showtimes=u.showtimes&&Array.isArray(u.showtimes.days)?u.showtimes:null; if(typeof showDay!=='undefined')delete showDay[t.id]; // seat-map.js: days and times to tap
       t.theaters=u.theaters&&Array.isArray(u.theaters.theaters)?u.theaters:null; if(typeof theaterPick!=='undefined')delete theaterPick[t.id]; // seat-map.js: the theaters on a map
+      // recipes to choose from, a draft to send, seats to pick: not finished yet, it waits on him (a placed order is)
+      if(t.status==='done'&&leftForHim(t,u,co.placed,co.cart==='new'))t.status='needs-you';
       // just to look at (his grocery list): small cards. They stay up when an answer brings none ("add hummus"),
       // with what it added or removed on the list
       if(Array.isArray(u.cards)&&u.cards.length)t.cards=u.cards;
@@ -157,6 +161,11 @@ if(window.desktop&&window.desktop.onAgentResults){
       if(Array.isArray(u.school)&&u.school.length&&typeof importClassItems==='function'){
         const s=importClassItems(u.school);
         agentSay(t,'sys','School list: '+s.added+' added'+(s.moved?', '+s.moved+' with a new date':'')+(s.labeled?', '+s.labeled+' given their class':'')+' (of '+u.school.length+' found)');
+      }
+      // and the listed work it saw he already turned in comes off (wiring.js markClassDone)
+      if(Array.isArray(u.schoolDone)&&u.schoolDone.length&&typeof markClassDone==='function'){
+        const d=markClassDone(u.schoolDone);
+        if(d.checked)agentSay(t,'sys','Checked off, already turned in: '+d.titles.join('; '));
       }
       // a case waiting on someone else (agent/triggers.js followUp): it watches until then. Never over one he set himself
       if(u.followUp&&u.followUp.kind&&(!t.trigger||t.trigger.auto)){ t.trigger=u.followUp; t.triggered=null; agentSay(t,'sys','Following up: starts again '+triggerText(u.followUp)); }
@@ -188,6 +197,26 @@ if(window.desktop&&window.desktop.onAgentResults){
     });
     touch();
   });
+}
+/* "chapter 8" turned out to be ECN 201's Chapter 8 Homework (agent/find-out.js pin_down_task): his task says so
+   now, with its class, name, instructions and link, so this run's answer and every later one start from it.
+   His own #tags stay on the title; a due date he set himself stays, the course's goes on one with none */
+function applyPinned(t,p){
+  if(!p||typeof p!=='object')return;
+  const course=String(p.course||'').trim(), title=String(p.title||'').replace(/\s+/g,' ').trim().slice(0,160);
+  if(!/^[A-Z]{2,5} \d{3,4}[A-Z]?$/.test(course)||title.length<3)return;
+  const due=/^\d{4}-\d{2}-\d{2}$/.test(String(p.due||''))?p.due:null, time=due&&/^([01]\d|2[0-3]):[0-5]\d$/.test(String(p.dueTime||''))?p.dueTime:null;
+  const url=/^https:\/\//i.test(String(p.url||''))?String(p.url).slice(0,500):null;
+  const details=String(p.details||'').replace(/\s+/g,' ').trim().slice(0,600);
+  const was=t.title;
+  const tags=(String(was||'').match(/(^|\s)#[a-z]+\b/gi)||[]).map(function(s){ return s.trim(); });
+  t.title=[title].concat(tags).join(' ');
+  t.tag=course;
+  if(!t.due&&due){ t.due=due; t.dueTime=time; }
+  const add=[details,url].filter(function(x){ return x&&String(t.notes||'').indexOf(x)===-1; });
+  if(add.length)t.notes=add.concat(t.notes?[t.notes]:[]).join('\n\n');
+  if(url){ try{ t.site=new URL(url).hostname.toLowerCase(); }catch(e){} }
+  agentSay(t,'sys','Found it: “'+String(was||'').trim()+'” is '+course+', '+title+(due?' (due '+due+(time?' '+time:'')+')':'')+'. Your task says so now.');
 }
 function fmtWhen(ms){
   if(!ms)return '';

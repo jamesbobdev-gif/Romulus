@@ -34,7 +34,15 @@ function describe(name, input) {
     return null;
   }
   if (/^TaskCreate$|^TaskUpdate$|^TaskList$|^TaskGet$/.test(name)) return null;
-  if (/^mcp__claude_ai_Gmail__/.test(name)) return /search/.test(name) ? 'Searching your mail' + (input.query ? ': ' + short(input.query, 80) : '') : 'Reading an email';
+  if (/^mcp__mail__/.test(name)) {
+    const t = name.replace(/^mcp__mail__/, '');
+    const said = { search_threads: 'Searching your mail' + (input.query ? ': ' + short(input.query, 80) : ''), create_draft: 'Saving a draft',
+      change_labels: 'Labeling an email', archive: 'Archiving an email', mark_read: input.read === false ? 'Marking an email unread' : 'Marking an email read',
+      create_label: 'Making a label', send_message: 'Sending an email', reply: 'Replying to an email', forward: 'Forwarding an email',
+      send_draft: 'Sending a draft', trash: 'Moving an email to the trash', list_labels: 'Looking at your labels', list_drafts: 'Looking at your drafts',
+      list_accounts: 'Checking which mailboxes are connected' }[t];
+    return said || 'Reading an email';
+  }
   if (name !== b) { // the agent browser
     if (b === 'browser_navigate') return 'Opening ' + where(input.url);
     if (b === 'browser_navigate_back') return 'Going back';

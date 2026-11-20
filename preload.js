@@ -43,6 +43,14 @@ contextBridge.exposeInMainWorld('desktop', {
   localProbe: (url) => ipcRenderer.invoke('local:probe', url),
   localSave: (change) => ipcRenderer.invoke('local:save', change),
   localWorker: (on) => ipcRenderer.invoke('local:worker', on),
+  // Set it up for me (agent/ollama-setup.js): start or install Ollama, download a model with progress
+  localSetupInfo: () => ipcRenderer.invoke('local:setup-info'),
+  localInstall: () => ipcRenderer.invoke('local:install'),
+  localPull: (model) => ipcRenderer.invoke('local:pull', model),
+  onLocalPullProgress: (cb) => ipcRenderer.on('local:pull-progress', (_event, p) => cb(p)),
+  // start at login (main/tray.js), for Settings' setup list
+  loginGet: () => ipcRenderer.invoke('app:login-get'),
+  loginSet: (on) => ipcRenderer.invoke('app:login-set', !!on),
   // routing: the user's rules changed (reload them), and tasks no rule matched (he picks the lane)
   routingChanged: () => ipcRenderer.invoke('routing:changed'),
   // AI connections: Claude / Gemini / OpenRouter for the Agent lane, in his order
@@ -50,14 +58,18 @@ contextBridge.exposeInMainWorld('desktop', {
   aiSave: (change) => ipcRenderer.invoke('ai:save', change),
   aiGeminiInstall: () => ipcRenderer.invoke('ai:gemini-install'),
   aiCodexInstall: () => ipcRenderer.invoke('ai:codex-install'),
-  aiCodexLogin: () => ipcRenderer.invoke('ai:codex-login'),
-  aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
-  aiOpenRouterConnect: () => ipcRenderer.invoke('ai:openrouter-connect'),
+  // acct: an extra account's id (claude~2, agent/ai-accounts.js); none = the main account
+  aiCodexLogin: (acct) => ipcRenderer.invoke('ai:codex-login', typeof acct === 'string' ? acct : undefined),
+  aiOpenRouterCheck: (acct) => ipcRenderer.invoke('ai:openrouter-check', typeof acct === 'string' ? acct : undefined),
+  aiOpenRouterConnect: (acct) => ipcRenderer.invoke('ai:openrouter-connect', typeof acct === 'string' ? acct : undefined),
+  // more than one account per AI: add one (base: 'claude', 'openai'...) or take one away
+  aiAccountAdd: (base, label) => ipcRenderer.invoke('ai:account-add', String(base || ''), String(label || '')),
+  aiAccountRemove: (acct) => ipcRenderer.invoke('ai:account-remove', String(acct || '')),
   // Claude Code on this computer: install it, sign in, look again, prove it works
   aiClaudeInstall: () => ipcRenderer.invoke('ai:claude-install'),
-  aiClaudeLogin: () => ipcRenderer.invoke('ai:claude-login'),
-  aiClaudeRefresh: () => ipcRenderer.invoke('ai:claude-refresh'),
-  aiClaudeCheck: () => ipcRenderer.invoke('ai:claude-check'),
+  aiClaudeLogin: (acct) => ipcRenderer.invoke('ai:claude-login', typeof acct === 'string' ? acct : undefined),
+  aiClaudeRefresh: (acct) => ipcRenderer.invoke('ai:claude-refresh', typeof acct === 'string' ? acct : undefined),
+  aiClaudeCheck: (acct) => ipcRenderer.invoke('ai:claude-check', typeof acct === 'string' ? acct : undefined),
   aiCompatCheck: (id) => ipcRenderer.invoke('ai:compat-check', id),
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
@@ -72,7 +84,6 @@ contextBridge.exposeInMainWorld('desktop', {
   formFiles: () => ipcRenderer.invoke('forms:files'),
   formFileAdd: () => ipcRenderer.invoke('forms:add'),
   formFileRemove: (name) => ipcRenderer.invoke('forms:remove', name),
-  onRouteAsk: (cb) => ipcRenderer.on('agent:route-ask', (_event, ids) => cb(ids)),
   openAgentBrowser: () => ipcRenderer.invoke('agent:open-browser'),
   // live view: the agent browser's tabs (each with its localhost socket), and starting it
   livePages: (taskId, where) => ipcRenderer.invoke('live:pages', taskId, where), // where 'lupa': the local model's browser
@@ -128,6 +139,9 @@ contextBridge.exposeInMainWorld('desktop', {
   kitchenPictureFor: (name) => ipcRenderer.invoke('kitchen:pictureFor', name),
   // pantry photos (main/kitchen-ai.js): {mode: 'food'|'meal', image: {mime, b64}, pantry} → {items|meal, used, via} or {why}
   kitchenPhoto: (req) => ipcRenderer.invoke('kitchen:photo', req),
+  // Settings: copy AI keys to the phone by QR code (main/phone-ai-code.js)
+  aiPhoneChoices: () => ipcRenderer.invoke('ai:phoneChoices'),
+  aiPhoneCode: (ids) => ipcRenderer.invoke('ai:phoneCode', ids),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),

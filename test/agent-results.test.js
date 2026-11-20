@@ -201,3 +201,16 @@ test('the cart check: an order he placed himself goes to the pantry and the cart
   assert.strictEqual(t2.cart.length, 1);
   assert.deepStrictEqual([t2.cartAt, t2.cartLooks, t2.cartCheck], [1, 1, undefined]);
 });
+
+test('an answer that leaves him picks or a draft is not finished, whatever the AI called it', () => {
+  const t = { id: 'r', ws: 'agent', status: 'working', history: [] };
+  const { cb } = load([t]);
+  cb.results([{ id: 'r', status: 'done', note: 'Found six dessert recipes.', options: [{ label: 'Fruit crisp', url: 'https://example.com/crisp' }] }]);
+  assert.strictEqual(t.status, 'needs-you');
+  const d = { id: 'd', ws: 'agent', status: 'working', history: [] };
+  load([d]).cb.results([{ id: 'd', status: 'done', note: 'Wrote it.', draft: { text: 'Hi there', where: 'Slack' } }]);
+  assert.strictEqual(d.status, 'needs-you');
+  const n = { id: 'n', ws: 'agent', status: 'working', history: [] };
+  load([n]).cb.results([{ id: 'n', status: 'done', note: 'Your bill is paid through December.' }]);
+  assert.strictEqual(n.status, 'done');
+});

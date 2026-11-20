@@ -738,7 +738,7 @@ function finDrawStocks(box,s,cur,load){
 function finSaveStocksSheet(rows,short,cur,at){
   const csv=stocksCsv(rows,short,cur);
   const d=new Date(at||Date.now());
-  const title='Stocks '+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const title='Stocks '+dayKey(d);
   const say=function(m){ if(typeof pasteToast==='function')pasteToast(m); };
   if(window.desktop&&window.desktop.saveSheet){
     window.desktop.saveSheet(title,csv).then(function(r){
@@ -1057,19 +1057,7 @@ function finKeepEbtCopy(e){
   if(typeof loadGroceryEbt==='function')loadGroceryEbt();
 }
 // a photo he picked → {mime, b64}, at most 1600 px on its long side (small print stays readable, sends quickly)
-function finShrinkImage(file){
-  return new Promise(function(ok,fail){
-    const url=URL.createObjectURL(file), im=new Image();
-    im.onload=function(){
-      const k=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight));
-      const c=document.createElement('canvas'); c.width=Math.round(im.naturalWidth*k); c.height=Math.round(im.naturalHeight*k);
-      c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url);
-      ok({mime:'image/jpeg',b64:c.toDataURL('image/jpeg',0.85).split(',')[1]});
-    };
-    im.onerror=function(){ URL.revokeObjectURL(url); fail(new Error('not a picture')); };
-    im.src=url;
-  });
-}
+function finShrinkImage(file){ return pictureB64(file,1600,'not a picture'); }
 // a saved EBT wallet: Finance's copy and the grocery list's copy. Saved while locked, the copy already has
 // it, marked for the next unlock (finance-ebt.js ebtKeepPending), so it's only read again
 function finEbtSaved(ebt,locked){
@@ -1188,15 +1176,26 @@ function finEbtCard(d){
 }
 /* Subscriptions (finance-insights.js subscriptionCheck): price rises first, then ones that just started (a free
    trial turning paid looks like that), then everything that charges each month and since when */
-function finSubsCard(s,cur){
+function finSubsCard(s,cur,deals){
   const box=el('div','fin-card fin-chart');
   box.appendChild(el('h3',null,'Subscriptions'));
+  (deals||[]).forEach(function(x){
+    const p=el('p','fin-deal',finDealText(x,cur)+' ');
+    const a=el('a','fin-cancel-link','Sign up ↗'); a.href=x.url; a.target='_blank'; a.rel='noopener';
+    a.title='Opens '+new URL(x.url).hostname.replace(/^www\./,'')+'. You’ll be asked to prove it there';
+    p.appendChild(a); box.appendChild(p);
+  });
   const since=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',year:'numeric'}); };
+  const alert=function(text,name){ const p=el('p','fin-alert',text+' '); p.appendChild(finCancelLink(name)); box.appendChild(p); };
+  (s.trials||[]).forEach(function(x){
+    alert(x.name+' charged '+finMoney(x.first,cur)+' on '+finDate(x.firstWhen/1000)+', then '+finMoney(x.then,cur)+' on '+finDate(x.thenWhen/1000)+
+      '. That looks like a trial that turned into a subscription, and it usually repeats every month. If you didn’t mean to sign up, cancel it, and ask your card about disputing the charge.',x.name);
+  });
   s.raised.forEach(function(x){
-    box.appendChild(el('p','fin-alert','▲ '+x.name+' went from '+finMoney(x.from,cur)+' to '+finMoney(x.to,cur)+' ('+finDate(x.when/1000)+')'));
+    alert('▲ '+x.name+' went from '+finMoney(x.from,cur)+' to '+finMoney(x.to,cur)+' ('+finDate(x.when/1000)+').',x.name);
   });
   s.fresh.forEach(function(x){
-    box.appendChild(el('p','fin-alert','New: '+x.name+' started charging '+finMoney(x.amount,cur)+' on '+finDate(x.when/1000)+'. If it was a free trial, it’s paid now.'));
+    alert('New: '+x.name+' started charging '+finMoney(x.amount,cur)+' on '+finDate(x.when/1000)+'. If it was a free trial, it’s paid now.',x.name);
   });
   if(!s.subs.length)box.appendChild(el('p','fin-note','No subscriptions found. Tag a charge as fixed in Transactions and it shows here.'));
   else box.appendChild(el('p','fin-note','About '+finMoney(s.total,cur)+' a month across '+s.subs.length+(s.subs.length===1?' subscription.':' subscriptions.')+' Hover one to see how long it’s been charging.'));
@@ -1206,6 +1205,7 @@ function finSubsCard(s,cur){
     const who=el('span','fin-desc'); who.appendChild(el('span',null,x.name)); who.appendChild(el('span','fin-sub','since '+since(x.since)+(x.months>=12?' · over a year':'')));
     r.appendChild(who);
     r.appendChild(el('span','fin-amt',finMoney(x.monthly,cur)+'/mo'));
+    r.appendChild(finCancelLink(x.name,true));
     const open=finCancelTask(x.name);
     const cb=el('button','ghost mono',open?'cancelling':'cancel');
     cb.title=open?'On your Agent tab':'Have the Agent cancel '+x.name;
@@ -1213,8 +1213,59 @@ function finSubsCard(s,cur){
     r.appendChild(cb);
     box.appendChild(r);
   });
-  const flags=s.raised.length+s.fresh.length;
-  return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo');
+  const flags=s.raised.length+s.fresh.length+(s.trials||[]).length+(deals||[]).length;
+  // open the first time there's something to look at (right after connecting a bank, say)
+  return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo',flags>0);
+}
+/* who he is, for discounts (finance-insights.js discountCheck), from what's already on this device: a student
+   when he paid tuition this year, uses the School list, or his notes about himself (Settings, synced ':prefs')
+   say so; EBT when Finance → EBT is on. Nothing here leaves the device */
+let finPrefsStudent=null; // from his notes, read once per start
+function finWho(txs){
+  if(finPrefsStudent===null){
+    finPrefsStudent=false;
+    const p=typeof prefsProfile==='function'?prefsProfile():null;
+    if(p&&typeof syncPullRow==='function')syncPullRow(p).then(function(r){
+      if(/\b(i am|i'm|im) (a )?(college |university |grad |full[- ]time |part[- ]time )?student\b|\b(at|go to|attend|enrolled (at|in)) (a |the )?(community )?(college|university)\b|\bstudent at\b/i.test(String(r&&r.doc&&r.doc.text||''))){
+        finPrefsStudent=true; if(typeof renderFinance==='function')renderFinance();
+      }
+    }).catch(function(){});
+  }
+  const school=state.tasks.some(function(t){ return taskWs(t)==='school'&&Date.now()-(t.created||0)<200*86400000; });
+  return {student:paysTuition(txs)||school||finPrefsStudent,ebt:typeof ebtOn==='function'&&ebtOn()};
+}
+function finDealText(x,cur){
+  const as=x.who==='ebt'?'Since you use EBT, ':'As a student, ';
+  return as+'you may qualify for '+x.program+(x.price!=null?' at about '+finMoney(x.price,cur)+' a month':'')+'. You paid '+x.name+' '+finMoney(x.pays,cur)+
+    ' last time'+(x.saveYear?', so that’s about '+finMoney(x.saveYear,cur)+' a year back.':'.');
+}
+/* each discount told once on this device ('fin.dealsTold'): a notification (the phone's, or the computer's
+   plus a toast). The first time Finance is drawn counts too: that's right after he connects his bank */
+function finTellDeals(deals,cur){
+  if(!deals||!deals.length)return;
+  let told={}; try{ told=JSON.parse(localStorage.getItem('fin.dealsTold')||'{}')||{}; }catch(e){}
+  const fresh=deals.filter(function(x){ return !told[x.id]; });
+  if(!fresh.length)return;
+  fresh.forEach(function(x){ told[x.id]=Date.now(); });
+  try{ localStorage.setItem('fin.dealsTold',JSON.stringify(told)); }catch(e){}
+  const x=fresh[0];
+  const title=fresh.length>1?fresh.length+' discounts you may qualify for':(x.who==='ebt'?'EBT discount: ':'Student discount: ')+x.program.replace(/ \(.*\)$/,'');
+  const body=fresh.length>1?fresh.map(function(y){ return y.program.replace(/ \(.*\)$/,''); }).join(', ')+'. Open Finance → Subscriptions to sign up.'
+    :finDealText(x,cur)+' Open Finance → Subscriptions to sign up.';
+  const call=typeof ebtPhoneNotes==='function'?ebtPhoneNotes():null;
+  if(call)call('requestPermissions').then(function(){ return call('schedule',{notifications:[{id:ebtNoteId('deal|'+x.id),title:title,body:body,schedule:{at:new Date(Date.now()+3000)}}]}); });
+  else{
+    try{ if(window.Notification&&Notification.permission!=='denied')new Notification(title,{body:body,silent:false}); }catch(e){}
+    if(typeof voiceToast==='function')voiceToast(title);
+  }
+}
+/* a link to where it's cancelled (finance-insights.js cancelPage): the company's own page, or a web search for
+   its cancel steps. It opens in his browser; only the name is in the link */
+function finCancelLink(name,short){
+  const p=cancelPage(name), a=el('a','fin-cancel-link',short?'site ↗':p.known?'Cancel page ↗':'How to cancel ↗');
+  a.href=p.url; a.target='_blank'; a.rel='noopener';
+  a.title=p.known?'Open '+new URL(p.url).hostname.replace(/^www\./,'')+' to cancel or change '+cancelName(name):'Search the web for how to cancel '+cancelName(name);
+  return a;
 }
 /* cancel, on a subscription: an Agent task of its own (agent/skills/life-admin.md finds the cancel steps, fills
    the form and stops before the last click). Only the company's name leaves Finance: no amounts, no accounts */
@@ -1533,7 +1584,9 @@ function drawFinMain(v){
   let costs=null;
   const drawCosts=function(){
     costs=costsOf(allTxs,d.kinds); costBox.textContent=''; costBox.appendChild(finFixedChart(costs,cur)); costBox.appendChild(finVariableChart(costs,cur));
-    subsBox.textContent=''; subsBox.appendChild(finSubsCard(subscriptionCheck(allTxs,d.kinds),cur));
+    const deals=discountCheck(allTxs,finWho(allTxs));
+    subsBox.textContent=''; subsBox.appendChild(finSubsCard(subscriptionCheck(allTxs,d.kinds),cur,deals));
+    finTellDeals(deals,cur);
   };
   drawCosts();
 

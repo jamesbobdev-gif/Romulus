@@ -289,7 +289,7 @@ function lockedOut(msg) {
   }
   const label = name === 'browser_click' ? (refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '') : '';
   if (SIGN_OUT.test(label)) return 'Locked: "' + label.trim() + '" would sign the user out. Never sign out; carry on with the task.';
-  if (lock.approved && !spent) return null;
+  if (lock.approved && !isSpent()) return null;
   if (name === 'browser_click') {
     if (FINAL.test(label)) return 'Locked: "' + label.trim() + '" looks like a final step (submit, send, buy, book…). Stop here and ask the user to reply yes.';
   }
@@ -311,7 +311,30 @@ const SECRET = /\b(pin|card ?number|cvv|cvc|security code|expir(y|ation))\b/i;
 const CLOUD_FINAL = /\b(send|delete|pay|book|post|publish|transfer|donate|unsubscribe|cancel (my |the |this |your )?(order|subscription|membership|account|booking|reservation|plan|flight|trip))\b/i;
 /* His yes is spent by the first final click (or Enter on the checkout) that goes through: a second order, a
    second application or a "send" after it waits for a fresh yes, whatever a page says next. */
-let spent = false;
+/* Spent for the whole run, not just this browser: TASKS_BROWSER_SPENT names a file the runner empties when a run
+   starts, so when one AI places the order and the next takes over (the first one's answer was lost), the next
+   can't order again. */
+const SPENT_FILE = process.env.TASKS_BROWSER_SPENT || '';
+let spentHere = false;
+const isSpent = () => spentHere || (!!SPENT_FILE && require('fs').existsSync(SPENT_FILE));
+function markSpent() {
+  spentHere = true;
+  try { if (SPENT_FILE) require('fs').writeFileSync(SPENT_FILE, String(Date.now())); } catch (e) {}
+}
+/* A click on the order button that didn't take: the store's page stays on the same checkout page (Amazon
+   sometimes ignores the first tap), so nothing was bought and his yes still stands. It used to be spent anyway,
+   and every AI after that was refused and asked him for yes again, round and round. Once per launcher, and
+   only when the tab is seen on the very page the click was on; any other page (thank-you, a card check,
+   unknown) keeps it spent. before/after = the tab's address. */
+const samePage = (a, b) => { try { const x = new URL(a), y = new URL(b); return x.origin === y.origin && x.pathname === y.pathname; } catch (e) { return false; } };
+let rearmed = false;
+function unspendIfStayed(before, after) {
+  if (rearmed || !before || !after || !samePage(before, after)) return false;
+  rearmed = true; spentHere = false;
+  try { if (SPENT_FILE) require('fs').rmSync(SPENT_FILE, { force: true }); } catch (e) {}
+  logAction('not placed', { why: 'the page stayed on checkout after the click, so his yes still stands', url: String(after).slice(0, 200) });
+  return true;
+}
 function buyRefusal(msg, here) {
   if (!msg.params) return null;
   const name = msg.params.name, a = msg.params.arguments || {};
@@ -325,6 +348,7 @@ function buyRefusal(msg, here) {
   if (name === 'browser_click' && /\bbuy now\b/i.test(labelOf(a.target || a.ref, a.element)) && /amazon\./i.test(here || ''))
     return 'Not "Buy Now": it skips the review page. Tap Add to Cart, then go through checkout.';
   // his yes was about particular sites (TASKS_BROWSER_APPROVED_HOSTS): the order button is unlocked there only
+  const spent = isSpent();
   const approved = !spent && ((MAIL_APPROVED && (!APPROVED_HOSTS.length || hostAllowed(String(here || ''), APPROVED_HOSTS))) || (lockState() || {}).approved === true);
   const again = spent ? ' His earlier yes was used by the step already taken; this one needs a fresh yes.' : '';
   if (name === 'browser_click' && !approved && BUY.test(labelOf(a.target || a.ref, a.element)))
@@ -345,14 +369,20 @@ const SUBMIT = /\b(submit|(send|finish|complete) (my |your |the |this )?applicat
 let APPROVED_HOSTS = []; try { APPROVED_HOSTS = JSON.parse(process.env.TASKS_BROWSER_APPROVED_HOSTS || '[]'); } catch (e) {}
 if (!Array.isArray(APPROVED_HOSTS)) APPROVED_HOSTS = [];
 // a call that went through and matters: the order or application sent, Enter on a checkout page, a file given to a site
+// → true when this call spends his yes (main() then watches where the page goes)
 function noteAction(msg, here) {
-  if (!msg.params) return;
+  if (!msg.params) return false;
+  const was = isSpent();
+  noteActionOnly(msg, here);
+  return !was && isSpent();
+}
+function noteActionOnly(msg, here) {
   const name = msg.params.name, a = msg.params.arguments || {};
   const label = name === 'browser_click' ? ((refLabels[a.target || a.ref] || '') + ' ' + String(a.element || '')).trim() : '';
   if (label && (BUY.test(label) || SUBMIT.test(label) || FINAL.test(label))) {
     logAction('clicked', { label: label.slice(0, 80), url: String(here || '').slice(0, 200) });
-    if (BUY.test(label) || SUBMIT.test(label) || CLOUD_FINAL.test(label)) spent = true; // his yes bought this one step
-  } else if (pressesEnter(name, a) && (here == null || checkoutPage(here))) { logAction('pressed Enter', { url: String(here || '').slice(0, 200) }); spent = true; }
+    if (BUY.test(label) || SUBMIT.test(label) || CLOUD_FINAL.test(label)) markSpent(); // his yes bought this one step
+  } else if (pressesEnter(name, a) && (here == null || checkoutPage(here))) { logAction('pressed Enter', { url: String(here || '').slice(0, 200) }); markSpent(); }
   else if (name === 'browser_file_upload' && a.paths != null) logAction('uploaded', { files: (Array.isArray(a.paths) ? a.paths : [a.paths]).map(fileName), url: String(here || '').slice(0, 200) });
 }
 /* Live steps (TASKS_BROWSER_STEPS), for the AIs whose own output the app can't follow as it runs (Gemini,
@@ -447,6 +477,22 @@ function main() {
   // Claude → Playwright: newline-delimited JSON-RPC, forwarded in order; the browser is opened before
   // the first tool call, and Claude's tab is brought to the front before each action
   let buf = '', started = false, chain = Promise.resolve();
+  /* after the click that spent his yes: look where the tab went (every few seconds, for up to SPEND_WATCH_MS). A new
+     page = the order went through, or something else is in the way: spent. Still the same checkout page at the end =
+     the click didn't take: his yes stands (unspendIfStayed). The next call waits for the answer. */
+  const SPEND_WATCH_MS = 20000, SPEND_STEP_MS = 3000;
+  async function watchSpend(before) {
+    const until = Date.now() + SPEND_WATCH_MS;
+    let last = null;
+    while (Date.now() < until) {
+      await new Promise((r) => setTimeout(r, SPEND_STEP_MS));
+      const now = currentUrl(resultText(await ownCall('browser_tabs', { action: 'list' })));
+      if (now && !samePage(before, now)) return; // it moved on: spent
+      if (now) last = now;
+    }
+    unspendIfStayed(before, last);
+  }
+  let spendWatch = null;
   process.stdin.on('data', (d) => {
     buf += d;
     let i;
@@ -455,6 +501,7 @@ function main() {
       chain = chain.then(async () => {
         if (/"method"\s*:\s*"tools\/call"/.test(line)) {
           if (!started) { started = true; await ensureBrowser(); if (!SHOP) await selectStartTab(); }
+          if (spendWatch) { await spendWatch; spendWatch = null; }
           let msg = null; try { msg = JSON.parse(line); } catch (e) {}
           const here = msg && msg.params && ACTIONS.has(msg.params.name) ? await frontCurrentTab() : null;
           const refused = msg && (toolRefusal(msg) || schemeRefusal(msg) || hostRefusal(msg) || privateRefusal(msg, here) || lockedOut(msg) || mailRefusal(msg, here) || buyRefusal(msg, here) || fileRefusal(msg) || await shopTabs(msg));
@@ -463,7 +510,7 @@ function main() {
             process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: refused }], isError: true } }) + '\n');
             return;
           }
-          if (msg) noteAction(msg, here);
+          if (msg && noteAction(msg, here) && here) { child.stdin.write(line); spendWatch = watchSpend(here); return; }
           if (SHOP && msg && msg.params && msg.params.name === 'browser_tabs') { child.stdin.write(JSON.stringify(msg) + '\n'); return; } // its own tab's number
         }
         child.stdin.write(line);
@@ -474,4 +521,4 @@ function main() {
 }
 
 if (require.main === module) main();
-else module.exports = { stepLine, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spent = false; } }; // tests
+else module.exports = { stepLine, toolRefusal, schemeRefusal, hostRefusal, privateRefusal, lockedOut, mailRefusal, buyRefusal, fileRefusal, noteAction, unspendIfStayed, learnRefs, learnLinks, currentUrl, trimActions, ACTIONS_MAX, FINAL, BUY, SUBMIT, CLOUD_FINAL, resetSpent: () => { spentHere = false; try { if (SPENT_FILE) require('fs').rmSync(SPENT_FILE, { force: true }); } catch (e) {} } }; // tests

@@ -55,6 +55,9 @@ that says what it does; read that first, then this for how the pieces fit and th
   the same commit. The biggest now: `renderer/js/finance.js`, `renderer/styles.css`, `agent/local-lane.js`,
   `renderer/js/lists.js`, `renderer/js/wiring.js`.
 - A change in `agent/` or `main/` gets a test in `test/` when it has logic (no Electron needed there).
+- Small shared helpers live in `agent/util.js` (Node: `dayKey`, `monthKey`, `hostOf`, `siteOf`, `escapeRe`,
+  `escapeHtml`) and `renderer/js/util.js` (page: the same dates and escaping, base64, picture shrinking). Look
+  there before writing a date formatter, URL parser or escaper of your own.
 - `npm test` runs on every push (`.github/workflows/test.yml`) and again before a release.
 
 ## Ground rules (also in CONTRIBUTING.md)

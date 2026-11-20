@@ -1,7 +1,7 @@
 /* Lanes: each Agent task goes to ONE worker — 'claude' (this computer's Claude runner) or 'local' (the user's
    own model on the mini PC). A task that already has a lane keeps it (switching changes it). A new one
    is routed by HIS rules, no AI involved: a #local / #claude tag in the title, then his rules in order
-   (first match wins), then his default (claude, local, 'auto' = the app picks, or 'ask' = he picks). The
+   (first match wins), then his default (claude, local, or 'auto' = the app picks; an old 'ask' counts as auto). The
    rules live next to the agent list (doc {v, rules:[{words, lane}], default}) and are edited in Settings
    on any device.
    'auto' looks at what is up right now (main.js keeps noteSituation current: is the mini PC answering, is
@@ -16,9 +16,14 @@ const supabase = require('./supabase');
 const decider = require('./decider');
 const { isLegion } = require('./legion');
 const { isCoach } = require('./coach');
+const { isVague } = require('./find-out');
+const learn = require('./route-learn');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer, scheduleAgentRun, scheduleLocalRun }
-function init(c) { ctx = c; decider.init(c); }
+function init(c) {
+  ctx = c; decider.init(c);
+  try { learn.init(require('path').dirname(c.dataFile())); } catch (e) {} // route-stats.json sits next to the task data
+}
 const readConfig = () => ctx.readConfig();
 const dataFile = () => ctx.dataFile();
 const sendToRenderer = (ch, p) => ctx.sendToRenderer(ch, p);
@@ -61,6 +66,11 @@ function autoRoute(text, t) {
      what's left; when all are out, everything else goes to the local model rather than waiting for the reset */
   const low = situation.cloudOut ? 'auto: every cloud AI is out of usage' : situation.cloudTight
     ? 'auto: the cloud AIs are low on usage (' + Math.round((situation.cloudLeft || 0) * 100) + '% left)' : null;
+  const spare = (lane) => lane === 'local' || !low || cloudHit; // may this pick go to the cloud?
+  // how this type of task has gone on each lane before (agent/route-learn.js): once it's clear, the better one gets it
+  const type = learn.typeOf(t || { title: text });
+  const known = learn.pick(type);
+  if (known && spare(known.lane)) return { lane: known.lane, reason: 'auto: ' + type + ' goes best on ' + (known.lane === 'local' ? 'the local model' : 'Claude') + ' (' + Math.round(known.p * 100) + '% from ' + known.n + ')' };
   const d1 = t && decider.laneFor(t);
   // d1's cloud pick means the task needs the web, which is worth what usage is left
   if (d1) return { lane: d1, reason: d1 === 'local' ? 'auto: d1 says the local model can do this without the web' : 'auto: d1 says this needs the web' };
@@ -86,7 +96,7 @@ const getRouting = () => routing;
 const handlers = {
   'routing:changed': async () => { await loadRouting(); ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); return true; },
 };
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const { escapeRe } = require('./util');
 const wordHit = (text, words) => words.find((w) => new RegExp('(^|[^a-z0-9])' + escapeRe(w) + '([^a-z0-9]|$)').test(text));
 // → what made a task private (a word from his list, or something shaped like a card / social security number), or null
 function privateMatch(t) {
@@ -117,7 +127,7 @@ function moneyQuestion(t) {
     .map((x) => String(x || '')).join('\n');
   return MY_MONEY.test(text);
 }
-// → {lane: 'claude' | 'local' | 'ask', reason}
+// → {lane: 'claude' | 'local', reason}: every task goes to one of them
 function routeTask(t) {
   const title = String(t.title || '');
   if (/(^|\s)#local\b/i.test(title)) return { lane: 'local', reason: 'tagged #local' };
@@ -128,7 +138,8 @@ function routeTask(t) {
   // only he can do it (a video, a presentation): Lupa, signed in to his courses, reads the assignment and coaches him (agent/coach.js)
   if (isCoach(t)) return { lane: 'local', reason: 'only you can do this one: your local model reads the assignment and coaches you' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
-  if (decider.looksLikeScrap(t)) return { lane: 'hold', reason: 'sounded like a stray bit of talk, not a request' }; // runs on neither
+  // "chapter 8" and nothing else: Lupa, signed in to his courses, finds out which class and what it is, then does it (agent/find-out.js)
+  if (isVague(t)) return { lane: 'local', reason: 'only names the work: your local model finds it in your classes, then does it' };
   const priv = privateMatch(t);
   if (priv) return { lane: 'local', reason: 'private: ' + priv };
   // an ongoing conversation (from before lanes existed) stays with whoever has been answering it
@@ -140,9 +151,9 @@ function routeTask(t) {
     const hit = wordHit(text, words);
     if (hit && (rule.lane === 'claude' || rule.lane === 'local')) return fallBack({ lane: rule.lane, reason: 'rule: ' + words.join(', ') });
   }
-  if (routing.default === 'auto') return autoRoute(text, t);
-  const d = routing.default === 'local' || routing.default === 'claude' ? routing.default : 'ask';
-  return { lane: d, reason: d === 'ask' ? 'no rule matched' : 'default' };
+  // every task is routed: nothing waits for him to pick a lane ('ask' from older settings routes automatically too)
+  if (routing.default === 'local' || routing.default === 'claude') return { lane: routing.default, reason: 'default' };
+  return autoRoute(text, t);
 }
 // a task the local model read his Finance for stays on the mini PC even if it was switched to Claude by hand
 // a #legion task is Lupa's even if it was on Claude before (its title was edited): only Lupa may see the whole request
@@ -152,22 +163,14 @@ const laneOf = (t) => t.financeSeen || isLegion(t) ? 'local'
   : t.lane === 'claude' && !/(^|\s)#claude\b/i.test(String(t.title || '')) && privateMatch(t) ? 'local'
   : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
-// unassigned tasks whose route is 'ask': the user picks (the renderer turns them into a question with two buttons)
-const askedRoute = new Set();
-function askForRoutes(raw) {
-  let data;
-  try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return; }
-  const ask = (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => t.ws === 'agent' && !t.done && (t.status || 'queued') === 'queued' &&
-    !t.lane && laneOf(t) === 'ask' && !askedRoute.has(t.id + '|' + (t.updatedAt || 0)));
-  if (!ask.length) return;
-  ask.forEach((t) => askedRoute.add(t.id + '|' + (t.updatedAt || 0)));
-  sendToRenderer('agent:route-ask', ask.map((t) => t.id));
-}
+// the task's type and how likely the lane it went to is to do it well, for the "Routed" note: {type, note}
+function routeInfo(t, lane) { const type = learn.typeOf(t); return { type, note: learn.describe(type, lane) }; }
+// every save: count what finished and what he switched off a lane (agent/route-learn.js)
+function learnFrom(raw) { try { learn.learn(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) {} }
 
 /* d1 sees new Agent tasks before they're routed. false = it's still looking (both runs are scheduled again
    once it's done); true = go ahead (decided, or d1 isn't available and the rules decide alone) */
 let deciding = false;
-const toldScrap = new Set();
 function decided(raw) {
   if (deciding) return false;
   if (!decider.usable()) return true;
@@ -177,14 +180,8 @@ function decided(raw) {
     !t.lane && !t.financeSeen && String(t.title || '').trim() && !decider.get(t));
   if (!fresh.length) return true;
   deciding = true;
-  decider.decide(fresh).then(() => {
-    // a scrap waits for him: it shows as needing him, and a reply (or the lane switch) sends it on
-    const scraps = fresh.filter((t) => decider.looksLikeScrap(t) && !toldScrap.has(t.id));
-    scraps.forEach((t) => toldScrap.add(t.id));
-    if (scraps.length) sendToRenderer('agent:results', scraps.map((t) => ({ id: t.id, status: 'needs-you', options: undefined, pref: null,
-      note: 'This sounded like a bit of conversation Hey Romulus picked up, not a request, so nothing ran. Reply if you meant it.' })));
-  }).finally(() => { deciding = false; ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); });
+  decider.decide(fresh).finally(() => { deciding = false; ctx.scheduleAgentRun(); ctx.scheduleLocalRun(); });
   return false;
 }
 
-module.exports = { init, decided, handlers, loadRouting, useRouting, getRouting, noteSituation, privateMatch, moneyQuestion, routeTask, laneOf, isClaudeLane, askForRoutes, ROUTING_DEFAULT };
+module.exports = { init, decided, handlers, loadRouting, useRouting, getRouting, noteSituation, privateMatch, moneyQuestion, routeTask, laneOf, isClaudeLane, routeInfo, learnFrom, ROUTING_DEFAULT };

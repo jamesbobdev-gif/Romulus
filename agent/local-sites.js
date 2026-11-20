@@ -45,7 +45,7 @@ const COMMON_SITES = [
 const withCommon = (sites) => merge(sites, COMMON_SITES);
 
 // "https://www.linkedin.com/jobs/x" → "linkedin.com"
-const hostOf = (u) => { try { return new URL(/^https?:\/\//i.test(String(u)) ? String(u) : 'https://' + String(u)).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } };
+const { siteOf: hostOf } = require('./util'); // a link or a bare domain, without "www."
 const cleanSite = (s) => String(s || '').trim().replace(/^https?:\/\//i, '').replace(/^\*\./, '').replace(/\/.*$/, '').replace(/^www\./, '').toLowerCase();
 // is this host already covered by one of his sites (a site covers its subdomains)?
 const covered = (host, sites) => sites.some((s) => host === s || host.endsWith('.' + s));

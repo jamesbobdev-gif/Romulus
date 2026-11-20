@@ -51,6 +51,23 @@ test('a held tab is never taken over by a second task stopping', async () => {
   assert.strictEqual(await qb.startTab('first'), 'https://d2llearn.tri-c.edu/d2l/home');
 });
 
+test('a run that keeps stopping holds a few tabs, not every page it opened', async () => {
+  const d2l = 'https://d2llearn.tri-c.edu/d2l/';
+  // most recently used first, as Chrome lists them
+  const b = fakeBrowser([
+    { id: 'quiz', url: d2l + 'quizzing/summary' }, { id: 'sso1', url: 'https://login.microsoftonline.com/x/saml2' },
+    { id: 'sched', url: d2l + 'le/schedule' }, { id: 'home2', url: d2l + 'home/84990' },
+    { id: 'sso2', url: 'https://tri-c.edu/x', title: 'Sign in to your account' }, { id: 'home1', url: d2l + 'home/84990' },
+    { id: 'disc', url: d2l + 'le/discussions' }, { id: 'blank', url: 'about:blank' },
+  ]);
+  await qb.holdTabs('class-task');
+  assert.deepStrictEqual(b.pages.map((p) => p.id), ['quiz', 'sched', 'home2', 'blank']);
+  assert.ok(qb.isHeld('quiz') && qb.isHeld('home2') && !qb.isHeld('blank'));
+  // stopped on a sign-in: that one stays, it's what he has to do
+  assert.deepStrictEqual(qb.heldPick([{ id: 's', url: 'https://login.microsoftonline.com/a' }, { id: 'p', url: d2l + 'home' }]).map((p) => p.id), ['s', 'p']);
+  qb.startTab('class-task'); // ends the hold, so the other tests start clean
+});
+
 test('looseTabs keeps the held ones', () => {
   assert.deepStrictEqual(qb.looseTabs([{ id: 'a' }, { id: 'b' }], new Set(['b'])), [{ id: 'a' }]);
 });

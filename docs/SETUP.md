@@ -37,7 +37,7 @@ Claude runs through **Claude Code**, a small program from Anthropic that signs i
 
 No Claude plan? Paste an **Anthropic API key** instead (button on the card takes you to console.anthropic.com). Runs are then billed to that key, pay as you go.
 
-Claude is the only AI that can read your Gmail and open your photos, so inbox tasks always go to Claude.
+Claude is the only AI that can open your photos, so tasks with photos go to Claude. Email is not tied to Claude: inbox tasks go to whichever AI is first in your order, through the app's own mail connection. Connect your Google or Microsoft account in Settings → Calendars and leave the email permissions ticked; an account connected before this change should be connected again so the Agent may change mail. The Agent drafts, labels, archives and marks mail read on its own; it sends, replies, forwards or moves mail to the trash only after you reply yes.
 
 ### OpenRouter (easiest; one account, hundreds of models, some free)
 
@@ -57,10 +57,9 @@ Each card has a **Get a free key** button to the right page and a **Test key** b
 
 ### A local model (private; nothing leaves your machines)
 
-Install [Ollama](https://ollama.com/download) on this computer (or any computer on your network), pull a model (`ollama pull qwen3:8b` is a reasonable start; bigger is smarter), then in **⚙ Settings → Local model**:
+Only if you want one, and only on a computer that can run it: at least 8 GB of memory (16 GB or more to be quick) and a few GB of free disk. On anything smaller the button is greyed out and says why. Open **⚙ Settings → Local model** and press **Set it up for me**. On Windows it installs [Ollama](https://ollama.com/download) if it isn't there yet, starts it, downloads a model that fits this computer's memory (`qwen3:4b`, `qwen3:8b` or `qwen3:14b`, with a progress bar) and switches it on. On a Mac or Linux without Ollama it opens Ollama's download page; install it and press the button again. The top of Settings lists it as optional next to the other three things worth setting up (calendar and email, the Agent's browser, running in the background), and only on a computer that can run one; its button just opens this panel.
 
-1. Leave the address as `http://localhost:11434`, or type the other computer's address.
-2. Press **Find models**, pick one, press **Use it**.
+To pick a model yourself instead: leave the address as `http://localhost:11434` (or type another computer's), press **Find models**, pick one, press **Use it**.
 
 **Model on a different computer (a mini PC, a gaming PC)?** You don't need to connect them over the network. Install Romulus on the computer that runs Ollama too, connect it to sync (step 3, the same way as a phone), set up the local model there with `http://localhost:11434`, and switch on **Run local tasks here for all my devices**. Leave the app open on that computer. It picks up local tasks from your phone and other computers through sync. Your other computers then show it as answering, with nothing to set up on them. Money questions stay with the computer that has your Finance tab.
 

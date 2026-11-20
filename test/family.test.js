@@ -132,3 +132,30 @@ test('the to-do lines in an Agent reply', () => {
   assert.deepStrictEqual(f.famTodoLines(md), ['Call the landlord', 'Pay the water bill', 'Buy filters']);
   assert.deepStrictEqual(f.famTodoLines('No list here.'), []);
 });
+
+test('a shopping list sent to the group goes on its Groceries list, without doubles', () => {
+  let n = 0; const id = () => 'n' + (++n);
+  const doc = { people: [], lists: [list('g', 'groceries', T)], items: [item('1', 'g', 'Eggs', T)], offers: [], tombstones: [] };
+  const r = f.famWithItems(doc, 'Groceries', ['Eggs', 'Rice, 2 lb', 'rice, 2 LB', ''], 'me', T + 5, id);
+  assert.strictEqual(r.added, 1);
+  assert.deepStrictEqual(r.doc.items.filter(x => x.list === 'g').map(x => x.text), ['Eggs', 'Rice, 2 lb']);
+  // no list by that name yet: it's made
+  const r2 = f.famWithItems(f.famEmpty(), 'Groceries', ['Milk'], 'me', T, id);
+  assert.strictEqual(r2.doc.lists.length, 1);
+  assert.strictEqual(r2.doc.lists[0].name, 'Groceries');
+  assert.strictEqual(r2.doc.items[0].list, r2.doc.lists[0].id);
+});
+
+test('a list sent to one person rides in the note and comes back out as a checklist', () => {
+  const note = f.famListNote(['Rice, 2 lb', 'Eggs']);
+  assert.strictEqual(note, '- Rice, 2 lb\n- Eggs');
+  assert.deepStrictEqual(f.famNoteSplit(note), { subs: ['Rice, 2 lb', 'Eggs'], rest: '' });
+  assert.deepStrictEqual(f.famNoteSplit('Pick up after work'), { subs: [], rest: 'Pick up after work' });
+  assert.deepStrictEqual(f.famNoteSplit(null), { subs: [], rest: '' });
+});
+
+test('a note keeps its line breaks through a merge, and a flattened one still splits', () => {
+  const doc = { offers: [{ id: 'o1', from: 'a', to: 'b', title: 'Shopping list', note: '- Rice\r\n- Eggs', created: T, updatedAt: T }] };
+  assert.strictEqual(f.famNorm(doc).offers[0].note, '- Rice\n- Eggs');
+  assert.deepStrictEqual(f.famNoteSplit('- Rice, 2 lb - Eggs').subs, ['Rice, 2 lb', 'Eggs']);
+});

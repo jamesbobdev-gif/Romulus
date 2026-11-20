@@ -55,14 +55,14 @@ async function postJson(fetch, url, headers, body, ms) {
 }
 const dataUrl = (img) => 'data:' + img.mime + ';base64,' + img.b64;
 
-/* one call → the answer's text (throws when there's none) */
-async function callOne(step, cfg, { text, image }, deps) {
+/* one call → the answer's text (throws when there's none). maxTokens: a longer answer (agent/ai-json.js) */
+async function callOne(step, cfg, { text, image, maxTokens }, deps) {
   const s = providers.settings(cfg), f = deps.fetch;
   const key = (k) => String(((cfg || {}).ai || {})[k] || s[k] || '').trim();
   if (step.how === 'anthropic') {
     const content = (image ? [{ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.b64 } }] : []).concat({ type: 'text', text });
     const j = await postJson(f, 'https://api.anthropic.com/v1/messages', { 'x-api-key': key('anthropicKey'), 'anthropic-version': '2023-06-01' },
-      { model: CLAUDE_API_MODELS[s.claudeModel] || CLAUDE_API_MODELS.sonnet, max_tokens: 2000, messages: [{ role: 'user', content }] }, ASK_MS);
+      { model: CLAUDE_API_MODELS[s.claudeModel] || CLAUDE_API_MODELS.sonnet, max_tokens: maxTokens || 2000, messages: [{ role: 'user', content }] }, ASK_MS);
     return (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
   }
   if (step.how === 'claude-cli') return deps.claudeCli(text, image);
@@ -83,7 +83,7 @@ async function callOne(step, cfg, { text, image }, deps) {
   }
   if (step.how === 'openrouter' || step.how === 'compat') {
     const content = [{ type: 'text', text }].concat(image ? [{ type: 'image_url', image_url: { url: dataUrl(image) } }] : []);
-    const body = { messages: [{ role: 'user', content: image ? content : text }], max_tokens: 2000 };
+    const body = { messages: [{ role: 'user', content: image ? content : text }], max_tokens: maxTokens || 2000 };
     let url, auth;
     if (step.how === 'openrouter') {
       url = 'https://openrouter.ai/api/v1/chat/completions'; auth = s.openrouterKey; body.model = s.openrouterModel;

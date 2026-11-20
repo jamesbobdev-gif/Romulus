@@ -32,11 +32,14 @@ async function ideas(_e, req) {
   try {
     const prefs = await agentRow(':prefs').catch(() => '');
     const question = mealIdeas.prompt() + '\n' + mealIdeas.input({ pantry, recipes: req.recipes, usual: usualGroceries(), prefs, aim: req.aim });
-    const r = await ctx.readPicture(question, null);
-    if (!r || !r.text) { ctx.agentLog('meal ideas: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
-    const meals = mealIdeas.parse(r.text);
-    ctx.agentLog('meal ideas: ' + meals.length + ' from ' + r.via);
-    return meals.length ? { meals, via: r.via } : { why: r.via + ' answered, but not with meals. Try again.' };
+    let r = null, meals = [];
+    for (let tries = 0; tries < 2 && !meals.length; tries++) { // an answer that isn't meals gets one quiet second ask
+      r = await ctx.readPicture(question, null);
+      if (!r || !r.text) { ctx.agentLog('meal ideas: ' + ((r && r.why) || 'no answer')); return { why: (r && r.why) || 'No answer.' }; }
+      meals = mealIdeas.parse(r.text);
+      ctx.agentLog('meal ideas: ' + meals.length + ' from ' + r.via);
+    }
+    return meals.length ? { meals, via: r.via } : { meals: [], via: r.via, quiet: true }; // the page shows nothing for this
   } catch (e) {
     return { why: String(e && e.message || e).slice(0, 200) };
   } finally { asking = false; }

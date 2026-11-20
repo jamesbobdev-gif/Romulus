@@ -86,15 +86,23 @@ function buildRow(t,canDrag){
     }
   }
   const isAgentTask=taskWs(t)==='agent';
-  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; chips.appendChild(rc); }
-  if(isAgentTask&&t.repeat){ const rc=el('span','chip st','↻ '+(t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly')); rc.title=repeatText(t.repeat); chips.appendChild(rc); }
+  // the repeat chip: tap it to stop the repeat (asks first, so a stray tap doesn't end it)
+  const repeatOffChip=function(rc,label,stop){
+    rc.classList.add('tap'); rc.setAttribute('role','button'); rc.tabIndex=0;
+    rc.title+=' — tap to stop repeating';
+    const off=function(e){ e.stopPropagation(); if(!confirm('Stop repeating “'+t.title+'”?\n\nIt stays in your list; it just won’t come back '+(label==='weekdays'?'on weekdays':label)+'.'))return; stop(); touch(); };
+    rc.addEventListener('click',off);
+    rc.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); off(e); } });
+  };
+  if(!isAgentTask&&t.recur&&!t.done&&RECUR_CHIPS[t.recur.every]){ const rc=el('span','chip recur','↻ '+RECUR_CHIPS[t.recur.every]); rc.title='Repeats: tick it off and the next one appears'; repeatOffChip(rc,RECUR_CHIPS[t.recur.every],function(){ t.recur=null; }); chips.appendChild(rc); }
+  if(isAgentTask&&t.repeat){ const rl=t.repeat.every==='day'?'daily':t.repeat.every==='weekday'?'weekdays':'weekly'; const rc=el('span','chip st','↻ '+rl); rc.title=repeatText(t.repeat); repeatOffChip(rc,rl,function(){ t.repeat=null; t.nextRun=null; }); chips.appendChild(rc); }
   if(isAgentTask&&t.trigger&&t.trigger.kind){ const tc=el('span','chip st',TRIGGER_LABELS[t.trigger.kind]||'trigger'); tc.title='Starts '+triggerText(t.trigger); chips.appendChild(tc); }
   if(isAgentTask&&typeof isGoalTask==='function'&&isGoalTask(t)){ const gp=t.goalStarted?goalProgress(t):null; const gc=el('span','chip st','◎ goal'+(gp?' '+gp.finished+'/'+gp.total:'')); gc.title=gp?gp.finished+' of '+gp.total+' steps finished':'Planned first, then run in steps'; chips.appendChild(gc); }
   if(isAgentTask&&t.goalId){ const sc2=el('span','chip st','step '+(t.goalStep||'?')); const gl=state.tasks.find(function(x){ return x.id===t.goalId; }); sc2.title=gl?'Step '+t.goalStep+' of the goal “'+gl.title+'”':'A step of a goal'; if(gl){ sc2.classList.add('tap'); sc2.addEventListener('click',function(e){ e.stopPropagation(); openTaskById(gl.id); }); } chips.appendChild(sc2); }
   if(isAgentTask&&!t.done){
     const st=t.status==='working'?['working','working']:t.status==='needs-you'?(t.parked?['','stalled']:['needs','needs you']):t.status==='done'?(t.goalWait?['','next up']:t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?['working','in steps']:t.trigger&&t.trigger.kind?['','watching']:['ready','finished']):(t.waitUntil&&t.waitUntil>Date.now())?['','after reset']:['','waiting'];
     const sc=el('span','chip st'+(st[0]?' '+st[0]:''),st[1]);
-    if(t.status==='working')sc.insertBefore(el('span','spin'),sc.firstChild); // a spinner so you can see it's going
+    if(t.status==='working')sc.insertBefore(busyStar(),sc.firstChild); // the same turning star as the open card (busy-line.js)
     sc.title=t.status==='needs-you'&&t.parked?'You parked this — the Agent’s answer is still in it, it just doesn’t count as needing you':t.status==='needs-you'?'The Agent got as far as it could — expand for what it needs from you':t.status==='working'?'Claude is on it':t.status==='done'?(t.goalWait?'Waits for the step before it to finish':t.goalStarted&&typeof goalProgress==='function'&&!goalProgress(t).all?'Its steps are running one after another':t.trigger&&t.trigger.kind?'Waiting for it to happen: starts '+triggerText(t.trigger):'Claude finished — check it off when you’re happy with it'):'Queued for Claude’s next run';
     // "needs you" ⇄ "stalled": tap the chip to set it aside (still here, no longer counted as needing you) or bring it back
     if(t.status==='needs-you'){
@@ -159,8 +167,39 @@ function buildRow(t,canDrag){
   row.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); });
   li.appendChild(row);
   if(isExp) li.appendChild(buildPanel(t));
+  else if(isAgentTask&&!t.done){
+    // folded up but still going: the same live line as the open card, so you can see what it's doing without opening it
+    const bs=agentBusyState(t);
+    if(bs){ const mini=busyLine(t,bs.phase,bs.who); mini.classList.add('mini'); if(canDrag)mini.classList.add('after-grip'); mini.style.cursor='pointer'; mini.addEventListener('click',function(){ state.selectedId=t.id; toggleExpand(t); }); li.appendChild(mini); }
+  }
   return li;
 }
+// an Agent task that's going (working, or being handed to a model): which busy-line phase and who; null when it's
+// waiting on usage, the local model is out of reach, or it isn't busy at all
+function agentBusyState(t){
+  if(taskWs(t)!=='agent'||t.done||(t.status!=='working'&&t.status!=='queued'))return null;
+  const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
+  const local=t.lane==='local'||isLegionTask(t);
+  const offline=local&&localStat&&localStat.configured&&!localStat.online;
+  if(offline||outOfUsage)return null;
+  return { phase:t.status==='working'?'working':(local||t.lane)?'routing':'picking', who:local?'The local model':cloudNameOf(t) };
+}
+// the live log without the runner's "-- Gemini is on it" line: the status card above it already says that
+// a queued local task while the local model's own computer is busy or restarting: why it hasn't started yet
+function localWaitText(s){
+  if(!s||s.via!=='worker')return '';
+  const name=s.name||'The local model';
+  if(s.quiet){
+    const min=Math.max(1,Math.round((Date.now()-(s.at||Date.now()))/60000));
+    return name+' hasn’t checked in for '+min+' min, most likely restarting. This task waits for it for up to 15 min, then goes to a cloud AI (a private one keeps waiting). Or switch it to Claude below.';
+  }
+  if(s.busy){
+    const d=s.doing||{};
+    return name+' is on another task'+(d.title?' ('+d.title+')':d.what?' ('+d.what+')':'')+'. This one starts when it finishes, usually within a few minutes.';
+  }
+  return '';
+}
+function liveShown(text){ return String(text||'').split('\n').filter(function(l){ return !/^-- .+ is on it\s*$/.test(l); }).join('\n').trim(); }
 function toggleExpand(t){ if(state.expanded.has(t.id))state.expanded.delete(t.id); else state.expanded.add(t.id); render(); }
 
 /* ── subtask panel ── */
@@ -170,15 +209,13 @@ function buildPanel(t){
   panel.addEventListener('pointerdown',function(){ lastPanelId=t.id; });
   panel.addEventListener('focusin',function(){ lastPanelId=t.id; });
 
-  // a model is answering right now (or it's being handed to one): spinners on the toggle, the pill and the conversation
-  const spinning=taskWs(t)==='agent'&&!t.done&&(t.status==='working'||(t.status==='queued'&&!(t.waitUntil&&t.waitUntil>Date.now())))
-    &&!(t.lane==='local'&&localStat&&localStat.configured&&!localStat.online);
+  // while a model is answering (or it's being handed to one), only the status card below moves (busy-line.js):
+  // not the conversation toggle, the conversation or the pill
   // the whole back-and-forth on this task, collapsed until tapped
   if(taskWs(t)==='agent'&&Array.isArray(t.history)&&t.history.length){
     const hist=t.history, open=convOpen.has(t.id);
     const tg=el('button','conv-toggle',(open?'\u25BE':'\u25B8')+' Conversation ('+hist.length+')');
     tg.setAttribute('aria-expanded',String(open));
-    if(spinning)tg.appendChild(el('span','spin conv-spin'));
     tg.addEventListener('click',function(){ if(convOpen.has(t.id))convOpen.delete(t.id); else convOpen.add(t.id); render(); });
     panel.appendChild(tg);
     if(open){
@@ -201,13 +238,7 @@ function buildPanel(t){
         if(who==='claude'&&h.text&&typeof aiReportControl==='function')b.appendChild(aiReportControl(t,h)); // ai-report.js: flag an offensive reply
         th.appendChild(b);
       });
-      if(spinning){ // a "typing" line at the bottom while the answer is coming
-        const w=el('div','conv-msg claude conv-typing');
-        w.appendChild(el('span','spin'));
-        w.appendChild(document.createTextNode((t.lane==='local'?'The local model':cloudNameOf(t))+(t.status==='working'?' is working on it…':' is starting…')));
-        th.appendChild(w);
-      }
-      panel.appendChild(th);
+      panel.appendChild(th); // while it's going, the status card below is the one moving line (busy-line.js)
       requestAnimationFrame(function(){ th.scrollTop=th.scrollHeight; }); // newest at the bottom, like a chat
     }
   }
@@ -217,47 +248,58 @@ function buildPanel(t){
   if(agentBusy){
     const sb=el('div','agent-note agent-busy');
     const outOfUsage=t.status==='queued'&&t.waitUntil&&t.waitUntil>Date.now();
-    const local=t.lane==='local';
+    // a #legion task is the local model's whatever lane it was saved with (agent/routing.js laneOf)
+    const local=t.lane==='local'||isLegionTask(t);
     const offline=local&&localStat&&localStat.configured&&!localStat.online;
     const cloudName=cloudNameOf(t);
     if(t.status==='working')sb.classList.add('running');
     // queued: it's being handed to a model (no lane yet = routing hasn't picked one)
     const routing=t.status==='queued'&&!outOfUsage&&!offline;
-    const hd=sb.appendChild(el('b',null,local?(offline?'The local model isn’t reachable':t.status==='working'?'The local model is on it':'Routing to the local model'):t.status==='working'?cloudName+' is on it':outOfUsage?cloudName+' is out of usage':t.lane?'Routing to '+cloudName:'Routing to a model'));
-    if((t.status==='working'||routing)&&!offline)hd.insertBefore(el('span','spin'),hd.firstChild);
+    // going (working, or being handed over): the one moving line, Claude-style (busy-line.js). Stalled: a plain heading
+    if((t.status==='working'||routing)&&!offline){
+      const who=local?'The local model':cloudName;
+      sb.appendChild(busyLine(t,t.status==='working'?'working':(local||t.lane)?'routing':'picking',who));
+    } else sb.appendChild(el('b',null,offline?'The local model isn’t reachable':cloudName+' is out of usage'));
     sb.appendChild(document.createTextNode(local
-      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? Or switch this task to Claude below.'
+      ?(offline?'It doesn’t answer at '+(localStat.address||'its address')+'. Is it on and on Wi-Fi? '+(isLegionTask(t)?'If it stays out of reach, your cloud AIs run the legion without it after about 15 minutes.':'Or switch this task to Claude below.')
         :t.status==='working'?'Your own model'+(localStat&&localStat.model?' ('+localStat.model+')':'')+' is slower than Claude: usually a few minutes. Watch it work below.'
-        :'It starts within a few seconds while your computer has Tasks running.')
+        :localWaitText(localStat)||'It starts within a few seconds while your computer has Tasks running.')
       :t.status==='working'
-      ?(cloudName==='Claude'?'Write below to steer it: it reads your message after its next step.':'Usually under a minute. You can still add to your answer below.')
+      ?(cloudName==='Claude'?'Write below to steer it: it reads your message after its next step.':'Usually under a minute.')
       :outOfUsage?'Picks this up automatically '+fmtWhen(t.waitUntil)+', when your usage resets. Nothing for you to do.'
-      :'It starts within a few seconds while your computer has Tasks running.'));
+      :localStat&&localStat.via==='worker'&&!localStat.quiet
+      ?'It starts within a few seconds while your computer has Romulus running. If it’s off, '+(localStat.name||'your local model’s computer')+' takes it after about 3 minutes.'
+      :'It starts within a few seconds while your computer has Romulus running.'));
     if(!outOfUsage&&window.desktop&&window.desktop.agentRetry)sb.appendChild(retryButton(t));
     panel.appendChild(sb);
-    // Claude's checklist while it works (agent/run-live.js), filled live without a re-render
+    // its chain of thought, one box: Claude's checklist (agent/run-live.js) on top, what it's doing under it,
+    // both filled live without a re-render (agent-results.js onAgentLive)
+    const showLog=t.status==='working'&&(local||liveShown(liveText[t.id]));
+    const steps=el('div','agent-steps');
     if(!local&&t.status==='working'){
       const pl=el('ul','agent-plan'); pl.setAttribute('data-id',t.id); pl.setAttribute('aria-label','Plan');
       fillPlan(pl,livePlan[t.id]);
-      panel.appendChild(pl);
+      steps.appendChild(pl);
     }
+    // working: what it's searching, reading and clicking, live (the mini PC always; Claude once it has started)
+    if(showLog){
+      const lv=el('div','agent-live',liveShown(liveText[t.id])||'Starting…');
+      lv.setAttribute('data-id',t.id); lv.setAttribute('aria-live','polite');
+      steps.appendChild(lv);
+      setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
+    }
+    if(steps.firstChild)panel.appendChild(steps);
     // the agent browser, live, right in the card (agent-live-view.js): shows once it has a page up
     if(!local&&t.status==='working'&&liveViewAvailable()){
       const slot=el('div','live-slot'); panel.appendChild(slot);
       liveEmbed(slot,t.id);
     }
-    // working: what it's searching, reading and clicking, live (the mini PC always; Claude once it has started)
-    if(t.status==='working'&&(local||liveText[t.id])){
-      const lv=el('pre','agent-live',liveText[t.id]||'Starting…');
-      lv.setAttribute('data-id',t.id); lv.setAttribute('aria-live','polite');
-      panel.appendChild(lv);
-      setTimeout(function(){ lv.scrollTop=lv.scrollHeight; },0);
-    }
   }
   // who does it: a two-part pill, [cloud AI ▾ | mini PC model], with a highlight that slides between them.
   // The cloud half is a menu of every cloud AI, so the pill stays the same size however many there are.
   // Switching asks first; a first pick (no rule matched) doesn't.
-  if(taskWs(t)==='agent'&&!t.done&&agentAvailable()){
+  // Shown until you settle it: keep who has it or switch, and it goes (t.laneOk). The task works meanwhile.
+  if(taskWs(t)==='agent'&&!t.done&&agentAvailable()&&(!t.laneOk||laneAsks[t.id])){
     const now=laneNow(t), onCloud=!!now&&now!=='local';
     const tg=el('div','lane-slider '+(now||'none')); tg.setAttribute('role','radiogroup'); tg.setAttribute('aria-label','Who does this task');
     tg.style.setProperty('--n',2); tg.style.setProperty('--i',now==='local'?1:0);
@@ -272,16 +314,22 @@ function buildPanel(t){
     cw.title=onCloud?LANE_NAMES[now]+' has this task. Pick another cloud AI to switch (asks first)':(now?'Switch this task to a cloud AI (asks first)':'Send this task to a cloud AI');
     pick.addEventListener('click',function(e){ e.stopPropagation(); });
     pick.addEventListener('change',function(e){ e.stopPropagation(); if(pick.value&&pick.value!==now)setLane(t,pick.value); });
-    if(spinning&&onCloud)cw.appendChild(el('span','spin'));
     cw.appendChild(pick); cw.appendChild(el('span','lane-caret','▾'));
     tg.appendChild(cw);
     const lw=el('button','lane-word'+(now==='local'?' on':''),localModelName());
-    if(spinning&&now==='local')lw.insertBefore(el('span','spin'),lw.firstChild);
     lw.setAttribute('role','radio'); lw.setAttribute('aria-checked',String(now==='local'));
     lw.title=now==='local'?'The local model ('+localModelName()+') has this task':(now?'Switch this task to the local model (asks first)':'Send this task to the local model');
-    lw.addEventListener('click',function(e){ e.stopPropagation(); if(now!=='local')setLane(t,'local'); });
+    lw.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,'local'); }); // on the one it has: keeps it
     tg.appendChild(lw);
-    panel.appendChild(tg);
+    if(now&&!laneAsks[t.id]){
+      // keep who has it: the pill goes, the task carries on as it was
+      const row=el('div','lane-row'); row.appendChild(tg);
+      const keep=el('button','lane-keep','Keep '+(now==='local'?localModelName():LANE_NAMES[now]));
+      keep.title='Leave this task with '+(now==='local'?localModelName():LANE_NAMES[now])+' and hide this choice';
+      keep.addEventListener('click',function(e){ e.stopPropagation(); setLane(t,now); });
+      row.appendChild(keep);
+      panel.appendChild(row);
+    } else panel.appendChild(tg);
     const ask=laneAsks[t.id];
     if(ask&&ask!==now){
       const name=LANE_NAMES[ask];
@@ -297,8 +345,8 @@ function buildPanel(t){
   }
   // a stale failure message isn't worth showing once the task is being retried
   const failed=/couldn’t finish/i.test(t.note||'');
-  const staleFail=agentBusy&&failed;
-  if(taskWs(t)==='agent'&&t.note&&!staleFail){
+  // while it works, its last message is already answered (your answer shows below) and sits in the conversation
+  if(taskWs(t)==='agent'&&t.note&&!agentBusy){
     const nb=el('div','agent-note');
     const who=t.lane==='local'?'The local model':cloudNameOf(t);
     const stuck=t.status==='needs-you'&&!agentBusy&&t.stuck;
@@ -357,7 +405,7 @@ function buildPanel(t){
         // email the link to yourself (the desktop sends it; nothing is picked or bought);
         // not when "Send me link" below already does exactly that
         if(!(canPick&&kind==='link')){ const mb=el('button','opt-share'); mb.innerHTML=MAIL_ICON; mb.title='Email this link to yourself'; mb.setAttribute('aria-label','Email to myself');
-        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); buzz('send'); touch(); });
+        mb.addEventListener('click',function(e){ e.stopPropagation(); t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,kind:'link',at:Date.now()}; agentSay(t,'sys','Emailing you the link to '+label+'.'); if(typeof linkEmailPick==='function')linkEmailPick(t); buzz('send'); touch(); });
         btns.appendChild(mb); } }
       if(canPick&&isLegionTask(t)){
         const booked=(t.bookedFrom||[]).indexOf(label)!==-1;
@@ -374,7 +422,7 @@ function buildPanel(t){
           if(kind==='order')agentSay(t,'sys','Getting the '+store+' order ready. You’ll see it before anything is bought.');
           else if(kind==='tickets')agentSay(t,'sys','Getting the booking ready. You’ll see the total before anything is bought.');
           // other links: stage an email with it — the desktop sends it (never orders anything)
-          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); }
+          else if(o.url){ t.buyEmail={label:label,url:String(o.url),price:o.price||null,rating:o.rating||null,image:(o.image&&/^https:\/\//i.test(String(o.image)))?String(o.image):null,at:Date.now()}; if(kind!=='buy')t.buyEmail.kind=kind; agentSay(t,'sys',kind==='print'?'Emailing you the model to print.':kind==='link'?'Emailing you the link.':'Emailing you the link to buy this.'); if(typeof linkEmailPick==='function')linkEmailPick(t); }
           touch(); });
         btns.appendChild(pb);
       }
@@ -517,6 +565,22 @@ function buildPanel(t){
   }
   // grocery tasks: when the next 2-week order opens (grocery-list.js); the order itself shows as picture cards
   if(isGroceryTask(t)&&!t.done){ panel.appendChild(groceryNextLine()); const eb=groceryEbtLine(); if(eb)panel.appendChild(eb); }
+  // agent tasks fold repeat / starts when / date + tag under one "Schedule" line you open and close;
+  // closed, the line still says what's set. Open or closed is remembered for every agent task.
+  let opts=panel;
+  if(taskWs(t)==='agent'){
+    const fold=document.createElement('details'); fold.className='task-opts settings-collapse';
+    try{ fold.open=localStorage.getItem('agentOptsOpen')==='1'; }catch(e){}
+    const sm=el('summary','subs-label','Schedule');
+    const bits=[];
+    if(t.repeat)bits.push(({day:'every day',weekday:'weekdays',week:'every week'})[t.repeat.every]+(t.repeat.at?' '+t.repeat.at:''));
+    if(t.trigger&&t.trigger.kind)bits.push('starts '+triggerText(t.trigger));
+    if(t.due)bits.push(new Date(t.due+'T00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})+(t.dueTime?' '+t.dueTime:''));
+    if(t.tag)bits.push(t.tag);
+    if(bits.length)sm.appendChild(el('span','opts-sum',' · '+bits.join(' · ')));
+    fold.addEventListener('toggle',function(){ try{ localStorage.setItem('agentOptsOpen',fold.open?'1':'0'); }catch(e){} });
+    fold.appendChild(sm); panel.appendChild(fold); opts=fold;
+  }
   // repeat: Claude re-runs this task on a schedule (desktop app does the timing)
   if(taskWs(t)==='agent'){
     const rr=el('div','panel-meta repeat-row');
@@ -537,7 +601,7 @@ function buildPanel(t){
     sel.addEventListener('change',applyRepeat); tm.addEventListener('change',applyRepeat);
     rr.appendChild(sel); rr.appendChild(tm);
     if(t.repeat&&t.nextRun)rr.appendChild(el('span','next','next: '+fmtWhen(t.nextRun)));
-    panel.appendChild(rr);
+    opts.appendChild(rr);
     // starts when: the task waits for an email, a calendar event or a web page (triggers.js; the desktop app does the looking)
     const tw=el('div','panel-meta repeat-row trigger-row');
     tw.appendChild(el('span','lbl','Starts when'));
@@ -567,7 +631,7 @@ function buildPanel(t){
     }
     ks.addEventListener('change',applyTrigger); [what,url,hrs,day].forEach(function(i){ i.addEventListener('change',applyTrigger); });
     tw.appendChild(ks); tw.appendChild(hrs); tw.appendChild(day); tw.appendChild(url); tw.appendChild(what); tw.appendChild(hint); showTrigger();
-    panel.appendChild(tw);
+    opts.appendChild(tw);
   }
 
   // Task-level date + tag
@@ -585,7 +649,7 @@ function buildPanel(t){
   const tagIn=el('input','sm tag-inp'); tagIn.value=t.tag||''; tagIn.placeholder='tag'; tagIn.setAttribute('list','tagOptions'); tagIn.setAttribute('aria-label','Tag');
   tagIn.addEventListener('change',function(){ t.tag=tagIn.value.trim()||null; touch(); });
   tagIn.addEventListener('keydown',function(e){ if(e.key==='Enter')tagIn.blur(); });
-  pm.appendChild(dueIn); pm.appendChild(timeIn); pm.appendChild(tagIn); panel.appendChild(pm);
+  pm.appendChild(dueIn); pm.appendChild(timeIn); pm.appendChild(tagIn); opts.appendChild(pm);
 
   // repeat: ticking it off makes the next one (recur.js); agent tasks use their own schedule above.
   // Same row as the date it counts from; "Doesn’t repeat" says what it is, so no label
@@ -771,7 +835,7 @@ function render(){
   const tab=onAgent?'agent':onSchool?'school':onWork?'work':'list';
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
   const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():false;
-  document.querySelector('.composer').hidden=unconnected;
+  document.querySelector('.composer').hidden=unconnected||/^(ideas|hours|kitchen|finance|family)$/.test(state.activeTab); // a background sync re-renders from any tab: keep the box off the tabs that hide it (switchTab)
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
@@ -954,7 +1018,7 @@ function drawYesPrompts(needing){
 function suggestionContext(t){
   if(t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'){
     const when=t.due?dateInfo(t.due,t.dueTime).text:'';
-    return [when,String(t.notes||'').replace(/\s+/g,' ').trim()].filter(Boolean).join(' · ');
+    return [when,String(t.notes||'').replace(/https:\/\/\S+/g,'').replace(/\s+/g,' ').replace(/:\s*$/,'.').trim()].filter(Boolean).join(' · ');
   }
   const s=String(t.note||'').replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]+/g,'').replace(/\s+/g,' ').trim();
   return s.length>260?s.slice(0,257).replace(/\s+\S*$/,'')+'…':s;
@@ -979,6 +1043,9 @@ function drawSuggestions(show){
     c.appendChild(head);
     const ctx=suggestionContext(t); if(ctx)c.appendChild(el('p','yes-ctx',ctx));
     const row=el('div','yes-btns');
+    // a new subscription's cancel page (bill-reminders.js): opens in his browser
+    const link=t.suggest==='charge'&&String(t.notes||'').match(/https:\/\/\S+/);
+    if(link){ const a=el('a','btn-ghost','Where to cancel it ↗'); a.href=link[0]; a.target='_blank'; a.rel='noopener'; row.appendChild(a); }
     const y=el('button','btn-accent','Accept');
     y.title=t.suggest==='look-ahead'?'The Agent starts on it':'Put it on your list';
     y.addEventListener('click',function(){ acceptSuggestion(t); });

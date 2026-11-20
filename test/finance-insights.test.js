@@ -113,3 +113,39 @@ test('stocks spreadsheet: biggest first, plain numbers, commas quoted, no formul
     ',"\'=HYPERLINK(""x"")",,,,1,5,,,5,,',
     '']);
 });
+
+test('subscriptions: a small trial charge then the full price is a trial that turned paid, not also "new"', () => {
+  const { newSubTitle } = require('../renderer/js/finance-insights');
+  const txs = [].concat(
+    months('NETFLIX.COM', [15.49, 15.49, 15.49, 15.49, 15.49], 15),
+    [tx('REVERSEPHONE.COM', -1, on(2026, 9, 2)), tx('REVERSEPHONE.COM', -29.99, on(2026, 9, 10)),
+      tx('SHELL OIL 1234', -1, on(2026, 9, 20)), tx('SHELL OIL 1234', -40, on(2026, 9, 20))]); // a pump hold, same day
+  const s = subscriptionCheck(txs, {}, NOW);
+  assert.deepStrictEqual(s.trials.map((t) => [t.name, t.first, t.then]), [['REVERSEPHONE.COM', 1, 29.99]]);
+  assert.ok(!s.fresh.some((f) => /REVERSEPHONE/.test(f.name)), 'said once, as a trial');
+  assert.match(newSubTitle(s.trials[0]), /^Check REVERSEPHONE\.COM: a trial that turned paid on /);
+  assert.doesNotMatch(newSubTitle(s.trials[0]), /\$|29/, 'no amount in the to-do');
+});
+
+test('cancel page: the company\'s own page when known, otherwise a search with just the cleaned-up name', () => {
+  const { cancelPage } = require('../renderer/js/finance-insights');
+  assert.deepStrictEqual(cancelPage('NETFLIX.COM 866-579-7172'), { url: 'https://www.netflix.com/cancelplan', known: true });
+  assert.strictEqual(cancelPage('Amazon Prime*AB12C').url, 'https://www.amazon.com/mc');
+  const r = cancelPage('PAYPAL *REVERSEPHONE #4421');
+  assert.strictEqual(r.known, false);
+  assert.strictEqual(r.url, 'https://duckduckgo.com/?q=' + encodeURIComponent('REVERSEPHONE cancel subscription'));
+});
+
+test('discounts: a student paying full Prime and Spotify gets the student plans; already on one, or not a student, nothing', () => {
+  const { discountCheck, paysTuition } = require('../renderer/js/finance-insights');
+  const txs = [tx('Amazon Prime*AB12C', -16.19, on(2026, 9, 5)), tx('SPOTIFY USA', -11.99, on(2026, 9, 9)),
+    tx('HULU 877-8244858', -1.99, on(2026, 9, 12)), tx('CUYAHOGA COMMUNITY COLLEGE', -870.62, on(2026, 8, 15))];
+  assert.strictEqual(paysTuition(txs, NOW), true);
+  const d = discountCheck(txs, { student: true, ebt: false }, NOW);
+  assert.deepStrictEqual(d.map((x) => [x.id, x.saveYear]), [['prime-student', 104], ['spotify-student', 72]], 'Hulu is already at the student price');
+  assert.strictEqual(d[0].url, 'https://www.amazon.com/joinstudent');
+  assert.deepStrictEqual(discountCheck(txs, { student: false, ebt: false }, NOW), []);
+  const e = discountCheck(txs, { student: true, ebt: true }, NOW);
+  assert.deepStrictEqual(e.filter((x) => /^prime/.test(x.id)).map((x) => x.id), ['prime-access'], 'one Prime deal: the cheaper');
+  assert.strictEqual(paysTuition([tx('Corner Deli', -8, on(2026, 9, 21))], NOW), false);
+});
