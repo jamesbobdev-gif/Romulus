@@ -440,6 +440,19 @@ function dropFromShop(k,names,now){
   k.extra=(k.extra||[]).filter(function(x){ return gone.indexOf(x)<0; });
   return gone.length;
 }
+/* The x on a shopping list row ({name, qty, unit, for, id?} from shoppingList). Food a meal needs: he already
+   has it, so the pantry gets it (enough to cover the row, or "some" when the amounts can't be added) and the
+   list stops asking for it. Something he only added himself just comes off. → 'pantry' or 'dropped' */
+function shopRowGone(k,e,now,newId){
+  now=now||Date.now();
+  if(e.id)dropFromShop(k,[e.name],now);
+  if(!e.for||!e.for.length)return 'dropped';
+  const p=pantryFind(k.items,e.name);
+  if(!p){ k.items.push({id:newId(),name:String(e.name).slice(0,80),qty:null,unit:'',updatedAt:now}); return 'pantry'; }
+  const more=p.qty==null||e.qty==null?null:kConvert(e.qty,e.unit,p.unit);
+  p.qty=more==null?null:kRound(p.qty+more); p.updatedAt=now;
+  return 'pantry';
+}
 /* A store's name for a product, with its size → {base, qty|null, unit}. The size is after a comma
    ("Rice, 20 lb") or in brackets at the end, the way Instacart writes it ("Bananas (10.2 lb)", "Kiwi (1 each)").
    "93% lean" and "frozen" aren't sizes. */
@@ -508,7 +521,7 @@ function pantryRanOut(k,names,now){
 if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,kIdeasCanMake:kIdeasCanMake,kIdeaShown:kIdeaShown,kIdeaFollowed:kIdeaFollowed,kKeepTalked:kKeepTalked,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
-    shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
+    shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,shopRowGone:shopRowGone,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
     uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized,kSteps:kSteps};
 }
 
@@ -1262,11 +1275,15 @@ function kDrawShop(){
     row.appendChild(el('span','kit-row-qty',e.qty!=null?kFmtQty(e.qty,e.unit):''));
     row.appendChild(el('span','kit-row-name',e.name));
     if(e.for.length)row.appendChild(el('span','kit-row-for','for '+e.for.join(', ')+(e.id?', and you added it':'')));
-    if(e.id){
-      const x=iconBtn(I.x,'Take '+e.name+' off the list');
-      x.addEventListener('click',function(){ dropFromShop(state.kitchen,[e.name],Date.now()); kSave(); });
-      row.appendChild(x);
-    }
+    // every row has an x: a meal's food means "I already have this" (it goes in the pantry), his own just comes off
+    const x=iconBtn(I.x,e.for.length?'I already have '+e.name+' (adds it to the Pantry)':'Take '+e.name+' off the list');
+    x.title=e.for.length?'I already have this: it goes in your Pantry and off the list':'Take it off the list';
+    x.addEventListener('click',function(){
+      const how=shopRowGone(state.kitchen,e,Date.now(),uid);
+      kSave();
+      if(how==='pantry')voiceToast(e.name.charAt(0).toUpperCase()+e.name.slice(1)+' is in your Pantry now, so it’s off the list');
+    });
+    row.appendChild(x);
     box.appendChild(row);
   });
   const btns=el('div','kit-card-btns kit-shop-btns');

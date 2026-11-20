@@ -296,6 +296,20 @@ test('things he adds himself go on the shopping list, with or without a meal pla
   assert.deepStrictEqual(back.extra.map((e) => e.name).sort(), ['eggs', 'milk']);
 });
 
+test('the x on a meal row puts the food in the pantry so the list stops asking; on his own row it just comes off', () => {
+  const kt = kitchen(['4 oz chicken breast'], [{ name: 'Sheet pan', planned: true, ings: ['6 oz chicken breast', '1 tsp olive oil', '1/2 orange pepper'] }]);
+  k.addToShop(kt, ['paper towels'], 1, id);
+  let list = k.shoppingList(kt);
+  assert.deepStrictEqual(list.map((e) => e.name), ['chicken breast', 'olive oil', 'orange pepper', 'paper towels']);
+  assert.strictEqual(k.shopRowGone(kt, list.find((e) => e.name === 'olive oil'), 2, id), 'pantry');
+  assert.strictEqual(k.shopRowGone(kt, list.find((e) => e.name === 'chicken breast'), 2, id), 'pantry');
+  assert.strictEqual(k.shopRowGone(kt, list.find((e) => e.name === 'paper towels'), 2, id), 'dropped');
+  list = k.shoppingList(kt);
+  assert.deepStrictEqual(list.map((e) => e.name), ['orange pepper']);
+  assert.strictEqual(kt.items.find((i) => i.name === 'chicken breast').qty, 6); // 4 he had + the 2 the list wanted
+  assert.strictEqual(kt.items.find((i) => i.name === 'olive oil').qty, null);
+});
+
 test('a size in brackets at the end of a product name is the amount, the way Instacart writes it', () => {
   assert.deepStrictEqual(k.kSized('Bananas (10.2 lb)'), { base: 'Bananas', qty: 10.2, unit: 'lb' });
   assert.deepStrictEqual(k.kSized('Kiwi (1 each)'), { base: 'Kiwi', qty: 1, unit: '' });
