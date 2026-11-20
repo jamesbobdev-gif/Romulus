@@ -25,15 +25,10 @@ test('a pinned AI that isn’t set up is skipped, the others still try', () => {
   assert.deepStrictEqual(runOrder({ order: [], pinned: 'openai', ready: () => false }), []);
 });
 
-test('his yes to an order goes to Claude first: only its browser may place it', () => {
+test('his yes to an order stays on the AI that asked: any AI may place it', () => {
   const mine = ['gemini', 'openai', 'nvidia', 'claude'];
-  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'nvidia', ready, final: true }), ['claude', 'gemini', 'openai', 'nvidia']);
-  assert.deepStrictEqual(runOrder({ order: mine, final: true, ready }), ['claude', 'gemini', 'openai', 'nvidia']);
-  // Claude out of the picture (not set up, or not in his order): the pinned one and the rest still try
-  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'nvidia', ready: (id) => id !== 'claude', final: true }), ['gemini', 'openai', 'nvidia']);
-  assert.deepStrictEqual(runOrder({ order: ['gemini', 'nvidia'], pinned: 'nvidia', ready, final: true }), ['nvidia', 'gemini']);
-  // an inbox run keeps his order and pin (every AI gets the same mail tools)
-  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'nvidia', ready, final: true, mailRun: true }), ['nvidia', 'gemini', 'openai', 'claude']);
+  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'nvidia', ready }), ['nvidia', 'gemini', 'openai', 'claude']);
+  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'openai', ready: (id) => id !== 'claude' }), ['openai', 'gemini', 'nvidia', 'claude']);
 });
 
 test('a task stays on the AI that answered it last', () => {

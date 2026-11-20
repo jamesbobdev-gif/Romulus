@@ -36,7 +36,7 @@ function shopAgents() { // → the --agents definitions for a Claude run
   SHOPS.forEach((s, i) => {
     agents['store-checker-' + (i + 1)] = {
       description: 'Checks grocery stores in the user\'s agent browser (prices, sizes, delivery and service fees, minimum order, '
-        + 'membership deals) and reports back. Give it the stores to check, his ZIP code, how he pays (e.g. EBT) and the items with sizes. Three exist; send them at '
+        + 'membership deals, sales and the promos and credits on his account) and reports each store\'s total after promos. Give it the stores to check, his ZIP code, how he pays (e.g. EBT) and the items with sizes. Three exist; send them at '
         + 'the same time, each with different stores.',
       tools: SHOP_TOOLS.map((n) => 'mcp__' + s + '__' + n),
       prompt: 'You check grocery stores for the user. The message you get says where he lives (ZIP code) and how he pays; '
@@ -114,6 +114,8 @@ const mailSeen = () => fs.existsSync(mailSeenFile());
 const actionsLogFile = () => path.join(ctx.userData(), 'agent-actions.log');
 // every browser call of the try going on now, for its live steps (browser-proxy.js noteStep); emptied before each try
 const stepsFile = () => path.join(ctx.userData(), 'agent-run', 'browser-steps.jsonl');
+// there once his yes has placed the order (or sent the form) this run (browser-proxy.js markSpent); removed when a run starts
+const spentFile = () => path.join(ctx.userData(), 'agent-run', 'yes-spent');
 function readActions(max = 200) {
   let text = ''; try { text = fs.readFileSync(actionsLogFile(), 'utf8'); } catch (e) { return []; }
   return text.split('\n').filter(Boolean).slice(-max).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean).reverse();
@@ -136,7 +138,8 @@ function browserCfgFor(baseCfg, mode, approved, startTab, opts = {}) { // → th
   const j = JSON.parse(fs.readFileSync(baseCfg, 'utf8'));
   j.mcpServers.browser.env = { TASKS_BROWSER_MAIL: mode, TASKS_BROWSER_TAINT: mailSeenFile(), TASKS_BROWSER_APPROVED: approved ? '1' : '0',
     TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // the only things an upload may send
-    TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120) };
+    TASKS_BROWSER_ACTIONS: actionsLogFile(), TASKS_BROWSER_TASK: String(opts.task || '').slice(0, 120),
+    TASKS_BROWSER_SPENT: spentFile() }; // his yes, once used by any AI's browser this run, is used for all of them
   if (approved && Array.isArray(opts.approvedHosts) && opts.approvedHosts.length) j.mcpServers.browser.env.TASKS_BROWSER_APPROVED_HOSTS = JSON.stringify(opts.approvedHosts);
   if (Array.isArray(opts.hosts) && opts.hosts.length) j.mcpServers.browser.env.TASKS_BROWSER_HOSTS = JSON.stringify(opts.hosts);
   if (startTab) j.mcpServers.browser.env.TASKS_BROWSER_TAB = startTab;
@@ -165,7 +168,7 @@ function saidYes(t) {
   const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
   return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
 }
-const hostOf = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch (e) { return ''; } };
+const { hostOf } = require('./util');
 /* The sites his yes was about: where the run stopped to ask (t.page), the cart's or options' links, and links he
    wrote himself (title, notes, replies). Not the links in the AI's ask: a page can put its own address into
    that note, and his yes would then unlock the final step there too. Empty when none is known, and then the yes
@@ -179,7 +182,7 @@ function approvedHostsFor(t) {
 }
 // the stores a shopping run may use (agent/runner.js keeps such a run to these plus the task's own links)
 const STORE_HOSTS = ['instacart.com', 'walmart.com', 'amazon.com', 'aldi.us', 'kroger.com', 'gianteagle.com', 'marcs.com', 'wholefoodsmarket.com',
-  'target.com', 'costco.com', 'doordash.com', 'ubereats.com', 'samsclub.com', 'meijer.com', 'shipt.com',
+  'target.com', 'costco.com', 'doordash.com', 'ubereats.com', 'samsclub.com', 'meijer.com', 'shipt.com', 'gopuff.com',
   'bestbuy.com', 'shop.app']; // shop.app: Shop Pay, the checkout Shopify stores share (a store's own site comes from the task's links)
 // "Open the Agent’s browser": make sure it's running; the page then shows it in the live view
 async function openAgentBrowser() {
@@ -202,7 +205,7 @@ async function ensureAgentBrowser() {
 }
 // a grocery order he checked off: its store pages (and the store checkers' tabs) are closed. Logins and
 // the store's own cart stay, they're in the profile and on the store's side
-const STORE_PAGE = /^https?:\/\/([^/]+\.)?(instacart|walmart|amazon|aldi|kroger|gianteagle|marcs|wholefoodsmarket|target|costco|doordash|ubereats)\.[a-z.]+(\/|$)/i;
+const STORE_PAGE = /^https?:\/\/([^/]+\.)?(instacart|walmart|amazon|aldi|kroger|gianteagle|marcs|wholefoodsmarket|target|costco|doordash|ubereats|shipt|gopuff)\.[a-z.]+(\/|$)/i;
 async function closeStoreTabs() { // → how many it closed
   if (!(await agentBrowserUp())) return 0;
   const base = 'http://127.0.0.1:' + AGENT_BROWSER_PORT;
@@ -226,4 +229,4 @@ async function closeWindowedAgentBrowser() {
 }
 
 module.exports = { init, handlers, AGENT_BROWSER_PORT, BROWSER_DENIED, SHOPS, SHOPS_DENIED, shopAgents, agentBrowserDir, formFilesDir, formFiles, findChrome, findNode, prepareAgentBrowser,
-  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };
+  mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, hookArg, saidYes, approvedHostsFor, STORE_HOSTS, actionsLogFile, stepsFile, spentFile, readActions, openAgentBrowser, agentBrowserUp, ensureAgentBrowser, closeStoreTabs, STORE_PAGE, chromeArgs, closeWindowedAgentBrowser };

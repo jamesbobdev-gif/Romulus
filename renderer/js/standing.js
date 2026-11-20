@@ -58,7 +58,7 @@ async function standingLoad(){
   try{
     const r=await syncPullRow(p); const lines=standingParse(r.doc&&r.doc.text);
     box.innerHTML='';
-    if(!lines.length){ box.appendChild(el('p','settings-hint','Nothing yet. When you tell the Agent “always” or “don’t ask next time” about a step, it offers to put it here.')); return; }
+    if(!lines.length){ box.appendChild(el('p','settings-hint','Nothing yet.')); return; }
     lines.forEach(function(l){
       const row=el('div','howto'), head=el('div','howto-head'); head.style.cursor='default';
       head.appendChild(el('span','howto-task',l));

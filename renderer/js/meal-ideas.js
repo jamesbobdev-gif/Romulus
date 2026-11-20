@@ -13,8 +13,9 @@ const miClean = (s, n) => String(s == null ? '' : s).replace(MI_EMOJI, '').repla
 
 function mealIdeasPrompt() {
   return 'You suggest meals for one person to cook at home from the food he already has.\n' +
-    '- Suggest 6 different meals. Build each mostly from his pantry; at most 3 ingredients he doesn\'t have, ' +
-    'and fewer is better. Salt, pepper, water and oil count as always there.\n' +
+    '- Suggest 8 different meals. Use ONLY foods listed in his pantry, in amounts he has. The only things ' +
+    'you may add that aren\'t listed are salt, pepper and water. No oil, butter, spices, sauces or anything ' +
+    'else unless it\'s in the pantry. A meal that needs one thing he doesn\'t have is no use to him.\n' +
     '- Follow his preferences strictly: never use a food he avoids or is allergic to, even a little. ' +
     'If he says what he\'s aiming for (high protein, a calorie or macro target), every meal fits it and ' +
     '`why` says how (e.g. "about 45 g protein").\n' +
@@ -150,8 +151,8 @@ function mealIdeasParse(text) {
 function mealIdeasFollowPrompt() {
   return 'You are helping one person with a meal idea you suggested from the food he has at home.\n' +
     '- Answer his question or make the change he asks for. Keep the reply short and plain: 1 to 4 sentences.\n' +
-    '- Keep the meal mostly from his pantry (salt, pepper, water and oil count as always there) unless he asks ' +
-    'to add something; if he does, add it, and say in the reply if it isn\'t in his pantry.\n' +
+    '- Keep using ONLY foods in his pantry (plus salt, pepper, water) unless he asks to add something; ' +
+    'if he does, add it, and say in the reply if it isn\'t in his pantry.\n' +
     '- Follow his preferences strictly: never use a food he avoids or is allergic to.\n' +
     '- If he only asked a question, "meal" is null. If he asked for any change to the meal, "meal" is the whole ' +
     'meal rewritten: name, why, ingredients (short lines with amounts), steps (3 to 8 short lines).\n' +

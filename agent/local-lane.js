@@ -28,7 +28,8 @@ const { parseUsageLimit, holdForUsage } = usage;
 const siteNotes = require('./site-notes');
 const routing = require('./routing');
 const { laneOf, routeTask, routeInfo, privateMatch } = routing;
-const { cloudOrder, cloudRoomNow, couldntDo } = require('./ai-connections');
+const { cloudOrder, cloudRoomNow, couldntDo, acctCfg, nameOf } = require('./ai-connections');
+const accounts = require('./ai-accounts');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText, cartBrief,
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
@@ -316,13 +317,14 @@ function helpersFor(t) {
   return !privateMatch(t);
 }
 // one helper answer from one cloud AI → {text} or {why}. Search and page reading only: no browser, files or mail
-function runHelperOn(id, prompt, ms = 4 * 60 * 1000) { // also the legion's scouts and writers (agent/legion.js)
-  const cfg = readConfig();
+function runHelperOn(which, prompt, ms = 4 * 60 * 1000) { // also the legion's scouts and writers (agent/legion.js)
+  // an extra account (claude~2, agent/ai-accounts.js) runs as its AI with its own key or sign-in
+  const id = accounts.baseOf(which), extra = accounts.isAccount(which), cfg = extra ? acctCfg(which) : readConfig();
   if (id === 'gemini') return providers.runGeminiApi(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
   if (providers.COMPAT[id]) return providers.runCompat(id, cfg, { prompt, timeoutMs: ms, note: '' });
-  if (Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
+  if (extra ? accounts.heldUntil(which) : Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
   const exe = claudeExe(cfg);
   const dir = path.join(ctx.userData(), 'helper-run'); // empty: nothing of his to read
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
@@ -341,7 +343,7 @@ function runHelperOn(id, prompt, ms = 4 * 60 * 1000) { // also the legion's scou
       let j = null; try { j = JSON.parse(out); } catch (e) {}
       if (j && !j.is_error && typeof j.result === 'string' && j.result.trim()) return resolve({ text: j.result });
       const resetAt = parseUsageLimit(err + '\n' + out);
-      if (resetAt) holdForUsage([], resetAt); // The Agent lane waits too, instead of hitting the same wall
+      if (resetAt) { if (extra) accounts.hold(which, resetAt); else holdForUsage([], resetAt); } // The Agent lane waits too, instead of hitting the same wall
       resolve({ why: resetAt ? 'out of usage' : 'no answer' });
     });
   });
@@ -871,11 +873,13 @@ async function runLocalTask(c, t) {
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
           else {
             show('\nSending ' + ok.length + ' question(s) to helpers…\n', true);
-            const res = await helpers.askPool(ok, { order: cloudOrder(), run: runHelperOn,
-              onStart: (q, id) => show('  → ' + providers.NAMES[id] + ': ' + q.slice(0, 80) + '\n', true) });
-            res.forEach((r) => show(r.error ? '  ✗ ' + r.question.slice(0, 60) + ': ' + r.error.slice(0, 100) + '\n' : '  ✓ ' + providers.NAMES[r.via] + ' answered\n', true));
+            const pool = cloudOrder({ accounts: true }); // his extra accounts help too (Claude 2...)
+            const hn = Object.assign({}, providers.NAMES, Object.fromEntries(pool.map((x) => [x, nameOf(x)])));
+            const res = await helpers.askPool(ok, { order: pool, run: runHelperOn,
+              onStart: (q, id) => show('  → ' + hn[id] + ': ' + q.slice(0, 80) + '\n', true) });
+            res.forEach((r) => show(r.error ? '  ✗ ' + r.question.slice(0, 60) + ': ' + r.error.slice(0, 100) + '\n' : '  ✓ ' + hn[r.via] + ' answered\n', true));
             agentLog('local: helpers answered ' + res.filter((r) => !r.error).length + '/' + res.length + ' (' + res.map((r) => r.via || 'none').join(', ') + ')');
-            result = helpers.show(res, providers.NAMES) + (ok.length < qs.length ? '\n(' + (qs.length - ok.length) + ' question(s) not sent: see above.)' : '');
+            result = helpers.show(res, hn) + (ok.length < qs.length ? '\n(' + (qs.length - ok.length) + ' question(s) not sent: see above.)' : '');
           }
         } else if (browser && name === 'fill_form') {
           maxSteps = Math.max(maxSteps, 120); // a form: long questionnaires get room to finish

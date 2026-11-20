@@ -12,8 +12,7 @@ const liveRelay=(function(){
   let info=null, infoAt=0, key=null, sock=null, joined=false, ref=0, hb=null, retry=null, tries=0, lastMsg=0;
 
   /* ── sealing ── */
-  function b64(bytes){ let s=''; for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000)); return btoa(s); }
-  function unb64(s){ const bin=atob(s), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out; }
+  const b64=bytesToB64, unb64=b64ToBytes;
   async function seal(obj){
     const iv=crypto.getRandomValues(new Uint8Array(12));
     const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,new TextEncoder().encode(JSON.stringify(Object.assign({at:Date.now()},obj)))));

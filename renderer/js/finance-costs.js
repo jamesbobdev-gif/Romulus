@@ -47,7 +47,7 @@ function costKey(t){
   const s=tidy(raw.replace(/(^|\s)[^\s]*[0-9#*].*$/,''))||tidy(raw.replace(/[0-9#*_]+/g,' ')); // "7-ELEVEN 123": the name has a number in it
   return s.split(' ').filter(function(w){ return w.length>1||w==='&'; }).slice(0,3).join(' ')||'(no name)';
 }
-function costMonth(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function costMonth(ms){ return (typeof monthKey==='function'?monthKey:require('./util').monthKey)(ms); }
 function costMedian(a){ const s=a.slice().sort(function(x,y){ return x-y; }); const m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 
 // its own guess for a payee from all its charges (newest history included): 'fixed' | 'variable' | 'skip'

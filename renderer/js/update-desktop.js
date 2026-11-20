@@ -3,7 +3,7 @@
    Update downloads it, then the bar offers Restart now; Later lets it install on quit or when idle.
    The answer goes to his other devices (update-sync.js), and theirs comes here: an Update said on the phone
    or another computer downloads it here without asking, a Not now there takes the bar away here.
-   Settings → Updates: "Ask me" (the default) or "Automatically". The phone has no window.desktop, so none of this runs there. */
+   Settings → More, "New versions on this computer": "Ask me first" (the default) or "Update on their own". The phone has no window.desktop, so none of this runs there. */
 (function(){
   if(!window.desktop||!window.desktop.updateState)return;
   let bar=null, hiddenFor=null; // hiddenFor: the 'ready' version he said Later to, so the bar stays away until the next one
@@ -47,7 +47,7 @@
   setTimeout(follow,20*1000);
   setInterval(follow,15*60*1000);
 
-  // Settings → Updates
+  // Settings → More: the one-line update choice
   const sel=document.getElementById('updateMode');
   if(sel){
     document.getElementById('updateSection').hidden=false;

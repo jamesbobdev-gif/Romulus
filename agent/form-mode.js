@@ -168,7 +168,7 @@ async function fill({ browser, state, ask, task, prefs, locked, details }) {
 
 // a step's text → [what happened, the page now]
 const splitView = (t) => { const i = String(t).indexOf('\n\nThe page now:\n'); return i < 0 ? [String(t), ''] : [t.slice(0, i), t.slice(i + 16)]; };
-const escapeRe =(s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const { escapeRe, dayKey } = require('./util');
 // "7pm" / "7:30 PM" → "19:00" / "19:30"; "October 9, 2026" / "10/9/2026" → "2026-10-09"; null if neither
 function machineValue(v) {
   const s = String(v).trim();
@@ -177,7 +177,7 @@ function machineValue(v) {
   const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (us) return us[3] + '-' + us[1].padStart(2, '0') + '-' + us[2].padStart(2, '0');
   const d = new Date(s);
-  if (/[a-z]{3}/i.test(s) && /\d{4}/.test(s) && !isNaN(d)) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  if (/[a-z]{3}/i.test(s) && /\d{4}/.test(s) && !isNaN(d)) return dayKey(d);
   return null;
 }
 

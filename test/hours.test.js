@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
+global.dayKey = require('../renderer/js/util').dayKey; // the page loads util.js first; hours.js uses its dayKey
 const { parseHours, fmtHours, hAddDays, hWeekStart, hWeekLabel } = require('../renderer/js/hours');
 const plain = (v) => JSON.parse(JSON.stringify(v)); // objects made inside the page's vm context have their own Object.prototype
 

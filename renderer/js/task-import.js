@@ -18,7 +18,7 @@
 
 const IMP_MAX=5000;
 const impTxt=function(v,n){ return String(v==null?'':v).replace(/[\u0000-\u0008\u000b-\u001f]/g,' ').trim().slice(0,n||500); };
-function impYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function impYmd(d){ return (typeof dayKey==='function'?dayKey:require('./util').dayKey)(d); }
 function impHm(d){ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 const impRecur=(typeof recurFromWords==='function')?recurFromWords:(typeof require==='function'?require('./quick-add').recurFromWords:null);
 const impTag=(typeof tagFromWords==='function')?tagFromWords:(typeof require==='function'?require('./quick-add').tagFromWords:null);

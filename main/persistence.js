@@ -58,7 +58,7 @@ function backupCopies(file) {
   return [file + '.bak'].concat(daily.map((n) => path.join(backupDir(file), n)));
 }
 function dailyCopy(file, raw, now = new Date()) {
-  const day = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  const day = require('../agent/util').dayKey(now);
   const dir = backupDir(file), name = 'tasks-' + day + '.json';
   try {
     if (fs.existsSync(path.join(dir, name))) return;

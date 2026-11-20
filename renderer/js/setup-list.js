@@ -9,7 +9,7 @@
 const SETUP_ROWS=[
   // optional, and only listed on a computer that can run one; the button shows what it would install, it doesn't start
   { id:'local', title:'A private model on this computer', optional:true,
-    todo:'Optional. Runs an AI on this computer so private tasks never leave it. Needs a few GB of disk; this computer can run one.',
+    todo:'Optional. Keeps private tasks on this computer.',
     done:'Your own model is answering.',
     btn:'See how',
     check:async function(){
@@ -18,21 +18,21 @@ const SETUP_ROWS=[
     },
     go:function(){ openSettingsAt('agentGroup','localSection'); } },
   { id:'cal', title:'Calendar and email',
-    todo:'Google, Outlook, iCloud or your school: events become to-dos, and Agent tasks can start when an email or event comes up.',
-    done:'Connected. Add more under Calendars & email.',
+    todo:'Events become to-dos.',
+    done:'Connected.',
     btn:'Connect',
     check:async function(){ const o=await window.desktop.calOverview(false); return !!(o&&o.accounts&&o.accounts.some(function(a){ return !a.broken; })); },
     go:function(){ if(window.openConnect)window.openConnect(); else openSettingsAt('calGroup','gcalSection'); } },
   { id:'browser', title:'Let the Agent use websites',
-    todo:'Its own browser is built in and asks before buying, sending or submitting. It needs an AI connected to drive it.',
-    done:'Ready. Watch it any time under The Agent’s browser.',
+    todo:'Needs an AI connected.',
+    done:'Ready.',
     btn:'Connect an AI',
     check:async function(){ return !!window.agentAiReady; },
     go:function(){ openSettingsAt('agentGroup','aiSection'); } },
   // shows once the first AI key is in, and stays until it has been read
   { id:'keys', title:'Keep your keys private',
-    todo:'Your AI and sync keys are passwords. Don’t share them. If one gets out, make a new AI key on its website, or use Rotate sync key under Device sync.',
-    done:'You know what to do if a key gets out.',
+    todo:'Treat them like passwords. Leaked one? Make a new one.',
+    done:'Done.',
     btn:'Got it',
     check:async function(){
       if(!window.agentAiReady)return null;
@@ -40,8 +40,8 @@ const SETUP_ROWS=[
     },
     go:function(){ try{ localStorage.setItem('setupKeysRead','1'); }catch(e){} } },
   { id:'bg', title:'Run in the background',
-    todo:'Start when you log in and keep working from the tray, so tasks set to start on an email, a calendar event or a date run on time.',
-    done:'Starts when you log in. Closing the window keeps it running in the tray.',
+    todo:'Keeps tasks running on time.',
+    done:'Starts when you log in.',
     btn:'Turn on',
     check:async function(){ const r=await window.desktop.loginGet(); return r&&r.can?!!r.on:null; }, // null: this copy can't (a dev run, Linux)
     go:async function(){ await window.desktop.loginSet(true); } }

@@ -191,7 +191,10 @@ step in this run.
   in the note: the next AI in his order gets a go at it before it comes back to him. Leave `cant` null
   when you're asking him something, offering picks or waiting on his yes.
 - Use `done` only when nothing is left for him to do; the note says what you found or did. The task
-  stays on his Agent list marked "finished" until he checks it off himself.
+  stays on his Agent list marked "finished" until he checks it off himself. Finding choices is not
+  finishing: an answer with options to pick from, questions, a draft or an order waiting on his yes is
+  `needs-you` (the app treats it that way anyway). The job is finished when the thing itself is done,
+  usually after his yes.
 - Learned something lasting about him (not a one-off detail)? Put it in `pref`: a section and one
   line, e.g. {"section":"Shopping","text":"Water bottles: likes big ones, ~32 oz"}. Sections:
   Career, Shopping, Services, Hobbies & gear, How he likes answers, About him (or a new short one).

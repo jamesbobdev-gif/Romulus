@@ -40,7 +40,7 @@ function zip(files) {
   return Buffer.concat(parts.concat([cenBuf, end]));
 }
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const esc = (s) => require('./util').escapeHtml(s)
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 // "some **bold** text" → runs
 function runs(text) {

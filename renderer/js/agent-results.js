@@ -2,6 +2,15 @@
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
+/* "Finished" means the job itself is done, which usually takes his yes to something. An answer that still
+   leaves him something to pick, answer, send or okay is waiting on him, whatever the AI called it.
+   t: the task with this answer's pieces already on it; placed: an order went through; newCart: it brought one. */
+function leftForHim(t,u,placed,newCart){
+  if(placed)return false;
+  return !!((Array.isArray(u.options)&&u.options.length)||newCart||(Array.isArray(t.ask)&&t.ask.length)||
+    t.draft||t.email||t.seats||t.showtimes||t.theaters);
+}
+
 /* ── agent runner results (desktop only: main.js runs Claude, we apply + sync) ── */
 if(window.desktop&&window.desktop.onAgentResults){
   window.desktop.onAgentWorking(function(p){
@@ -143,6 +152,8 @@ function agentApplyResult(u){
       t.seats=u.seats&&Array.isArray(u.seats.rows)?u.seats:null; if(typeof seatDrafts!=='undefined')delete seatDrafts[t.id]; // seat-map.js: its pick, fresh each answer
       t.showtimes=u.showtimes&&Array.isArray(u.showtimes.days)?u.showtimes:null; if(typeof showDay!=='undefined')delete showDay[t.id]; // seat-map.js: days and times to tap
       t.theaters=u.theaters&&Array.isArray(u.theaters.theaters)?u.theaters:null; if(typeof theaterPick!=='undefined')delete theaterPick[t.id]; // seat-map.js: the theaters on a map
+      // recipes to choose from, a draft to send, seats to pick: not finished yet, it waits on him (a placed order is)
+      if(t.status==='done'&&leftForHim(t,u,co.placed,co.cart==='new'))t.status='needs-you';
       // just to look at (his grocery list): small cards. They stay up when an answer brings none ("add hummus"),
       // with what it added or removed on the list
       if(Array.isArray(u.cards)&&u.cards.length)t.cards=u.cards;

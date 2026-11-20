@@ -4,9 +4,12 @@
 const { NAMES } = require('./providers');
 
 // the Human-list title for this AI: "Reconnect Gemini: …". The renderer finds it again by that prefix
-function reconnectTitle(id, why) {
-  const name = NAMES[id] || id;
-  const how = id === 'claude' ? 'its sign-in expired: run claude /login in a terminal'
+// name: an extra account's own name (Claude 2), which signs in again from its card in Settings
+function reconnectTitle(id, why, name) {
+  const extra = !!name && name !== NAMES[id];
+  name = name || NAMES[id] || id;
+  const how = extra && !/key/i.test(why || '') ? 'its sign-in expired: press Sign in on it in Settings → AI connections'
+    : id === 'claude' ? 'its sign-in expired: run claude /login in a terminal'
     : id === 'openai' ? 'its ChatGPT sign-in expired: press Sign in with ChatGPT in Settings → AI connections'
     : /key/i.test(why || '') ? 'its API key expired or stopped working: paste a new one in Settings → AI connections'
     : 'it needs signing in again in Settings → AI connections';

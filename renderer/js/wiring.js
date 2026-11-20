@@ -69,7 +69,11 @@ if(window.desktop&&window.desktop.aiStatus){
       window.desktop.aiModels(listId).then(function(res){ modelLists[listId]=(res&&res.models)||[]; if(sel.isConnected&&sel.value!==OTHER)fill(modelLists[listId]); }).catch(function(){}); }
     return r;
   };
+  // an extra account of an AI (ai-accounts-ui.js): its own card, its own line
+  const acctOf=function(id){ return (ai.accounts||[]).find(function(a){ return a.id===id; })||null; };
+  const acctH={save:function(c,m){ return save(c,m); },say:function(t){ say(t); },set:function(s){ ai=s; aiDraw(); }};
   const statusText=function(id){
+    const acct=acctOf(id); if(acct)return aiAccountStatusText(acct);
     if(id==='claude'){ const c=ai.claude||{};
       if(!c.installed)return 'not installed';
       if(!c.ready)return 'not signed in';
@@ -135,6 +139,8 @@ if(window.desktop&&window.desktop.aiStatus){
         if(site){ const go=el('button','ghost mono','Open '+site[0]+' ↗'); go.addEventListener('click',function(){ openExternal(site[1]); }); w.appendChild(go); }
         box.appendChild(w);
       }
+      const acct=acctOf(p.id);
+      if(acct){ aiAccountCard(box,acct,acctH,ai.names[acct.base]||acct.base); list.appendChild(box); return; }
       if(p.id==='claude'){
         const c=ai.claude||{};
         const busy=function(b,t){ b.disabled=true; b.textContent=t; };
@@ -300,6 +306,8 @@ if(window.desktop&&window.desktop.aiStatus){
         box.appendChild(el('p','settings-hint','OpenRouter gets the agent browser (mail closed) when the model can use tools, but no files or Gmail. It only uses providers that don’t collect or train on what’s sent.'));
         box.lastChild.style.margin='8px 0 0';
       }
+      // once this AI works: room for a second account of it, which takes over when this one runs out
+      if(!/^(not installed|not signed in|needs an API key|no key yet)$/.test(why))aiAddAccountRow(box,p.id,ai.names[p.id],acctH);
       list.appendChild(box);
     });
     // Claude after the others, so his Claude usage is kept for building the app
@@ -349,6 +357,11 @@ if(window.desktop&&window.desktop.aiStatus){
     if(!on.length){ wrap.appendChild(el('p','settings-hint','No AI is switched on.')); box.appendChild(wrap); return; }
     const u=use||{};
     on.forEach(function(id){
+      const acct=acctOf(id);
+      if(acct){ // its own limits aren't read: only whether it's sitting out
+        if(acct.held)row(ai.names[id],1,'out until '+fmtWhen(acct.held),true);
+        else row(ai.names[id],null,acct.ready?'ready · its own usage isn’t shown here':'not set up');
+        return; }
       if(id==='claude'){
         const c=u.claude;
         if(!c){ row('Claude · 5h',null,use?'no reading yet':'checking…'); return; }
@@ -424,6 +437,7 @@ async function importCourseFeeds(){
     const t=byId[e.id];
     if(t){
       if(e.source&&t.ws==='school'&&t.site!==e.source){ t.site=e.source; sited++; } // which school site it's on (agent/course-sites.js)
+      if(e.wrongTag&&t.tag===e.wrongTag){ t.tag=null; sited++; } // a department name the feed once gave as its class
       if(was&&was!==now&&!t.done&&(t.due+' '+(t.dueTime||''))===was){ t.due=e.due; t.dueTime=e.dueTime; moved++; }
       return;
     }
@@ -759,7 +773,8 @@ if(window.desktop&&window.desktop.feedsFetch){
     // (the Google Play build can't ask for it at all: android/app/src/play/AndroidManifest.xml)
     const canAsk=window.ROMULUS_STORE!=='play';
     $('wakeOverlayBtn').hidden=!s.on||s.overlay||!canAsk;
-    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
+    // iPhone (WakeWordPlugin.swift): iOS lets it listen only while Romulus is open
+    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.foregroundOnly?'listening while Romulus is open':s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
   }
   function refresh(){ call('status').then(show).catch(function(){}); }
   cap.addListener('WakeWord','progress',function(d){ if(d&&d.pct!=null)$('wakeStatus').textContent='downloading speech model… '+d.pct+'%'; });
@@ -865,7 +880,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 
-/* ── keyboard navigation: arrows select, Space completes, Enter expands, Delete removes ── */
+/* ── keyboard navigation: arrows select, Enter expands, Delete removes ── */
 function selectNeighbor(){
   const i=navOrder.indexOf(state.selectedId);
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
@@ -889,7 +904,8 @@ document.addEventListener('keydown',function(e){
   if(!state.selectedId)return;
   const t=state.tasks.find(function(x){ return x.id===state.selectedId; });
   if(!t)return;
-  if(e.key===' '){ e.preventDefault(); selectNeighbor(); setDone(t,!t.done); touch(); }
+  // no Space shortcut: it checked the task off and moved to the next, so a few presses emptied his day.
+  // Checking off is the circle only.
   // only the Delete key — Backspace is too easy to hit while typing (it once deleted a task
   // when a re-render stole focus from the answer box)
   else if(e.key==='Delete'){ e.preventDefault(); selectNeighbor(); deleteTask(t); }

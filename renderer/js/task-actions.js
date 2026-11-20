@@ -130,7 +130,8 @@ async function addTask(){
   if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);
-  titleEl.value=''; buzz('add'); touch(); titleEl.focus();
+  // the date doesn't carry over to the next task: a leftover one was easy to miss and beat a typed "friday"
+  titleEl.value=''; $('newDue').value=''; $('newTime').value=''; $('newTime').disabled=true; buzz('add'); touch(); titleEl.focus();
   // first launch: the welcome card sits between the add box and the list, so the new row would land off the screen
   requestAnimationFrame(function(){ const li=document.querySelector('li.task[data-id="'+t.id+'"]'); if(li&&li.getBoundingClientRect().bottom>window.innerHeight)li.scrollIntoView({block:'nearest',behavior:prefersReduced?'auto':'smooth'}); });
 }

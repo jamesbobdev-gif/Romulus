@@ -14,7 +14,6 @@ function openSettingsAt(groupId,panelId){
   const g=groupId&&$(groupId); if(g&&'open' in g)g.open=true;
   const p=panelId&&$(panelId);
   for(let d=p&&p.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true; // the panel and every fold it sits in
-  if(p&&p.classList.contains('adv')&&typeof setAdvanced==='function')setAdvanced(true); // a link straight to an advanced panel
   requestAnimationFrame(function(){ const n=p||g; if(n)n.scrollIntoView({block:'start',behavior:'smooth'}); });
 }
 
@@ -78,6 +77,7 @@ function anyAiReady(){
 // called from lists.js render(): onAgent = the Agent tab is showing, tasks = its tasks, es = the empty-state line
 function drawAgentSetup(onAgent,tasks,es){
   const card=$('agentSetupCard'), nudge=$('agentNudge'), hint=$('agentSyncHint');
+  const log=$('actionsSection'); if(log)log.hidden=!onAgent; // What the Agent did, under its tasks
   if(!card)return;
   const show=onAgent&&isDesktopApp;
   const ready=anyAiReady(), known=window.agentAiReady!==undefined; // undefined: status not back yet, say nothing

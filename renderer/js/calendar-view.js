@@ -3,7 +3,7 @@
 'use strict';
 
 /* ── calendar view ── */
-function formatDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function formatDate(d){ return dayKey(d); }
 
 // one line only: chips that don't fit fold into "+N", which opens the Agent tab
 function fitNeedsBar(){
@@ -73,6 +73,7 @@ function switchTab(tab){
   $('calView').hidden=tab!=='calendar';
   $('ideasView').hidden=tab!=='ideas';
   $('hoursView').hidden=tab!=='hours';
+  $('kitchenView').hidden=tab!=='kitchen';
   $('financeView').hidden=tab!=='finance';
   $('healthView').hidden=tab!=='health';
   $('kitchenView').hidden=tab!=='kitchen';
