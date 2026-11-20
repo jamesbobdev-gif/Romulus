@@ -747,10 +747,17 @@ function kDrawConnect(){
     'Ask the Agent to order groceries. What it buys goes in your pantry. It always asks before ordering.',
     'Open the Agent',
     function(){ switchTab('agent'); window.scrollTo(0,0); });
+  // sync turns itself on at first start (hosted-sync.js hostedAutoStart); what's left is linking the other device once
+  const synced=syncEnabled();
   step('3. Your '+(desk?'phone':'computer'),
-    'Sync keeps Kitchen the same on every device.',
-    syncEnabled()?'':'Set up sync',
-    function(){ openSettingsAt(null,'syncSection'); });
+    synced?'Kitchen already syncs. Add your '+(desk?'phone':'computer')+' once with a code and it stays the same on both.'
+          :'Sync keeps Kitchen the same on every device.',
+    synced?'Add a device':'Set up sync',
+    function(){
+      openSettingsAt(null,'syncSection');
+      const add=synced&&$('pairAddBtn'), box=$('pairBox'); // pair.js: shows the code to enter on the other device
+      if(add&&box&&box.hidden)add.click();
+    });
   const done=el('button','btn-accent','Got it'); done.type='button';
   done.addEventListener('click',function(){ try{ localStorage.setItem(KIT_CONNECT_KEY,String(Date.now())); }catch(e){} kitchenUI.connectOpen=false; kDrawConnect(); });
   const foot=el('div','kit-form-btns'); foot.appendChild(done); card.appendChild(foot);
