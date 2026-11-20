@@ -380,6 +380,39 @@ function cartWorkingStrip(t){
   box.appendChild(cardsStrip(t,items));
   return box;
 }
+/* Kitchen → Shopping list (kitchen.js kDrawShop): what's going out on the next grocery order, so he can see it
+   without opening the Agent tab. A cart the Agent built shows as its picture cards (what he kept, his swaps);
+   before there's a cart, the items due from his grocery list. Open in Agent goes to the task to change or
+   place it. → an element, or null when there's no grocery task yet */
+function groceryOrderBox(){
+  const open=state.tasks.filter(function(t){ return isGroceryTask(t)&&!t.done&&Array.isArray(t.cart)&&t.cart.length; })
+    .sort(function(a,b){ return (b.created||0)-(a.created||0); })[0];
+  const g=open||groceryTask(); if(!g)return null;
+  const box=el('div','grocery-order');
+  box.appendChild(el('div','kit-k kit-sec','Next grocery order'));
+  if(open){
+    const items=cartKeptItems(open), total=items.reduce(function(s,it){ return s+cartPrice(it.price); },0);
+    box.appendChild(el('div','kit-card-sub',wantsYes(open)?'Ready and waiting for your yes in the Agent tab.':'The Agent is working on it.'));
+    box.appendChild(el('div','cart-head',items.length+' item'+(items.length===1?'':'s')+(total?' · about $'+total.toFixed(2):'')));
+    if(items.length)box.appendChild(cardsStrip(open,items));
+  } else {
+    const due=normList(g.list).filter(function(it){ return itemDue(it); });
+    const at=nextGroceryAt();
+    box.appendChild(el('div','kit-card-sub','The Agent builds the cart from these when the order starts'+(at&&at>Date.now()?', '+new Date(at).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'')+'.'));
+    if(!due.length)box.appendChild(el('div','kit-empty','Nothing due on your grocery list yet.'));
+    due.forEach(function(it){
+      const row=el('div','kit-row');
+      row.appendChild(el('span','kit-row-name',it.name));
+      if(it.out)row.appendChild(el('span','kit-row-for','ran out'));
+      box.appendChild(row);
+    });
+  }
+  const b=el('button','ghost','Open in Agent');
+  b.title='Go to the grocery task, to change the order or place it';
+  b.addEventListener('click',function(){ openTaskById(g.id); });
+  const btns=el('div','kit-card-btns'); btns.appendChild(b); box.appendChild(btns);
+  return box;
+}
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }
 function cartStrip(t){
   const box=el('div','cart-box');

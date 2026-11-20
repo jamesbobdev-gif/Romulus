@@ -1282,6 +1282,8 @@ function kDrawRecipes(){
 function kDrawShop(){
   const box=$('kitShop'); box.innerHTML='';
   if(typeof kpDraw==='function')kpDraw('shop',$('kitPhotoShop'),box); // kitchen-photo.js: the photo button, and what it read
+  const order=typeof groceryOrderBox==='function'?groceryOrderBox():null; // grocery-list.js: what's going out on the next grocery order
+  if(order)box.appendChild(order);
   const plan=state.kitchen.recipes.filter(function(r){ return r.planned; });
   const list=shoppingList(state.kitchen);
   box.appendChild(el('div','kit-k kit-sec','Meals you’re buying for'));
