@@ -1325,6 +1325,11 @@ body.review-open .top-right{display:none!important}
 .setup-text span{font-size:12px;color:var(--muted);line-height:1.45}
 .setup-row.done .setup-text b{color:var(--muted)}
 .setup-row button{flex:none}
+.setup-more{padding:0 0 12px 24px;font-size:12.5px;color:var(--muted);line-height:1.55}
+.setup-more ol{margin:0;padding-left:18px}
+.setup-more li{margin:0 0 8px}
+.setup-more .fin-qr svg{width:170px;height:170px}
+.setup-addr{color:var(--ink);user-select:all;overflow-wrap:anywhere;text-transform:none;letter-spacing:0}
 .local-easy[hidden]{display:none}
 .local-pull{height:6px;border-radius:3px;background:var(--chip);overflow:hidden;margin:8px 0 0}
 .local-pull[hidden]{display:none}
