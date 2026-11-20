@@ -860,6 +860,20 @@ function render(){
     if(state.showDone)doneVis.forEach(function(t){ dlst.appendChild(buildRow(t,false)); });
     dlst.classList.toggle('has-dates',state.showDone&&doneVis.some(function(t){ return !!t.due; }));
   } else { ds.hidden=true; state.confirmClear=false; }
+  markWrappedRows();
+}
+// a row whose chips didn't fit beside the title (they dropped to a line under it) gets 'wrapped', so that line
+// starts under the title instead of floating mid-row, pushed over by the empty date column and the hover buttons
+function markWrappedRows(){
+  const rows=Array.prototype.slice.call(document.querySelectorAll('#openList > .task > .row, #doneList > .task > .row'));
+  rows.forEach(function(r){ r.classList.remove('wrapped'); }); // measure each row as it lays out on its own
+  const wrapped=rows.map(function(r){ const ti=r.querySelector('.title'), m=r.querySelector('.meta'); return !!(ti&&m&&m.getBoundingClientRect().top>=ti.getBoundingClientRect().bottom-1); });
+  rows.forEach(function(r,i){ if(wrapped[i])r.classList.add('wrapped'); });
+}
+if(typeof window!=='undefined'){
+  let wrapTimer=null;
+  window.addEventListener('resize',function(){ clearTimeout(wrapTimer); wrapTimer=setTimeout(markWrappedRows,100); });
+  if(typeof document!=='undefined'&&document.fonts&&document.fonts.ready)document.fonts.ready.then(markWrappedRows);
 }
 
 /* On the Human tab: one card per Agent task waiting on a yes ("Reply yes to submit it"), with a line
