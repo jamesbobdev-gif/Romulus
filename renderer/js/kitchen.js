@@ -416,6 +416,12 @@ function shoppingList(k){
   });
   return out.sort(function(a,b){ return a.name.localeCompare(b.name); });
 }
+/* What one recipe needs that the pantry doesn't have (the same rules as the shopping list, for this meal alone):
+   what goes on his grocery list when he plans it → [{name, qty|null, unit, for:[recipe name]}] */
+function planNeeds(k,r){
+  if(!r)return [];
+  return shoppingList({recipes:[Object.assign({},r,{planned:true})],items:k.items||[],extra:[]});
+}
 /* "milk; 2 lb apples" typed (or ticked from a photo) onto the shopping list → the names added. The same food
    again adds to its amount rather than making a second line. */
 function addToShop(k,lines,now,newId){
@@ -521,7 +527,7 @@ function pantryRanOut(k,names,now){
 if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,kIdeasCanMake:kIdeasCanMake,kIdeaShown:kIdeaShown,kIdeaFollowed:kIdeaFollowed,kKeepTalked:kKeepTalked,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
-    shoppingList:shoppingList,addToShop:addToShop,dropFromShop:dropFromShop,shopRowGone:shopRowGone,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
+    shoppingList:shoppingList,planNeeds:planNeeds,addToShop:addToShop,dropFromShop:dropFromShop,shopRowGone:shopRowGone,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
     uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized,kSteps:kSteps};
 }
 
@@ -760,8 +766,18 @@ function kLikeBtn(r){
 }
 function kPlanBtn(r){
   const b=el('button','kit-plan'+(r.planned?' on':''),r.planned?'On the plan':'Plan it');
-  b.setAttribute('aria-pressed',String(r.planned)); b.title=r.planned?'Take it off the shopping list':'Buy what this needs (it goes on the shopping list)';
-  b.addEventListener('click',function(){ r.planned=!r.planned; r.updatedAt=Date.now(); kSave(); });
+  b.setAttribute('aria-pressed',String(r.planned)); b.title=r.planned?'Take it off the shopping list':'Checks your pantry and puts what you don’t have on the shopping list and your grocery list';
+  b.addEventListener('click',function(){
+    r.planned=!r.planned; r.updatedAt=Date.now();
+    if(r.planned){ // picked: the pantry is checked, and what's not there goes on the grocery list for the next order
+      const need=planNeeds(state.kitchen,r), n=need.length?kitchenToGroceries(need):0;
+      const names=need.map(function(e){ return e.name; }).join(', ');
+      voiceToast(!need.length?r.name+': you have everything for it'
+        :n<0?r.name+' needs: '+names+'. They’re on the shopping list. No grocery list yet: ask the Agent for groceries once, then this adds to it.'
+        :'On your grocery list for '+r.name+': '+names);
+    }
+    kSave();
+  });
   return b;
 }
 // how many servings he's making: what he picked on the card, or what the recipe is written for

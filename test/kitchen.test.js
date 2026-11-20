@@ -81,6 +81,19 @@ test('the shopping list adds up planned meals and takes off what he has', () => 
   ]);
 });
 
+test('planning a meal finds what the pantry is missing for that meal alone', () => {
+  const kt = kitchen(['8 oz ground beef', 'tortillas'], [
+    { name: 'Tacos', ings: ['1 lb ground beef', 'tortillas', '1 cup cheese', 'salt'] },
+    { name: 'Chili', ings: ['1 can kidney beans'], planned: true },
+  ]);
+  assert.deepStrictEqual(k.planNeeds(kt, kt.recipes[0]), [
+    { name: 'cheese', qty: 1, unit: 'cup', for: ['Tacos'] },
+    { name: 'ground beef', qty: 0.5, unit: 'lb', for: ['Tacos'] },
+  ]);
+  assert.strictEqual(kt.recipes[0].planned, false); // only looked, nothing changed
+  assert.deepStrictEqual(k.planNeeds(kt, null), []);
+});
+
 test('groceries bought go into the pantry, with their size when the name has one', () => {
   const kt = kitchen(['1 lb rice'], []);
   const added = k.stockPantry(kt, ['Rice, 20 lb', 'Eggs', 'Milk, 1 gallon'], 1, id);
