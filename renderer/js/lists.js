@@ -310,7 +310,7 @@ function buildPanel(t){
   // the local model's own browser on the mini PC, live, right in its card: he clicks and types where it couldn't
   if(taskWs(t)==='agent'&&!t.done&&t.lane==='local'&&(t.status==='needs-you'||t.status==='working')&&liveViewAvailable())lupaEmbed(panel,t);
   // questions to tap through, one at a time (agent-ask.js)
-  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&Array.isArray(t.ask)&&t.ask.length)panel.appendChild(askSteps(t));
+  if(taskWs(t)==='agent'&&!t.done&&t.status==='needs-you'&&Array.isArray(t.ask)&&t.ask.length){ panel.appendChild(askSteps(t)); markAskSeen(t); } // seen here: the To do tab stops asking
   // options Claude found (e.g. products): photo, blurb, link, and one-tap choose
   if(taskWs(t)==='agent'&&Array.isArray(t.options)&&t.options.length){
     const grid=el('div','agent-opts');
@@ -876,7 +876,10 @@ function yesContext(t){
 function drawYesPrompts(needing){
   const box=$('yesPrompts'); box.innerHTML='';
   const asks=needing.filter(wantsYes);
-  box.hidden=!asks.length;
+  // questions he hasn't opened on the Agent tab yet: asked here too (agent-ask.js)
+  const questions=needing.filter(function(t){ return !wantsYes(t)&&Array.isArray(t.ask)&&t.ask.length&&!askSeen(t); });
+  box.hidden=!asks.length&&!questions.length;
+  questions.forEach(function(t){ box.appendChild(askPromptCard(t)); });
   asks.forEach(function(t){
     const c=el('div','yes-card'); c.tabIndex=0; c.title='Open this task on the Agent tab';
     const head=el('div','yes-head');

@@ -7,6 +7,34 @@
 'use strict';
 const askDrafts={}; // task id → {i, picks:[[...]], other:[...]}
 
+// Has he opened this task's questions on the Agent tab yet? Until he has, they're asked on the To do tab
+// too (drawAskPrompts). Kept on this device per task and question set, so a new set of questions asks again.
+const ASK_SEEN_KEY='agent.askSeen';
+function askKey(t){ return t.id+'|'+t.ask.map(function(a){ return a.q; }).join('|'); }
+function askSeenMap(){ try{ return JSON.parse(localStorage.getItem(ASK_SEEN_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function askSeen(t){ return !!askSeenMap()[askKey(t)]; }
+function markAskSeen(t){
+  const m=askSeenMap(), k=askKey(t); if(m[k])return;
+  m[k]=Date.now();
+  // only the tasks still asking are worth remembering
+  const live={}; state.tasks.forEach(function(x){ if(Array.isArray(x.ask)&&x.ask.length)live[x.id]=true; });
+  Object.keys(m).forEach(function(key){ if(!live[key.split('|')[0]])delete m[key]; });
+  try{ localStorage.setItem(ASK_SEEN_KEY,JSON.stringify(m)); }catch(e){}
+}
+// the To do tab's card: the same questions, answered right there; tap the title to open the task
+function askPromptCard(t){
+  const c=el('div','yes-card ask-card');
+  const head=el('div','yes-head');
+  head.appendChild(el('span','yes-who','The Agent asks'));
+  const ti=el('b','yes-title',t.title); ti.title='Open this task on the Agent tab'; ti.tabIndex=0;
+  ti.addEventListener('click',function(){ openTaskById(t.id); });
+  ti.addEventListener('keydown',function(e){ if(e.key==='Enter')openTaskById(t.id); });
+  head.appendChild(ti);
+  c.appendChild(head);
+  c.appendChild(askSteps(t));
+  return c;
+}
+
 function askDraft(t){
   let d=askDrafts[t.id];
   if(!d||d.picks.length!==t.ask.length)d=askDrafts[t.id]={i:0,picks:t.ask.map(function(a){ return (a.default||[]).slice(); }),other:t.ask.map(function(){ return ''; }),many:t.ask.map(function(a){ return a.pick==='many'; })};
