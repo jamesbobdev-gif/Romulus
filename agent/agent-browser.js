@@ -36,7 +36,7 @@ function shopAgents() { // → the --agents definitions for a Claude run
   SHOPS.forEach((s, i) => {
     agents['store-checker-' + (i + 1)] = {
       description: 'Checks grocery stores in the user\'s agent browser (prices, sizes, delivery and service fees, minimum order, '
-        + 'membership deals) and reports back. Give it the stores to check, his ZIP code, how he pays (e.g. EBT) and the items with sizes. Three exist; send them at '
+        + 'membership deals, sales and the promos and credits on his account) and reports each store\'s total after promos. Give it the stores to check, his ZIP code, how he pays (e.g. EBT) and the items with sizes. Three exist; send them at '
         + 'the same time, each with different stores.',
       tools: SHOP_TOOLS.map((n) => 'mcp__' + s + '__' + n),
       prompt: 'You check grocery stores for the user. The message you get says where he lives (ZIP code) and how he pays; '
@@ -170,7 +170,7 @@ function approvedHostsFor(t) {
 }
 // the stores a shopping run may use (agent/runner.js keeps such a run to these plus the task's own links)
 const STORE_HOSTS = ['instacart.com', 'walmart.com', 'amazon.com', 'aldi.us', 'kroger.com', 'gianteagle.com', 'marcs.com', 'wholefoodsmarket.com',
-  'target.com', 'costco.com', 'doordash.com', 'ubereats.com', 'samsclub.com', 'meijer.com', 'shipt.com',
+  'target.com', 'costco.com', 'doordash.com', 'ubereats.com', 'samsclub.com', 'meijer.com', 'shipt.com', 'gopuff.com',
   'bestbuy.com', 'shop.app']; // shop.app: Shop Pay, the checkout Shopify stores share (a store's own site comes from the task's links)
 // "Open the Agent’s browser": make sure it's running; the page then shows it in the live view
 async function openAgentBrowser() {
@@ -193,7 +193,7 @@ async function ensureAgentBrowser() {
 }
 // a grocery order he checked off: its store pages (and the store checkers' tabs) are closed. Logins and
 // the store's own cart stay, they're in the profile and on the store's side
-const STORE_PAGE = /^https?:\/\/([^/]+\.)?(instacart|walmart|amazon|aldi|kroger|gianteagle|marcs|wholefoodsmarket|target|costco|doordash|ubereats)\.[a-z.]+(\/|$)/i;
+const STORE_PAGE = /^https?:\/\/([^/]+\.)?(instacart|walmart|amazon|aldi|kroger|gianteagle|marcs|wholefoodsmarket|target|costco|doordash|ubereats|shipt|gopuff)\.[a-z.]+(\/|$)/i;
 async function closeStoreTabs() { // → how many it closed
   if (!(await agentBrowserUp())) return 0;
   const base = 'http://127.0.0.1:' + AGENT_BROWSER_PORT;

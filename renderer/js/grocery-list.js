@@ -130,7 +130,7 @@ if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runCartCheck,60*10
    order explains (order-match.js storesToCheck), so an Agent task looks at the store's order history
    (t.orderLook; the groceries skill's "Orders he placed himself") and what it finds goes into the pantry.
    The task carries only the store's name: nothing from the bank goes to the Agent */
-const LOOK_NAMES={instacart:'Instacart',walmart:'Walmart',target:'Target',costco:'Costco',kroger:'Kroger',aldi:'Aldi'};
+const LOOK_NAMES={instacart:'Instacart',ubereats:'Uber Eats',doordash:'DoorDash',shipt:'Shipt',gopuff:'Gopuff',walmart:'Walmart',target:'Target',costco:'Costco',kroger:'Kroger',aldi:'Aldi'};
 function lookForOwnOrders(stores){
   if(!Array.isArray(stores)||!stores.length)return;
   stores.forEach(function(s){
@@ -142,7 +142,7 @@ function lookForOwnOrders(stores){
   });
   touch();
 }
-/* the regular look at his Instacart orders (order-match.js regularLooks): every 3 days once he uses it. The
+/* the regular look at his orders on the delivery apps he uses (order-match.js regularLooks): every 3 days once he uses it. The
    last finished look task runs again (t.lookAt), so the Agent list doesn't fill up with them; with none, a new one */
 function runRegularLooks(){
   if(!window.desktop||!window.desktop.onAgentResults||typeof regularLooks!=='function')return;

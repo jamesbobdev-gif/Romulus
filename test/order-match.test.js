@@ -110,3 +110,36 @@ test('once he uses Instacart, its orders get a look every 3 days', () => {
   assert.deepStrictEqual(regularLooks([{ ...look, created: now - 9 * DAY, lookAt: now - DAY, status: 'done' }], now), []);
   assert.deepStrictEqual(regularLooks([{ ...look, created: now - 4 * DAY, status: 'working' }], now), []);
 });
+
+test('Uber Eats: its orders, charges and regular looks, but not an Uber ride', () => {
+  const { storesToCheck, regularLooks } = require('../renderer/js/order-match');
+  assert.strictEqual(orderStore([{ url: 'https://www.ubereats.com/store/aldi/abc' }], 'Groceries'), 'ubereats');
+  assert.strictEqual(orderStore([{ name: 'Eggs' }], 'Aldi on Uber Eats'), 'ubereats');
+  const order = { key: 'u', at: AT, total: 38.2, store: 'ubereats', items: [{ name: 'Eggs' }] };
+  const m = matchOrders([
+    { id: 'e1', posted: sec(AT + DAY), amount: -38.2, description: 'UBER *EATS PENDING' },
+    { id: 'r1', posted: sec(AT + DAY), amount: -38.2, description: 'UBER *TRIP' },
+  ], [order], AT + 5 * DAY);
+  assert.strictEqual(m.e1.sure, true);
+  assert.ok(!m.r1, 'a ride is not an Uber Eats order');
+  const now = AT + 10 * DAY;
+  assert.deepStrictEqual(storesToCheck([{ id: 'e2', amount: -22, posted: sec(now - DAY), description: 'UBER* EATS' },
+    { id: 'r2', amount: -15, posted: sec(now - DAY), description: 'UBER TRIP' }], {}, [], now), ['ubereats']);
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Eggs', history: [{ who: 'me', text: 'got it on Uber Eats' }] }], now), ['ubereats']);
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Groceries', orders: [{ store: 'ubereats', at: now - 9 * DAY }, { store: 'instacart', at: now - 9 * DAY }] }], now), ['instacart', 'ubereats']);
+});
+
+test('DoorDash, Shipt and Gopuff: the app wins over the store it delivered from', () => {
+  const { storesToCheck, regularLooks } = require('../renderer/js/order-match');
+  assert.strictEqual(orderStore([{ url: 'https://www.doordash.com/convenience/store/123' }], ''), 'doordash');
+  assert.strictEqual(orderStore([{ url: 'https://www.shipt.com/shop/target' }], ''), 'shipt');
+  assert.strictEqual(orderStore([{ url: 'https://www.gopuff.com/p/eggs' }], ''), 'gopuff');
+  const now = AT + 10 * DAY;
+  const txs = [
+    { id: 'd1', amount: -30, posted: sec(now - DAY), description: 'DOORDASH*ALDI' },
+    { id: 's1', amount: -45, posted: sec(now - DAY), description: 'SHIPT* TARGET' },
+    { id: 'g1', amount: -12, posted: sec(now - DAY), description: 'GOPUFF' },
+  ];
+  assert.deepStrictEqual(storesToCheck(txs, {}, [], now), ['doordash', 'shipt', 'gopuff']);
+  assert.deepStrictEqual(regularLooks([{ ws: 'agent', title: 'Order milk on DoorDash' }, { ws: 'agent', title: 'Shipt order' }], now), ['doordash', 'shipt']);
+});
