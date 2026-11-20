@@ -407,13 +407,14 @@ function stableJson(v){
 function canonTasks(tasks){
   return stableJson(tasks.slice().sort(function(a,b){ return a.id<b.id?-1:1; }));
 }
-// also without the old conversation of a long-finished Agent task, which stays on this device (history-trim.js)
-function stripWs(t){ const c=Object.assign({},histUpForm(t)); delete c.ws; return c; }
+function stripWs(t){ const c=Object.assign({},t); delete c.ws; return c; }
+// a task as it goes up: also without the old conversation of a long-finished Agent task, which stays on this device (history-trim.js)
+function upTask(t){ return stripWs(histUpForm(t)); }
 // Doc pushed to a channel: only that workspace's tasks, without the ws field —
 // remote docs stay compatible with devices that know nothing about workspaces.
 // The family list (shared with other people) carries only its own deletions and the devices on it (family-list.js).
 function wsDoc(ws,remoteDoc){
-  const d={v:1,tasks:state.tasks.filter(function(t){ return taskWs(t)===ws; }).map(stripWs),tombstones:state.tombstones};
+  const d={v:1,tasks:state.tasks.filter(function(t){ return taskWs(t)===ws; }).map(upTask),tombstones:state.tombstones};
   if(ws==='family'&&typeof familyDocExtras==='function')Object.assign(d,familyDocExtras(remoteDoc));
   return d;
 }
@@ -463,7 +464,7 @@ function mergeRemoteWs(remoteDoc,ws){
   const upTombs=ws==='family'&&typeof familyTombs==='function'?familyTombs(mergedTombs,remoteDoc):mergedTombs; // what wsDoc sends
   // the online copy is read the way this device would send it, so one that still carries an old conversation
   // (sent by an older build) is left as it is rather than fought over
-  const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw.map(histUpForm))||upTombs.length!==rTombs.length;
+  const changedRemote=canonTasks(merged.map(upTask))!==canonTasks(rTasksRaw.map(histUpForm))||upTombs.length!==rTombs.length;
   state.tasks=others.concat(merged);
   state.tombstones=mergedTombs;
   if(changedLocal&&typeof billAlerts==='function')billAlerts(); // a bill to-do came from the computer (bill-reminders.js)
