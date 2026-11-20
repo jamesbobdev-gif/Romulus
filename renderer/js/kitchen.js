@@ -443,6 +443,21 @@ function addToShop(k,lines,now,newId){
   });
   return added;
 }
+/* A dish the Agent put on the grocery list (agent/grocery.js cleanRecipe: {name, ingredients, steps}) becomes a
+   recipe, so it's under Recipes to make again. → the new recipe, or null when it's no recipe or one by that
+   name is already here (his own stays as he wrote it). */
+function saveAgentRecipe(k,rec,now,newId){
+  if(!rec||typeof rec!=='object')return null;
+  const name=String(rec.name||'').replace(/\s+/g,' ').trim().slice(0,100);
+  const ings=(Array.isArray(rec.ingredients)?rec.ingredients:[]).map(function(l){ return parseIngredient(String(l||'')); }).filter(Boolean).slice(0,60);
+  if(!name||!ings.length)return null;
+  if(!Array.isArray(k.recipes))k.recipes=[];
+  if(k.recipes.some(function(r){ return r.name.toLowerCase()===name.toLowerCase(); }))return null;
+  const nr={id:newId(),name:name,ingredients:ings,liked:false,planned:false,made:[],updatedAt:now||Date.now()};
+  const st=kSteps(rec.steps); if(st.length)nr.steps=st;
+  k.recipes.push(nr);
+  return nr;
+}
 // off the shopping list (bought, or he took it off) → how many went
 function dropFromShop(k,names,now){
   now=now||Date.now();
@@ -533,7 +548,7 @@ if(typeof module!=='undefined'&&module.exports){
   module.exports={parseIngredient:parseIngredient,kPantryLines:kPantryLines,kConvert:kConvert,sameFood:sameFood,foodKey:foodKey,normKitchen:normKitchen,
     mergeKitchenDocs:mergeKitchenDocs,ingredientStatus:ingredientStatus,kIdeasCanMake:kIdeasCanMake,kIdeaShown:kIdeaShown,kIdeaFollowed:kIdeaFollowed,kKeepTalked:kKeepTalked,suggestMeals:suggestMeals,cookRecipe:cookRecipe,
     shoppingList:shoppingList,planNeeds:planNeeds,addToShop:addToShop,dropFromShop:dropFromShop,shopRowGone:shopRowGone,stockPantry:stockPantry,pantryRanOut:pantryRanOut,kFmtQty:kFmtQty,usePantry:usePantry,pantryAskTodo:pantryAskTodo,pantryAnswers:pantryAnswers,askToServe:askToServe,pruneAsks:pruneAsks,
-    uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized,kSteps:kSteps};
+    uncookRecipe:uncookRecipe,kPlaceOf:kPlaceOf,kNudge:kNudge,kMatch:kMatch,kScale:kScale,kSized:kSized,kFixSized:kFixSized,kSteps:kSteps,saveAgentRecipe:saveAgentRecipe};
 }
 
 /* ══ the page ══ */
@@ -613,6 +628,13 @@ window.kitchenBought=function(names){
   const now=Date.now(), stocked=stockPantry(state.kitchen,names,now,uid);
   const dropped=dropFromShop(state.kitchen,names.map(function(e){ return e&&typeof e==='object'?e.name:e; }),now); // bought: off his own shopping list too
   if(stocked.length||dropped)persist();
+};
+// agent-results.js: the dish the Agent is buying for, with how to make it → the recipe saved, or null
+window.kitchenAgentRecipe=function(rec){
+  if(!state.kitchen)return null;
+  const nr=saveAgentRecipe(state.kitchen,rec,Date.now(),uid);
+  if(nr){ persist(); if(typeof renderKitchen==='function'&&state.activeTab==='kitchen')renderKitchen(); }
+  return nr;
 };
 // "we're out of eggs" (grocery-list.js addToGroceries): out of the pantry too → the pantry names taken out
 window.kitchenRanOut=function(names){

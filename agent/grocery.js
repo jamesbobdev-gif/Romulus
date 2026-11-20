@@ -37,7 +37,21 @@ function groceryChanges(ch) {
     return it;
   }).filter((x) => x.name).slice(0, 100);
   const out = { add, bought: names(ch.bought), remove: names(ch.remove) };
-  return out.add.length || out.bought.length || out.remove.length ? out : undefined;
+  const recipe = cleanRecipe(ch.recipe);
+  if (recipe) out.recipe = recipe;
+  return out.add.length || out.bought.length || out.remove.length || recipe ? out : undefined;
+}
+// recipe: the dish those ingredients are for, with how to make it, so the Kitchen tab keeps it under Recipes
+// (renderer/js/kitchen.js saveAgentRecipe) → {name, ingredients:[lines], steps:[lines]}, or undefined
+function cleanRecipe(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return undefined;
+  const lines = (a, each, max) => (Array.isArray(a) ? a : []).map((x) => clean(x && typeof x === 'object' ? x.name : x).slice(0, each)).filter(Boolean).slice(0, max);
+  const name = clean(r.name).slice(0, 100), ingredients = lines(r.ingredients, 80, 60);
+  if (!name || !ingredients.length) return undefined;
+  const out = { name, ingredients };
+  const steps = (Array.isArray(r.steps) ? r.steps : []).map((x) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, 300)).filter(Boolean).slice(0, 30);
+  if (steps.length) out.steps = steps;
+  return out;
 }
 
 // a new grocery task ("order groceries" said on his phone) has no list of its own yet: his list is the one

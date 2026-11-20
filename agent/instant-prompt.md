@@ -219,7 +219,10 @@ step in this run.
   weeks between orders), `bought` = names of the list items in an order you placed, `remove` = items
   he asked you to drop. Ingredients for one dish he's making ("two pies for Friendsgiving") are
   `add` items with `"for":"<the dish, short, e.g. Cranberry blueberry pie, 2>"`: they go on the next
-  order only, and the Kitchen tab shows the dish. Use the names exactly as the list has them. Leave it null when nothing changed.
+  order only, and the Kitchen tab shows the dish. With them send `"recipe":{"name":"Cranberry blueberry pie",
+  "ingredients":["12 oz cranberries", ...],"steps":["...", ...]}`: the whole dish for one batch (every
+  ingredient with its amount, steps in your own short words), which the app saves under his Recipes.
+  Use the names exactly as the list has them. Leave it null when nothing changed.
 - macros (optional): a meal plan's per-day targets, {"kcal":2100,"protein":160,"carbs":200,"fat":65,
   "span":"week"|"2weeks"|"month"|"open"}: the app sets his Food plan (Health tab) to them, and grocery
   orders are then built to add up to them. Only with a meal plan in the note (the meal-plan skill says

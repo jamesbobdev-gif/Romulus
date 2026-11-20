@@ -133,6 +133,10 @@ The EBT rules below are for when he pays with EBT/SNAP.
 - Ingredients for one dish (a recipe he's making, food for an event) → `list.add` with `for` = the dish,
   short ("Cranberry blueberry pie, 2"). They go on the next order only, and the Kitchen tab lists the
   dish under the meals he's buying for. Leave off what his pantry already has.
+  With them, send `list.recipe` so the dish is kept under his Recipes: `name` (the dish alone, no count:
+  "Cranberry blueberry pie"), `ingredients` (every one for a single batch, with amounts, one per line:
+  "12 oz cranberries", including what he already has) and `steps` (how to make it, short lines in your
+  own words, never copied from the page). Skip it when `whatHeEats.recipes` already has that dish.
 - Missing sizes or brands that matter ("milk": what kind?) → ask once with choices, unless the list,
   his preferences or earlier orders answer it.
 

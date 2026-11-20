@@ -411,3 +411,19 @@ test('a phone follow-up ask keeps the idea it is about', () => {
   assert.strictEqual(norm.asks[0].meal, 'Omelet');
   assert.strictEqual(norm.asks[0].said, 'add cheese');
 });
+
+test('a dish the Agent is buying for is saved as a recipe once, and never over his own', () => {
+  const kt = kitchen([], [{ name: 'Chili', ings: ['1 can beans'] }]);
+  const nr = k.saveAgentRecipe(kt, { name: ' Cranberry blueberry pie ', ingredients: ['12 oz cranberries', '2 cups blueberries', ''], steps: ['1. Mix the fruit.', 'Bake.'] }, 5, id);
+  assert.strictEqual(nr.name, 'Cranberry blueberry pie');
+  assert.deepStrictEqual(nr.ingredients.map((i) => i.name), ['cranberries', 'blueberries']);
+  assert.deepStrictEqual(nr.steps, ['Mix the fruit.', 'Bake.']);
+  assert.strictEqual(nr.planned, false);
+  assert.strictEqual(kt.recipes.length, 2);
+  assert.strictEqual(k.normKitchen(kt).recipes.length, 2); // it survives a save and load
+  assert.strictEqual(k.saveAgentRecipe(kt, { name: 'cranberry blueberry PIE', ingredients: ['1 lb sugar'] }, 6, id), null); // already here
+  assert.strictEqual(k.saveAgentRecipe(kt, { name: 'Chili', ingredients: ['2 lb beef'] }, 6, id), null); // his own stays
+  assert.strictEqual(kt.recipes.find((r) => r.name === 'Chili').ingredients.length, 1);
+  assert.strictEqual(k.saveAgentRecipe(kt, { name: 'Soup', ingredients: [] }, 6, id), null);
+  assert.strictEqual(k.saveAgentRecipe(kt, null, 6, id), null);
+});

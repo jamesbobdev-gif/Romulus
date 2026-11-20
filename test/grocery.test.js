@@ -29,6 +29,14 @@ test('the answer can only add, mark bought or remove, never replace the list', (
   assert.deepStrictEqual(groceryChanges({ add: [{ name: 'Cranberries, 24 oz', for: '  Cranberry blueberry pie, 2 ' }] }),
     { add: [{ name: 'Cranberries, 24 oz', every: 1, for: 'Cranberry blueberry pie, 2' }], bought: [], remove: [] });
   assert.strictEqual(groceryBrief([{ name: 'Cranberries', for: 'Pie' }], day('2026-10-16'))[0].forMeal, 'Pie');
+  // the dish itself comes along as a recipe, cut down to a name, ingredient lines and steps
+  const withRecipe = groceryChanges({ add: [{ name: 'Cranberries, 24 oz', for: 'Pie, 2' }],
+    recipe: { name: ' Cranberry  blueberry pie ', ingredients: ['12 oz cranberries', { name: '2 cups blueberries' }, ''], steps: ['Mix the fruit.', 7, null], url: 'https://example.com' } });
+  assert.deepStrictEqual(withRecipe.recipe, { name: 'Cranberry blueberry pie', ingredients: ['12 oz cranberries', '2 cups blueberries'], steps: ['Mix the fruit.', '7'] });
+  assert.strictEqual(groceryChanges({ add: ['Eggs'], recipe: { name: 'Pie', ingredients: [] } }).recipe, undefined); // no ingredients: not a recipe
+  assert.strictEqual(groceryChanges({ add: ['Eggs'], recipe: 'Pie' }).recipe, undefined);
+  assert.deepStrictEqual(groceryChanges({ recipe: { name: 'Toast', ingredients: ['2 slices bread'] } }), // he has everything: the recipe alone
+    { add: [], bought: [], remove: [], recipe: { name: 'Toast', ingredients: ['2 slices bread'] } });
   assert.strictEqual(groceryChanges(['Eggs', 'Milk']), undefined); // a whole list: ignored
   assert.strictEqual(groceryChanges({ add: [], bought: [] }), undefined);
   assert.strictEqual(groceryChanges(null), undefined);
