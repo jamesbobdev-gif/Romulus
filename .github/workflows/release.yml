@@ -130,7 +130,13 @@ jobs:
                      -c.win.azureSignOptions.publisherName="$AZURE_PUBLISHER_NAME")
             fi
           fi
-          if [ "${{ matrix.name }}" = mac ] && [ -z "$CSC_LINK" ]; then echo "no MAC_CSC_LINK secret: the Mac build is unsigned"; fi
+          # No Apple certificate yet: sign the Mac app ad-hoc. With no signature at all an Apple silicon Mac
+          # calls the downloaded app "damaged" and offers no way to open it; ad-hoc gets the usual
+          # "Open Anyway" prompt instead. Hardened runtime is off for this, or the app can't load Electron's own frameworks.
+          if [ "${{ matrix.name }}" = mac ] && [ -z "$CSC_LINK" ]; then
+            echo "no MAC_CSC_LINK secret: the Mac build is signed ad-hoc (not by Apple)"
+            extra=(-c.mac.identity=- -c.mac.hardenedRuntime=false)
+          fi
           # a signing variable that is set but empty is read as a path (CSC_LINK '' → "<repo> not a file"), so drop those
           for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do [ -n "${!v}" ] || unset "$v"; done
           npx electron-builder ${{ matrix.target }} --publish always "${extra[@]}"
