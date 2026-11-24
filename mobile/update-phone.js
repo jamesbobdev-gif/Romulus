@@ -127,7 +127,7 @@
         var what = decide(rel, version);
         if (what === 'offer') sharedAnswer(rel.version).then(function (answer) { show(rel, answer); });
         // its APK isn't uploaded yet: look again in 20 minutes rather than six hours
-        else if (what === 'wait') { try { localStorage.setItem(LAST_KEY, String(Date.now() - CHECK_EVERY_MS + APK_WAIT_MS)); } catch (e) {} }
+        else if (what === 'wait') { try { localStorage.setItem(LAST_KEY, String(Date.now() - CHECK_EVERY_MS + APK_WAIT_MS)); } catch (e) {} setTimeout(check, APK_WAIT_MS + 1000); }
       })
       .catch(function () { try { localStorage.setItem(LAST_KEY, String(lastCheckAfter(false, Date.now()))); } catch (e) {} }); // again in five minutes
   }

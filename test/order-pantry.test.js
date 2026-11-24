@@ -106,3 +106,15 @@ test('a waiting cart is looked at a day after it came and again at 3 days, then 
   assert.strictEqual(ctx.cartLookDue({ ...t, cartLooks: 0, status: 'queued' }, at + 3 * day), false); // already going
   assert.strictEqual(ctx.cartLookDue({ ...t, cartLooks: 0, done: true }, at + 3 * day), false);
 });
+
+test('an Instacart order he placed himself: sizes in brackets go in once per one bought, and his list names it covers are left to it', () => {
+  const { ctx, stocked } = load();
+  ctx.kSized = require('../renderer/js/kitchen.js').kSized;
+  const t = { ws: 'agent', title: 'Groceries' };
+  ctx.state.tasks.push(t);
+  const out = ctx.stockOrdered(t, [{ store: 'Example Market (Instacart)', id: 'B-1', date: '2026-11-10', items: [
+    { name: 'Bananas (10.2 lb)', food: true }, { name: 'Lean Ground Turkey (16 oz)', qty: 2, food: true }, { name: 'Kiwi (1 each)', qty: 12, food: true }, { name: 'Limes', qty: 3, food: true },
+  ] }], ['Ground turkey', 'Bananas', 'Paper towels']);
+  assert.deepStrictEqual(names(stocked), ['Bananas (10.2 lb)', 'Lean Ground Turkey (16 oz)', 'Lean Ground Turkey (16 oz)'].concat(Array(12).fill('Kiwi (1 each)'), ['Limes, 3 ct']));
+  assert.deepStrictEqual([...out[0].covered], ['Ground turkey', 'Bananas']);
+});

@@ -2,6 +2,7 @@
    and come off it when they're done, undated, or moved to a list that stays off the calendar. */
 const fs = require('fs');
 const calendars = require('../agent/calendars');
+const { pad2: pad, dayKey } = require('../agent/util');
 
 let ctx = null; // { readConfig, dataFile, sendToRenderer }
 function init(c) { ctx = c; }
@@ -11,13 +12,12 @@ const dataFile = () => ctx.dataFile();
 function addDays(dateStr, n) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d + n);
-  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  return dayKey(dt);
 }
 function addMinutesIso(dateStr, timeStr, mins) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const [h, mi] = timeStr.split(':').map(Number);
   const dt = new Date(y, m - 1, d, h, mi + mins);
-  const pad = (n) => String(n).padStart(2, '0');
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
 }
 

@@ -60,7 +60,7 @@ function fmtHours(h){
   const mins=Math.round(h*60), hh=Math.floor(mins/60), mm=mins%60;
   return hh&&mm?hh+'h '+mm+'m':hh?hh+'h':mm+'m';
 }
-function hDateKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function hDateKey(d){ return dayKey(d); }
 function hParse(key){ const p=key.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]); }
 function hAddDays(key,n){ const d=hParse(key); d.setDate(d.getDate()+n); return hDateKey(d); }
 function hWeekStart(key){ const d=hParse(key); d.setDate(d.getDate()-((d.getDay()+6)%7)); return hDateKey(d); } // weeks start Monday

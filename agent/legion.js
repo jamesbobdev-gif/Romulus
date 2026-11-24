@@ -1,4 +1,5 @@
-/* Legion: deep research mode, run by the mini PC's model (Lupa, Holo). A task tagged #legion (or "Deep research: …")
+/* Legion: deep research mode, run by the mini PC's model (Lupa, Holo); with no local model to run it, the cloud AI
+   with the most usage left leads instead (cloudLead) and is the one AI that sees the whole request. A task tagged #legion (or "Deep research: …")
    stays on his own machine: Lupa splits it into pieces that each read like an ordinary question on its own, so no
    cloud AI can tell what he is really researching, and sends each piece to a different AI in his pool (Settings → AI
    connections), all at once. Only Lupa sees the whole request, puts the answers back together and writes the report.
@@ -191,12 +192,25 @@ async function research(topic, { order, run, think, names = {}, lead = 'your loc
   return { report, options, scouts, dropped: plan.dropped };
 }
 
-// who did what, for the bottom of the report
-function credits(r, names = {}, lead = 'your local model') {
-  return '---\n**The legion:** split and written by ' + lead + ' on your own machine. Pieces: ' +
+/* no local model to lead: the cloud AI with the most usage left leads (best: from ai-connections cloudRoom), and
+   the others each take a piece. It alone sees the whole request; alone in the pool, it takes the pieces too.
+   order: his connected cloud AIs → {lead, scouts} | null when none is connected */
+function cloudLead(order, best) {
+  order = (order || []).slice();
+  if (!order.length) return null;
+  const lead = order.includes(best) ? best : order[0];
+  const scouts = order.filter((id) => id !== lead);
+  return { lead, scouts: scouts.length ? scouts : [lead] };
+}
+
+// who did what, for the bottom of the report. cloud: a cloud AI led it (no local model), so it saw the whole request
+function credits(r, names = {}, lead = 'your local model', { cloud = false } = {}) {
+  return '---\n**The legion:** split and written by ' + lead + (cloud ? ' (your local model wasn’t available)' : ' on your own machine') + '. Pieces: ' +
     r.scouts.map((s) => s.piece.title + ' (' + (s.error ? 'no answer' : names[s.via] || s.via) + ')').join(' · ') + '.' +
     (r.dropped && r.dropped.length ? ' Kept back: ' + r.dropped.map((d) => d.title).join(', ') + '.' : '') +
-    '\n_No cloud AI saw your whole request: each got one general question. The answers came from web searches, so check anything important._';
+    (cloud ? '\n_Only ' + lead + ' saw your whole request; the other AIs each got one general question.'
+      : '\n_No cloud AI saw your whole request: each got one general question.') +
+    ' The answers came from web searches, so check anything important._';
 }
 
 /* a reply on a finished legion task: Lupa answers it from the report and the turns since, nothing leaves.
@@ -211,4 +225,4 @@ async function followUp(topic, report, question, { think, earlier } = {}) {
   return { answer: String(out || '').trim(), research: false, task: false, lookup: '' };
 }
 
-module.exports = { isLegion, topicOf, isTask, research, credits, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES };
+module.exports = { isLegion, topicOf, isTask, research, credits, cloudLead, followUp, planPieces, tooRevealing, keywords, splitOptions, pieceCount, SCOUT_PROMPT, MIN_PIECES, MAX_PIECES };

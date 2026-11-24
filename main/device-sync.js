@@ -27,12 +27,16 @@ handle('sync:device-info', async () => ({
   version: require('../package.json').version
 }));
 
+// where the phone app is downloaded (the public releases repository, "publish" in package.json)
+const PHONE_APP_URL = 'https://github.com/jamesbobdev-gif/romulus-releases/releases/latest';
+
 /* the sync code as a QR code, for the phone to scan (Settings → Device sync). It holds the sync key, so
    it's drawn here and shown only on this screen, never sent anywhere */
 handle('sync:qr', async (_e, text) => {
   text = String(text || '');
-  // a sync code, or a 10-minute pairing code (renderer/js/pair.js)
-  const ok = (text.startsWith('tasks-sync:') && text.length <= 2000) || /^tasks-pair:[0-9A-Z]{12}$/.test(text);
+  // a sync code, or a 10-minute pairing code (renderer/js/pair.js), or Finance's (renderer/js/finance.js finShareFold)
+  // or the page the phone app is downloaded from (Settings → Get set up, renderer/js/setup-list.js)
+  const ok = (text.startsWith('tasks-sync:') && text.length <= 2000) || /^tasks-(fin)?pair:[0-9A-Z]{12}$/.test(text) || text === PHONE_APP_URL;
   if (!ok) return { ok: false, error: 'not a sync code' };
   return { ok: true, svg: await require('qrcode').toString(text, { type: 'svg', errorCorrectionLevel: 'L', margin: 2 }) };
 });
@@ -53,4 +57,4 @@ handle('gcal:get-cfg', async () => {
 handle('gcal:open-url', async (_e, url) => { if (/^https?:\/\//i.test(String(url))) await ctx.openExternal(String(url)); });
 
 
-module.exports = { init, handlers };
+module.exports = { init, handlers, PHONE_APP_URL };

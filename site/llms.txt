@@ -5,13 +5,13 @@
 Key facts:
 
 - Platforms: Windows 10/11, macOS (Apple silicon and Intel), Linux (.deb and AppImage), Android (APK). iPhone runs from Xcode only, not on the App Store yet.
-- Price: the app is free. Device sync is free up to 5 MB on the Romulus server, $5 a month for more, or bring your own Supabase project. A few hundred to-dos take well under 1 MB. Photos and files attached to tasks count toward the 5 MB too.
+- Price: the app is free. Device sync is free up to 50 MB on the Romulus server, $5 a month for 600 MB and 30 days of history, or bring your own Supabase project. A few hundred to-dos take well under 1 MB. Photos and files attached to tasks count toward the 50 MB too.
 - AI models: Claude, ChatGPT, Gemini, OpenRouter, free tiers like Grok and Groq, or a local model through Ollama. Several can be connected and are tried in the user's order.
 - Privacy: no telemetry. Banking, medical records, passwords and the Locked form-filling profile go only to the local model. Sync can be end-to-end encrypted. API keys never sync. The AI never sees a card number.
 - Shopping: Amazon, Walmart, Target, Best Buy and Shopify stores, plus any other store through a one-time Link card for the approved amount. Grocery orders wait at checkout for the user's yes.
-- Tabs: Human (your own to-dos), Agent (tasks the AI does, with a live view and its questions), School (Blackboard and D2L assignments), Work, Calendar (Google and Microsoft), Notes, Hours, Finance.
+- Tabs: To do (your own to-dos, with a streak on repeating ones), Agent (tasks the AI does, with a live view and its questions), School (Blackboard and D2L assignments), Work, Calendar (Google and Microsoft), Notes, Hours, Finance, Health (goals ticked off from Health Connect or Apple Health, and a food plan), Kitchen (a pantry filled by grocery orders, receipts and photos, meal ideas, a shopping list) and Group (on the Group plan). Settings picks which tabs show, and one backup file saves and restores everything.
 - Finance tab: an alternative to Rocket Money. Accounts, bills and subscriptions found automatically (Cancel hands one to the Agent), net worth over time, live stock prices. Bank access costs about $15 a year. No cloud AI sees Finance.
-- Agent abilities: research and writing, shopping and groceries, flights and bookings, forms and job applications, email, a morning look-ahead, tasks triggered by an email or a page change, deep research split across models so no single cloud AI sees the whole question, a Coach me brief for things only the user can do, and a browser the user can watch and take over.
+- Agent abilities: research and writing, shopping and groceries (an order adds up to the food plan and fills the pantry), flights and bookings, forms and job applications, email, a morning look-ahead, tasks triggered by an email or a page change, deep research split across models so no single cloud AI sees the whole question, a Coach me brief for things only the user can do, a browser the user can watch and take over, and on auto a pick of the cloud AI with the most usage left.
 - Built with Electron, Node 22 and Capacitor.
 
 ## Links

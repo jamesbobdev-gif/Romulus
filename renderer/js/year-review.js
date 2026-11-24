@@ -19,7 +19,7 @@ const YR_LISTS=['personal','work','school','agent'];
 
 // which year the review is for on this day: last year through January and February, else none
 function reviewYearFor(now){ const d=new Date(now||Date.now()); return d.getMonth()<=1?d.getFullYear()-1:null; }
-function yrDayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function yrDayKey(ms){ return (typeof dayKey==='function'?dayKey:require('./util').dayKey)(ms); }
 function yrIn(ms,year){ return !!ms&&new Date(ms).getFullYear()===year; }
 function yrWs(t){ return YR_LISTS.indexOf(t&&t.ws)!==-1?t.ws:'personal'; }
 // when a done task was checked off

@@ -83,12 +83,13 @@ jobs:
             exit 1
           fi
       - run: npm ci
-      # Known vulnerabilities: a high or critical advisory anywhere (what ships and the build tooling) stops the
-      # release; a moderate one in what ships is reported as a warning.
+      # Known vulnerabilities: a high or critical advisory anywhere, in what ships or in the build tools that make it,
+      # stops the release, unless that exact advisory is in scripts/audit-allow.json with a reason and an end date
+      # (scripts/audit-gate.js). A moderate one in what ships is a warning.
       - name: npm audit
         shell: bash
         run: |
-          npm audit --audit-level=high
+          node scripts/audit-gate.js
           npm audit --audit-level=moderate --omit=dev || echo "::warning::npm audit found moderate advisories in what ships"
       - run: npm test
       - name: OAuth clients
@@ -115,7 +116,9 @@ jobs:
       # Mac (Apple Developer Program): MAC_CSC_LINK (the Developer ID Application certificate as a base64
       # .p12), MAC_CSC_KEY_PASSWORD, and for notarization APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
       # Windows (Azure Trusted Signing): secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and
-      # repository variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_CERT_PROFILE.
+      # repository variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_CERT_PROFILE and
+      # AZURE_PUBLISHER_NAME (the certificate's name, the part after CN= in its subject; installed copies
+      # only take an update signed by that name).
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
@@ -131,19 +134,51 @@ jobs:
           AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
           AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           AZURE_CERT_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+          AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}
         shell: bash
         run: |
           extra=()
           if [ "${{ matrix.name }}" = windows ] && [ -n "$AZURE_SIGNING_ENDPOINT" ] && [ -n "$AZURE_CLIENT_SECRET" ]; then
-            echo "signing the Windows installer with Azure Trusted Signing"
-            extra=(-c.win.azureSignOptions.endpoint="$AZURE_SIGNING_ENDPOINT"
-                   -c.win.azureSignOptions.codeSigningAccountName="$AZURE_SIGNING_ACCOUNT"
-                   -c.win.azureSignOptions.certificateProfileName="$AZURE_CERT_PROFILE")
+            if [ -z "$AZURE_PUBLISHER_NAME" ]; then
+              # electron-builder refuses the signing options without it (v1.3.33's Windows build stopped here)
+              echo "::warning::AZURE_PUBLISHER_NAME is not set, so the Windows installer is built unsigned"
+            else
+              echo "signing the Windows installer with Azure Trusted Signing"
+              extra=(-c.win.azureSignOptions.endpoint="$AZURE_SIGNING_ENDPOINT"
+                     -c.win.azureSignOptions.codeSigningAccountName="$AZURE_SIGNING_ACCOUNT"
+                     -c.win.azureSignOptions.certificateProfileName="$AZURE_CERT_PROFILE"
+                     -c.win.azureSignOptions.publisherName="$AZURE_PUBLISHER_NAME")
+            fi
           fi
-          if [ "${{ matrix.name }}" = mac ] && [ -z "$CSC_LINK" ]; then echo "no MAC_CSC_LINK secret: the Mac build is unsigned"; fi
+          # No Apple certificate yet: sign the Mac app ad-hoc. With no signature at all an Apple silicon Mac
+          # calls the downloaded app "damaged" and offers no way to open it; ad-hoc gets the usual
+          # "Open Anyway" prompt instead. Hardened runtime is off for this, or the app can't load Electron's own frameworks.
+          if [ "${{ matrix.name }}" = mac ] && [ -z "$CSC_LINK" ]; then
+            echo "no MAC_CSC_LINK secret: the Mac build is signed ad-hoc (not by Apple)"
+            extra=(-c.mac.identity=- -c.mac.hardenedRuntime=false)
+          fi
           # a signing variable that is set but empty is read as a path (CSC_LINK '' → "<repo> not a file"), so drop those
           for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do [ -n "${!v}" ] || unset "$v"; done
           npx electron-builder ${{ matrix.target }} --publish always "${extra[@]}"
+      # Once Azure signing is set up, check that the installer really came out signed, and fail the job (GitHub
+      # emails on a failed run) if it didn't. The release is already published by now, so this tells you, it doesn't hold it back.
+      - name: Check the Windows signature
+        if: ${{ matrix.name == 'windows' && vars.AZURE_SIGNING_ENDPOINT != '' && vars.AZURE_PUBLISHER_NAME != '' }}
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem dist -Filter *.exe
+          if (-not $files) { Write-Output "::error::no installer in dist/ to check"; exit 1 }
+          $bad = 0
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            if ($sig.Status -eq 'Valid') {
+              Write-Output "signed: $($f.Name) by $($sig.SignerCertificate.Subject)"
+            } else {
+              Write-Output "::error::$($f.Name) is not properly signed ($($sig.Status)): $($sig.StatusMessage)"
+              $bad++
+            }
+          }
+          if ($bad) { exit 1 }
       # SHA-256 of every installer this job built, so a download can be checked against the release page
       # (SECURITY.md and the releases repository's README say how). One file per OS: SHA256SUMS-<os>.txt.
       - name: Checksums

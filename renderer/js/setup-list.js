@@ -1,14 +1,59 @@
-/* Settings → Get set up: the four things worth setting up on a computer, each shown as done or one button
-   away. A private model (optional, and listed only where the hardware can run one: Local model → Set it up
+/* Settings → Get set up: the things worth setting up on a computer, each shown as done or one button
+   away. The phone app (optional: the row opens the steps, a code to scan for the download and Add a device;
+   done once a phone shows in Device sync → Devices). A private model (optional, and listed only where the hardware can run one: Local model → Set it up
    for me, local-model.js), calendar and email (the picker in
    connect-accounts.js), the Agent using websites (its browser is built in; it needs an AI to drive it), and
-   running in the background (start at login, main/tray.js). The list goes away once everything on it is done.
+   running in the background (start at login, main/tray.js). Once the first AI key is saved, a fifth row says the
+   keys are passwords and what to do if one gets out, until "Got it". The list goes away once everything on it is done.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
+// where the phone app is downloaded; main/device-sync.js draws a QR code for this address and no other
+const SETUP_PHONE_URL='https://github.com/jamesbobdev-gif/romulus-releases/releases/latest';
+// has a phone synced these lists: the ':devices' doc devices.js keeps
+function setupHasPhone(doc){
+  const d=(doc&&doc.devices)||{};
+  return Object.keys(d).some(function(id){ return !!d[id]&&d[id].kind==='phone'; });
+}
+if(typeof module!=='undefined'&&module.exports)module.exports={setupHasPhone,SETUP_PHONE_URL};
+
+const setupOpen={}; // row id → its steps are showing
+let setupPhoneQr=null; // the download QR, drawn once
+// the steps under the phone row: get the app, then pair it
+function setupPhoneSteps(box){
+  const ol=document.createElement('ol');
+  const one=document.createElement('li');
+  one.appendChild(document.createTextNode('On your Android phone, point the camera at this code. On the page it opens, tap the file ending in .apk, then open it to install Romulus.'));
+  const qr=document.createElement('div'); qr.className='fin-qr'; qr.hidden=true;
+  const showQr=function(){ if(setupPhoneQr){ qr.innerHTML=setupPhoneQr; qr.hidden=false; } };
+  if(setupPhoneQr)showQr();
+  else if(window.desktop&&window.desktop.syncQr)window.desktop.syncQr(SETUP_PHONE_URL).then(function(q){ if(q&&q.ok){ setupPhoneQr=q.svg; showQr(); } },function(){});
+  one.appendChild(qr);
+  const addr=document.createElement('span'); addr.className='setup-addr mono'; addr.textContent=SETUP_PHONE_URL.replace(/^https:\/\//,'');
+  one.appendChild(document.createTextNode('No camera? Type this into the phone’s browser: ')); one.appendChild(addr);
+  const two=document.createElement('li');
+  two.appendChild(document.createTextNode('Press Add a device here. On the phone, open Romulus, then Settings, Device sync, and tap Scan code. Your lists appear on the phone and this row ticks itself off. '));
+  const add=document.createElement('button'); add.className='ghost mono'; add.textContent='Add a device';
+  add.addEventListener('click',function(){
+    openSettingsAt(null,'syncSection');
+    const b=$('pairAddBtn'), codeBox=$('pairBox');
+    if(b&&codeBox&&codeBox.hidden)b.click(); // a code already showing stays up
+  });
+  two.appendChild(add);
+  ol.appendChild(one); ol.appendChild(two); box.appendChild(ol);
+}
+
 const SETUP_ROWS=[
+  // optional: not everyone has an Android phone. The button opens the steps under the row
+  { id:'phone', title:'Romulus on your phone', optional:true,
+    todo:'Optional, Android. Your lists and the Agent wherever you are.',
+    done:'Your phone is paired.',
+    btn:'Show me how',
+    check:async function(){ return setupHasPhone(window.devState&&window.devState.doc); },
+    go:function(){ setupOpen.phone=!setupOpen.phone; },
+    more:setupPhoneSteps },
   // optional, and only listed on a computer that can run one; the button shows what it would install, it doesn't start
   { id:'local', title:'A private model on this computer', optional:true,
-    todo:'Optional. Runs an AI on this computer so private tasks never leave it. Needs a few GB of disk; this computer can run one.',
+    todo:'Optional. Keeps private tasks on this computer.',
     done:'Your own model is answering.',
     btn:'See how',
     check:async function(){
@@ -17,20 +62,30 @@ const SETUP_ROWS=[
     },
     go:function(){ openSettingsAt('agentGroup','localSection'); } },
   { id:'cal', title:'Calendar and email',
-    todo:'Google, Outlook, iCloud or your school: events become to-dos, and Agent tasks can start when an email or event comes up.',
-    done:'Connected. Add more under Calendars & email.',
+    todo:'Events become to-dos.',
+    done:'Connected.',
     btn:'Connect',
     check:async function(){ const o=await window.desktop.calOverview(false); return !!(o&&o.accounts&&o.accounts.some(function(a){ return !a.broken; })); },
     go:function(){ if(window.openConnect)window.openConnect(); else openSettingsAt('calGroup','gcalSection'); } },
   { id:'browser', title:'Let the Agent use websites',
-    todo:'Its own browser is built in and asks before buying, sending or submitting. It needs an AI connected to drive it.',
-    done:'Ready. Watch it any time under The Agent’s browser.',
+    todo:'Needs an AI connected.',
+    done:'Ready.',
     btn:'Connect an AI',
     check:async function(){ return !!window.agentAiReady; },
     go:function(){ openSettingsAt('agentGroup','aiSection'); } },
+  // shows once the first AI key is in, and stays until it has been read
+  { id:'keys', title:'Keep your keys private',
+    todo:'Treat them like passwords. Leaked one? Make a new one.',
+    done:'Done.',
+    btn:'Got it',
+    check:async function(){
+      if(!window.agentAiReady)return null;
+      try{ return localStorage.getItem('setupKeysRead')==='1'; }catch(e){ return true; }
+    },
+    go:function(){ try{ localStorage.setItem('setupKeysRead','1'); }catch(e){} } },
   { id:'bg', title:'Run in the background',
-    todo:'Start when you log in and keep working from the tray, so tasks set to start on an email, a calendar event or a date run on time.',
-    done:'Starts when you log in. Closing the window keeps it running in the tray.',
+    todo:'Keeps tasks running on time.',
+    done:'Starts when you log in.',
     btn:'Turn on',
     check:async function(){ const r=await window.desktop.loginGet(); return r&&r.can?!!r.on:null; }, // null: this copy can't (a dev run, Linux)
     go:async function(){ await window.desktop.loginSet(true); } }
@@ -54,9 +109,13 @@ async function drawSetupList(){
       text.appendChild(b); text.appendChild(s);
       row.appendChild(dot); row.appendChild(text);
       if(!st){
-        const btn=document.createElement('button'); btn.className='ghost mono'; btn.textContent=r.btn;
-        btn.addEventListener('click',async function(){ btn.disabled=true; try{ await r.go(); }finally{ btn.disabled=false; setTimeout(drawSetupList,800); } });
+        const open=!!(r.more&&setupOpen[r.id]);
+        const btn=document.createElement('button'); btn.className='ghost mono'; btn.textContent=open?'Hide':r.btn;
+        btn.addEventListener('click',async function(){ btn.disabled=true; try{ await r.go(); }finally{ btn.disabled=false; setTimeout(drawSetupList,r.more?0:800); } });
         row.appendChild(btn);
+        rows.appendChild(row);
+        if(open){ const more=document.createElement('div'); more.className='setup-more'; r.more(more); rows.appendChild(more); }
+        return;
       }
       rows.appendChild(row);
     });
@@ -64,4 +123,4 @@ async function drawSetupList(){
   }finally{ setupDrawing=false; }
 }
 // a sign-in or install finishes in another window: look again on coming back
-window.addEventListener('focus',function(){ if(!$('settingsPanel').hidden)drawSetupList(); });
+if(typeof window!=='undefined')window.addEventListener('focus',function(){ if(!$('settingsPanel').hidden)drawSetupList(); });

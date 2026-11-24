@@ -196,3 +196,20 @@ test('cleanOrdered: orders he placed himself, with their items, store and number
   assert.strictEqual(ctx.cleanOrdered(null), undefined);
   assert.strictEqual(ctx.cleanOrdered([{ store: 'x' }]), undefined);
 });
+
+test('missingPictures: items of an order he placed himself get a picture from their page too', () => {
+  const u = {
+    cart: [{ name: 'Rice', url: 'https://x.com/rice', options: [{ name: 'Rice, 5 lb', url: 'https://x.com/r5' }] }, { name: 'Eggs', image: 'https://x.com/e.jpg', url: 'https://x.com/eggs' }],
+    ordered: [{ store: 'Aldi (Instacart)', items: [{ name: 'Milk', url: 'https://www.instacart.com/products/1' }, { name: 'Bread', image: 'https://x.com/b.jpg', url: 'https://x.com/b' }, { name: 'Apples' }] }],
+  };
+  // an order item's own picture can be its neighbour's, so its page is asked even when it has one
+  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Milk', 'Bread', 'Rice', 'Rice, 5 lb']);
+  assert.deepStrictEqual(ctx.missingPictures({}), []);
+});
+
+test('claimLane: a task the app moved off Claude (a #legion) is claimed under the lane it is saved with', () => {
+  assert.strictEqual(ctx.claimLane({ lane: 'claude', title: '#legion usb-c charger' }, 'local'), 'claude');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({}, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'claude'), 'claude'); // Claude never takes the local model's tasks this way
+});

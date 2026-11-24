@@ -15,8 +15,7 @@ const caldav = require('./caldav');
 let io = null; // { readConfig, writeConfig, openExternal, clients }
 function init(opts) { io = opts; migrate(); }
 
-const pad = (n) => String(n).padStart(2, '0');
-const localDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const { pad2: pad, dayKey: localDate } = require('./util');
 const localTime = (d) => pad(d.getHours()) + ':' + pad(d.getMinutes());
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const accounts = (cfg) => (Array.isArray(cfg.calAccounts) ? cfg.calAccounts : []);

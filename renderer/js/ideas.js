@@ -286,7 +286,63 @@ function drawIdeas(){
     wrap.appendChild(sec);
   });
   if(q&&!shown)wrap.appendChild(el('div','idea-empty','No notes with "'+$('ideaSearch').value.trim()+'".'));
+  ideaPack();
   if(focusEl&&!$('ideasView').hidden){ focusEl.focus(); focusEl.setSelectionRange(focusEl.value.length,focusEl.value.length); focusEl.fit(); }
+}
+/* the board packs like notes on a wall: groups stack in columns with no gaps, so a short group never
+   waits under a tall one. Each group keeps its column (kept per device and per column count, since
+   that depends on the window): it's picked once, as the shortest column, and after that only a drag
+   or a different number of columns moves it. So a group growing as you type or open a note only
+   pushes down the groups under it; nothing hops sideways.
+   Grid rows are 1px; each group spans its own height. Re-packs whenever a group or the board resizes. */
+const ideaPackSt={ro:null,raf:0,w:-1,cols:1,phCol:-1,sizes:''};
+function ideaColHints(cols){ // {group id: column}, only if they were saved for this many columns
+  try{ const h=JSON.parse(localStorage.getItem('tasks.ideaCols')); return h&&h.cols===cols&&h.at?h.at:null; }catch(e){ return null; }
+}
+function ideaSaveColHints(at,cols){
+  if(!at){ // from the board as it is (after a drop)
+    at={}; cols=ideaPackSt.cols;
+    Array.from($('ideaGroups').children).forEach(function(n){
+      if(n.classList.contains('idea-group')&&n.style.display!=='none'&&n.dataset.group!=null&&n.style.gridColumn)at[n.dataset.group]=(+n.style.gridColumn)-1;
+    });
+  }
+  try{ localStorage.setItem('tasks.ideaCols',JSON.stringify({cols:cols,at:at})); }catch(e){}
+}
+function ideaPack(){
+  const wrap=$('ideaGroups'), gap=14, st=ideaPackSt;
+  const W=wrap.clientWidth;
+  const groups=Array.from(wrap.children).filter(function(n){ return n.classList.contains('idea-group')&&n.style.display!=='none'; });
+  if(W){ // drawn while the tab is hidden, nothing has a size yet: the resize watcher packs it once it shows
+    const boxW=parseFloat(getComputedStyle(wrap).getPropertyValue('--idea-w'))||280;
+    const phone=window.matchMedia('(max-width:520px)').matches;
+    let cols=phone?1:Math.max(1,Math.floor((W+gap)/(Math.min(boxW,W)+gap)));
+    cols=Math.max(1,Math.min(cols,groups.length));
+    st.cols=cols;
+    wrap.style.gridTemplateColumns=phone?'1fr':'repeat('+cols+',min(var(--idea-w,280px),100%))';
+    let at=ideaColHints(cols), changed=!at; at=at||{};
+    const hs=new Array(cols).fill(0);
+    groups.forEach(function(n){
+      const ph=n.classList.contains('gph'), gid=n.dataset.group;
+      let c=ph?st.phCol:(gid in at?at[gid]:-1);
+      if(!(c>=0&&c<cols)){
+        c=0; for(let i=1;i<cols;i++)if(hs[i]<hs[c])c=i;
+        if(!ph&&gid!=null){ at[gid]=c; changed=true; }
+      }
+      const span=Math.ceil(n.getBoundingClientRect().height)+gap;
+      n.style.gridColumn=String(c+1); n.style.gridRow=(hs[c]+1)+' / span '+span;
+      hs[c]+=span;
+    });
+    if(changed&&!ideaUI.q)ideaSaveColHints(at,cols); // a search hides groups; don't let that reshuffle the saved board
+  }
+  if(typeof ResizeObserver!=='function')return;
+  if(!st.ro)st.ro=new ResizeObserver(function(){
+    const w=wrap.clientWidth, sizes=Array.from(wrap.children).map(function(n){ return n.offsetHeight; }).join();
+    if(w===st.w&&sizes===st.sizes)return; // only the board's own height moved: nothing to re-pack
+    st.w=w; st.sizes=sizes;
+    if(!st.raf)st.raf=requestAnimationFrame(function(){ st.raf=0; ideaPack(); });
+  });
+  st.ro.disconnect(); st.ro.observe(wrap); groups.forEach(function(n){ st.ro.observe(n); });
+  st.w=W; st.sizes=Array.from(wrap.children).map(function(n){ return n.offsetHeight; }).join();
 }
 // a text box that grows with what you type
 function ideaTextBox(text,ph){
@@ -377,18 +433,28 @@ function ideaNote(text){
 (function(){
   const wrap=$('ideaGroups');
   function cardsIn(flow){ return Array.from(flow.querySelectorAll('.idea-card')).filter(function(b){ return !b.classList.contains('ph')&&!b.classList.contains('dragging')&&!b.classList.contains('editing'); }); }
-  // slide every card from where it was to where it lands
+  // slide every card from where it was to where it lands. The groups slide too (a group grows or
+  // shrinks as the gap moves, which pushes the ones under it), and each card moves only within its
+  // group, so a card doesn't drift against its own box.
   function flip(mutate){
+    const gs=Array.from(wrap.querySelectorAll('.idea-group'));
     const all=Array.from(wrap.querySelectorAll('.idea-card:not(.dragging),.idea-addb'));
-    const before=all.map(function(n){ return n.getBoundingClientRect(); });
+    const box=function(n){ return n.getBoundingClientRect(); };
+    const gb=gs.map(box), before=all.map(box), par=all.map(function(n){ return gs.indexOf(n.closest('.idea-group')); });
     mutate();
     if(prefersReduced)return;
-    all.forEach(function(n,i){
-      const r=n.getBoundingClientRect(), dx=before[i].left-r.left, dy=before[i].top-r.top;
+    const ga=gs.map(box), after=all.map(box); // measure everything before any slide starts
+    function slide(n,dx,dy){
       if(!dx&&!dy)return;
       n.style.transition='none'; n.style.transform='translate('+dx+'px,'+dy+'px)';
       n.getBoundingClientRect();
       n.style.transition='transform .18s ease'; n.style.transform='';
+    }
+    gs.forEach(function(g,i){ slide(g,gb[i].left-ga[i].left,gb[i].top-ga[i].top); });
+    all.forEach(function(n,i){
+      const p=par[i];
+      if(p<0){ slide(n,before[i].left-after[i].left,before[i].top-after[i].top); return; }
+      slide(n,(before[i].left-gb[p].left)-(after[i].left-ga[p].left),(before[i].top-gb[p].top)-(after[i].top-ga[p].top));
     });
   }
   function placeAt(d,x,y){
@@ -405,7 +471,7 @@ function ideaNote(text){
       if(y<r.top+r.height/2){ ref=list[i]; break; }
     }
     if(d.ph.parentNode===flow&&(d.ph.nextSibling===ref||(ref===null&&!d.ph.nextSibling)))return;
-    flip(function(){ flow.insertBefore(d.ph,ref); });
+    flip(function(){ flow.insertBefore(d.ph,ref); ideaPack(); });
   }
   function start(d){
     d.active=true; buzz('tick');
@@ -568,32 +634,38 @@ function ideaNote(text){
       n.style.transition='transform .18s ease'; n.style.transform='';
     });
   }
-  // the gap goes before the first group that comes after the pointer in reading order
+  // which column the pointer is over (the nearest one when it's beside the board)
+  function colAt(x){
+    const tracks=getComputedStyle(wrap).gridTemplateColumns.split(' ').map(parseFloat);
+    const wr=wrap.getBoundingClientRect(), total=tracks.reduce(function(m,t){ return m+t; },0)+14*(tracks.length-1);
+    let left=wr.left+(wr.width-total)/2;
+    for(let i=0;i<tracks.length;i++){ if(x<left+tracks[i]+7)return i; left+=tracks[i]+14; }
+    return tracks.length-1;
+  }
+  // the gap goes into the column under the pointer: before the first group there whose middle is
+  // below the pointer, or after that column's last group
   function placeAt(d,x,y){
-    const list=secs().filter(function(n){ return n!==d.ph; });
-    const rects=list.map(function(n){ return n.getBoundingClientRect(); });
-    let ref=null;
-    for(let i=0;i<list.length;i++){
-      const r=rects[i];
-      const row=rects.filter(function(o){ return Math.abs(o.top-r.top)<2; });
-      const rowBottom=row.reduce(function(m,o){ return Math.max(m,o.bottom); },r.bottom);
-      // alone on its row (the phone's single column): its top half means before it
-      const before=row.length>1?x<r.left+r.width/2:y<r.top+r.height/2;
-      if(y<r.top||(y<rowBottom&&before)){ ref=list[i]; break; }
-    }
-    if(d.ph.nextElementSibling===ref||(ref===null&&!d.ph.nextElementSibling))return;
-    flip(function(){ wrap.insertBefore(d.ph,ref); });
+    const c=colAt(x);
+    const col=secs().filter(function(n){ return n!==d.ph&&n.style.display!=='none'&&+n.style.gridColumn===c+1; });
+    const hit=col.find(function(n){ const r=n.getBoundingClientRect(); return y<r.top+r.height/2; });
+    let ref=hit||(col.length?col[col.length-1].nextElementSibling:null);
+    while(ref&&(ref===d.ph||ref.classList.contains('gdrag')))ref=ref.nextElementSibling;
+    let nx=d.ph.nextElementSibling; while(nx&&nx.classList.contains('gdrag'))nx=nx.nextElementSibling;
+    if(ideaPackSt.phCol===c&&nx===ref)return;
+    flip(function(){ ideaPackSt.phCol=c; wrap.insertBefore(d.ph,ref); ideaPack(); });
   }
   function start(d){
     d.active=true; buzz('tick'); document.body.classList.add('gdragging');
     const r=d.el.getBoundingClientRect();
     d.dx=d.sx-r.left; d.dy=d.sy-r.top;
     d.ph=el('section','idea-group gph'); d.ph.style.height=r.height+'px';
+    ideaPackSt.phCol=(+d.el.style.gridColumn||1)-1;
     d.ghost=d.el.cloneNode(true); d.ghost.classList.add('glifted');
     d.ghost.style.width=r.width+'px'; d.ghost.style.left=r.left+'px'; d.ghost.style.top=r.top+'px';
     document.body.appendChild(d.ghost);
     wrap.insertBefore(d.ph,d.el);
     d.el.classList.add('gdrag'); d.el.style.display='none';
+    ideaPack();
   }
   function finish(d,drop){
     if(d.ghost)d.ghost.remove();
@@ -602,6 +674,7 @@ function ideaNote(text){
       const ids=[];
       Array.from(wrap.children).forEach(function(n){ if(n===d.ph)ids.push(d.id); else if(n!==d.el)ids.push(n.dataset.group); });
       ideaSetGroupOrder(ids);
+      d.ph.dataset.group=d.id; ideaSaveColHints();
     }
     ideaUI.gdrag=null;
     drawIdeas();

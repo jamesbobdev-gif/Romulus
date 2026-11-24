@@ -70,6 +70,27 @@ test('the prompt lists what the School list already has, open and upcoming only'
   assert.match(sweep.listedText([], NOW), /nothing yet/);
 });
 
+test('work turned in is marked done only on what the page shows', () => {
+  const done = [];
+  assert.match(sweep.markDone(done, { course: 'phys-1010', title: 'Quiz: Properties of Stars', due: '2026-11-17', evidence: 'Attempts 1 / 1' }), /^Marked done: PHYS 1010/);
+  assert.match(sweep.markDone(done, { course: 'PHYS 1010', title: 'ELO Assignment', evidence: 'Submitted' }), /^Marked done/);
+  assert.match(sweep.markDone(done, { course: 'PHYS 1010', title: 'Midterm', evidence: 'Attempts 2 / 2' }), /^Marked done/);
+  assert.deepStrictEqual(done[0], { course: 'PHYS 1010', title: 'Quiz: Properties of Stars', due: '2026-11-17' });
+  assert.strictEqual(done[1].due, null);
+  // the same one again is not a second entry
+  assert.match(sweep.markDone(done, { course: 'PHYS 1010', title: 'quiz: properties of stars', evidence: '1 / 1' }), /Already/);
+  assert.strictEqual(done.length, 3);
+});
+
+test('not turned in, or no proof, is never marked done', () => {
+  const done = [];
+  for (const evidence of ['Not Submitted', 'Attempts 0 / 1', '1 / 2', 'past due', '', 'Not completed'])
+    assert.match(sweep.markDone(done, { course: 'PHYS 1010', title: 'Homework: Star Life and Death', evidence }), /Not marked/, evidence);
+  assert.match(sweep.markDone(done, { course: 'Astronomy', title: 'Test 2', evidence: 'Submitted' }), /course code/);
+  assert.strictEqual(done.length, 0);
+  assert.strictEqual(sweep.DONE_TOOL.function.name, 'mark_class_done');
+});
+
 test('the rules stay read only and have no emoji', () => {
   assert.match(sweep.RULES, /never submit/i);
   assert.doesNotMatch(sweep.RULES, /\p{Extended_Pictographic}/u);

@@ -242,7 +242,12 @@ function syncHeaders(p){ return {'apikey':p.key,'Authorization':'Bearer '+p.key,
    sync_put, sync_set: supabase/migrations/20261021_sync_rpc_lockdown.sql). The table itself is closed to
    the anon key, so the key in the app can't list or touch anything but what it knows the key of. */
 async function syncRpc(p,fn,body){
-  const res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)});
+  if(syncKeyLocked(p))throw new Error(SYNC_LOCKED);
+  let res;
+  // the request never got out (no connection, or a phone just woken before its network is back): the browser
+  // only says "Failed to fetch", so say what it means. The next sync tries again.
+  try{ res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)}); }
+  catch(e){ throw new Error(SYNC_OFFLINE); }
   if(!res.ok){
     // the Romulus server limits downloads (supabase/migrations/20261111_sync_read_limits.sql): say so, it clears by itself
     let msg=''; try{ msg=String((await res.json()).message||''); }catch(e){}
@@ -251,6 +256,11 @@ async function syncRpc(p,fn,body){
   }
   return res.json();
 }
+/* main/store.js keeps keys sealed with the OS keyring. When the keyring can't open them (on Linux: it stayed
+   locked after a restart), the sealed text 'enc:v1:...' comes through in place of the key: never send that. */
+function syncKeyLocked(p){ return !!p&&(/^enc:/.test(String(p.key||''))||/^enc:/.test(String(p.syncKey||''))); }
+const SYNC_LOCKED='this computer couldn’t unlock its saved sync key. The system keyring is probably locked: unlock it (or sign out and back in with your password), then restart Romulus.';
+const SYNC_OFFLINE='couldn’t reach the sync server just now (no connection?). Everything is safe on this device, and it tries again on its own.';
 const SYNC_READ_LIMIT='sync paused for a while: this account downloaded a lot in a short time. Your lists are safe on this device, and it picks up again on its own.';
 /* End-to-end encryption (sync-crypto.js). A profile with v2:true is found under its lookup id and its rows
    go up sealed; every list made from the personal key follows it (normalizeSyncCfg). A profile built for one
@@ -397,7 +407,8 @@ function stableJson(v){
 function canonTasks(tasks){
   return stableJson(tasks.slice().sort(function(a,b){ return a.id<b.id?-1:1; }));
 }
-function stripWs(t){ const c=Object.assign({},t); delete c.ws; return c; }
+// also without the old conversation of a long-finished Agent task, which stays on this device (history-trim.js)
+function stripWs(t){ const c=Object.assign({},histUpForm(t)); delete c.ws; return c; }
 // Doc pushed to a channel: only that workspace's tasks, without the ws field —
 // remote docs stay compatible with devices that know nothing about workspaces.
 // The family list (shared with other people) carries only its own deletions and the devices on it (family-list.js).
@@ -424,6 +435,7 @@ function mergeRemoteWs(remoteDoc,ws){
     if(!prev||(t.updatedAt||0)>(prev.updatedAt||0)){
       // a lane is only ever changed (switching), never removed: a newer copy that hasn't heard of it yet keeps it
       if(prev&&prev.lane&&!t.lane){ t=Object.assign({},t,{lane:prev.lane}); }
+      if(prev)t=histCarry(t,prev); // the online copy comes without the old conversation: this device's stays (history-trim.js)
       byId[t.id]=t;
     } else if(t.lane&&!prev.lane){ byId[t.id]=Object.assign({},prev,{lane:t.lane}); }
   });
@@ -449,7 +461,9 @@ function mergeRemoteWs(remoteDoc,ws){
   }
   const changedLocal=canonTasks(merged)!==canonTasks(localWs)||Object.keys(movedOut).length>0;
   const upTombs=ws==='family'&&typeof familyTombs==='function'?familyTombs(mergedTombs,remoteDoc):mergedTombs; // what wsDoc sends
-  const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw)||upTombs.length!==rTombs.length;
+  // the online copy is read the way this device would send it, so one that still carries an old conversation
+  // (sent by an older build) is left as it is rather than fought over
+  const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw.map(histUpForm))||upTombs.length!==rTombs.length;
   state.tasks=others.concat(merged);
   state.tombstones=mergedTombs;
   if(changedLocal&&typeof billAlerts==='function')billAlerts(); // a bill to-do came from the computer (bill-reminders.js)
@@ -476,6 +490,8 @@ async function syncOnce(){
   }
   let firstErr=null, anyLocal=false;
   const list=profileList();
+  // long-finished Agent tasks stop sending their old conversation (history-trim.js); saved here below like any change
+  if(list.indexOf('agent')!==-1&&histArchive(state.tasks,Date.now()))anyLocal=true;
   for(let i=0;i<list.length;i++){
     const ws=list[i], p=syncState.cfg[ws];
     try{
@@ -560,6 +576,8 @@ async function syncOnce(){
   // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
   if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
   // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
+  // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
+  if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
   }
@@ -646,7 +664,7 @@ function liveJoin(s,topic){ // one Phoenix channel per list, on the shared socke
     payload:{config:{broadcast:{self:false,ack:false},presence:{key:''},postgres_changes:[],private:false}}})); }catch(e){}
 }
 function liveOpen(id,t,tries){
-  if(typeof WebSocket!=='function')return;
+  if(typeof WebSocket!=='function'||/^enc:/.test(String(t.key||'')))return; // a key the keyring couldn't open (syncKeyLocked)
   const s={ws:null,wanted:t.topics.slice(),joined:{},refs:{},ref:0,hb:null,retry:null,lastMsg:Date.now(),tries:tries||0};
   live.sockets[id]=s;
   try{ s.ws=new WebSocket(t.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(t.key)+'&vsn=1.0.0'); }

@@ -1,28 +1,28 @@
 /* Shared by the topic pages (free-ai-agent/, ai-to-do-list/); index.html keeps its own inline copy. */
 /* Layout: one narrow column (72ch) like the app window itself, with a wider hero for the screenshots.
-   The tokens are the app's own (renderer/styles.css light theme; the dark theme from the README). */
+   The tokens are the app's own (renderer/styles.css, light and dark: ink on parchment, one Roman purple). */
 :root{
-  --bg:#FBFBFA;--surface:#FFFFFF;--ink:#161616;--muted:#71716C;--faint:#9A9A94;
-  --hairline:#E9E9E5;--chip:#F1F1EE;--accent:#2742C8;--accent-dim:#1F36AC;--accent-ink:#FFFFFF;
-  --accent-soft:#EEF1FC;--good:#1F7A3E;--good-bg:#E8F5EC;--late:#C03B2B;--late-bg:#FAEBE8;
-  --shadow:0 1px 2px rgba(22,22,22,.06),0 12px 32px -16px rgba(22,22,22,.18);
+  --bg:#F5F1E8;--surface:#FCFAF5;--ink:#1B1814;--muted:#6E665A;--faint:#9C9382;
+  --hairline:#E3DBCB;--chip:#ECE5D7;--accent:#5C2D4E;--accent-dim:#4A2340;--accent-ink:#FFFFFF;
+  --accent-soft:#EEE3E8;--good:#1F7A3E;--good-bg:#E6EFE0;--late:#B8382A;--late-bg:#F7E6DF;
+  --shadow:0 1px 2px rgba(27,24,20,.06),0 12px 32px -16px rgba(27,24,20,.18);
   --display:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'Spline Sans Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
-    --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--accent-dim:#A7B6FF;--accent-ink:#0F1330;
-    --accent-soft:#232842;--good:#7CD69A;--good-bg:#1D2E24;--late:#F09383;--late-bg:#3A2420;
+    --bg:#151311;--surface:#1D1A17;--ink:#ECE5D6;--muted:#A69D8C;--faint:#7A7264;
+    --hairline:#312C26;--chip:#28231F;--accent:#9C6B8A;--accent-dim:#8A5C79;--accent-ink:#FFFFFF;
+    --accent-soft:#2F242B;--good:#7CD69A;--good-bg:#1D2E24;--late:#FF8B7B;--late-bg:#3A201C;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#16161D;--surface:#1F1F28;--ink:#E6E6EA;--muted:#9C9CA8;--faint:#6E6E7A;
-  --hairline:#33333E;--chip:#2A2A35;--accent:#8FA3FF;--accent-dim:#A7B6FF;--accent-ink:#0F1330;
-  --accent-soft:#232842;--good:#7CD69A;--good-bg:#1D2E24;--late:#F09383;--late-bg:#3A2420;
+  --bg:#151311;--surface:#1D1A17;--ink:#ECE5D6;--muted:#A69D8C;--faint:#7A7264;
+  --hairline:#312C26;--chip:#28231F;--accent:#9C6B8A;--accent-dim:#8A5C79;--accent-ink:#FFFFFF;
+  --accent-soft:#2F242B;--good:#7CD69A;--good-bg:#1D2E24;--late:#FF8B7B;--late-bg:#3A201C;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
   color-scheme:dark;
 }
@@ -51,8 +51,8 @@ h3{font-size:17px;letter-spacing:-.01em}
 .sub{color:var(--muted);max-width:60ch;margin-bottom:28px}
 
 /* top bar */
-.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;max-width:1040px;margin:0 auto}
-.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:700;font-size:17px;letter-spacing:-.01em}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;max-width:1040px;margin:0 auto;border-bottom:3px double var(--faint)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-family:'Cinzel',Georgia,serif;font-weight:600;font-size:17px;letter-spacing:.14em;text-transform:uppercase}
 .brand img{width:28px;height:28px;border-radius:7px}
 .brand:hover{text-decoration:none}
 .nav{display:flex;gap:4px 22px;flex-wrap:wrap;justify-content:flex-end}

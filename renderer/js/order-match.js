@@ -9,7 +9,7 @@
    Also loaded by test/order-match.test.js, so it uses no page globals. */
 'use strict';
 
-const ORDER_STORES=[['amazon',/amzn|amazon/i],['walmart',/wal-?mart|\bwm\s?super/i],['instacart',/instacart/i],['target',/\btarget\b/i],['costco',/costco/i],['kroger',/kroger/i],['aldi',/\baldi\b/i]];
+const ORDER_STORES=[['amazon',/amzn|amazon/i],['walmart',/wal-?mart|\bwm\s?super/i],['instacart',/instacart/i],['ubereats',/uber\s*\*?\s*eats/i],['doordash',/door\s?dash/i],['shipt',/\bshipt\b/i],['gopuff',/go\s?-?puff/i],['target',/\btarget\b/i],['costco',/costco/i],['kroger',/kroger/i],['aldi',/\baldi\b/i]];
 const ORDER_DAY=86400000;
 
 function orderMoney(v){
@@ -108,7 +108,7 @@ function matchOrders(txs,orders,now){
    never the amount, the day or the bank. One look per store at a time and at most one every 2 days; a charge
    from before the last look is already covered (tasks: t.orderLook, when it was made).
    → ['instacart', ...] */
-const LOOK_STORES=['instacart','walmart','target','costco','kroger','aldi'];
+const LOOK_STORES=['instacart','ubereats','doordash','shipt','gopuff','walmart','target','costco','kroger','aldi'];
 const LOOK_DAYS=4, LOOK_GAP_DAYS=2;
 /* the looks so far, per store: when the last one started (t.lookAt when a look task was run again,
    grocery-list.js runRegularLooks, else when it was made) and whether one is still going. A finished Agent
@@ -139,12 +139,13 @@ function storesToCheck(txs,bought,tasks,now){
   });
   return out;
 }
-/* Instacart orders he places in its own app don't always leave a bank charge the Finance tab can see (no bank
-   linked, or paid with EBT), so once he uses Instacart the Agent also looks at his Instacart orders every 3
-   days, whatever the bank shows, and their food goes into the pantry. "Uses Instacart": an order from it on a
-   task, an earlier look at it, or an Agent task that talks about it. None while a look is going.
-   → ['instacart'] or [] */
-const REGULAR_LOOKS=[['instacart',/instacart/i]], REGULAR_LOOK_DAYS=3;
+/* Orders he places in a delivery app's own app (Instacart, Uber Eats, DoorDash, Shipt, Gopuff) don't always
+   leave a bank charge the Finance tab can see (no bank linked, or paid with EBT), so once he uses one the Agent
+   also looks at his orders there every 3 days, whatever the bank shows, and their groceries go into the pantry.
+   "Uses it": an order from it on a task, an earlier look at it, or an Agent task that talks about it. None
+   while a look is going.
+   → ['instacart', 'ubereats', ...], or none */
+const REGULAR_LOOKS=ORDER_STORES.filter(function(s){ return ['instacart','ubereats','doordash','shipt','gopuff'].indexOf(s[0])!==-1; }), REGULAR_LOOK_DAYS=3;
 function regularLooks(tasks,now){
   now=now||Date.now();
   const looks=orderLooks(tasks), out=[];

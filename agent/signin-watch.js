@@ -20,7 +20,7 @@ const LOGIN_HOSTS = /^(login\.microsoftonline\.com|login\.microsoft\.com|login\.
 const LOGIN_PATH = /\/(login|signin|sign-in|logon|sso|saml2?|auth)(\/|\?|$|\.)/i;
 const LOGIN_TITLE = /^(sign in|log ?in|pick an account)\b|sign in to your account/i;
 
-const hostOf = (url) => { try { return new URL(String(url)).hostname.toLowerCase(); } catch (e) { return ''; } };
+const { hostOf } = require('./util');
 const siteFor = (host) => SITES.find((s) => s.match.test(host)) || null;
 function isLoginPage(url, title) {
   const host = hostOf(url);

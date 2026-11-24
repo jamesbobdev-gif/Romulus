@@ -27,7 +27,7 @@ function nextPacificMidnight(now) {
     hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(now)).map((x) => [x.type, Number(x.value)]));
   return now + (86400 - (p.hour * 3600 + p.minute * 60 + p.second)) * 1000;
 }
-const month = (now) => { const d = new Date(now || Date.now()); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const month = (now) => require('./util').monthKey(now || Date.now());
 
 /* Claude Code's rate_limit_info: {status, resetsAt, unifiedWindows: {five_hour: {utilization, resetsAt}, seven_day: {...}}} */
 function noteClaude(info, now) {
@@ -40,14 +40,15 @@ function noteClaude(info, now) {
   save();
 }
 // a stream-json run's output → the final answer text, noting the usage it reported on the way
-function readClaudeStream(out) {
+// note: false for another Claude account's run (agent/ai-accounts.js): the bars are the main account's
+function readClaudeStream(out, { note = true } = {}) {
   let text = '', rate = null;
   for (const line of String(out || '').split('\n')) {
     let j; try { j = JSON.parse(line); } catch (e) { continue; }
     if (j.type === 'rate_limit_event') rate = j.rate_limit_info;
     else if (j.type === 'result' || (j.result != null && !j.type)) text = String(j.result || '');
   }
-  if (rate) noteClaude(rate);
+  if (rate && note) noteClaude(rate);
   return text;
 }
 

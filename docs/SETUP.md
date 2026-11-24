@@ -71,7 +71,9 @@ The Agent orders by itself at Amazon, Walmart, Target, Best Buy and Shopify stor
 
 ## 3. Sync with your phone
 
-Your lists can be shared between your computer and your phone through a free [Supabase](https://supabase.com) project of your own. Your data lives in your project, under a sync key only your devices know. About ten minutes, once.
+A new install syncs from its first start: your lists go to the Romulus server end to end encrypted, under a random sync key only your devices know, with 50 MB free (a paid plan adds room for photos and files and 30 days of history). To add the phone, install the Android app (see *Connect the phone* below), then on the computer open **⚙ Settings → Device sync → Add a device**: it shows a short code for ten minutes, and typing that code on the phone fills in its sync form. Nothing else to copy.
+
+The rest of this section is for keeping your lists in a free [Supabase](https://supabase.com) project of your own instead, so the data lives in your account; **Settings → Device sync** is where you switch. About ten minutes, once.
 
 ### Make the project
 
@@ -147,6 +149,8 @@ The sync key is a bearer secret: whoever has it can read and change the lists it
 Keys are never synced between devices and never leave the app except to the service they belong to. The one thing you do share by hand is the sync key, which is meant to be the same on every device.
 
 A Link wallet's sign-in lives in `link-wallet\auth.json` in the same folder, kept by Link's own tool, which rotates it. It can only ask Link for a one-time card that you then approve in the Link app, so on its own it buys nothing.
+
+Your lists themselves can be saved to one file from **⚙ Settings → Backup file**: to-dos, Agent, School and Work tasks, notes, hours, health totals and the pantry (never Finance, keys or connected accounts). Restoring merges, the way sync does, so a restore never loses newer work. The file is not encrypted; keep it somewhere private.
 
 ## 6. If something doesn't work
 

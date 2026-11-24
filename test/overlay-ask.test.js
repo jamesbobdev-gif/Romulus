@@ -62,13 +62,24 @@ test('a failing AI hands over to the next in his order', async () => {
 test('every AI failing says why, per AI', async () => {
   const f = fakeFetch({ 'generativelanguage.googleapis.com': { status: 403, json: { error: { message: 'API key not valid' } } } });
   const r = await ask(cfg({ geminiKey: 'g' }), { question: 'x', image: null, lane: 'cloud' }, { fetch: f, order: ['gemini'] });
-  assert.match(r.why, /Gemini: API key not valid/);
+  assert.match(r.why, /Gemini: key not accepted/);
+  assert.match(r.detail, /API key not valid/);
+});
+
+test('provider errors become a few plain words: no team ids or links', () => {
+  const { plainError } = require('../agent/overlay-ask');
+  assert.strictEqual(plainError('You exceeded your current quota, please check your plan and billing details. See https://aistudio.google.com/docs'), 'out of credits or over its limit');
+  assert.strictEqual(plainError('Insufficient credits. This account never purchased credits.'), 'out of credits or over its limit');
+  assert.strictEqual(plainError('Your team ff493faa-0000 has either used all available credits or reached its monthly spending limit.'), 'out of credits or over its limit');
+  assert.strictEqual(plainError('Access denied. Please check your network settings.'), 'refused the connection');
+  assert.strictEqual(plainError('HTTP 410'), 'that model is no longer offered');
+  assert.strictEqual(plainError('Something odd happened. More at https://x.example/y'), 'Something odd happened.');
 });
 
 test('every AI failing also names the ones not asked: signed out, or text-only with a picture', async () => {
   const f = fakeFetch({ 'generativelanguage.googleapis.com': { status: 503, json: { error: { message: 'high demand' } } } });
   const r = await ask(cfg({ geminiKey: 'g', groqKey: 'q' }), { question: 'x', image: IMG, lane: 'cloud' }, { fetch: f, order: ['gemini', 'groq'], notReady: ['claude'] });
-  assert.match(r.why, /Gemini: high demand/);
+  assert.match(r.why, /Gemini: busy right now/);
   assert.match(r.why, /Claude: Claude Code isn’t signed in/);
   assert.match(r.why, /Groq: can’t read a screenshot/);
 });

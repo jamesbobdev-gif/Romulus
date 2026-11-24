@@ -27,8 +27,9 @@ const usage = require('./usage-limit');
 const { parseUsageLimit, holdForUsage } = usage;
 const siteNotes = require('./site-notes');
 const routing = require('./routing');
-const { laneOf, routeTask, privateMatch } = routing;
-const { cloudOrder, couldntDo } = require('./ai-connections');
+const { laneOf, routeTask, routeInfo, privateMatch } = routing;
+const { cloudOrder, cloudRoomNow, couldntDo, acctCfg, nameOf } = require('./ai-connections');
+const accounts = require('./ai-accounts');
 const { AGENT_GRACE_MS } = require('./runner');
 const { calendarForAgent, wantsCalendar, loadSkills, taskLinks, howtos, howtosFor, learnHowto, siteNotesFor, siteNoteDirs, skillText, cartBrief,
   agentRow, prefLine, claimAgentTasks, howtoFile, cleanDraft } = require('./task-context');
@@ -101,8 +102,13 @@ function workerBeat() {
 }
 // the worker's Downloads go on sync (agent/worker-files.js): on every heartbeat and after each browser task
 const syncFiles = () => workerFiles.sync(require('./supabase').channel(readConfig()), { log: agentLog }).catch((e) => agentLog('files: sync failed: ' + (e && e.message || e)));
+/* a legion a cloud AI may lead when there's no local model to (runLegionTask with no c): not private, not his
+   money, and some cloud AI connected */
+const cloudLeadable = (t) => legion.isLegion(t) && !privateMatch(t) && !isMoneyTask(t) && cloudOrder().length > 0;
 function scheduleLocalRun(raw) {
-  if (!localCfg() || localBusy || !routing.decided(raw) || !queuedLocalTasks(raw).length) return;
+  if (localBusy || !routing.decided(raw)) return;
+  const queued = queuedLocalTasks(raw);
+  if (!(localCfg() ? queued.length : queued.some(cloudLeadable))) return;
   clearTimeout(localTimer);
   localTimer = setTimeout(() => { localTimer = null; startLocalRun().catch((e) => { localBusy = false; agentLog('local run crashed: ' + (e && e.stack || e)); }); }, AGENT_GRACE_MS);
 }
@@ -122,11 +128,15 @@ let localDownAt = 0;
 /* a computer the mini PC doesn't answer leaves its tasks to one it does: it claims a task only after it has
    seen it queued for LOCAL_HOLD_MS with no taker, then passes it on as before (the mini PC may really be off) */
 const LOCAL_HOLD_MS = 2 * 60 * 1000;
+/* the local model's own computer (agent/worker.js) has said it's there before: a quiet spell is most likely it
+   restarting, and the address here may be one it no longer has (it was a Tailscale one). Its tasks wait for it
+   that long before going on, and a private one or a legion never goes on: it waits for the worker */
+const WORKER_HOLD_MS = worker.GRACE_MS;
 const heldSince = new Map(); // task id → when this computer first held it back
-function claimableWhileDown(queued, held, now = Date.now()) {
+function claimableWhileDown(queued, held, now = Date.now(), { holdMs = LOCAL_HOLD_MS, waitsForWorker = () => false } = {}) {
   const ids = new Set(queued.map((t) => t.id));
   for (const id of held.keys()) if (!ids.has(id)) held.delete(id);
-  return queued.filter((t) => { if (!held.has(t.id)) held.set(t.id, now); return now - held.get(t.id) >= LOCAL_HOLD_MS; });
+  return queued.filter((t) => { if (!held.has(t.id)) held.set(t.id, now); return !waitsForWorker(t) && now - held.get(t.id) >= holdMs; });
 }
 // an answer saying something went out, and the buttons that send something
 const SUBMIT_CLAIM = /\b(was|were|has been|have been|is now|got|I)\s+(already\s+|successfully\s+)?(submitted|posted|sent|placed|published|turned in)\b|\bsuccessfully (submitted|posted|sent|placed)\b/i;
@@ -179,8 +189,13 @@ async function localStatus({ direct = false } = {}) {
   // another computer: the local model's own one says it's there (agent/worker.js), so it's answering, whether
   // or not this one could reach it directly
   const w = direct || worker.isWorker(readConfig()) ? null : await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
-  if (w) return { configured: true, online: true, via: 'worker', name: w.name, model: w.model || (c && c.model) || '', installed: true, loaded: true, busy: w.busy };
-  if (!c) return { configured: false };
+  if (w) return { configured: true, online: true, via: 'worker', name: w.name, model: w.model || (c && c.model) || '', installed: true, loaded: true, busy: w.busy, doing: w.doing };
+  // it went quiet a few minutes ago: most likely restarting, so it still counts as answering (its tasks wait for it)
+  const back = () => {
+    const r = direct || worker.isWorker(readConfig()) ? null : worker.returningWorker(worker.lastDoc());
+    return r && { configured: true, online: true, via: 'worker', quiet: true, at: r.at, name: r.name, model: r.model || (c && c.model) || '', installed: true, loaded: true, busy: false };
+  };
+  if (!c) return back() || { configured: false };
   try {
     // with every core busy on a task its replies can take a few seconds: 3 s showed "isn't reachable"
     // in the middle of a run that was going fine
@@ -188,7 +203,7 @@ async function localStatus({ direct = false } = {}) {
     return { configured: true, online: true, model: c.model, installed: (tags.models || []).some((m) => m.name === c.model), loaded: (ps.models || []).some((m) => m.name === c.model) };
   } catch (e) {
     if (Date.now() - localHeardAt < 3 * 60 * 1000) return { configured: true, online: true, model: c.model, installed: true, loaded: true };
-    return { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
+    return back() || { configured: true, online: false, model: c.model, address: c.url.replace(/^https?:\/\//, '').replace(/:\d+$/, '') };
   }
 }
 // his latest reply is a yes to submitting what the mini PC last asked about
@@ -302,13 +317,14 @@ function helpersFor(t) {
   return !privateMatch(t);
 }
 // one helper answer from one cloud AI → {text} or {why}. Search and page reading only: no browser, files or mail
-function runHelperOn(id, prompt, ms = 4 * 60 * 1000) { // also the legion's scouts and writers (agent/legion.js)
-  const cfg = readConfig();
+function runHelperOn(which, prompt, ms = 4 * 60 * 1000) { // also the legion's scouts and writers (agent/legion.js)
+  // an extra account (claude~2, agent/ai-accounts.js) runs as its AI with its own key or sign-in
+  const id = accounts.baseOf(which), extra = accounts.isAccount(which), cfg = extra ? acctCfg(which) : readConfig();
   if (id === 'gemini') return providers.runGeminiApi(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openai') return providers.runOpenAI(cfg, { prompt, timeoutMs: ms, note: '' });
   if (id === 'openrouter') return providers.runOpenRouter(cfg, { prompt, timeoutMs: ms, note: '' });
   if (providers.COMPAT[id]) return providers.runCompat(id, cfg, { prompt, timeoutMs: ms, note: '' });
-  if (Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
+  if (extra ? accounts.heldUntil(which) : Date.now() < usage.blockedUntil()) return Promise.resolve({ why: 'out of usage' });
   const exe = claudeExe(cfg);
   const dir = path.join(ctx.userData(), 'helper-run'); // empty: nothing of his to read
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
@@ -327,7 +343,7 @@ function runHelperOn(id, prompt, ms = 4 * 60 * 1000) { // also the legion's scou
       let j = null; try { j = JSON.parse(out); } catch (e) {}
       if (j && !j.is_error && typeof j.result === 'string' && j.result.trim()) return resolve({ text: j.result });
       const resetAt = parseUsageLimit(err + '\n' + out);
-      if (resetAt) holdForUsage([], resetAt); // The Agent lane waits too, instead of hitting the same wall
+      if (resetAt) { if (extra) accounts.hold(which, resetAt); else holdForUsage([], resetAt); } // The Agent lane waits too, instead of hitting the same wall
       resolve({ why: resetAt ? 'out of usage' : 'no answer' });
     });
   });
@@ -360,9 +376,33 @@ function cleanStuck(s) {
   const reason = String(s.reason || '').trim().slice(0, 300), fix = String(s.fix || '').trim().slice(0, 400);
   return reason || fix ? { reason: reason || 'It couldn’t carry on.', fix: fix || 'Reply “try again”, or switch it to Claude.' } : null;
 }
+// no local model set up here: its legions are led by a cloud AI; anything else on the local lane waits as before
+async function startCloudLegions() {
+  const mine = queuedLocalTasks().filter(cloudLeadable);
+  if (!mine.length) return;
+  localBusy = true;
+  const awake = ctx.powerSaveBlocker.start('prevent-app-suspension');
+  try {
+    const tasks = await claimAgentTasks(mine, 'local');
+    if (!tasks.length) return;
+    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local' });
+    for (const t of tasks) await runLegionTask(null, t).catch((e) => cloudLegionFailed(t, e));
+  } finally {
+    localBusy = false; doing(null);
+    ctx.powerSaveBlocker.stop(awake);
+    scheduleLocalRun();
+  }
+}
+function cloudLegionFailed(t, e) {
+  const msg = String(e && e.message || e);
+  agentLog('legion (cloud lead) failed: ' + msg);
+  sendToRenderer('agent:results', [{ id: t.id, lane: 'local', status: 'needs-you', options: undefined, pref: null,
+    note: 'The legion couldn’t finish: ' + msg.slice(0, 200) + '. Reply to try again.' }]);
+}
 async function startLocalRun() {
   const c = localCfg();
-  if (!c || localBusy || !routing.decided()) return;
+  if (localBusy || !routing.decided()) return;
+  if (!c) return startCloudLegions();
   // the worker's heartbeat as of now, not as of the last time the status line asked: with the window in the
   // tray that copy goes stale, and this computer took Lupa's tasks while Lupa was answering
   if (!worker.isWorker(readConfig())) await worker.present(require('./supabase').channel(readConfig())).catch(() => null);
@@ -382,14 +422,18 @@ async function startLocalRun() {
     let mine = queued;
     if (down) {
       const before = heldSince.size;
-      mine = claimableWhileDown(queued, heldSince);
-      if (heldSince.size > before) agentLog('local: the mini PC isn’t reachable from here: leaving ' + (heldSince.size - before) + ' task(s) for a computer that can reach it');
+      // the local model's own computer has been heard from: its tasks wait for it to come back
+      const known = !worker.isWorker(readConfig()) && worker.workerState(worker.lastDoc()) !== 'none';
+      mine = claimableWhileDown(queued, heldSince, Date.now(), known ? { holdMs: WORKER_HOLD_MS, waitsForWorker: (t) => !!privateMatch(t) || (legion.isLegion(t) && !cloudLeadable(t)) } : undefined);
+      if (heldSince.size > before) agentLog('local: the mini PC isn’t reachable from here: leaving ' + (heldSince.size - before) + ' task(s) for '
+        + (known ? 'it to come back (up to ' + Math.round(WORKER_HOLD_MS / 60000) + ' min; private ones wait for it)' : 'a computer that can reach it'));
       if (!mine.length) return;
     } else heldSince.clear();
     const tasks = await claimAgentTasks(mine, 'local');
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     tasks.forEach((t) => heldSince.delete(t.id));
-    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])) });
+    sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
+    types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'local')])) });
     // nobody took them in time: they all go to the cloud AIs at once
     if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
     for (const t of tasks) {
@@ -401,6 +445,8 @@ async function startLocalRun() {
           note: 'This one is about your money, and your Finance tab lives on your computer, not here. Open the app on your computer (with Finance set up there), then reply “try again”.' }]);
         continue;
       }
+      // a legion whose local model stayed out of reach past the hold: a cloud AI leads it instead
+      if (down && cloudLeadable(t)) { await runLegionTask(null, t).catch((e) => cloudLegionFailed(t, e)); continue; }
       if (down) { await localFailed(c, t, 'fetch failed (not reachable)'); continue; }
       await (legion.isLegion(t) ? runLegionTask(c, t) : runLocalTask(c, t)).then(() => { localDownAt = 0; }).catch(async (e) => {
         const msg = String(e && e.message || e);
@@ -487,15 +533,35 @@ function lupaThink(c, prompt, { schema, ms } = {}) {
     options: { temperature: 0.2, num_predict: 4000 } }, (m) => { if (m.content) out += m.content; }, ms)
     .then(() => { if (!out.trim()) throw new Error('the model gave no answer'); return out; });
 }
+/* c: the local model; null when there isn't one to lead (not set up, or out of reach): then the cloud AI with
+   the most usage left leads (legion.cloudLead) and the rest of the pool takes the pieces. If the lead fails
+   mid-run the next AI with room takes over, so it may see the request too. */
 async function runLegionTask(c, t) {
   doing({ what: 'legion research', id: t.id, title: t.title });
-  const id = t.id, order = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
-  const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim();
+  const pool = cloudOrder().filter((x) => x !== 'claude' || Date.now() >= usage.blockedUntil());
+  const names = providers.NAMES, topic = legion.topicOf(t), reply = String(t.reply || '').trim(), id = t.id;
+  let order = pool, think, leadName = legionLead();
+  if (c) think = (prompt, o) => lupaThink(c, prompt, o);
+  else {
+    const pick = legion.cloudLead(pool, (cloudRoomNow() || {}).best);
+    if (!pick) throw new Error('no local model to lead it, and no cloud AI is connected');
+    order = pick.scouts; leadName = names[pick.lead] || pick.lead;
+    const leads = [pick.lead].concat(pool.filter((x) => x !== pick.lead));
+    think = async (prompt, o = {}) => {
+      let why = '';
+      for (const l of leads) {
+        const r = await runHelperOn(l, prompt, o.ms).catch((e) => ({ why: e.message }));
+        if (r && typeof r.text === 'string' && r.text.trim()) return r.text;
+        why = (names[l] || l) + ': ' + ((r && r.why) || 'no answer');
+      }
+      throw new Error(why || 'no cloud AI answered');
+    };
+    agentLog('legion: no local model, ' + leadName + ' leads');
+  }
   let before = ''; try { before = fs.readFileSync(legionFile(id), 'utf8'); } catch (e) {}
   let again = !before || !reply || /(^|\s)#(legion|research)\b|\b(dig deeper|research (it )?(again|more)|send the legion)\b/i.test(reply);
   let live = '';
   const show = (s) => { live = (live + s).slice(-6000); sendToRenderer('agent:live', { id, text: live }); };
-  const think = (prompt, o) => lupaThink(c, prompt, o);
   // the turns since the report (his "I can't drive", Lupa's answers), without the report itself or this reply
   const hist = (Array.isArray(t.history) ? t.history : []).filter((h) => h.who !== 'app' && String(h.text || '').trim());
   const since = hist.slice(Math.max(0, hist.map((h) => String(h.text || '').slice(0, 200)).lastIndexOf(before.slice(0, 200)) + 1)).slice(-8);
@@ -503,11 +569,12 @@ async function runLegionTask(c, t) {
   const earlier = since.map((h) => (h.who === 'you' ? 'He said: ' : 'You answered: ') + String(h.text).trim().slice(0, 800)).join('\n\n');
   let note, options = [], lookup = ''; // lookup: a follow-up question the legion goes out on (the report doesn't have it)
   if (!again) {
-    const lead = legionLead();
-    show('' + lead.charAt(0).toUpperCase() + lead.slice(1) + ' is answering from the report…\n');
+    show('' + leadName.charAt(0).toUpperCase() + leadName.slice(1) + ' is answering from the report…\n');
     const f = await legion.followUp(topic, before, reply, { think, earlier });
-    if (f.task) return runLegionStep(c, t, before, f.answer);
-    if (f.research) { show('' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
+    if (f.task && c) return runLegionStep(c, t, before, f.answer);
+    // something to do, with no local model to do it on his machine: the option's Book this button sends it to the Agent
+    if (f.task) note = (f.answer ? f.answer + '\n\n' : '') + 'Your local model isn’t available to do this itself. Tap Book this on the option you want, or add it as its own Agent task.';
+    else if (f.research) { show('' + (f.answer || 'The report doesn’t have that') + ': sending the legion out on it\n'); again = true; lookup = f.lookup || reply; }
     else note = f.answer;
   }
   if (again) {
@@ -516,14 +583,14 @@ async function runLegionTask(c, t) {
     const extra = [lookup ? 'This is one part of his bigger request: ' + topic : '', t.notes, ...told.filter((x) => x !== reply), reply].filter(Boolean).join('\n').slice(-1500);
     agentLog('legion: ' + (lookup || topic).slice(0, 80) + (lookup ? ' (follow-up)' : '') + ' (' + order.join(', ') + ')');
     const started = Date.now();
-    const r = await legion.research(lookup || topic, { order, run: runHelperOn, think, names, lead: legionLead(), extra, whole: lookup ? topic : undefined,
+    const r = await legion.research(lookup || topic, { order, run: runHelperOn, think, names, lead: leadName, extra, whole: lookup ? topic : undefined,
       privateWords: routing.getRouting().private, locked: await agentRow(':locked'), onStep: show });
     if (r.error) {
       // Lupa itself not answering is a failure like any other local task's (it waits for him: never handed to the cloud)
-      if (UNREACHABLE.test(r.error) || /timed? ?out/i.test(r.error)) throw new Error(r.error);
+      if (c && (UNREACHABLE.test(r.error) || /timed? ?out/i.test(r.error))) throw new Error(r.error);
       note = 'The legion couldn’t finish: ' + r.error + '. Reply to try again.';
     } else {
-      const full = r.report + '\n\n' + legion.credits(r, names, legionLead());
+      const full = r.report + '\n\n' + legion.credits(r, names, leadName, { cloud: !c });
       const dir = path.join(ctx.documents(), 'Claude Agent', 'Research');
       const base = ((lookup || topic).replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Research') + ' ' + new Date().toISOString().slice(0, 10);
       let saved = '';
@@ -536,7 +603,7 @@ async function runLegionTask(c, t) {
         saved = '\n\nSaved: ' + path.join(dir, base + '.docx');
       } catch (e) { agentLog('legion: saving the report failed: ' + e.message); }
       note = full.slice(0, 11000) + saved +
-        (!lookup && !reply && legion.isTask(topic) ? '\n\nReply “go ahead” (or pick an option) and ' + legionLead() + ' does it with its own browser, on your machine.' : '');
+        (c && !lookup && !reply && legion.isTask(topic) ? '\n\nReply “go ahead” (or pick an option) and ' + leadName + ' does it with its own browser, on your machine.' : '');
       options = (await Promise.all(r.options.map((o) => enrichOption(o).catch(() => o)))).filter(Boolean);
       agentLog('legion: done in ' + Math.round((Date.now() - started) / 1000) + 's, ' + r.scouts.filter((x) => !x.error).length + '/' + r.scouts.length + ' pieces answered');
     }
@@ -574,7 +641,7 @@ async function runLocalTask(c, t) {
   const dossier = {};
   // the weekly class sweep (agent/class-sweep.js): through every class, adding the work the calendar links miss
   const sweeping = !money && !coaching && classSweep.isSweep(t);
-  const found = [];
+  const found = [], doneFound = []; // the class sweep: work to add, and listed work he already turned in
   // a task that only names the work ("chapter 8", agent/find-out.js): which class and what it is first, then it
   const findingOut = !money && !coaching && !sweeping && findOut.isVague(t);
   const pinned = {};
@@ -603,7 +670,7 @@ async function runLocalTask(c, t) {
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
       coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
-      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, fileText.READ_FILE_TOOL] : [],
+      sweeping && browser ? [classSweep.ADD_ITEM_TOOL, classSweep.DONE_TOOL, fileText.READ_FILE_TOOL] : [],
       findingOut && browser ? [findOut.PIN_TOOL, fileText.READ_FILE_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
   // a coach task goes looking in his courses: the Blackboard and D2L notes come with it from the start
@@ -789,6 +856,7 @@ async function runLocalTask(c, t) {
         else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
         else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
         else if (sweeping && name === 'add_class_item') { result = classSweep.addItem(found, args); show('\n' + result.split('. So far')[0] + '\n', true); }
+        else if (sweeping && name === 'mark_class_done') { result = classSweep.markDone(doneFound, args); show('\n' + result + '\n', true); }
         else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); if (pinned.item) findOut.remember(classLogFile(), pinned.item); show('\n' + result.split('. His task')[0] + '\n', true); }
         else if ((coaching || sweeping || findingOut) && browser && name === 'read_file') { show('\nReading ' + (args.name || 'the newest download') + '\n', true); result = await fileText.readDownloaded(args.name); }
         else if (name === 'search_my_data') {
@@ -805,11 +873,13 @@ async function runLocalTask(c, t) {
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
           else {
             show('\nSending ' + ok.length + ' question(s) to helpers…\n', true);
-            const res = await helpers.askPool(ok, { order: cloudOrder(), run: runHelperOn,
-              onStart: (q, id) => show('  → ' + providers.NAMES[id] + ': ' + q.slice(0, 80) + '\n', true) });
-            res.forEach((r) => show(r.error ? '  ✗ ' + r.question.slice(0, 60) + ': ' + r.error.slice(0, 100) + '\n' : '  ✓ ' + providers.NAMES[r.via] + ' answered\n', true));
+            const pool = cloudOrder({ accounts: true }); // his extra accounts help too (Claude 2...)
+            const hn = Object.assign({}, providers.NAMES, Object.fromEntries(pool.map((x) => [x, nameOf(x)])));
+            const res = await helpers.askPool(ok, { order: pool, run: runHelperOn,
+              onStart: (q, id) => show('  → ' + hn[id] + ': ' + q.slice(0, 80) + '\n', true) });
+            res.forEach((r) => show(r.error ? '  ✗ ' + r.question.slice(0, 60) + ': ' + r.error.slice(0, 100) + '\n' : '  ✓ ' + hn[r.via] + ' answered\n', true));
             agentLog('local: helpers answered ' + res.filter((r) => !r.error).length + '/' + res.length + ' (' + res.map((r) => r.via || 'none').join(', ') + ')');
-            result = helpers.show(res, providers.NAMES) + (ok.length < qs.length ? '\n(' + (qs.length - ok.length) + ' question(s) not sent: see above.)' : '');
+            result = helpers.show(res, hn) + (ok.length < qs.length ? '\n(' + (qs.length - ok.length) + ' question(s) not sent: see above.)' : '');
           }
         } else if (browser && name === 'fill_form') {
           maxSteps = Math.max(maxSteps, 120); // a form: long questionnaires get room to finish
@@ -969,6 +1039,7 @@ async function runLocalTask(c, t) {
     wanted: want.length ? want : undefined, // sites it needed and couldn't open (renderer/js/local-sites.js)
     school: sweeping && found.length ? found : undefined, // the class sweep's finds, for his School list (renderer/js/wiring.js importClassItems)
     macros: money ? undefined : macroChanges(final.macros), // a meal plan's per-day targets: the app sets his Food plan to them (renderer/js/health.js)
+    schoolDone: sweeping && doneFound.length ? doneFound : undefined, // listed work it saw turned in: checked off (wiring.js markClassDone)
     pinned: pinned.item || undefined, // what a "chapter 8" task turned out to be: his task is rewritten with it (agent-results.js applyPinned)
     ...(money ? { financeSeen: true } : {}) }]); // room for an essay; thoughts = what it did, to read afterwards
 }
@@ -999,4 +1070,4 @@ const isBusy = () => localBusy || howtoCompacting;
 let activity = null;
 function doing(a) { activity = a ? Object.assign({ since: Date.now() }, a, a.title ? { title: String(a.title).slice(0, 80) } : {}) : null; }
 const nowDoing = () => activity ? Object.assign({}, activity) : howtoCompacting ? { what: 'tidying how-to notes' } : null;
-module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS };
+module.exports = { init, handlers, runHelperOn, localStatus, workerBeat, mergeLocalModel, OLLAMA_DEFAULT, scheduleLocalRun, compactHowtos, staleMarked, forModel, localApproved, cleanStuck, isBusy, checkSignins, claimableWhileDown, LOCAL_HOLD_MS, WORKER_HOLD_MS };

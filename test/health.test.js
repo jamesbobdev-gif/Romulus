@@ -146,3 +146,127 @@ test('the health row is always sealed, whether or not the lists are encrypted', 
   assert.strictEqual(healthProfileOf(plain, false), null); // a device that can't encrypt keeps the totals to itself
   assert.strictEqual(healthProfileOf(null, true), null);
 });
+
+/* which apps fed each number: Samsung Health, Garmin, Oura... read through Health Connect or Apple Health */
+test('a day keeps the apps behind each number, tidied, and they sync with it', () => {
+  const { normHealth, healthFrom, healthFromAll, healthMergeDocs } = require('../renderer/js/health');
+  assert.deepStrictEqual(healthFrom({ steps: [' Samsung  Health ', 'Samsung Health', '', null, 'Garmin Connect'], sleep: 'Oura', exercise: [] }),
+    { steps: ['Samsung Health', 'Garmin Connect'] });
+  assert.strictEqual(healthFrom(null), null);
+  assert.strictEqual(healthFrom({ steps: [] }), null);
+  assert.strictEqual(healthFrom({ steps: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }).steps.length, 6);
+  assert.strictEqual(healthFrom({ steps: ['x'.repeat(80)] }).steps[0].length, 40);
+  const h = normHealth({ days: { '2026-11-09': { steps: 4000, at: 5, from: { steps: ['iPhone'], sleep: ['Oura', 'Apple Watch'] } }, '2026-11-08': { steps: 10, at: 1 } } });
+  assert.deepStrictEqual(h.days['2026-11-09'].from, { steps: ['iPhone'], sleep: ['Oura', 'Apple Watch'] });
+  assert.strictEqual(h.days['2026-11-08'].from, undefined);
+  assert.deepStrictEqual(healthFromAll(h.days['2026-11-09']), ['iPhone', 'Oura', 'Apple Watch']);
+  assert.deepStrictEqual(healthFromAll(h.days['2026-11-08']), []);
+  // only the names changed: still a change worth syncing
+  const now = new Date('2026-11-09T12:00:00').getTime();
+  const local = normHealth({ days: { '2026-11-09': { steps: 4000, at: 5 } } });
+  const r = healthMergeDocs(local, { days: { '2026-11-09': { steps: 4000, at: 6, from: { steps: ['Fitbit'] } } } }, now);
+  assert.ok(r.changedLocal);
+  assert.deepStrictEqual(r.merged.days['2026-11-09'].from, { steps: ['Fitbit'] });
+});
+
+test('a one-number change ("1 g of protein per pound") keeps the rest of the plan and its dates', () => {
+  const { macroPlanMerge } = require('../renderer/js/health');
+  const old = { kcal: 2100, protein: 140, carbs: 200, fat: 65, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 1 };
+  const k = macroPlanMerge(old, { protein: 180, keep: true, source: 'protein per pound' }, '2026-11-09', 5);
+  assert.deepStrictEqual(k, { kcal: 2100, protein: 180, carbs: 200, fat: 65, span: 'week', from: '2026-11-07', until: '2026-11-13', at: 5, source: 'protein per pound' });
+  // a new length with it: from today
+  const m = macroPlanMerge(old, { protein: 180, keep: true, span: 'month' }, '2026-11-09', 5);
+  assert.deepStrictEqual([m.kcal, m.protein, m.span, m.from, m.until], [2100, 180, 'month', '2026-11-09', '2026-12-08']);
+  // no plan, or one that ran out: just that number, until he changes it
+  const n = macroPlanMerge(null, { protein: 180, keep: true }, '2026-11-09', 5);
+  assert.deepStrictEqual([n.protein, n.kcal, n.span, n.from, n.until], [180, undefined, 'open', '2026-11-09', null]);
+  const ended = macroPlanMerge(Object.assign({}, old, { until: '2026-11-08' }), { protein: 180, keep: true }, '2026-11-09', 5);
+  assert.deepStrictEqual([ended.protein, ended.kcal, ended.span], [180, undefined, 'open']);
+  // a whole meal plan replaces it, from today
+  const w = macroPlanMerge(old, { kcal: 2300, protein: 170, span: '2weeks' }, '2026-11-09', 5);
+  assert.deepStrictEqual([w.kcal, w.protein, w.carbs, w.from, w.until], [2300, 170, undefined, '2026-11-09', '2026-11-22']);
+  assert.strictEqual(macroPlanMerge(old, { keep: true }, '2026-11-09', 5).protein, 140); // nothing new: the plan as it was
+  assert.strictEqual(macroPlanMerge(null, { keep: true }, '2026-11-09', 5), null);
+});
+
+test('his weight: typed or from the phone, the newer wins, and it rides in the Food plan row', () => {
+  const { weightClean, weightFromStore, weightNewer, weightSay, macroRowText, macroPlanClean } = require('../renderer/js/health');
+  assert.deepStrictEqual(weightClean({ lb: '182.44', at: 5, from: ' typed  in ' }), { lb: 182.4, at: 5, from: 'typed in' });
+  assert.strictEqual(weightClean({ lb: 12 }), null); // not a person's weight
+  assert.strictEqual(weightClean({ lb: 'abc' }), null);
+  // Health Connect answers in kg; "This phone" is just the store's own name
+  assert.deepStrictEqual(weightFromStore({ kg: 82.5, at: 9, from: 'Withings' }, 'Health Connect'), { lb: 181.9, at: 9, from: 'Withings' });
+  assert.strictEqual(weightFromStore({ kg: 82.5, at: 9, from: 'This phone' }, 'Health Connect').from, 'Health Connect');
+  assert.strictEqual(weightFromStore(null, 'Health Connect'), null);
+  assert.strictEqual(weightNewer({ lb: 180, at: 1 }, { lb: 185, at: 2 }).lb, 185);
+  assert.strictEqual(weightNewer({ lb: 180, at: 3 }, { lb: 185, at: 2 }).lb, 180);
+  assert.strictEqual(weightNewer(null, null), null);
+  assert.match(weightSay({ lb: 182, at: new Date('2026-11-09T12:00:00').getTime(), from: 'Withings' }), /^182 lb, from Withings, Nov 9$/);
+  // the row: the plan plus his weight; weight alone still saves, and doesn't read back as a plan
+  const plan = { protein: 180, span: 'open', from: '2026-11-09', until: null, at: 5 };
+  assert.deepStrictEqual(JSON.parse(macroRowText(plan, { lb: 182, at: 4 })), Object.assign({}, plan, { weight: { lb: 182, at: 4 } }));
+  const alone = macroRowText(null, { lb: 182, at: 4 });
+  assert.strictEqual(macroPlanClean(JSON.parse(alone)), null);
+  assert.strictEqual(macroRowText(null, null), '');
+});
+
+test('the top of the Health tab: the week, the goals, the sleep word', () => {
+  const { healthWeek, healthTarget, healthSleepWord, healthPct } = require('../renderer/js/health');
+  // Wednesday 2026-11-11: Monday the 9th through today count, last Sunday doesn't
+  const days = { '2026-11-08': { exerciseMin: 90 }, '2026-11-09': { exerciseMin: 20 }, '2026-11-10': { steps: 4000 }, '2026-11-11': { exerciseMin: 10 } };
+  assert.deepStrictEqual(healthWeek(days, new Date(2026, 10, 11, 15).getTime()), { week: 30, today: 10 });
+  assert.deepStrictEqual(healthWeek({}, new Date(2026, 10, 9, 8).getTime()), { week: 0, today: 0 });
+  const tasks = [{ title: 'Walk #steps 8000' }, { title: 'Run 12k steps', due: '2026-11-12' }, { title: 'Gym #exercise 45' }, { title: 'Agent walk 20000 steps' }];
+  assert.strictEqual(healthTarget(tasks, 'steps', '2026-11-11', 10000, t => t.title.startsWith('Agent') ? 'agent' : 'personal'), 8000);
+  assert.strictEqual(healthTarget(tasks, 'exercise', '2026-11-11', 0), 45);
+  assert.strictEqual(healthTarget(tasks, 'sleep', '2026-11-11', 420), 420);
+  assert.strictEqual(healthSleepWord(495, 420), 'Good');
+  assert.strictEqual(healthSleepWord(400, 420), 'Fair');
+  assert.strictEqual(healthSleepWord(300, 420), 'Short');
+  assert.strictEqual(healthSleepWord(undefined, 420), '');
+  assert.strictEqual(healthPct(567, 10000), 6);
+  assert.strictEqual(healthPct(20000, 10000), 100);
+  assert.strictEqual(healthPct(undefined, 10000), 0);
+});
+
+test('the rest of the kinds the phone reads are kept, cleaned, and count as a change', () => {
+  const { normHealth, healthMergeDocs } = require('../renderer/js/health');
+  const h = normHealth({ days: { '2026-11-09': { at: 5, steps: 4000, weightKg: 82.46, restHr: 58.4, activeKcal: 412, distM: 5021, bogus: 1,
+    food: { kcal: 1850, protein: 142.4, junk: 9 }, workouts: [{ type: 'run', min: 28, distM: 5000, at: '07:10', from: 'Strava', extra: 1 }, { type: 'zumba', min: 30 }, { min: 'x' }] } } });
+  assert.deepStrictEqual(h.days['2026-11-09'], { at: 5, steps: 4000, weightKg: 82.5, restHr: 58, activeKcal: 412, distM: 5021,
+    food: { kcal: 1850, protein: 142 }, workouts: [{ type: 'run', min: 28, at: '07:10', distM: 5000, from: 'Strava' }, { type: 'other', min: 30 }] });
+  // a new workout on the same day is a change, even with the same totals
+  const later = { v: 1, days: { '2026-11-09': Object.assign({}, h.days['2026-11-09'], { at: 9, workouts: h.days['2026-11-09'].workouts.concat([{ type: 'yoga', min: 20 }]) }) } };
+  const r = healthMergeDocs(h, later, new Date('2026-11-09T12:00:00').getTime());
+  assert.ok(r.changedLocal);
+  assert.strictEqual(r.merged.days['2026-11-09'].workouts.length, 3);
+});
+
+test('the week, workouts, food and training goals come from the readings alone', () => {
+  const H = require('../renderer/js/health');
+  const days = {
+    '2026-11-03': { at: 1, weightKg: 83, sleepMin: 400, steps: 6000, workouts: [{ type: 'run', min: 30, distM: 4828 }] },
+    '2026-11-06': { at: 1, workouts: [{ type: 'strength', min: 50, reps: 120, sets: 12, from: 'Hevy' }] },
+    '2026-11-08': { at: 1, weightKg: 82, sleepMin: 420, steps: 9000, workouts: [{ type: 'run', min: 50, distM: 8047, at: '07:00' }] },
+    '2026-11-09': { at: 1, steps: 10000, restHr: 57, food: { protein: 142, kcal: 1850 }, workouts: [{ type: 'run', min: 28, distM: 5000, at: '06:30' }] },
+    '2026-10-30': { at: 1, workouts: [{ type: 'run', min: 25, distM: 4000 }] },
+  };
+  const today = '2026-11-09';
+  assert.deepStrictEqual(H.healthLatest(days, 'weightKg', today, 30), { day: '2026-11-08', value: 82 });
+  assert.deepStrictEqual(H.healthSeries(days, 'steps', today, 7).map((x) => x.value), [6000, 9000, 10000]);
+  assert.deepStrictEqual(H.healthWorkouts(days, today, 14).map((w) => w.day + ' ' + w.type), ['2026-11-09 run', '2026-11-08 run', '2026-11-06 strength', '2026-11-03 run', '2026-10-30 run']);
+  const wk = H.healthWeekSum(days, today);
+  assert.deepStrictEqual([wk.workouts, wk.runs, wk.strength, wk.runMi, wk.avgSteps, wk.avgSleep], [4, 3, 1, 11.1, 8333, 410]);
+  const said = H.healthWeekSay(days, today);
+  assert.ok(said.includes('4 workouts (3 more than the week before)'), said.join(' | '));
+  assert.ok(said.some((s) => /^Ran 11\.1 mi \(8\.6 mi more/.test(s)), said.join(' | '));
+  assert.strictEqual(H.healthFoodSay(days[today], { protein: 170, kcal: 2100 }), 'Protein 142 / 170 g · Calories 1,850 / 2,100');
+  assert.strictEqual(H.healthFoodSay({}, { protein: 170 }), '');
+  // training goals measured from the phone
+  assert.deepStrictEqual(H.healthTraining('Run a half marathon', days, today), { text: 'Longest run (90 days): 5 of 13.1 mi', pct: 38 });
+  assert.deepStrictEqual(H.healthTraining('Lose 10 pounds', days, today, '2026-11-01'), { text: 'Down 2.2 of 10 lb (now 180.8 lb)', pct: 22 });
+  assert.strictEqual(H.healthTraining('Bench 225 by March', days, today).text, '1 strength session in the last 7 days, 0 the 7 before');
+  assert.strictEqual(H.healthTraining('Learn to juggle', days, today), null);
+  assert.strictEqual(H.healthWorkoutSay(days['2026-11-08'].workouts[0]), 'Run · 5 mi · 50m · 10:00 /mi');
+  assert.strictEqual(H.healthWorkoutSay(days['2026-11-06'].workouts[0]), 'Strength · 50m · 12 sets, 120 reps');
+});

@@ -14,7 +14,8 @@
   const between = function (a, b) { return Math.round((a + rnd() * (b - a)) * 100) / 100; };
   const pick = function (l) { return l[Math.floor(rnd() * l.length)]; };
   let n = 0;
-  const id = function () { return 'demo-' + (++n); };
+  // not 'demo-': that prefix is the welcome card's example to-dos (demo.js), which get a "Remove the examples" bar
+  const id = function () { return 'sample-' + (++n); };
 
   /* ── the lists ── */
   const task = function (title, extra) {
@@ -26,6 +27,8 @@
   const tasks = [
     task('Pick up the dry cleaning', { due: inDays(0), dueTime: '17:30' }),
     task('Call the dentist about Thursday', { due: inDays(1), tag: 'health' }),
+    // a repeating to-do and its streak (recur.js): ticked off on time 6 days running
+    task('Water the plants', { due: inDays(0), recur: { every: 'day', dom: today.getDate(), series: 'sample-plants', streak: 6, best: 9 } }),
     task('Birthday card for Mom', { due: inDays(5), tag: 'family', subs: [{ id: id(), title: 'Buy a card', done: true, due: null }, { id: id(), title: 'Post it by Friday', done: false, due: null }] }),
     task('Renew the car registration', { due: inDays(8) }),
     task('Book the campsite for Thanksgiving weekend', { tag: 'trip' }),
@@ -172,8 +175,9 @@
     onFinanceLocked: function () {},
     onFinanceUpdated: function () {}
   };
-  // no welcome card, a light theme, and no scrollbar in the frames
-  try { localStorage.setItem('tasks.welcomed.v1', String(now)); localStorage.setItem('tasks.themeMode.v1', 'light'); } catch (e) {}
+  // no welcome card, a light theme, and no scrollbar in the frames; no sync nudge bar, and no start on the Romulus
+  // server (hosted-sync.js hostedAutoStart): the page would wait on the network before showing the lists
+  try { localStorage.setItem('tasks.welcomed.v1', String(now)); localStorage.setItem('tasks.themeMode.v1', 'light'); localStorage.setItem('tasks.syncNudge.later', String(now)); localStorage.setItem('tasks.syncHostedOff', '1'); localStorage.setItem('tabsOff', '["family"]'); } catch (e) {}
   const css = document.createElement('style'); css.textContent = '::-webkit-scrollbar{display:none}'; document.head.appendChild(css);
 
   /* ── a caption at the bottom of the page, for the recording ── */

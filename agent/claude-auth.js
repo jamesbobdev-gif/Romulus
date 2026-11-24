@@ -13,35 +13,49 @@ const INSTALL_URL = { win: 'https://claude.ai/install.ps1', unix: 'https://claud
 let auth = null; // last `claude auth status --json`: {loggedIn, authMethod, email, subscriptionType}; null = not asked yet
 let authAt = 0;
 let refreshing = null;
+/* an extra Claude account (agent/ai-accounts.js) signs in to its own folder, cfg.ai.claudeConfigDir
+   (CLAUDE_CONFIG_DIR), and its answer is kept apart from the main one's */
+const others = {}; // folder → {auth, authAt, refreshing}
+const dirOf = (cfg) => String((cfg && cfg.ai && cfg.ai.claudeConfigDir) || '').trim();
 
-// without asking the CLI: its sign-in leaves a credentials file (and an account in ~/.claude.json)
-function filesSayLoggedIn(home = os.homedir()) {
-  try { if (fs.statSync(path.join(home, '.claude', '.credentials.json')).size > 2) return true; } catch (e) {}
-  try { return /"oauthAccount"\s*:\s*\{/.test(fs.readFileSync(path.join(home, '.claude.json'), 'utf8')); } catch (e) { return false; }
+// without asking the CLI: its sign-in leaves a credentials file (and an account in ~/.claude.json;
+// with its own folder, both are in that folder)
+function filesSayLoggedIn(home = os.homedir(), configDir) {
+  try { if (fs.statSync(path.join(configDir || path.join(home, '.claude'), '.credentials.json')).size > 2) return true; } catch (e) {}
+  try { return /"oauthAccount"\s*:\s*\{/.test(fs.readFileSync(configDir ? path.join(configDir, '.claude.json') : path.join(home, '.claude.json'), 'utf8')); } catch (e) { return false; }
 }
 const hasKey = (cfg) => !!(cfg && cfg.ai && String(cfg.ai.anthropicKey || '').trim());
 // what Settings shows. `via`: how a run would be paid for right now
 function status(cfg) {
-  const installed = claudeInstalled(cfg);
-  const signedIn = installed && (auth ? !!auth.loggedIn : filesSayLoggedIn());
+  const installed = claudeInstalled(cfg), dir = dirOf(cfg);
+  const o = dir ? (others[dir] || {}) : null;
+  const a = o ? o.auth : auth, at = o ? (o.authAt || 0) : authAt;
+  const signedIn = installed && (a ? !!a.loggedIn : filesSayLoggedIn(undefined, dir || undefined));
   const key = hasKey(cfg);
-  return { installed, path: installed ? claudeExe(cfg) : null, signedIn, email: (auth && auth.email) || null, plan: (auth && auth.subscriptionType) || null,
-    hasKey: key, via: key ? 'key' : signedIn ? 'subscription' : null, ready: installed && (signedIn || key), checkedAt: authAt };
+  return { installed, path: installed ? claudeExe(cfg) : null, signedIn, email: (a && a.email) || null, plan: (a && a.subscriptionType) || null,
+    hasKey: key, via: key ? 'key' : signedIn ? 'subscription' : null, ready: installed && (signedIn || key), checkedAt: at };
 }
 // ask the CLI (15 s at most); the answer is kept for status()
 function refresh(cfg) {
-  if (!claudeInstalled(cfg)) { auth = null; return Promise.resolve(status(cfg)); }
-  refreshing = refreshing || new Promise((resolve) => {
+  const dir = dirOf(cfg);
+  if (!claudeInstalled(cfg)) { if (dir) delete others[dir]; else auth = null; return Promise.resolve(status(cfg)); }
+  const o = dir ? (others[dir] = others[dir] || {}) : null;
+  const going = o ? o.refreshing : refreshing;
+  if (going) return going;
+  const p = new Promise((resolve) => {
     // a saved key would make `auth status` report the key, not the sign-in: ask without it
     const env = Object.assign({}, process.env); delete env.ANTHROPIC_API_KEY;
+    if (dir) env.CLAUDE_CONFIG_DIR = dir;
     execFile(claudeExe(cfg), ['auth', 'status', '--json'], { encoding: 'utf8', windowsHide: true, timeout: 15000, env }, (err, out) => {
-      try { const j = JSON.parse(String(out || '').slice(String(out || '').indexOf('{'))); auth = { loggedIn: !!j.loggedIn, authMethod: j.authMethod, email: j.email, subscriptionType: j.subscriptionType }; }
-      catch (e) { auth = err ? null : { loggedIn: false }; }
-      authAt = Date.now();
+      let got;
+      try { const j = JSON.parse(String(out || '').slice(String(out || '').indexOf('{'))); got = { loggedIn: !!j.loggedIn, authMethod: j.authMethod, email: j.email, subscriptionType: j.subscriptionType }; }
+      catch (e) { got = err ? null : { loggedIn: false }; }
+      if (o) { o.auth = got; o.authAt = Date.now(); } else { auth = got; authAt = Date.now(); }
       resolve(status(cfg));
     });
-  }).finally(() => { refreshing = null; });
-  return refreshing;
+  }).finally(() => { if (o) o.refreshing = null; else refreshing = null; });
+  if (o) o.refreshing = p; else refreshing = p;
+  return p;
 }
 
 /* The official installer (no Node or npm needed), into ~/.local/bin. → {ok} or {ok, error} */
@@ -74,10 +88,10 @@ function install(log = () => {}) {
 let loggingIn = null;
 function login(cfg, dir, log = () => {}) {
   loggingIn = loggingIn || new Promise(async (resolve) => {
-    const exe = claudeExe(cfg);
+    const exe = claudeExe(cfg), own = dirOf(cfg);
     if (!claudeInstalled(cfg)) return resolve({ ok: false, error: 'install Claude Code first' });
-    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
-    try { openTerminal(exe, dir); }
+    try { fs.mkdirSync(dir, { recursive: true }); if (own) fs.mkdirSync(own, { recursive: true }); } catch (e) {}
+    try { openTerminal(exe, dir, own); }
     catch (e) { return resolve({ ok: false, error: 'couldn’t open a terminal (' + e.message + '). Open one yourself and run: claude auth login' }); }
     log('claude: sign-in terminal opened');
     const until = Date.now() + 5 * 60 * 1000;
@@ -91,16 +105,20 @@ function login(cfg, dir, log = () => {}) {
   return loggingIn;
 }
 // a terminal window running `claude auth login`, then waiting so the person can read the result
-function openTerminal(exe, dir) {
+// own: an extra account's sign-in folder, so this sign-in leaves the main account's alone
+function openTerminal(exe, dir, own) {
+  const which = 'Sign in with the other Claude account you want to add. If the browser opens on the wrong one, sign out of claude.ai there first.';
   if (isWin) {
     const f = path.join(dir, 'claude-sign-in.cmd');
-    fs.writeFileSync(f, ['@echo off', 'title Claude sign-in', 'echo Signing in to Claude. Your browser opens; come back here when it is done.', 'echo.',
+    fs.writeFileSync(f, ['@echo off', 'title Claude sign-in', own ? 'set "CLAUDE_CONFIG_DIR=' + own + '"' : 'rem',
+      'echo Signing in to Claude. Your browser opens; come back here when it is done.', own ? 'echo ' + which : 'rem', 'echo.',
       '"' + exe + '" auth login', 'echo.', 'echo You can close this window.', 'pause >nul', ''].join('\r\n'));
     spawn('cmd.exe', ['/c', 'start', 'Claude sign-in', f], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
     return;
   }
   const f = path.join(dir, 'claude-sign-in.command');
-  fs.writeFileSync(f, ['#!/bin/bash', 'echo "Signing in to Claude. Your browser opens; come back here when it is done."', 'echo',
+  fs.writeFileSync(f, ['#!/bin/bash', own ? 'export CLAUDE_CONFIG_DIR=' + JSON.stringify(own) : ':',
+    'echo "Signing in to Claude. Your browser opens; come back here when it is done."', own ? 'echo ' + JSON.stringify(which) : ':', 'echo',
     JSON.stringify(exe) + ' auth login', 'echo', 'read -n 1 -s -r -p "You can close this window."', ''].join('\n'), { mode: 0o755 });
   if (process.platform === 'darwin') { spawn('open', ['-a', 'Terminal', f], { detached: true, stdio: 'ignore' }).unref(); return; }
   const tries = [['x-terminal-emulator', ['-e', f]], ['gnome-terminal', ['--', f]], ['konsole', ['-e', f]], ['xfce4-terminal', ['-e', f]], ['xterm', ['-e', f]]];

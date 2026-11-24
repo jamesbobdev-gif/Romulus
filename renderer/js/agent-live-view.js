@@ -195,10 +195,20 @@ async function livePoll(){
   const fresh=r.pages.filter(function(p){ return !v.seen[p.id]; });
   r.pages.forEach(function(p){ v.seen[p.id]=true; });
   v.pages=r.pages;
-  v.tabs.innerHTML='';
-  r.pages.forEach(function(p){ const o=el('option',null,(p.title||p.url||'New tab').slice(0,60)); o.value=p.id; v.tabs.appendChild(o); });
+  // Chrome lists the most recently used tab first: that's the one the agent is working in now. It's marked
+  // and listed first; the list is only redrawn when it changed, so an open dropdown isn't shut every 2 s
+  const now=r.pages[0]&&r.pages[0].id;
+  const sig=r.pages.map(function(p){ return p.id+'\u0001'+p.title+'\u0001'+p.url; }).join('\u0002');
+  if(sig!==v.tabsSig){
+    v.tabsSig=sig; v.tabs.innerHTML='';
+    r.pages.forEach(function(p){ const name=liveTitle(p.title)||p.url||'New tab';
+      const o=el('option',null,(p.id===now?'Working here · ':'')+name.slice(0,60)); o.value=p.id; if(p.id===now)o.className='live-tab-now'; v.tabs.appendChild(o); });
+  }
   v.tabs.hidden=r.pages.length<2;
   if(!r.pages.length){ liveShow(v.forId?'This task has no pages open in the browser yet.':'No tabs open in the agent browser.'); return; }
+  // the agent moved to another tab it already had open: go with it (unless he's been using the view)
+  const moved=v.nowId&&now!==v.nowId&&Date.now()-v.touchedAt>5000;
+  v.nowId=now;
   // the tab Watch opened for a task: straight to it, once it's listed
   const want=v.want&&r.pages.find(function(p){ return p.id===v.want; });
   if(want){ v.want=null; liveConnect(want,true); return; }
@@ -206,13 +216,19 @@ async function livePoll(){
   if(cur){ v.page.title=cur.title; v.page.url=cur.url; liveWhere(); }
   const follow=!first&&fresh.length&&Date.now()-v.touchedAt>5000;
   if(!cur||follow)liveConnect(follow?fresh[fresh.length-1]:r.pages[0],follow);
+  else if(moved&&v.page.id!==now)liveConnect(r.pages[0],false);
   else if(!v.ws)liveConnect(cur,false); // its socket dropped ("trying again"): back on
   else v.tabs.value=v.page.id;
+}
+// page titles can come with HTML escapes left in ("Women&#39;s"): shown as the characters they stand for
+function liveTitle(s){
+  s=String(s||''); if(s.indexOf('&')<0)return s;
+  const d=document.createElement('textarea'); d.innerHTML=s; return d.value;
 }
 function liveWhere(){
   const v=liveView; if(!v||!v.page)return;
   let host=''; try{ host=new URL(v.page.url).host; }catch(e){}
-  v.where.textContent=(v.page.title||'Untitled')+(host?' · '+host:'');
+  v.where.textContent=(liveTitle(v.page.title)||'Untitled')+(host?' · '+host:'');
   v.where.title=v.page.url;
 }
 

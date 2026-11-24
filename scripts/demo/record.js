@@ -6,10 +6,14 @@
 'use strict';
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
+// a fresh profile every run: the page keeps a copy of its lists in the profile, and last run's tasks would be back
+app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'romulus-demo-')));
+app.setPath('sessionData', app.getPath('userData'));
 const BUILD = path.join(__dirname, 'build');
 const FRAMES = path.join(__dirname, 'frames');
 const OUTS = [path.join(ROOT, 'docs', 'images'), path.join(ROOT, 'site', 'img')];
@@ -22,17 +26,23 @@ const frames = []; // {file, ms}: each picture and how long it stays up
 async function main() {
   fs.rmSync(FRAMES, { recursive: true, force: true });
   fs.mkdirSync(FRAMES, { recursive: true });
-  const win = new BrowserWindow({ width: W, height: H, useContentSize: true, resizable: false, show: true, backgroundColor: '#FBFBFA', title: 'Romulus demo', webPreferences: { contextIsolation: true, sandbox: true } });
+  const win = new BrowserWindow({ width: W, height: H, useContentSize: true, resizable: false, show: true, backgroundColor: '#FBFBFA', title: 'Romulus demo', webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false /* keeps painting behind other windows */ } });
   await win.loadFile(path.join(BUILD, 'index.html'));
+  win.moveTop(); win.focus();
   win.webContents.on('console-message', (_e, level, msg, line, src) => { if (level >= 2) console.error('[page] ' + msg + ' (' + path.basename(src || '') + ':' + line + ')'); });
   const js = (code) => win.webContents.executeJavaScript(code, true).catch((e) => { throw new Error('in the page: ' + code.slice(0, 120) + ' → ' + e.message); });
+  // a capture before the window has painted is empty (and a 0-byte PNG breaks the GIF): wait and try again
+  const capture = async () => {
+    for (let i = 0; i < 20; i++) { const img = await win.webContents.capturePage(); if (!img.isEmpty()) return img; await sleep(150); }
+    throw new Error('the window never painted');
+  };
   const shot = async (ms) => {
-    const img = await win.webContents.capturePage();
+    const img = await capture();
     const file = path.join(FRAMES, String(frames.length).padStart(3, '0') + '.png');
     fs.writeFileSync(file, img.toPNG());
     frames.push({ file, ms });
   };
-  const caption = (t) => js('demoCaption(' + JSON.stringify(t || '') + ')');
+  const caption = async (t) => { await js('demoCaption(' + JSON.stringify(t || '') + ')'); await sleep(120); }; // painted before the next capture
   // a scroll in a few frames, so it reads as movement rather than a jump
   const scrollTo = async (expr, steps) => {
     const from = await js('window.scrollY');
@@ -49,9 +59,11 @@ async function main() {
     while (Date.now() < until) { if (await js(expr)) return true; await sleep(100); }
     throw new Error('timed out waiting for ' + expr);
   };
-  const task = () => 'state.tasks.find(function(t){ return /grocer/i.test(t.title); })';
+  let taskId = null; // the task typed below, once it exists
+  const task = () => 'state.tasks.find(function(t){ return t.id===' + JSON.stringify(taskId) + '; })';
 
   await js('document.fonts.ready.then(function(){ return true; })');
+  await waitFor('state.tasks.length > 0', 15000); // init.js applies the lists after its start-up checks; typing before that is lost
   await sleep(1200);
 
   // 1. the To do tab
@@ -73,6 +85,7 @@ async function main() {
   }
   await js('document.getElementById("addBtn").click()');
   await sleep(250);
+  taskId = await js('state.tasks.filter(function(t){ return t.ws==="agent"&&/grocer/i.test(t.title); }).sort(function(a,b){ return b.created-a.created; })[0].id');
   await shot(900);
 
   // 3. it works, then comes back with the cart
@@ -139,11 +152,13 @@ async function main() {
 }
 
 function assemble() {
-  const timing = frames.map((f) => ['-delay', String(Math.max(2, Math.round(f.ms / 10))), f.file]).flat();
+  // run inside the frames folder with bare file names: 60 frames under a long folder path overflow the Windows command line
+  const timing = frames.map((f) => ['-delay', String(Math.max(2, Math.round(f.ms / 10))), path.basename(f.file)]).flat();
   const gif = path.join(FRAMES, 'demo.gif'), mp4 = path.join(FRAMES, 'demo.mp4');
-  let r = spawnSync('magick', ['-loop', '0'].concat(timing, ['-resize', W + 'x', '-layers', 'optimize', gif]), { stdio: 'inherit', shell: process.platform === 'win32' });
+  const opts = { cwd: FRAMES, stdio: 'inherit', shell: process.platform === 'win32' };
+  let r = spawnSync('magick', ['-loop', '0'].concat(timing, ['-resize', W + 'x', '-layers', 'optimize', 'demo.gif']), opts);
   if (r.status !== 0) throw new Error('magick could not write the GIF (is ImageMagick on the PATH?)');
-  const video = spawnSync('magick', timing.concat(['-resize', W + 'x', mp4]), { stdio: 'inherit', shell: process.platform === 'win32' });
+  const video = spawnSync('magick', timing.concat(['-resize', W + 'x', 'demo.mp4']), opts);
   const hasVideo = video.status === 0 && fs.existsSync(mp4) && fs.statSync(mp4).size > 0;
   for (const dir of OUTS) {
     fs.mkdirSync(dir, { recursive: true });

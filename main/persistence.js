@@ -2,7 +2,7 @@
    (tray counts, the Agent lanes, "Buy this" emails, calendar sync). */
 const fs = require('fs');
 const path = require('path');
-const { askForRoutes } = require('../agent/routing');
+const { learnFrom } = require('../agent/routing');
 const { processBuyEmails } = require('./buy-emails');
 const { performSync } = require('./gcal-sync');
 
@@ -58,7 +58,7 @@ function backupCopies(file) {
   return [file + '.bak'].concat(daily.map((n) => path.join(backupDir(file), n)));
 }
 function dailyCopy(file, raw, now = new Date()) {
-  const day = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  const day = require('../agent/util').dayKey(now);
   const dir = backupDir(file), name = 'tasks-' + day + '.json';
   try {
     if (fs.existsSync(path.join(dir, name))) return;
@@ -98,7 +98,7 @@ handle('tasks:save', async (_event, raw) => {
     ctx.refreshTrayStatus(raw);
     ctx.scheduleAgentRun(raw);
     ctx.scheduleLocalRun(raw);
-    askForRoutes(raw);
+    learnFrom(raw); // routing learns which lane each type of task goes well on
     processBuyEmails(raw).catch((e) => console.error('buy email error:', e.message));
     clearTimeout(syncDebounce);
     syncDebounce = setTimeout(() => { performSync().catch((e) => console.error('gcal sync failed:', e.message)); }, 3000);

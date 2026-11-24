@@ -122,3 +122,11 @@ test('offline(): a try that never reached its AI', () => {
   assert.ok(!helpers.offline({ text: 'here is the answer', log: 'exit 0' }));
   assert.ok(!helpers.offline(null));
 });
+test('offline(): a try that never reached its AI', () => {
+  assert.ok(helpers.offline({ log: 'exit 1\n\n{"type":"result","result":"API Error: Can\'t reach the API server — check your internet or DNS (ENOTFOUND)"}' }));
+  assert.ok(helpers.offline({ why: 'getaddrinfo EAI_AGAIN generativelanguage.googleapis.com' }));
+  assert.ok(helpers.offline({ why: 'fetch failed' }));
+  assert.ok(!helpers.offline({ why: 'no usable answer' }));
+  assert.ok(!helpers.offline({ text: 'here is the answer', log: 'exit 0' }));
+  assert.ok(!helpers.offline(null));
+});

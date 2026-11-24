@@ -3,6 +3,8 @@ package com.jartro.tasks;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.KeyProperties;
@@ -46,9 +48,9 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /**
  * Finance on the phone (mobile/finance-phone.js). Its bank data is encrypted in the page with a random key;
- * that key is kept here wrapped by an Android Keystore key that only works inside one fingerprint (or face)
- * prompt: the cipher is started first and handed to the prompt, and Android lets it finish only for the
- * prompt the user just answered, never for an unlock that happened elsewhere. A new fingerprint added to
+ * that key is kept here wrapped by an Android Keystore key that works only for the one operation a strong
+ * fingerprint or face prompt unlocks (pairings made before 2026-11-11 have a 30-second key instead, which some
+ * phones stopped honouring), so opening Finance always takes his fingerprint. A new fingerprint added to
  * the phone makes the Keystore key unusable: then Finance has to be paired again.
  * Also: scanning the pairing QR code (Google's code scanner: no camera permission for the app), and
  * web requests to SimpleFIN and Yahoo Finance only (the page can't reach them itself).
@@ -95,8 +97,8 @@ public class FinanceVaultPlugin extends Plugin {
                     .setKeySize(256)
                     .setUserAuthenticationRequired(true)
                     .setInvalidatedByBiometricEnrollment(true);
-            // per use: each cipher operation is tied to the one prompt it was handed to (a CryptoObject), so an unlock on
-            // the lock screen, or an earlier prompt, opens nothing
+            // per use: the key works only for the one operation the fingerprint prompt was shown for
+            // (a 30-second window after any unlock stopped working on some phones after an Android update)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) b.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG);
             else b.setUserAuthenticationValidityDurationSeconds(-1);
             kg.init(b.build());
@@ -105,16 +107,22 @@ public class FinanceVaultPlugin extends Plugin {
             call.reject("Couldn't make a key on this phone: " + e.getMessage());
             return;
         }
-        Cipher cipher;
-        try { cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, wrapKey()); }
-        catch (Exception e) { call.reject("Couldn't start the key on this phone: " + e.getMessage()); return; }
-        prompt(call, "Set up Finance", "Your fingerprint opens Finance on this phone", cipher, (c) -> {
+        Cipher enc;
+        try {
+            enc = Cipher.getInstance("AES/GCM/NoPadding");
+            enc.init(Cipher.ENCRYPT_MODE, wrapKey());
+        } catch (Exception e) {
+            call.reject("Couldn't make a key on this phone: " + e.getMessage());
+            return;
+        }
+        prompt(call, "Set up Finance", "Your fingerprint opens Finance on this phone", enc, c -> {
             byte[] dataKey = new byte[32];
             new SecureRandom().nextBytes(dataKey);
             byte[] wrapped = c.doFinal(dataKey);
             prefs().edit()
                     .putString("wrapped", Base64.encodeToString(wrapped, Base64.NO_WRAP))
                     .putString("iv", Base64.encodeToString(c.getIV(), Base64.NO_WRAP))
+                    .putBoolean("perUse", true)
                     .apply();
             JSObject o = new JSObject();
             o.put("key", Base64.encodeToString(dataKey, Base64.NO_WRAP));
@@ -127,11 +135,28 @@ public class FinanceVaultPlugin extends Plugin {
     public void unlock(PluginCall call) {
         String wrapped = prefs().getString("wrapped", null), iv = prefs().getString("iv", null);
         if (wrapped == null || iv == null) { call.reject("Finance isn't set up on this phone.", "NOT_SET_UP"); return; }
-        Cipher cipher;
-        try { cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE, wrapKey(), new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))); }
-        catch (KeyPermanentlyInvalidatedException e) { call.reject("A new fingerprint was added to this phone, so Finance has to be paired again.", "INVALIDATED"); return; }
-        catch (Exception e) { call.reject("Couldn't open Finance: " + e.getMessage()); return; }
-        prompt(call, "Open Finance", null, cipher, (c) -> {
+        GCMParameterSpec spec = new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP));
+        Cipher dec = null;
+        if (prefs().getBoolean("perUse", false)) {
+            // the key the prompt itself unlocks (paired after this change)
+            try {
+                dec = Cipher.getInstance("AES/GCM/NoPadding");
+                dec.init(Cipher.DECRYPT_MODE, wrapKey(), spec);
+            } catch (KeyPermanentlyInvalidatedException e) {
+                call.reject("A new fingerprint was added to this phone, so Finance has to be paired again.", "INVALIDATED");
+                return;
+            } catch (Exception e) {
+                call.reject("Couldn't open Finance: " + e.getMessage());
+                return;
+            }
+        }
+        final Cipher ready = dec;
+        prompt(call, "Open Finance", null, ready, given -> {
+            Cipher c = given;
+            if (c == null) { // older pairing: a key that works for 30 seconds after the fingerprint
+                c = Cipher.getInstance("AES/GCM/NoPadding");
+                c.init(Cipher.DECRYPT_MODE, wrapKey(), spec);
+            }
             JSObject o = new JSObject();
             o.put("key", Base64.encodeToString(c.doFinal(Base64.decode(wrapped, Base64.NO_WRAP)), Base64.NO_WRAP));
             return o;
@@ -232,8 +257,23 @@ public class FinanceVaultPlugin extends Plugin {
         }).start();
     }
 
-    /** The step that runs once the prompt is answered, with the cipher Android has just unlocked for it. */
+    /** The work after the fingerprint; gets the cipher the prompt unlocked, or null for an older 30-second key. */
     private interface Step { JSObject run(Cipher c) throws Exception; }
+
+    /** Android's "user not authenticated", whichever exception carries it (doFinal wraps it in another one). */
+    private static boolean notAuthed(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof UserNotAuthenticatedException) return true;
+            String m = t.getMessage();
+            if (m != null && m.toLowerCase().contains("not authenticated")) return true;
+        }
+        return false;
+    }
+
+    private static boolean invalidated(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) if (t instanceof KeyPermanentlyInvalidatedException) return true;
+        return false;
+    }
 
     private SecretKey wrapKey() throws Exception {
         KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
@@ -241,12 +281,12 @@ public class FinanceVaultPlugin extends Plugin {
         return (SecretKey) ks.getKey(ALIAS, null);
     }
 
-    /** His fingerprint (or face, if the phone counts it as strong) bound to the given cipher, then the step that uses it. */
+    /** His fingerprint (or face, if the phone counts it as strong), then the step that needs the Keystore key. */
     private BiometricPrompt current; // the prompt showing now, if any (a new one replaces it)
 
     /* Every call ends: the prompt's answer, or a reject right away when Android can't show it (the app isn't on
        screen, say). A call that never ended left the page's button waiting forever. */
-    private void prompt(PluginCall call, String title, String subtitle, Cipher cipher, Step step) {
+    private void prompt(PluginCall call, String title, String subtitle, Cipher crypto, Step step) {
         FragmentActivity act = (FragmentActivity) getActivity();
         if (act == null) { call.reject("Open the app first.", "NOT_VISIBLE"); return; }
         act.runOnUiThread(() -> {
@@ -260,14 +300,9 @@ public class FinanceVaultPlugin extends Plugin {
                     new BiometricPrompt.AuthenticationCallback() {
                         @Override
                         public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
-                            try {
-                                BiometricPrompt.CryptoObject co = result.getCryptoObject();
-                                if (co == null || co.getCipher() == null) throw new UserNotAuthenticatedException();
-                                call.resolve(step.run(co.getCipher()));
-                            }
-                            catch (KeyPermanentlyInvalidatedException e) { call.reject("A new fingerprint was added to this phone, so Finance has to be paired again.", "INVALIDATED"); }
-                            catch (UserNotAuthenticatedException e) { call.reject("The fingerprint didn't unlock it. Try again.", "NOT_AUTHENTICATED"); }
-                            catch (Exception e) { call.reject("Couldn't open Finance: " + e.getMessage()); }
+                            BiometricPrompt.CryptoObject co = result.getCryptoObject();
+                            Cipher c = co != null ? co.getCipher() : null;
+                            attempt(call, step, c, crypto == null);
                         }
 
                         @Override
@@ -284,10 +319,25 @@ public class FinanceVaultPlugin extends Plugin {
                     .setNegativeButtonText("Cancel");
             if (subtitle != null) info.setSubtitle(subtitle);
             current = p;
-            p.authenticate(info.build(), new BiometricPrompt.CryptoObject(cipher));
+            if (crypto != null) p.authenticate(info.build(), new BiometricPrompt.CryptoObject(crypto));
+            else p.authenticate(info.build());
           } catch (Exception e) {
             call.reject("The fingerprint prompt didn't open: " + e.getMessage(), "PROMPT_FAILED");
           }
         });
+    }
+
+    /* After the fingerprint. An older 30-second key can be refused even right after a good fingerprint (the
+       unlock reaching the Keystore late, or a phone update that stopped such keys working): one more try half a
+       second later, then pairing again, which makes a per-use key that the prompt unlocks itself. */
+    private void attempt(PluginCall call, Step step, Cipher c, boolean retry) {
+        try { call.resolve(step.run(c)); }
+        catch (Exception e) {
+            if (invalidated(e)) { call.reject("A new fingerprint was added to this phone, so Finance has to be paired again.", "INVALIDATED"); return; }
+            if (!notAuthed(e)) { call.reject("Couldn't open Finance: " + e.getMessage()); return; }
+            if (retry) { new Handler(Looper.getMainLooper()).postDelayed(() -> attempt(call, step, null, false), 500); return; }
+            if (prefs().getBoolean("perUse", false)) call.reject("The fingerprint didn't unlock it. Try again.", "NOT_AUTHENTICATED");
+            else call.reject("This phone stopped letting Finance's older key open with your fingerprint. Pair Finance again from the computer to fix it.", "INVALIDATED");
+        }
     }
 }

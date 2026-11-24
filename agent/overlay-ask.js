@@ -108,24 +108,44 @@ async function callOne(step, cfg, { text, image, maxTokens }, deps) {
 
 /* {question, image: {mime, b64} | null, history, lane} → {text, via} or {why}
    deps: {fetch, order: the cloud AIs in his order, notReady: ids turned on but not connected, local: {url, model} | null, claudeCli(text, image) → text} */
-async function ask(cfg, { question, image, history, lane }, deps) {
+async function ask(cfg, { question, image, history, lane, maxTokens }, deps) {
   const steps = plan(cfg, { lane, order: deps.order, local: deps.local, image });
   if (!steps.length) {
     return { why: lane === 'local' ? 'Lupa isn’t set up on this computer (Settings → Local model).'
       : image ? 'None of your AI connections on this computer can read a screenshot. Add a Claude, Gemini, OpenAI or OpenRouter key in Settings → AI connections, or switch to Lupa.'
         : 'No AI is connected on this computer (Settings → AI connections).' };
   }
-  const text = promptText(question, history), tried = [];
+  const text = promptText(question, history), tried = [], raw = [];
   for (const step of steps) {
+    const who = step.id === 'local' ? 'Lupa' : providers.NAMES[step.id] || step.id;
     try {
-      const out = String(await callOne(step, cfg, { text, image }, deps) || '').trim();
-      if (out) return { text: out, via: step.id === 'local' ? 'Lupa' : providers.NAMES[step.id] || step.id };
-      tried.push((providers.NAMES[step.id] || step.id) + ': no answer');
+      const out = String(await callOne(step, cfg, { text, image, maxTokens }, deps) || '').trim();
+      if (out) return { text: out, via: who };
+      tried.push(who + ': no answer');
     } catch (e) {
-      tried.push((step.id === 'local' ? 'Lupa' : providers.NAMES[step.id] || step.id) + ': ' + String(e && e.message || e).slice(0, 160));
+      const m = String(e && e.message || e);
+      tried.push(who + ': ' + plainError(m));
+      raw.push(who + ': ' + m.slice(0, 300));
     }
   }
-  return { why: 'No answer. ' + tried.concat(skipped(steps, { image, lane }, deps)).join(' · ') };
+  const out = { why: 'No AI answered. ' + tried.concat(skipped(steps, { image, lane }, deps)).join(' · ') +
+    (lane === 'local' ? '' : '. Check Settings → AI connections.') };
+  if (raw.length) out.detail = raw.join(' · '); // the providers' own words, for the Agent log only
+  return out;
+}
+
+/* a provider's error, as a few plain words: no team ids, links or billing boilerplate on the page */
+function plainError(m) {
+  const s = String(m || '');
+  if (/quota|credit|billing|spending limit|insufficient|payment|balance/i.test(s)) return 'out of credits or over its limit';
+  if (/rate.?limit|too many requests|\b429\b|overloaded|high demand|\b503\b|unavailable/i.test(s)) return 'busy right now';
+  if (/api key|unauthori[sz]ed|invalid.*key|\b401\b|authentication/i.test(s)) return 'key not accepted';
+  if (/access denied|forbidden|\b403\b|network settings|region|country/i.test(s)) return 'refused the connection';
+  if (/\b410\b|\b404\b|model.*(not found|deprecated|decommissioned|retired|does not exist)/i.test(s)) return 'that model is no longer offered';
+  if (/timeout|timed out|abort/i.test(s)) return 'took too long';
+  if (/fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN/i.test(s)) return 'couldn’t be reached';
+  const first = s.replace(/https?:\/\/\S+/g, '').split(/(?<=[.!?])\s/)[0].trim();
+  return (first.length > 80 ? first.slice(0, 77) + '...' : first) || 'no answer';
 }
 
 /* the ones in his order that weren't asked, and why, so a "No answer" doesn't hide them.
@@ -170,4 +190,4 @@ function claudeCliRunner({ spawn, exe, env, dir, model }) {
   });
 }
 
-module.exports = { ask, plan, callOne, promptText, claudeCliRunner, CLAUDE_API_MODELS }; // callOne: also "Do it" (agent/pc-control.js)
+module.exports = { ask, plan, callOne, promptText, plainError, claudeCliRunner, CLAUDE_API_MODELS }; // callOne: also "Do it" (agent/pc-control.js)

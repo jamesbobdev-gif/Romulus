@@ -27,6 +27,7 @@ const COMPAT = {
 };
 const COMPAT_IDS = Object.keys(COMPAT);
 const PROVIDERS = ['claude', 'gemini', 'openai', 'openrouter', ...COMPAT_IDS];
+const accounts = require('./ai-accounts');
 const NAMES = Object.assign({ claude: 'Claude', gemini: 'Gemini', openai: 'ChatGPT', openrouter: 'OpenRouter' },
   Object.fromEntries(COMPAT_IDS.map((id) => [id, COMPAT[id].name])));
 const OPENAI_DEFAULT_MODEL = 'gpt-5-mini';
@@ -37,9 +38,12 @@ const OPENROUTER_DEFAULT_MODEL = 'openrouter/auto'; // OpenRouter picks a model 
 function settings(cfg) {
   const ai = (cfg && cfg.ai) || {};
   const seen = new Set();
-  const order = (Array.isArray(ai.order) ? ai.order : []).filter((p) => p && PROVIDERS.includes(p.id) && !seen.has(p.id) && seen.add(p.id))
+  // extra accounts (agent/ai-accounts.js) are entries of their own: claude~2 next to claude
+  const extra = new Set(accounts.list(cfg, PROVIDERS).map((a) => a.id));
+  const order = (Array.isArray(ai.order) ? ai.order : []).filter((p) => p && (PROVIDERS.includes(p.id) || extra.has(p.id)) && !seen.has(p.id) && seen.add(p.id))
     .map((p) => ({ id: p.id, on: p.on !== false }));
   for (const id of PROVIDERS) if (!seen.has(id)) order.push({ id, on: id === 'claude' }); // Claude on by default, the rest off
+  for (const id of extra) if (!seen.has(id)) order.push({ id, on: true });
   const compat = {};
   for (const id of COMPAT_IDS) {
     compat[id + 'Key'] = String(ai[id + 'Key'] || '').trim();
@@ -63,6 +67,7 @@ function settings(cfg) {
     openrouterZdr: ai.openrouterZdr !== false, // zero data retention only: on unless he turns it off
     openrouterFree: ai.openrouterFree !== false, // on Auto, its free models before paid ones: on unless he turns it off
     claudeLast: ai.claudeLast !== false, // Claude only after the others: his Claude usage is kept for building the app
+    codexHome: String(ai.codexHome || '').trim(), // an extra ChatGPT account's own Codex sign-in folder; blank: Codex's usual one
   });
 }
 
@@ -406,7 +411,7 @@ const CODEX_BROWSER_NOTE = browserNote('running as ChatGPT (OpenAI)', 'web searc
 async function runOpenAI(cfg, opts) {
   const { prompt, timeoutMs, note, node, browserMcpFile, browserDenied, onProc, mail } = opts;
   const s = settings(cfg);
-  if (s.openaiVia === 'chatgpt') return runCodex({ prompt, timeoutMs, note, node, model: s.codexModel, browserMcpFile, browserDenied, onProc, mail });
+  if (s.openaiVia === 'chatgpt') return runCodex({ prompt, timeoutMs, note, node, model: s.codexModel, browserMcpFile, browserDenied, onProc, mail, home: s.codexHome });
   if (!s.openaiKey) return { auth: true, why: 'no OpenAI API key' };
   const auto = s.openaiModel ? [] : autoModels('openai', await modelList('openai', s.openaiKey));
   return withBrowser(opts, (browser) => tryModels('openai', s.openaiModel ? [s.openaiModel] : auto.length ? auto : [OPENAI_DEFAULT_MODEL],
@@ -437,10 +442,11 @@ async function openaiCall(s, model, { prompt, timeoutMs, note, onProc, mail }, b
    and the work folder is empty. Code mode stays on: newer
    Codex runs web search through it, and with no shell it has nothing else to call. ── */
 const codexCli = () => npmCli('@openai/codex', 'codex');
-const codexHome = () => process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+// home: an extra ChatGPT account's own folder (agent/ai-accounts.js); none: Codex's usual one
+const codexHome = (home) => home || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 // signed in with ChatGPT? Only auth_mode is looked at, never the tokens
-function codexSignedIn() {
-  try { return JSON.parse(fs.readFileSync(path.join(codexHome(), 'auth.json'), 'utf8')).auth_mode === 'chatgpt'; } catch (e) { return false; }
+function codexSignedIn(home) {
+  try { return JSON.parse(fs.readFileSync(path.join(codexHome(home), 'auth.json'), 'utf8')).auth_mode === 'chatgpt'; } catch (e) { return false; }
 }
 /* How to start Codex. On Windows its npm wrapper (codex.js) starts codex.exe without hiding it, and with no console
    to share (Romulus is a window app) Windows opens a new terminal for it. So codex.exe is started here, hidden,
@@ -458,14 +464,14 @@ function codexNativeExe(script) {
   }
   return null;
 }
-function codexLaunch(script, args, node) {
-  const nat = codexNativeExe(script);
-  if (nat) return { cmd: nat.exe, args, env: Object.assign({}, process.env, { CODEX_MANAGED_PACKAGE_ROOT: nat.pkgRoot, CODEX_MANAGED_BY_NPM: '1' }) };
-  return { cmd: node || process.execPath, args: [script].concat(args), env: Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' }) };
+function codexLaunch(script, args, node, home) {
+  const nat = codexNativeExe(script), own = home ? { CODEX_HOME: home } : {};
+  if (nat) return { cmd: nat.exe, args, env: Object.assign({}, process.env, { CODEX_MANAGED_PACKAGE_ROOT: nat.pkgRoot, CODEX_MANAGED_BY_NPM: '1' }, own) };
+  return { cmd: node || process.execPath, args: [script].concat(args), env: Object.assign({}, process.env, node ? {} : { ELECTRON_RUN_AS_NODE: '1' }, own) };
 }
-function codexStatus() {
+function codexStatus(home) {
   const cli = codexCli();
-  return { installed: !!cli, version: cli && cli.version, signedIn: !!cli && codexSignedIn() };
+  return { installed: !!cli, version: cli && cli.version, signedIn: !!cli && codexSignedIn(home) };
 }
 const CODEX_OFF = ['shell_tool', 'unified_exec', 'apps', 'plugins', 'remote_plugin', 'browser_use', 'browser_use_external',
   'in_app_browser', 'computer_use', 'image_generation', 'view_image', 'skill_search', 'tool_suggest', 'multi_agent', 'hooks', 'goals', 'sleep_tool'];
@@ -495,10 +501,10 @@ function codexBrowser(browserMcpFile, browserDenied) {
   const [name, b] = mcpServerOf(browserMcpFile);
   return b ? { name, command: b.command, args: b.args, env: b.env, denied: (browserDenied || []).map((n) => n.replace(/^mcp__browser__/, '')) } : null;
 }
-function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile, browserDenied, onProc, mail }) {
+function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile, browserDenied, onProc, mail, home }) {
   const cli = codexCli();
   if (!cli) return Promise.resolve({ auth: true, why: 'the Codex CLI isn’t installed: press Install in Settings → AI connections' });
-  if (!codexSignedIn()) return Promise.resolve({ auth: true, why: 'ChatGPT isn’t signed in: press Sign in with ChatGPT in Settings → AI connections' });
+  if (!codexSignedIn(home)) return Promise.resolve({ auth: true, why: 'ChatGPT isn’t signed in: press Sign in with ChatGPT in Settings → AI connections' });
   // a fresh private folder each run (empty: nothing of his to read), not a fixed name under the shared temp folder
   // that another user of a shared hub could make first and read the answer from
   let workDir;
@@ -508,7 +514,7 @@ function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile
     let err = '', done = false, p;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (e) {} resolve(r); } };
     const browser = codexBrowser(browserMcpFile, browserDenied);
-    const run = codexLaunch(cli.script, codexArgs(cli.script, outFile, chosen, browser, mail).slice(1), node);
+    const run = codexLaunch(cli.script, codexArgs(cli.script, outFile, chosen, browser, mail).slice(1), node, home);
     try { p = spawn(run.cmd, run.args, { cwd: workDir, env: run.env, windowsHide: true }); }
     catch (e) { return resolve({ why: 'could not start Codex' }); }
     if (onProc) onProc(p);
@@ -522,7 +528,7 @@ function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile
       let text = ''; try { text = fs.readFileSync(outFile, 'utf8').trim(); } catch (e) {}
       const log = err.slice(-12000), model = (err.match(/^model:\s*(\S+)/m) || [])[1];
       if (code === 0 && text) {
-        meter.noteCall('openai', { tokens: Number(((err.match(/tokens used\s*\n\s*([\d,]+)/i) || [])[1] || '').replace(/,/g, '')) || null });
+        if (!home) meter.noteCall('openai', { tokens: Number(((err.match(/tokens used\s*\n\s*([\d,]+)/i) || [])[1] || '').replace(/,/g, '')) || null });
         if (model || chosen) lastUsed.codex = model || chosen;
         return finish({ text, model, log });
       }
@@ -534,13 +540,13 @@ function runCodex({ prompt, timeoutMs, note, node, model: chosen, browserMcpFile
 }
 
 /* one request to the Codex app-server (JSON-RPC on stdin/stdout): no run, so nothing is used up. → the result, or null */
-function codexAsk(method, params, { node } = {}) {
+function codexAsk(method, params, { node, home } = {}) {
   const cli = codexCli();
-  if (!cli || !codexSignedIn()) return Promise.resolve(null);
+  if (!cli || !codexSignedIn(home)) return Promise.resolve(null);
   return new Promise((resolve) => {
     let out = '', done = false, p;
     const finish = (r) => { if (!done) { done = true; clearTimeout(killer); try { p.kill(); } catch (e) {} resolve(r); } };
-    const run = codexLaunch(cli.script, ['app-server'], node);
+    const run = codexLaunch(cli.script, ['app-server'], node, home);
     try { p = spawn(run.cmd, run.args, { cwd: os.tmpdir(), env: run.env, windowsHide: true }); }
     catch (e) { return resolve(null); }
     const killer = setTimeout(() => finish(null), 20000);

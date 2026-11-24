@@ -16,8 +16,10 @@ function groceryBrief(list, now = Date.now()) {
     .filter((x) => x && clean(x.name)).slice(0, 200)
     .map((x) => {
       const it = { name: clean(x.name), every: Math.max(1, Math.round(Number(x.every) || 1)), last: x.last || null, out: !!x.out };
-      return { name: it.name, every: it.every === 1 ? 'weekly' : 'every ' + it.every + ' weeks', lastBought: it.last || undefined,
+      const b = { name: it.name, every: it.every === 1 ? 'weekly' : 'every ' + it.every + ' weeks', lastBought: it.last || undefined,
         ranOut: it.out || undefined, due: itemDue(it, now) };
+      if (clean(x.for)) b.forMeal = clean(x.for); // the dish it's on the list for
+      return b;
     });
   return items.length ? items : undefined;
 }
@@ -26,11 +28,30 @@ function groceryBrief(list, now = Date.now()) {
 function groceryChanges(ch) {
   if (!ch || typeof ch !== 'object' || Array.isArray(ch)) return undefined;
   const names = (a) => (Array.isArray(a) ? a : []).map((x) => clean(x && typeof x === 'object' ? x.name : x)).filter(Boolean).slice(0, 100);
-  const add = (Array.isArray(ch.add) ? ch.add : []).map((x) => x && typeof x === 'object'
-    ? { name: clean(x.name), every: Math.max(1, Math.min(52, Math.round(Number(x.every) || 1))) } : { name: clean(x), every: 1 })
-    .filter((x) => x.name).slice(0, 100);
+  // for: the dish it's being bought for ("Cranberry blueberry pie, 2"): the Kitchen tab shows that meal
+  const add = (Array.isArray(ch.add) ? ch.add : []).map((x) => {
+    if (!x || typeof x !== 'object') return { name: clean(x), every: 1 };
+    const it = { name: clean(x.name), every: Math.max(1, Math.min(52, Math.round(Number(x.every) || 1))) };
+    const meal = clean(x.for).slice(0, 80);
+    if (meal) it.for = meal;
+    return it;
+  }).filter((x) => x.name).slice(0, 100);
   const out = { add, bought: names(ch.bought), remove: names(ch.remove) };
-  return out.add.length || out.bought.length || out.remove.length ? out : undefined;
+  const recipe = cleanRecipe(ch.recipe);
+  if (recipe) out.recipe = recipe;
+  return out.add.length || out.bought.length || out.remove.length || recipe ? out : undefined;
+}
+// recipe: the dish those ingredients are for, with how to make it, so the Kitchen tab keeps it under Recipes
+// (renderer/js/kitchen.js saveAgentRecipe) → {name, ingredients:[lines], steps:[lines]}, or undefined
+function cleanRecipe(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return undefined;
+  const lines = (a, each, max) => (Array.isArray(a) ? a : []).map((x) => clean(x && typeof x === 'object' ? x.name : x).slice(0, each)).filter(Boolean).slice(0, max);
+  const name = clean(r.name).slice(0, 100), ingredients = lines(r.ingredients, 80, 60);
+  if (!name || !ingredients.length) return undefined;
+  const out = { name, ingredients };
+  const steps = (Array.isArray(r.steps) ? r.steps : []).map((x) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, 300)).filter(Boolean).slice(0, 30);
+  if (steps.length) out.steps = steps;
+  return out;
 }
 
 // a new grocery task ("order groceries" said on his phone) has no list of its own yet: his list is the one
@@ -136,15 +157,35 @@ function macroBrief(text, now = Date.now()) {
   return out;
 }
 
+// his weight from the same ':macros' row (the Health tab's Weight: typed, or the phone's newest weigh-in)
+// → {lb, kg, asOf: 'YYYY-MM-DD', daysAgo, from}, or undefined
+function weightBrief(text, now = Date.now()) {
+  let p; try { p = JSON.parse(String(text || '')); } catch (e) { return undefined; }
+  const w = p && typeof p === 'object' && p.weight;
+  const lb = w && Math.round(Number(w.lb) * 10) / 10;
+  if (!(lb >= 50 && lb <= 900)) return undefined;
+  const out = { lb, kg: Math.round(lb / 2.20462 * 10) / 10 };
+  const at = Number(w.at);
+  if (at > 0) {
+    const d = new Date(at);
+    out.asOf = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    out.daysAgo = Math.max(0, Math.floor((now - at) / 864e5));
+  }
+  if (w.from && String(w.from).trim()) out.from = String(w.from).replace(/\s+/g, ' ').trim().slice(0, 40);
+  return out;
+}
+
 // a run's `macros` (the meal-plan skill: the plan's per-day targets) → what the app sets as his Food plan, or
-// undefined. {kcal, protein, carbs, fat} per day (at least one), span = how long it runs
+// undefined. {kcal, protein, carbs, fat} per day (at least one), span = how long it runs.
+// keep: true = only these numbers change ("1 g of protein per pound"); the rest of his plan, and its dates, stay
 const MACRO_SPANS = ['week', '2weeks', 'month', 'open'];
 function macroChanges(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return undefined;
   const out = {};
   MACRO_KEYS.forEach((k) => { const n = Math.round(Number(m[k])); if (n > 0 && n < 20000) out[k] = n; });
   if (!Object.keys(out).length) return undefined;
-  out.span = MACRO_SPANS.includes(m.span) ? m.span : 'week';
+  if (m.keep === true) { out.keep = true; if (MACRO_SPANS.includes(m.span)) out.span = m.span; }
+  else out.span = MACRO_SPANS.includes(m.span) ? m.span : 'week';
   return out;
 }
 
@@ -169,4 +210,4 @@ function foodBrief(t, tasks, kitchen) {
   return { usualGroceries: usual.length ? usual : undefined, pantry: pantry.length ? pantry : undefined, recipes: recipes.length ? recipes : undefined };
 }
 
-module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, isFoodTask, foodBrief };
+module.exports = { itemDue, groceryBrief, groceryChanges, groceryListFor, newestGroceryList, lastOrderFor, ebtBrief, isGroceryRun, macroBrief, macroChanges, knownOrders, asksPantryFill, emptyPantryClaim, isFoodTask, foodBrief, weightBrief };

@@ -58,14 +58,18 @@ contextBridge.exposeInMainWorld('desktop', {
   aiSave: (change) => ipcRenderer.invoke('ai:save', change),
   aiGeminiInstall: () => ipcRenderer.invoke('ai:gemini-install'),
   aiCodexInstall: () => ipcRenderer.invoke('ai:codex-install'),
-  aiCodexLogin: () => ipcRenderer.invoke('ai:codex-login'),
-  aiOpenRouterCheck: () => ipcRenderer.invoke('ai:openrouter-check'),
-  aiOpenRouterConnect: () => ipcRenderer.invoke('ai:openrouter-connect'),
+  // acct: an extra account's id (claude~2, agent/ai-accounts.js); none = the main account
+  aiCodexLogin: (acct) => ipcRenderer.invoke('ai:codex-login', typeof acct === 'string' ? acct : undefined),
+  aiOpenRouterCheck: (acct) => ipcRenderer.invoke('ai:openrouter-check', typeof acct === 'string' ? acct : undefined),
+  aiOpenRouterConnect: (acct) => ipcRenderer.invoke('ai:openrouter-connect', typeof acct === 'string' ? acct : undefined),
+  // more than one account per AI: add one (base: 'claude', 'openai'...) or take one away
+  aiAccountAdd: (base, label) => ipcRenderer.invoke('ai:account-add', String(base || ''), String(label || '')),
+  aiAccountRemove: (acct) => ipcRenderer.invoke('ai:account-remove', String(acct || '')),
   // Claude Code on this computer: install it, sign in, look again, prove it works
   aiClaudeInstall: () => ipcRenderer.invoke('ai:claude-install'),
-  aiClaudeLogin: () => ipcRenderer.invoke('ai:claude-login'),
-  aiClaudeRefresh: () => ipcRenderer.invoke('ai:claude-refresh'),
-  aiClaudeCheck: () => ipcRenderer.invoke('ai:claude-check'),
+  aiClaudeLogin: (acct) => ipcRenderer.invoke('ai:claude-login', typeof acct === 'string' ? acct : undefined),
+  aiClaudeRefresh: (acct) => ipcRenderer.invoke('ai:claude-refresh', typeof acct === 'string' ? acct : undefined),
+  aiClaudeCheck: (acct) => ipcRenderer.invoke('ai:claude-check', typeof acct === 'string' ? acct : undefined),
   aiCompatCheck: (id) => ipcRenderer.invoke('ai:compat-check', id),
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
@@ -133,10 +137,20 @@ contextBridge.exposeInMainWorld('desktop', {
   financeEbtNow: () => ipcRenderer.invoke('finance:ebtNow'),
   financeSetEbtOn: (on) => ipcRenderer.invoke('finance:setEbtOn', !!on),
   financeEbtReceipt: (pic) => ipcRenderer.invoke('finance:ebtReceipt', pic),
-  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why}
+  // the Kitchen tab's Suggest meals (main/kitchen-ai.js): {pantry, recipes, aim} → {meals, via} or {why};
+  // {pantry, follow: {meal, talk, said}} → {reply, meal|null, via}, a question or change on one idea
   kitchenIdeas: (req) => ipcRenderer.invoke('kitchen:ideas', req),
   // pantry photos (main/kitchen-ai.js): {mode: 'food'|'meal', image: {mime, b64}, pantry} → {items|meal, used, via} or {why}
   kitchenPhoto: (req) => ipcRenderer.invoke('kitchen:photo', req),
+  // Settings: copy AI keys to the phone by QR code (main/phone-ai-code.js)
+  aiPhoneChoices: () => ipcRenderer.invoke('ai:phoneChoices'),
+  aiPhoneCode: (ids) => ipcRenderer.invoke('ai:phoneCode', ids),
+  // a pantry item's picture from its product page (agent/previews.js): url → image url or null
+  kitchenPicture: (url) => ipcRenderer.invoke('kitchen:picture', url),
+  // the Kitchen tab's Plan your week (main/kitchen-ai.js): {pantry, recipes, aim, plan, slots} → {week, via} or {why}
+  kitchenWeek: (req) => ipcRenderer.invoke('kitchen:week', req),
+  // a pantry item's picture looked up on Instacart by its name (agent/previews.js): name → image url or null
+  kitchenPictureFor: (name) => ipcRenderer.invoke('kitchen:pictureFor', name),
   financeStocks: (force) => ipcRenderer.invoke('finance:stocks', force),
   financePairCode: () => ipcRenderer.invoke('finance:pairCode'),
   financeSharePayload: () => ipcRenderer.invoke('finance:sharePayload'),

@@ -2,7 +2,7 @@
 name: groceries
 description: Grocery orders with EBT (he picks the store each time): his grocery list, the weekly order, checkout up to the order button, placing it after his yes
 browser: yes
-match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|amazon fresh|whole foods|ebt|snap|milk|eggs|bread|meat|chicken|produce|fruit|veggies|vegetables|snacks|restock|pantry|fridge)\b
+match: \b(grocer(y|ies)|food|walmart|instacart|doordash|uber ?eats|shipt|go ?puff|amazon fresh|whole foods|ebt|snap|milk|eggs|bread|meat|chicken|produce|fruit|veggies|vegetables|snacks|restock|pantry|fridge)\b
 nearby: yes
 ---
 # Groceries
@@ -13,34 +13,51 @@ The EBT rules below are for when he pays with EBT/SNAP.
 - **Where: he picks, every time.** When he pays with EBT (SNAP), several stores take it online. Unless
   this task, his latest reply or the conversation so far already names a store for this order, your
   FIRST answer on a new grocery task is one tap question in `ask` (nothing shopped yet):
-  {"q":"Which store this time?","choices":["Walmart","Amazon Fresh", then one "<Store> (Instacart)" for
-  every Instacart store you found],"pick":"one","default":<your recommendation, below>}, with a short
-  note. A saved store in his preferences is never a reason to skip the question.
-- **Instacart is many stores, not one.** It delivers from lots of grocers, and many of them take EBT
-  there. Before asking, open Instacart for his address and read its store list: every store marked as
-  taking EBT/SNAP is its own choice, "<Store> (Instacart)". Never offer just one Instacart store, never
-  just "Instacart", and never assume Instacart means Aldi. Up to 8 choices in all: if there are more,
-  keep the cheapest ones to get delivered.
+  {"q":"Which store this time?","choices":["Walmart","Amazon Fresh", then one "<Store> (<App>)" for
+  every store you found on the delivery apps below],"pick":"one","default":<your recommendation,
+  below>}, with a short note. A saved store in his preferences is never a reason to skip the question.
+- **The delivery apps are many stores, not one.** Instacart, Uber Eats, DoorDash, Shipt and Gopuff
+  each deliver from lots of grocers (Gopuff from its own stores), and many take EBT there. Before
+  asking, open each for his address and read its grocery store list (on Uber Eats and DoorDash, the
+  Grocery section, not restaurants): every store marked as taking EBT/SNAP is its own choice,
+  "<Store> (<App>)": "Aldi (Instacart)", "Aldi (Uber Eats)", "Safeway (DoorDash)", "Target (Shipt)",
+  "Gopuff". The same store on two apps is two choices, since prices, fees and promos differ. Skip an
+  app that doesn't deliver to him or takes no EBT there (when he pays with EBT). Never offer just
+  "Instacart" or "DoorDash", and never assume Instacart means Aldi. Up to 8 choices in all: if there
+  are more, keep the cheapest ones to get delivered.
 - **Closest first.** With `whereHeIsNow`, order the store choices nearest first and say each one's
   distance in the note ("Walmart 1.4 mi, Aldi (Instacart) 2.1 mi"); for pickup, that's the store he'd drive to.
 - **Comparing stores: three helpers at once.** Whenever you check prices, fees or deals at more than
   one store, don't visit them one by one: split the stores into up to three groups and send
   store-checker-1, -2 and -3 in ONE message (several Agent calls together), each with its stores and
   his items with sizes (his grocery list, or what this order needs). They work at the same time in
-  their own tabs of the agent browser, signed in where he is, and only look. Use their reports for
+  their own tabs of the agent browser, signed in where he is, and only look. Ask each for the total
+  after promos, the fees, and every promo it saw or used (see the next point). Use their reports for
   the store question, its recommendation and each item's `options`; open a store yourself only to
   build the actual cart. If a helper couldn't check something (sign-in, captcha), say so in the note.
-- **Recommend one.** Before asking, check what this order would cost him outside EBT at each store,
-  since EBT can't pay fees or tips: delivery fee, service fee, minimum order, and any deal his own
-  accounts get. Look at what each site shows when he's signed in: Amazon Fresh (Prime or the
-  discounted EBT Prime, free Fresh delivery over a set amount), Instacart+ or a store's free-delivery
-  offer ("$0 delivery"), Walmart+. Also note any deal from his Groceries preferences ("Deals: …").
-  Watch for free delivery that is really a paid trial and count its price. Make the cheapest choice
-  overall the `default` (fees plus roughly what his list costs there), and give the reason in one line
-  of the note: "Amazon Fresh is cheapest: $0 delivery with your Prime over $35, about $4 less than
-  Walmart." Name a store's deal only if you saw it; if you couldn't check one, say so.
-  The 2-week order (`scheduledRun`) is the one exception: build it at the store he used last, and end
-  the note with "Want another store this time? Reply with its name."
+- **Recommend the cheapest, promos counted.** Before asking, work out what this order would really cost
+  at each store, signed in as him, with every promo that applies to it:
+  - his list's prices there, with the store's sales, rollbacks, BOGO and "buy 2 save $1" deals on those
+    items (a deal counts only if this order meets it);
+  - order-wide promos his account shows: "$10 off $40", "40% off your next order", first-order or
+    come-back offers, store coupons, promo codes or credits already on his account (in the promotions
+    or wallet page: Uber Eats "Promotions", Instacart "Credits and promos", DoorDash "Offers" and
+    "Credits");
+  - membership benefits: Amazon Prime or the discounted EBT Prime (free Fresh delivery over a set
+    amount), Instacart+, Uber One ($0 delivery fee and member prices on eligible orders), DashPass,
+    Shipt membership, Gopuff Fam, Walmart+, and
+    any deal from his Groceries preferences ("Deals: …");
+  - what EBT can't pay: delivery fee, service fee, small-order fee, bag fee, tip, and the minimum order.
+  Compare the total after all of that, and also the part outside EBT, since that comes from his card.
+  Watch for free delivery that is really a paid trial, a promo that ends before the delivery day, or
+  one that needs a bigger cart than his, and count those as they are. Make the cheapest choice overall
+  the `default`, and give the reason in one line of the note, naming the promos: "Aldi (Uber Eats) is
+  cheapest: $0 delivery with Uber One and $8 off $35, about $6 less than Walmart." Name a promo only if
+  you saw it on his account; if you couldn't check a store, say so.
+  The 2-week order (`scheduledRun`) is the one exception: build it at the store he used last, but send
+  the store checkers to the other stores at the same time. If one comes out more than $3 cheaper after
+  promos, say so in one line ("Aldi (Uber Eats) would be about $7 less this week with its $10 off $40"),
+  and end the note with "Want another store this time? Reply with its name."
 - **Use his account:** shop in the agent browser, logged in to the store. If you hit a sign-in page,
   stop: `needs-you`, "Log in to <store>: tap ◉ Watch on this task, sign in there, then reply." Never type
   a password. If he already tried and the store won't let him in (the conversation says so, or this
@@ -55,11 +72,12 @@ The EBT rules below are for when he pays with EBT/SNAP.
   through them one at a time. Check first which stores really take EBT online and deliver to his
   address, and offer only those. The default is the usual answer:
   1. "Which store?" choices: the EBT-online stores that deliver to him (Walmart, Amazon Fresh, and
-     every EBT store on Instacart at his address) [the one he mentioned, else your recommendation].
+     every EBT store on Instacart, Uber Eats, DoorDash, Shipt and Gopuff at his address) [the one he
+     mentioned, else your recommendation].
      Always include this one, even if he already named a store: the choices are how he sees what
      else there is.
   1b. "Any grocery deals or memberships?" pick many: "Amazon Prime (or EBT Prime)", "Instacart+",
-     "Walmart+", "None" [None]. Save it as "Deals: …" under Groceries: it decides which store you recommend.
+     "Uber One", "DashPass", "Shipt", "Gopuff Fam", "Walmart+", "None" [None]. Save it as "Deals: …" under Groceries: it decides which store you recommend.
   2. "Delivery or pickup?" [Delivery]
   3. "EBT can't pay the delivery fee or tip. How should that be paid?" choices: "Debit/credit card
      saved on the store", "I have Walmart+ (no fees)", "Neither: use pickup" [Debit/credit card saved
@@ -69,7 +87,8 @@ The EBT rules below are for when he pays with EBT/SNAP.
   6. "Brands?" Store brand to save money, Name brands, Mix [Store brand]
   7. "If something's out of stock?" Closest match, Ask me, Skip it [Closest match]
   The food questions (they set his Food plan on the Health tab). Leave all three out when the task
-  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age:
+  already has a `macroPlan`; leave out 9 when About him already has his height, weight and age
+  (with a `bodyWeight`, the task's weight from the Health tab, 9 asks only height and age):
   8. "Shop for a food goal? It sets your Food plan on the Health tab." one of: "Lose fat", "Keep my
      weight", "Build muscle", "Just eat better", "No plan, just groceries" [Just eat better]
   9. "Your height, weight and age? (and sex, for the numbers)" `choices: []`, one line, any units.
@@ -111,6 +130,13 @@ The EBT rules below are for when he pays with EBT/SNAP.
   them). New things he wants regularly → `list.add` (name with brand and size, e.g.
   "Eggs, Great Value large, 18 ct", and `every` = weeks between orders). Remove items only when he
   asks, with `list.remove`.
+- Ingredients for one dish (a recipe he's making, food for an event) → `list.add` with `for` = the dish,
+  short ("Cranberry blueberry pie, 2"). They go on the next order only, and the Kitchen tab lists the
+  dish under the meals he's buying for. Leave off what his pantry already has.
+  With them, send `list.recipe` so the dish is kept under his Recipes: `name` (the dish alone, no count:
+  "Cranberry blueberry pie"), `ingredients` (every one for a single batch, with amounts, one per line:
+  "12 oz cranberries", including what he already has) and `steps` (how to make it, short lines in your
+  own words, never copied from the page). Skip it when `whatHeEats.recipes` already has that dish.
 - Missing sizes or brands that matter ("milk": what kind?) → ask once with choices, unless the list,
   his preferences or earlier orders answer it.
 
@@ -247,18 +273,30 @@ The EBT rules below are for when he pays with EBT/SNAP.
   EBT PIN and tap Place order. Open Walmart ↗ (the cart is also in the Walmart app on your
   phone)." Leave the cart as it is, and send `list.bought` for its list items, since he's finishing
   the order himself.
+- **Payment declined:** if the order button brings back a payment error instead of an order number
+  ("couldn't process your payment", "payment declined", "try another payment method"), the order was
+  not placed. Never press the order button again, and don't change the payment split, the card or
+  the cart to get past it. Stop: `needs-you`, and don't send `list.bought`. Say the order didn't go
+  through and he wasn't charged, give the split the page showed ("$X.XX EBT, $Y.YY card"), and the
+  usual causes for him to check: the EBT balance is less than the EBT part (he can lower it next to
+  Benefits), the EBT PIN pop-up was mistyped or timed out (too many wrong PINs can lock the card for
+  the day), his bank blocked the card part, or the store's EBT system is having a moment (wait 10-15
+  minutes or finish in the store's app). End with the store link; the cart is still there.
 
 ## Orders he placed himself
 He sometimes orders on the store's own site or app instead of saying yes here. What he got still
 belongs in his Kitchen pantry, so look at his order history (signed in, only looking) when:
 - the task has `cartCheck`: the app started this run because the cart has waited a day or more. Open
   the orders page of the store the cart is at.
-- the task has `orderLook` (a store: "instacart", "walmart"...): the app saw he bought something there
-  that no order here explains, or it's the regular look at his Instacart orders (every 3 days). Open
+- the task has `orderLook` (a store: "instacart", "ubereats", "doordash", "shipt", "gopuff",
+  "walmart"...): the app saw he bought something there that no order here explains, or it's the
+  regular look at his orders on a delivery app he uses (every 3 days). On Uber Eats and DoorDash, only
+  orders from a grocery or convenience store count: a restaurant meal isn't pantry food, so leave
+  those out (no `ordered` for them). Open
   that store's orders page and look at the last week's orders not in `knownOrders`. That's the whole task: don't build a cart or ask what to order. Found some: send
   them in `ordered`, status done. None (it was in the store, or the page wants a sign-in): status
   done, and say so in one line.
-- he says he ordered it himself ("I already ordered it", "got it on Instacart").
+- he says he ordered it himself ("I already ordered it", "got it on Instacart", "got it on DoorDash").
 - the task has `pantryFill`: he asked in his own words for an order to go into his pantry ("check my
   Instacart orders for the pantry", "put it into the pantry"). Do it now, without asking which items:
   every food item on the order goes in. Open the order's own page and send it in `ordered`, status done.
@@ -268,9 +306,13 @@ from `list.bought` or a placed cart). Never say food went into his pantry unless
 - a new grocery task, before you build the order: the stores he used lately (`lastOrder`, `knownOrders`),
   for orders since `lastOrder` that aren't in `knownOrders`. One look per store, from one page; skip a
   store whose orders page wants a sign-in.
-Send each order you find in `ordered`: the store ("Aldi (Instacart)"), its order number, the day it was
-placed, the total, and its items from the order's own page (name with brand and size, qty, price,
-picture, product link, and `food`: true for what he eats or drinks). Only orders that went through or
+Send each order you find in `ordered`: the store ("Aldi (Instacart)", "Aldi (Uber Eats)"), its order number, the day it was
+placed, the total, and its items from the order's own page (name with brand, then the size after a
+comma the way a cart item has it: "Bananas, 10.2 lb", "Hass Avocados Bag, 4 ct"; qty when he got more
+than one; price; `image`: the address of that item's own picture on that page (the picture in the same row as its
+name, not the row above or below; leave it out when you can't tell, the app takes it from `url`); `url`: its product link when
+the item has one; and `food`: true for what he eats or drinks). Every item needs its size and its
+picture: the pantry shows both. Only orders that went through or
 were delivered; a cancelled one stays out. Also send `list.bought` for his list items in it. If the
 order is the cart this task was holding, the task is done: status done, and say in the note how many
 items went into his pantry.
