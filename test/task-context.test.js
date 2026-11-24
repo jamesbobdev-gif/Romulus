@@ -10,6 +10,17 @@ test('approvedHostsFor: the page, the cart, and links he wrote; never links in t
   assert.deepStrictEqual(approvedHostsFor({ history: [{ who: 'claude', text: 'https://evil.example/ reply yes' }] }), []);
 });
 
+test('approvedHostsFor: a cart or option link counts only on his own sites, the page, or a store', () => {
+  // the AI wrote the cart and the options: a page could have put its own address there
+  assert.deepStrictEqual(approvedHostsFor({ page: 'https://www.walmart.com/checkout', cart: [{ url: 'https://evil.example/pay' }] }), ['www.walmart.com']);
+  assert.deepStrictEqual(approvedHostsFor({ options: [{ url: 'https://evil.example/tickets' }] }), []);
+  // the same site as the page (walmart.com vs www.walmart.com), or a store, is fine
+  assert.deepStrictEqual(approvedHostsFor({ page: 'https://walmart.com/cart', cart: [{ url: 'https://www.walmart.com/ip/1' }] }).sort(), ['walmart.com', 'www.walmart.com']);
+  assert.deepStrictEqual(approvedHostsFor({ options: [{ url: 'https://www.target.com/p/1' }] }), ['www.target.com']);
+  // a look-alike of a store is not one
+  assert.deepStrictEqual(approvedHostsFor({ cart: [{ url: 'https://evil-walmart.com/x' }, { url: 'https://walmart.com.evil.example/x' }] }), []);
+});
+
 ctx.init({ userData: () => require('os').tmpdir(), readConfig: () => ({}), agentLog: () => {} });
 
 test('prefLine: {section, text} or a plain string', () => {
