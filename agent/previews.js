@@ -17,6 +17,8 @@ const agentLog = (m) => ctx.agentLog(m);
 // a Shopify store's page: its files come from Shopify's CDN and it names its shop (Shop Pay checks out there)
 const SHOPIFY_PAGE = /cdn\.shopify\.com\/|\bShopify\.shop\s*=|myshopify\.com/i;
 const PREVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
+// a store's stand-in for a product with no photo (Instacart's "missing-item" picture): no picture at all
+const NO_PICTURE = /\/missing-item[-.]/i;
 function absHttps(img, pageUrl) {
   try { const u = new URL(String(img).replace(/&amp;/g, '&'), pageUrl).href; return /^https:\/\//i.test(u) ? u : null; } catch (e) { return null; }
 }
@@ -31,7 +33,7 @@ async function pagePreviewImage(url, lane, info) {
       const meta = (p) => (h.match(new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]*content=["']([^"']+)["']`, 'i'))
         || h.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${p}["']`, 'i')) || [])[1];
       const img = meta('og:image') || meta('og:image:url') || meta('twitter:image') || meta('twitter:image:src');
-      if (img) return absHttps(img, url);
+      if (img && !NO_PICTURE.test(img)) return absHttps(img, url);
       // Instacart publishes no og:image, but its product photo is in the page (the first one is the item's)
       const ic = /instacart\.com\//i.test(url) && h.match(/https:\/\/[a-z0-9.]+\/(?:assets\/domains\/)?product-image\/file\/large_[^"'\\\s]+/i); // cloudfront, or instacart.com/assets/domains/…
       if (ic) return ic[0];
@@ -92,12 +94,27 @@ async function enrichOption(o, lane) {
     const rating = (h.match(/([0-9.]+) out of 5 stars/) || [])[1];
     return Object.assign(base, { url: clean,
       image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1'),
-      price: price || null, rating: rating ? rating + '★' : null });
+      price: price || null, rating: rating ? rating + '/5' : null });
   } catch (e) { return amazonViaBrowser(base, clean, lane); }
 }
-// Amazon showed the app its bot check (or didn't answer): keep the link, and get the photo through
-// Claude's browser (a real Chrome, which Amazon lets through) so the card isn't blank.
+// Amazon's picture for a product number, from its image server (no product page, so no bot check).
+// A product it has no picture for comes back as a 1-pixel gif: null then.
+async function amazonAsinPicture(url) {
+  const m = String(url).match(/\/dp\/([A-Z0-9]{10})/i);
+  if (!m) return null;
+  const img = 'https://m.media-amazon.com/images/P/' + m[1].toUpperCase() + '.01._SCLZZZZZZZ_.jpg';
+  try {
+    const r = await fetch(img, { headers: { 'User-Agent': PREVIEW_UA }, signal: AbortSignal.timeout(8000) });
+    const ok = r.ok && /^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '') && (await r.arrayBuffer()).byteLength > 1000;
+    return ok ? img : null;
+  } catch (e) { return null; }
+}
+// Amazon showed the app its bot check (or didn't answer): keep the link, and get the photo from Amazon's
+// image server, or failing that through Claude's browser, so the card isn't blank. (The browser's
+// cookie-free tab now usually gets the same "Continue shopping" check, so it is the last resort.)
 async function amazonViaBrowser(base, url, lane) {
+  const asinImg = await amazonAsinPicture(url);
+  if (asinImg) return Object.assign(base, { url, image: asinImg });
   const img = await agentBrowserPreview(url, lane).catch(() => null);
   return Object.assign(base, { url }, img && !/\.gif$/i.test(img) ? { image: img.replace(/\._[^/]*_\.(jpg|png)$/i, '._AC_SL500_.$1') } : {});
 }
@@ -138,4 +155,40 @@ async function runBrowserPreview(urls, lane) {
   });
 }
 
-module.exports = { init, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption };
+// the Kitchen tab: the picture on a product page, for a pantry item from an order (renderer/js/pantry-pictures.js)
+async function kitchenPicture(_e, url) {
+  if (!/^https:\/\//i.test(String(url || ''))) return null;
+  return pagePreviewImage(String(url).slice(0, 500)).catch(() => null);
+}
+/* A pantry item with no picture and no product page (an order read from his Instacart account can come with
+   neither): Instacart's search for its name, signed out, and the picture of the result whose name is closest.
+   html: the search page; each result is an <img> of the product with its name in alt. → image url or null */
+const ICART_WORDS = (s) => String(s || '').toLowerCase().replace(/&#x27;|&#39;|['’]/g, '').replace(/&amp;/g, ' ')
+  .replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean)
+  .map((w) => (w.length < 4 ? w : w.replace(/ies$/, 'y').replace(/oes$/, 'o').replace(/([^s])s$/, '$1'))); // potatoes = potato, berries = berry
+function instacartPick(html, name) {
+  const want = ICART_WORDS(name);
+  if (!want.length) return null;
+  let best = null;
+  const re = /<img\b[^>]*?product-image\/file\/(large_[A-Za-z0-9._-]+)[^>]*>/g;
+  for (let m, i = 0; (m = re.exec(String(html || ''))) && i < 40; i++) {
+    const alt = ICART_WORDS((m[0].match(/\balt="([^"]*)"/) || [])[1]);
+    const hit = want.filter((w) => alt.includes(w)).length;
+    if (!hit) continue;
+    // most of his words, the food itself (the last word) above the brand, then the plainest name; the page's order breaks a tie
+    const score = hit * 10 + (alt.includes(want[want.length - 1]) ? 5 : 0) - alt.filter((w) => !want.includes(w)).length;
+    if (!best || score > best.score) best = { score, file: m[1] };
+  }
+  return best ? 'https://www.instacart.com/image-server/394x394/filters:fill(FFFFFF,true):format(jpg)/d2lnr5mha7bycj.cloudfront.net/product-image/file/' + best.file : null;
+}
+async function kitchenPictureFor(_e, name) {
+  const q = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!q) return null;
+  try {
+    const r = await fetch('https://www.instacart.com/store/s?k=' + encodeURIComponent(q), { headers: { 'User-Agent': PREVIEW_UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' }, signal: AbortSignal.timeout(15000) });
+    return r.ok ? instacartPick((await r.text()).slice(0, 3000000), q) : null;
+  } catch (e) { return null; }
+}
+const handlers = { 'kitchen:picture': kitchenPicture, 'kitchen:pictureFor': kitchenPictureFor };
+
+module.exports = { init, handlers, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption, instacartPick, amazonAsinPicture };

@@ -79,3 +79,16 @@ test('readRow sends p_since once it has seen a row, and keeps the copy when the 
   assert.strictEqual(gone, undefined);
   assert.strictEqual(JSON.parse(seen.opts.body).p_since, 't2'); // it asked with the last time it knew; the row was gone
 });
+
+test('a download limit on the server says so; other errors stay HTTP codes', async () => {
+  await assert.rejects(supabase.rpc(a, 'sync_get', {}, { fetch: fakeFetch(400, { code: 'P0001', message: 'read_limit' }) }), /read_limit/);
+  await assert.rejects(supabase.rpc(a, 'sync_get', {}, { fetch: fakeFetch(500, { message: 'boom' }) }), /^Error: HTTP 500$/);
+});
+
+test('a key the keyring could not open (still enc:v1:...) is never sent; the error says why', async () => {
+  let called = false;
+  const f = async () => { called = true; return { ok: true, json: async () => [] }; };
+  await assert.rejects(supabase.rpc(Object.assign({}, a, { key: 'enc:v1:djE0abc' }), 'sync_get', {}, { fetch: f }), /keyring/);
+  await assert.rejects(supabase.rpc(Object.assign({}, a, { syncKey: 'enc:v1:djE0abc' }), 'sync_get', {}, { fetch: f }), /keyring/);
+  assert.strictEqual(called, false);
+});

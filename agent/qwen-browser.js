@@ -41,11 +41,31 @@ async function tidyAgentTabs() {
     agentLog('local: closed ' + loose.length + ' browser tab(s) on the mini PC' + (pages.length > loose.length ? ', kept ' + (pages.length - loose.length) + ' waiting on him' : ''));
   } catch (e) {} // the browser may be gone already: nothing to tidy
 }
-// a run that's waiting on him: its web pages stay open (another task's held tabs aren't taken over)
+/* Which of a stopped run's pages stay (pure, for tests; Chrome lists the most recently used first): the one it
+   stopped on, then its other pages, leaving out older sign-in steps and repeats of the same address, KEEP_HELD
+   at most. A class task that kept stopping held every page of every run: twenty-odd D2L and Microsoft
+   sign-in tabs, all live, on the mini PC that runs out of memory. */
+const KEEP_HELD = 3;
+const { signInPage } = require('./task-tabs');
+const signInTab = (p) => signInPage(p.url) || /^sign in to your account$/i.test(String(p.title || '').trim());
+function heldPick(pages) {
+  const seen = new Set(), keep = [];
+  pages.forEach((p, i) => {
+    const addr = String(p.url || '').replace(/#.*$/, '');
+    if (keep.length >= KEEP_HELD || seen.has(addr) || (i > 0 && signInTab(p))) return;
+    keep.push(p); seen.add(addr);
+  });
+  return keep;
+}
+// a run that's waiting on him: a few of its web pages stay open, the rest close (another task's held tabs
+// aren't taken over or closed)
 async function holdTabs(taskId) {
   try {
-    const others = heldIds(), ids = (await tabList()).filter((p) => /^https?:/i.test(p.url) && !others.has(p.id)).map((p) => p.id);
-    if (ids.length) { holds.set(String(taskId), { ids, at: Date.now() }); agentLog('local: keeping ' + ids.length + ' tab(s) open for him'); }
+    const others = heldIds(), mine = (await tabList()).filter((p) => /^https?:/i.test(p.url) && !others.has(p.id));
+    const ids = heldPick(mine).map((p) => p.id);
+    const shut = mine.filter((p) => !ids.includes(p.id));
+    for (const p of shut) await fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/close/' + p.id, { method: 'PUT', signal: AbortSignal.timeout(3000) }).catch(() => {});
+    if (ids.length) { holds.set(String(taskId), { ids, at: Date.now() }); agentLog('local: keeping ' + ids.length + ' tab(s) open for him' + (shut.length ? ', closed ' + shut.length : '')); }
   } catch (e) {}
 }
 /* Where the next run starts (TASKS_BROWSER_TAB, agent/browser-proxy.js): the task's own held tab when it
@@ -120,6 +140,7 @@ async function startBrowserTools(lockFile, taskTitle, tab) {
   const p = require('child_process').spawn(node, [path.join(dir, 'browser-proxy.js'), cli, 'remote', 'unused', String(QWEN_BROWSER_LOCAL_PORT)], {
     windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'],
     env: Object.assign({}, process.env, { TASKS_BROWSER_LOCK: lockFile, TASKS_BROWSER_ARGS: JSON.stringify(['--snapshot-mode', 'none', '--image-responses', 'omit']),
+      TASKS_BROWSER_DOWNLOADS: require('./worker-files').downloadsDir(), // its own folder: that is what the worker publishes, not ~/Downloads
       TASKS_BROWSER_FILES: JSON.stringify(formFiles().map((f) => f.path)), // his resume and the like: the only uploads allowed (sent from this computer over CDP)
       TASKS_BROWSER_ACTIONS: require('./agent-browser').actionsLogFile(), TASKS_BROWSER_TASK: String(taskTitle || '').slice(0, 120), TASKS_BROWSER_TAB: String(tab || '') }) }); // what it did, for Settings → What the Agent did
   let buf = '', id = 0; const pending = {};
@@ -193,4 +214,4 @@ async function miniPcScreenshot() {
   return base + '/storage/v1/object/public/agent-attachments/' + file;
 }
 
-module.exports = { init, QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, tidyAgentTabs, holdTabs, startTab, isHeld, looseTabs, ensureQwenBrowser, noFileArgs, startBrowserTools, miniPcScreenshot };
+module.exports = { init, QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, tidyAgentTabs, holdTabs, heldPick, startTab, isHeld, looseTabs, ensureQwenBrowser, noFileArgs, startBrowserTools, miniPcScreenshot };

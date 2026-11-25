@@ -164,7 +164,8 @@ function normalizeSyncCfg(raw){
   if(raw.url)raw={personal:raw}; // legacy single-profile shape
   const out={};
   if(raw.personal&&raw.personal.url)out.personal=raw.personal;
-  ['work','agent','school'].forEach(function(k){ const p=raw[k]; if(p&&p.url&&p.syncKey&&!p.derived)out[k]=p; });
+  // the family list (family-list.js) always has a key of its own: it's shared, so nobody's personal key may lead to it
+  ['work','agent','school','family'].forEach(function(k){ const p=raw[k]; if(p&&p.url&&p.syncKey&&!p.derived)out[k]=p; });
   const p=out.personal;
   if(p&&p.url&&p.key&&p.syncKey)['work','agent','school'].forEach(function(k){ if(!out[k]){ out[k]={url:p.url,key:p.key,syncKey:deriveSyncKey(p.syncKey,k),derived:true}; if(p.v2)out[k].v2=true; } });
   return (out.personal||out.work)?out:null;
@@ -200,6 +201,7 @@ function profileList(){
   if(validProfile(c.work))out.push('work');
   if(validProfile(c.agent))out.push('agent');
   if(validProfile(c.school))out.push('school');
+  if(validProfile(c.family))out.push('family');
   return out;
 }
 function syncEnabled(){ return profileList().length>0; }
@@ -209,10 +211,11 @@ function agentConfigured(){ return !!(syncState.cfg&&validProfile(syncState.cfg.
 // the phone), while the phone needs the synced list to reach it
 function agentAvailable(){ return agentConfigured()||!!(window.desktop&&window.desktop.aiStatus); }
 function schoolConfigured(){ return !!(syncState.cfg&&validProfile(syncState.cfg.school)); }
+function familyConfigured(){ return !!(syncState.cfg&&validProfile(syncState.cfg.family)); }
 // "agent" is a third channel: tasks Claude works on by itself. Only it carries
 // the status/note fields — personal/work docs keep the old shape so older
 // builds (office app) never see fields they would drop.
-function taskWs(t){ return t.ws==='work'?'work':t.ws==='agent'?'agent':t.ws==='school'?'school':'personal'; }
+function taskWs(t){ return t.ws==='work'?'work':t.ws==='agent'?'agent':t.ws==='school'?'school':t.ws==='family'?'family':'personal'; }
 /* School: every assignment lives on the School tab; it also joins the Human list ahead of its
    due date — regular work 2 weeks before, exams 3 weeks before, projects right away. */
 const SCHOOL_LEAD_DAYS={regular:14,exam:21,project:null};
@@ -231,6 +234,7 @@ function inTab(t,tab){
   if(tab==='agent')return ws==='agent'&&t.status!=='suggested'; // a suggestion waits on the Human tab for Accept / Deny
   if(tab==='school')return ws==='school';
   if(tab==='work')return ws==='work';
+  if(tab==='family')return ws==='family'; // the family's list stays on its own tab
   return ws==='personal'||ws==='work'||(ws==='school'&&schoolSurfaced(t));
 }
 function syncHeaders(p){ return {'apikey':p.key,'Authorization':'Bearer '+p.key,'Content-Type':'application/json'}; }
@@ -238,10 +242,26 @@ function syncHeaders(p){ return {'apikey':p.key,'Authorization':'Bearer '+p.key,
    sync_put, sync_set: supabase/migrations/20261021_sync_rpc_lockdown.sql). The table itself is closed to
    the anon key, so the key in the app can't list or touch anything but what it knows the key of. */
 async function syncRpc(p,fn,body){
-  const res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)});
-  if(!res.ok)throw new Error('HTTP '+res.status);
+  if(syncKeyLocked(p))throw new Error(SYNC_LOCKED);
+  let res;
+  // the request never got out (no connection, or a phone just woken before its network is back): the browser
+  // only says "Failed to fetch", so say what it means. The next sync tries again.
+  try{ res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:syncHeaders(p),body:JSON.stringify(body)}); }
+  catch(e){ throw new Error(SYNC_OFFLINE); }
+  if(!res.ok){
+    // the Romulus server limits downloads (supabase/migrations/20261111_sync_read_limits.sql): say so, it clears by itself
+    let msg=''; try{ msg=String((await res.json()).message||''); }catch(e){}
+    if(msg==='read_limit')throw new Error(SYNC_READ_LIMIT);
+    throw new Error('HTTP '+res.status);
+  }
   return res.json();
 }
+/* main/store.js keeps keys sealed with the OS keyring. When the keyring can't open them (on Linux: it stayed
+   locked after a restart), the sealed text 'enc:v1:...' comes through in place of the key: never send that. */
+function syncKeyLocked(p){ return !!p&&(/^enc:/.test(String(p.key||''))||/^enc:/.test(String(p.syncKey||''))); }
+const SYNC_LOCKED='this computer couldn’t unlock its saved sync key. The system keyring is probably locked: unlock it (or sign out and back in with your password), then restart Romulus.';
+const SYNC_OFFLINE='couldn’t reach the sync server just now (no connection?). Everything is safe on this device, and it tries again on its own.';
+const SYNC_READ_LIMIT='sync paused for a while: this account downloaded a lot in a short time. Your lists are safe on this device, and it picks up again on its own.';
 /* End-to-end encryption (sync-crypto.js). A profile with v2:true is found under its lookup id and its rows
    go up sealed; every list made from the personal key follows it (normalizeSyncCfg). A profile built for one
    row (ideasProfile, prefsProfile, …) has no flag of its own: it's whatever the list it belongs to is. */
@@ -264,6 +284,45 @@ function syncAdoptV2(p){
   syncState.cfg=normalizeSyncCfg(raw);
   syncCfgPersist(syncState.cfg);
   syncState.docs={};
+  return true;
+}
+/* Before switching to a Supabase project typed into Settings: is it reachable, is the key right, and was
+   setup.sql run in it? '' = fine (or something the normal sync will report better). */
+async function syncCheckProject(p){
+  let res;
+  try{ res=await fetch(p.url.replace(/\/+$/,'')+'/rest/v1/rpc/sync_get',{method:'POST',headers:syncHeaders(p),body:JSON.stringify({p_sync_key:p.syncKey})}); }
+  catch(e){ return 'couldn’t reach that Project URL: check it, and that you’re online'; }
+  if(res.ok)return '';
+  if(res.status===401||res.status===403)return 'that key was refused: paste the publishable key from Project Settings → API';
+  if(res.status===404)return 'that project isn’t set up yet: press Copy setup.sql, paste it in the project’s SQL Editor and press Run, then Save & sync again';
+  return '';
+}
+/* Moving the lists to another project (Romulus server → your own): once this device's lists are up there, the
+   old personal row gets {movedTo:{url,key}} in place of the list, sealed like every row there, so only a
+   device with the sync key can read it. Every other device on these lists follows it on its next sync
+   (syncFollowMove), so nobody has to pair them again. An older build that doesn't know the note just keeps
+   syncing where it was. The note's list is empty with no tombstones, so merging it deletes nothing. */
+async function syncLeaveMovedNote(oldP,newP){
+  await syncPushDoc(oldP,{v:1,tasks:[],tombstones:[],movedTo:{url:newP.url,key:newP.key,v2:!!newP.v2}});
+}
+function syncFollowMove(from,m){
+  const c=syncState.cfg;
+  if(!c||!m||typeof m.url!=='string'||typeof m.key!=='string'||!/^https:\/\/[^\s/]+/.test(m.url)||m.key.length<10)return false;
+  if(m.url.replace(/\/+$/,'')===from.url.replace(/\/+$/,''))return false;
+  const raw={};
+  ['personal','work','agent','school'].forEach(function(ws){
+    const x=c[ws]; if(!x||(ws!=='personal'&&x.derived))return;
+    if(x.url!==from.url){ raw[ws]=x; return; }
+    const y=Object.assign({},x,{url:m.url,key:m.key});
+    if(m.v2)y.v2=true; else delete y.v2;
+    raw[ws]=y;
+  });
+  if(c.family)raw.family=c.family; // the family list stays on the Romulus server whatever project the rest moves to
+  syncState.cfg=normalizeSyncCfg(raw);
+  syncCfgPersist(syncState.cfg);
+  syncState.docs={};
+  if(typeof hostedSetOptOut==='function')hostedSetOptOut(true); // don't start on the Romulus server by itself again
+  if(typeof syncFillForm==='function')syncFillForm();
   return true;
 }
 function setSyncStatus(msg,isErr){
@@ -348,11 +407,15 @@ function stableJson(v){
 function canonTasks(tasks){
   return stableJson(tasks.slice().sort(function(a,b){ return a.id<b.id?-1:1; }));
 }
-function stripWs(t){ const c=Object.assign({},t); delete c.ws; return c; }
+// also without the old conversation of a long-finished Agent task, which stays on this device (history-trim.js)
+function stripWs(t){ const c=Object.assign({},histUpForm(t)); delete c.ws; return c; }
 // Doc pushed to a channel: only that workspace's tasks, without the ws field —
 // remote docs stay compatible with devices that know nothing about workspaces.
-function wsDoc(ws){
-  return {v:1,tasks:state.tasks.filter(function(t){ return taskWs(t)===ws; }).map(stripWs),tombstones:state.tombstones};
+// The family list (shared with other people) carries only its own deletions and the devices on it (family-list.js).
+function wsDoc(ws,remoteDoc){
+  const d={v:1,tasks:state.tasks.filter(function(t){ return taskWs(t)===ws; }).map(stripWs),tombstones:state.tombstones};
+  if(ws==='family'&&typeof familyDocExtras==='function')Object.assign(d,familyDocExtras(remoteDoc));
+  return d;
 }
 // Merge one channel's remote doc into that workspace's slice of local state.
 // Per task id the newer updatedAt wins; a tombstone beats a task unless the
@@ -372,6 +435,7 @@ function mergeRemoteWs(remoteDoc,ws){
     if(!prev||(t.updatedAt||0)>(prev.updatedAt||0)){
       // a lane is only ever changed (switching), never removed: a newer copy that hasn't heard of it yet keeps it
       if(prev&&prev.lane&&!t.lane){ t=Object.assign({},t,{lane:prev.lane}); }
+      if(prev)t=histCarry(t,prev); // the online copy comes without the old conversation: this device's stays (history-trim.js)
       byId[t.id]=t;
     } else if(t.lane&&!prev.lane){ byId[t.id]=Object.assign({},prev,{lane:t.lane}); }
   });
@@ -396,7 +460,10 @@ function mergeRemoteWs(remoteDoc,ws){
     if(merged.some(function(t){ return before[t.id]&&before[t.id]!==t.status&&(t.status==='needs-you'||t.status==='done'); }))buzz('answer');
   }
   const changedLocal=canonTasks(merged)!==canonTasks(localWs)||Object.keys(movedOut).length>0;
-  const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw)||mergedTombs.length!==rTombs.length;
+  const upTombs=ws==='family'&&typeof familyTombs==='function'?familyTombs(mergedTombs,remoteDoc):mergedTombs; // what wsDoc sends
+  // the online copy is read the way this device would send it, so one that still carries an old conversation
+  // (sent by an older build) is left as it is rather than fought over
+  const changedRemote=canonTasks(merged.map(stripWs))!==canonTasks(rTasksRaw.map(histUpForm))||upTombs.length!==rTombs.length;
   state.tasks=others.concat(merged);
   state.tombstones=mergedTombs;
   if(changedLocal&&typeof billAlerts==='function')billAlerts(); // a bill to-do came from the computer (bill-reminders.js)
@@ -415,8 +482,16 @@ async function syncNow(){
 }
 async function syncOnce(){
   setSyncStatus('syncing…');
+  // this device's place in Settings → Devices, and whether the sync key moved on without it (devices.js)
+  if(typeof devicesTick==='function'){
+    const d=await devicesTick();
+    if(d==='moved'){ setTimeout(startSyncLoop,0); return; }
+    if(d==='off')return;
+  }
   let firstErr=null, anyLocal=false;
   const list=profileList();
+  // long-finished Agent tasks stop sending their old conversation (history-trim.js); saved here below like any change
+  if(list.indexOf('agent')!==-1&&histArchive(state.tasks,Date.now()))anyLocal=true;
   for(let i=0;i<list.length;i++){
     const ws=list[i], p=syncState.cfg[ws];
     try{
@@ -424,11 +499,24 @@ async function syncOnce(){
       // or by Claude), the upload is refused, so download again and merge that in too, never overwrite it
       for(let attempt=0;attempt<4;attempt++){
         const row=await syncPullRow(p);
+        // the family list moved to a new key when someone left: follow it, or drop it here (family-list.js)
+        if(ws==='family'&&row.doc&&row.doc.rotated&&typeof familyFollow==='function'){
+          if(await familyFollow(row.doc)==='moved'){ setTimeout(startSyncLoop,0); return; }
+          anyLocal=true; break;
+        }
+        // the list moved to a new sync key this device wasn't given: uploading here would only fill the blanked row again
+        if(row.doc&&row.doc.rotated)throw new Error('the sync key was changed on another device: pair this one again with Add a device');
+        // another device moved these lists to a different Supabase project: follow it there (syncLeaveMovedNote)
+        if(ws==='personal'&&row.doc&&row.doc.movedTo&&syncFollowMove(p,row.doc.movedTo)){
+          setSyncStatus('your lists moved to another Supabase project; following them there');
+          setTimeout(startSyncLoop,0); return;
+        }
         if(row.doc&&typeof markWelcomed==='function')markWelcomed(); // the account already has lists, so it was welcomed on another device
         const r=mergeRemoteWs(row.doc,ws);
+        if(ws==='family'&&typeof familyNoteRemote==='function'&&await familyNoteRemote(row.doc))r.changedRemote=true; // this device's entry on it
         if(r.changedLocal)anyLocal=true;
         if(!(r.changedRemote||!row.doc))break;
-        if(await syncPushCas(p,wsDoc(ws),row.updatedAt))break;
+        if(await syncPushCas(p,wsDoc(ws,row.doc),row.updatedAt))break;
         if(attempt===3)throw new Error('the list kept changing; will retry');
       }
     }catch(e){
@@ -444,7 +532,7 @@ async function syncOnce(){
         if(r.changedLocal)anyLocal=true;
         if(!(r.changedRemote||(!row.doc&&(state.ideas.cards.length||state.ideas.groups.length))))break;
         if(await syncPushCas(ip,ideasDoc(),row.updatedAt))break;
-        if(attempt===3)throw new Error('the ideas board kept changing; will retry');
+        if(attempt===3)throw new Error('the notes board kept changing; will retry');
       }
     }catch(e){
       if(!firstErr)firstErr=e;
@@ -465,13 +553,41 @@ async function syncOnce(){
       if(!firstErr)firstErr=e;
     }
   }
+  // daily health totals the phone read (health.js); their row is always sealed, whatever the lists are
+  const hlp=typeof healthProfile==='function'?healthProfile():null;
+  let healthNew=false;
+  if(hlp&&Date.now()>=healthRun.noRowUntil){
+    try{
+      for(let attempt=0;attempt<4;attempt++){
+        const row=await syncPullRow(hlp);
+        const r=mergeHealth(row.doc);
+        if(r.changedLocal){ anyLocal=true; healthNew=true; }
+        if(!(r.changedRemote||(!row.doc&&Object.keys(state.health.days).length)))break;
+        if(await syncPushCas(hlp,healthDoc(),row.updatedAt))break;
+        // making the row was refused: a database without the :health key yet
+        // (supabase/migrations/20261116_sync_health_key.sql). The lists sync as before; try again in an hour
+        if(!row.updatedAt){ healthRun.noRowUntil=Date.now()+3600000; break; }
+        if(attempt===3)throw new Error('the health totals kept changing; will retry');
+      }
+    }catch(e){
+      if(!firstErr)firstErr=e;
+    }
+  }
+  // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
+  if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
+  // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
+  // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
+  if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
+  if(typeof familySync==='function'){
+    try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
+  }
   if(anyLocal){
     rebuildSnap();
     store.save(currentDoc());
     renderActive();
-    if(typeof refreshSwipe==='function')refreshSwipe(); // the morning deck, if it's open (swipe.js)
     if(spawnMissedRecurs())touch(); // ticked off on a device or by a tool that doesn't make the next one
   }
+  if((anyLocal||healthNew)&&typeof healthAutoCheck==='function')healthAutoCheck(); // a task's goal reached on the phone, or just synced
   if(firstErr){
     // back off: a minute, then doubling, up to 15 minutes. Hammering a project that answers 402 (over its plan's limit) helps nobody
     syncState.errStreak=Math.min(syncState.errStreak+1,5);
@@ -527,6 +643,9 @@ function liveTargets(){
   profileList().forEach(function(ws){ add(syncState.cfg[ws]); });
   if(typeof ideasProfile==='function')add(ideasProfile());
   if(typeof hoursProfile==='function')add(hoursProfile());
+  if(typeof healthProfile==='function')add(healthProfile());
+  if(typeof kitchenProfile==='function')add(kitchenProfile());
+  if(typeof familyProfile==='function')add(familyProfile());
   Object.keys(out).forEach(function(id){ if(!out[id].topics.length)delete out[id]; });
   return out;
 }
@@ -545,7 +664,7 @@ function liveJoin(s,topic){ // one Phoenix channel per list, on the shared socke
     payload:{config:{broadcast:{self:false,ack:false},presence:{key:''},postgres_changes:[],private:false}}})); }catch(e){}
 }
 function liveOpen(id,t,tries){
-  if(typeof WebSocket!=='function')return;
+  if(typeof WebSocket!=='function'||/^enc:/.test(String(t.key||'')))return; // a key the keyring couldn't open (syncKeyLocked)
   const s={ws:null,wanted:t.topics.slice(),joined:{},refs:{},ref:0,hb:null,retry:null,lastMsg:Date.now(),tries:tries||0};
   live.sockets[id]=s;
   try{ s.ws=new WebSocket(t.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(t.key)+'&vsn=1.0.0'); }

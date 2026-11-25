@@ -6,11 +6,15 @@ const path = require('path');
 
 let mainWindow = null;
 let isQuitting = false;
+let onHidden = null; // runs once the window has hidden to the tray (main.js hands in the tray's first-time notice)
 
 const ROOT = path.join(__dirname, '..');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
 const APP_PAGE = path.join(ROOT, 'renderer', 'index.html');
 const LINUX = process.platform === 'linux';
+// Windows and Linux: no system title bar (a strip in the system's colors above the app's own header);
+// Electron draws the window buttons top-right instead, in the page's colors. Mac keeps its own.
+const OWN_TITLE_BAR = LINUX || process.platform === 'win32';
 const TITLE_H = 32; // the hidden title bar's strip: window buttons on the right, drag area across
 // Opened for a look on a computer where a background service normally runs the app (the mini PC's app-menu
 // launcher pauses the service and passes this): closing the window quits, so the service can come back.
@@ -52,14 +56,23 @@ function createWindow() {
     icon: ICON,
     backgroundColor: '#FBFBFA',
     autoHideMenuBar: true,
-    // Linux: no window-manager title bar (a plain white strip saying "Romulus" above the app's own
-    // header); Electron draws the window buttons top-right instead, in the page's colors
-    ...(LINUX ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#FBFBFA', symbolColor: '#71716C', height: TITLE_H } } : {}),
+    ...(OWN_TITLE_BAR ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#FBFBFA', symbolColor: '#71716C', height: TITLE_H } } : {}),
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // the page runs in Chromium's OS-level sandbox; preload.js only needs contextBridge + ipcRenderer
+      sandbox: true,
+      // In the tray the page still takes in the Agent's answers, syncs and keeps its live channels up.
+      // Chromium slows a hidden page's timers to one a minute after five minutes; not this one.
+      backgroundThrottling: false
     }
+  });
+  // With that off the page never hears it was hidden or shown, so say "shown" by hand: what the page does
+  // when he comes back to it (the day's plan, a fresh look at sync) still happens.
+  mainWindow.on('show', () => {
+    const wc = mainWindow.webContents;
+    if (!wc.isLoading()) wc.executeJavaScript("document.dispatchEvent(new Event('visibilitychange'))").catch(() => {});
   });
   // The window only ever shows the app itself: no navigating away, no pop-ups.
   // Web links go to the real browser instead.
@@ -78,9 +91,16 @@ function createWindow() {
   // leaves a blank window forever — retry until it sticks.
   loadApp().catch(() => setTimeout(loadApp, 1500));
   mainWindow.webContents.on('did-fail-load', () => setTimeout(loadApp, 1500));
+  // The page takes in the Agent's answers and syncs them, also while the window sits in the tray. If it
+  // dies there (a crash, out of memory) nobody would see it: load it again.
+  mainWindow.webContents.on('render-process-gone', (_e, d) => {
+    if (isQuitting || (d && d.reason === 'clean-exit')) return;
+    console.error('the page stopped (' + (d && d.reason) + '): loading it again');
+    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) loadApp().catch(() => {}); }, 1500);
+  });
   // a fresh page starts off Finance: drop the capture block it may have left (it sets it again if it opens there)
   mainWindow.webContents.on('did-start-loading', () => protect(false));
-  if (LINUX) mainWindow.webContents.on('did-finish-load', titleBarFollowsPage);
+  if (OWN_TITLE_BAR) mainWindow.webContents.on('did-finish-load', titleBarFollowsPage);
 
   // Closing the window hides it to the tray; the app keeps running
   // so it can reappear when the screen wakes. Quit from the tray menu.
@@ -89,11 +109,12 @@ function createWindow() {
     if (QUIT_ON_CLOSE) { quit(); return; }
     e.preventDefault();
     mainWindow.hide();
+    if (onHidden) onHidden();
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// Linux without a title bar: the top strip of the page drags the window, and the window buttons take
+// Without a system title bar: the top strip of the page drags the window, and the window buttons take
 // the page's background and muted ink, again whenever light/dark or a custom theme changes them.
 // The page answers once straight away, then each time its colors change (a waiting promise, so
 // nothing in the page or preload has to know about it).
@@ -115,7 +136,9 @@ const TITLE_COLORS = `new Promise((done) => {
 let titleRun = 0;
 function titleBarFollowsPage() {
   const wc = mainWindow.webContents, run = ++titleRun;
-  wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}`).catch(() => {});
+  // the strip can't be clicked through, and the window buttons sit on its right: pop-ups that reach the top start below it
+  wc.insertCSS(`#winDrag{position:fixed;top:0;left:0;right:0;height:${TITLE_H}px;-webkit-app-region:drag}
+    .lb-close{top:${TITLE_H + 14}px} .live-view{top:${TITLE_H + 8}px}`).catch(() => {});
   const follow = () => wc.executeJavaScript(TITLE_COLORS).then((c) => {
     if (run !== titleRun || !mainWindow || mainWindow.isDestroyed()) return;
     if (c && c.color && c.symbolColor) { try { mainWindow.setTitleBarOverlay({ ...c, height: TITLE_H }); } catch (e) {} }
@@ -141,6 +164,9 @@ function newHiddenWindow(opts) { return new BrowserWindow(opts); }
 // the page loads again (settings arrived from elsewhere)
 function reloadWindow() { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload(); }
 
+// what to do once the window has hidden to the tray
+function onHiddenToTray(fn) { onHidden = fn; }
+
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
 
@@ -162,4 +188,4 @@ function windowHandle() {
   return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
 }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, quit, setQuitting, windowHandle, protect, financeShowing };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, onHiddenToTray, quit, setQuitting, windowHandle, protect, financeShowing };

@@ -31,9 +31,13 @@ create table if not exists public.sync_settings (
   free_quota_bytes         bigint not null default 25 * 1024 * 1024,
   writes_per_minute        int    not null default 120,
   new_accounts_per_ip_hour int    not null default 10,
-  max_total_bytes          bigint not null default 6 * 1024 * 1024 * 1024::bigint
+  max_total_bytes          bigint not null default 6 * 1024 * 1024 * 1024::bigint,
+  ip_pepper                text   not null default md5(random()::text || clock_timestamp()::text || random()::text) -- so a stored IP hash can't be reversed
 );
 insert into public.sync_settings (id) values (true) on conflict (id) do nothing;
+alter table public.sync_settings add column if not exists ip_pepper text;
+update public.sync_settings set ip_pepper = md5(random()::text || clock_timestamp()::text || random()::text) where ip_pepper is null;
+alter table public.sync_settings alter column ip_pepper set not null;
 alter table public.sync_settings enable row level security;
 
 create table if not exists public.sync_accounts (
@@ -56,6 +60,15 @@ create table if not exists public.sync_new_accounts (
 );
 alter table public.sync_new_accounts enable row level security;
 
+-- photo uploads per network and hour (the agent-attachments policy below)
+create table if not exists public.sync_upload_tries (
+  ip_hash text not null,
+  hour    timestamptz not null,
+  n       int not null default 0,
+  primary key (ip_hash, hour)
+);
+alter table public.sync_upload_tries enable row level security;
+
 -- ───────────── reading and writing a list ─────────────
 -- a list's live-update channel: a hash of its key, so hearing "changed" needs the key but never shows it
 create or replace function public.sync_topic_of(p_sync_key text)
@@ -77,8 +90,17 @@ as $$
          public.sync_topic_of(p_sync_key),
          (p_since is not null and s.updated_at = p_since)
   from (select 1) x left join public.tasks_sync s on s.sync_key = p_sync_key
-  where p_sync_key ~ '^tk_[A-Za-z0-9_-]{13,}(:[a-z]+)?$';
+  where p_sync_key ~ '^tk_[A-Za-z0-9_-]{13,}(:[a-z-]+)?$'; -- the side rows too (:files-gone has a hyphen)
 $$;
+
+-- End-to-end encrypted sync (renderer/js/sync-crypto.js): a device that moves its lists to v2 leaves {"moved":"v2"}
+-- under the old key, and from then on that row takes no write but another moved marker, so an older build can't
+-- put the list back in the clear on top of it.
+create or replace function public.sync_is_moved(p_sync_key text)
+returns boolean
+language sql stable
+set search_path = public
+as $$ select coalesce((select doc->>'moved' = 'v2' from public.tasks_sync where sync_key = p_sync_key), false) $$;
 
 -- ───────────── limits per account ─────────────
 create or replace function public.sync_account_of(p_sync_key text)
@@ -93,17 +115,24 @@ language sql immutable
 set search_path = public
 as $$ select coalesce(octet_length(p_doc::text), 0)::bigint $$;
 
--- hash of the caller's IP from the request PostgREST is answering; null when there is none (SQL editor, service role)
+-- hash of the caller's IP from the request PostgREST is answering; null when there is none (SQL editor, service role).
+-- Only headers the edge sets are trusted: cf-connecting-ip (overwritten by the edge whatever the client sent) or the
+-- LAST x-forwarded-for entry (the one the nearest trusted hop appended; earlier ones are the client's own claim).
+-- Never x-real-ip or the first entry: a client could pick those and so look like a new network on every request.
+-- Peppered with a per-project secret, so the stored hash can't be turned back into the address.
 create or replace function public.sync_caller_ip_hash()
 returns text
 language plpgsql stable
 set search_path = public
 as $$
-declare h json; ip text;
+declare h json; ip text; xff text; pepper text;
 begin
   begin h := nullif(current_setting('request.headers', true), '')::json; exception when others then h := null; end;
-  ip := nullif(trim(coalesce(h->>'cf-connecting-ip', h->>'x-real-ip', split_part(h->>'x-forwarded-for', ',', 1))), '');
-  return case when ip is null then null else encode(sha256(convert_to(ip, 'UTF8')), 'hex') end;
+  xff := h->>'x-forwarded-for';
+  ip := nullif(trim(coalesce(h->>'cf-connecting-ip', case when xff is null then null else split_part(xff, ',', array_length(string_to_array(xff, ','), 1)) end)), '');
+  if ip is null then return null; end if;
+  select s.ip_pepper into pepper from public.sync_settings s where s.id;
+  return encode(sha256(convert_to(coalesce(pepper, '') || '|' || ip, 'UTF8')), 'hex');
 end $$;
 
 -- every write to tasks_sync, from any path (the functions, the edge functions' service role), keeps the
@@ -189,7 +218,7 @@ end $$;
 
 -- ───────────── the two writes ─────────────
 -- Both writes take only a key shaped like one the app makes (tk_<id>, tk_work_/tk_agent_/tk_school_<id>, each
--- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone;
+-- optionally with one of the side rows the app keeps next to a list: :prefs, :locked, :routing, :standing, :ideas, :hours, :worker, :updates, :finance, :files, :files-gone, :devices, :health, :macros, :kitchen;
 -- the id is 13+ characters of letters, digits, - and _) and a document of at most 4 MB, so the anon key alone
 -- can't fill the table (supabase/migrations/20261028_sync_limits.sql), and sync_guard has to let the write through:
 -- false is also the answer for an account that is full or saving too often (sync_usage says which).
@@ -211,7 +240,7 @@ set search_path = public
 as $$
 declare n int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -231,7 +260,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return false; end if;
   if p_doc is null or pg_column_size(p_doc) > 4 * 1024 * 1024 then return false; end if;
   if public.sync_is_moved(p_sync_key) and coalesce(p_doc->>'moved', '') <> 'v2' then return false; end if;
   if public.sync_guard(p_sync_key, p_doc) is not null then return false; end if;
@@ -248,7 +277,7 @@ set search_path = public
 as $$
 declare s public.sync_settings; acc public.sync_accounts; ip text; cnt int;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone))?$' then return; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|health|macros|kitchen))?$' then return; end if;
   select * into s from public.sync_settings where id;
   select * into acc from public.sync_accounts where account = public.sync_account_of(p_sync_key);
   if found then
@@ -264,15 +293,17 @@ begin
          when coalesce(cnt, 0) >= s.new_accounts_per_ip_hour then 'new_accounts' end;
 end $$;
 
--- the phone widget ticks a task off by its id
+-- the phone widget ticks a task off by its id (a key shaped like the app's, an existing row, and the same rate guard)
 create or replace function public.widget_complete_task(p_sync_key text, p_task_id text)
 returns boolean
 language plpgsql security definer
 set search_path = public
 as $$
-declare n int;
+declare n int; d jsonb;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}$' then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_[A-Za-z0-9_-]{13,}$' or p_task_id is null or length(p_task_id) > 80 then return false; end if;
+  select doc into d from public.tasks_sync where sync_key = p_sync_key;
+  if not found or public.sync_guard(p_sync_key, d) is not null then return false; end if;
   update public.tasks_sync
      set doc = jsonb_set(doc, '{tasks}', (
            select jsonb_agg(case when t->>'id' = p_task_id
@@ -297,9 +328,12 @@ returns boolean
 language plpgsql security definer
 set search_path = public
 as $$
-declare n int;
+declare n int; d jsonb;
 begin
-  if p_sync_key is null or p_sync_key !~ '^tk_agent_[A-Za-z0-9_-]{13,}$' or p_lane not in ('claude', 'local') then return false; end if;
+  if p_sync_key is null or p_sync_key !~ '^tk_agent_[A-Za-z0-9_-]{13,}$' or p_lane not in ('claude', 'local')
+     or p_task_id is null or length(p_task_id) > 80 then return false; end if;
+  select doc into d from public.tasks_sync where sync_key = p_sync_key;
+  if not found or public.sync_guard(p_sync_key, d) is not null then return false; end if;
   update public.tasks_sync
      set doc = jsonb_set(doc, '{tasks}', (
            select jsonb_agg(case when t->>'id' = p_task_id
@@ -352,20 +386,20 @@ revoke all on table public.tasks_sync from anon, authenticated;
 revoke all on table public.app_secrets from anon, authenticated;
 
 revoke all on function public.sync_topic_of(text) from public;
+revoke all on function public.sync_is_moved(text) from public;
+revoke execute on function public.sync_is_moved(text) from anon, authenticated;
 revoke all on function public.sync_get(text, timestamptz) from public;
 revoke all on function public.sync_put(text, jsonb, timestamptz) from public;
 revoke all on function public.sync_set(text, jsonb) from public;
 revoke all on function public.widget_complete_task(text, text) from public;
 revoke all on function public.agent_claim_task(text, text, text, text) from public;
 revoke all on function public.tasks_sync_broadcast() from public;
-revoke all on function public.sync_is_moved(text) from public;
-revoke execute on function public.sync_is_moved(text) from anon, authenticated;
 -- (new functions in public get execute for the API roles by default: take it back from the two helpers)
 revoke execute on function public.tasks_sync_broadcast(), public.sync_topic_of(text) from anon, authenticated;
 grant execute on function public.sync_get(text, timestamptz), public.sync_put(text, jsonb, timestamptz), public.sync_set(text, jsonb),
   public.widget_complete_task(text, text), public.agent_claim_task(text, text, text, text) to anon, authenticated, service_role;
 
-revoke all on table public.sync_settings, public.sync_accounts, public.sync_new_accounts from anon, authenticated;
+revoke all on table public.sync_settings, public.sync_accounts, public.sync_new_accounts, public.sync_upload_tries from anon, authenticated;
 revoke all on function public.sync_account_of(text), public.sync_doc_size(jsonb), public.sync_caller_ip_hash(),
   public.tasks_sync_count_bytes(), public.sync_guard(text, jsonb), public.sync_usage(text) from public;
 revoke execute on function public.sync_account_of(text), public.sync_doc_size(jsonb), public.sync_caller_ip_hash(),
@@ -375,31 +409,127 @@ grant execute on function public.sync_usage(text) to anon, authenticated, servic
 -- ───────────── photo attachments ─────────────
 -- Photos attached to Agent tasks (renderer/js/agent-chat.js) and the mini PC's "I'm stuck" screenshots
 -- (agent/qwen-browser.js) go in a public bucket, small images only. Uploads land in a folder named by a hash
--- of the agent key (tk_agent_att_…), never the key itself: the addresses end up in task history.
+-- of the agent key (tk_agent_att_<40 hex>), never the key itself: the addresses end up in task history.
+-- The anon key alone can't use the bucket as free hosting: the name must be shaped like the app's, a folder
+-- holds at most 300 files, and one network uploads at most 60 an hour.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
   values ('agent-attachments', 'agent-attachments', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
   on conflict (id) do nothing;
+-- Only a well-formed name in a 40-hex hashed folder, at most 300 pictures per folder, 60 uploads an hour per network.
+-- (supabase/migrations/20261120_attachment_upload_guard.sql)
+create or replace function public.attachment_upload_allowed(p_name text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare folder text; cnt int;
+begin
+  if p_name is null or p_name !~ '^tk_agent_att_[0-9a-f]{40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$' then return false; end if;
+  folder := split_part(p_name, '/', 1);
+  begin
+    select count(*) into cnt from storage.objects where bucket_id = 'agent-attachments' and name like folder || '/%';
+    if cnt >= 300 then return false; end if;
+  exception when others then null; end; -- cannot read the bucket's table here: the per-network cap still holds
+  delete from public.sync_upload_tries where hour < now() - interval '1 day';
+  insert into public.sync_upload_tries as u (ip_hash, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), date_trunc('hour', now()), 1)
+    on conflict (ip_hash, hour) do update set n = u.n + 1
+    returning u.n into cnt;
+  return cnt <= 60;
+end $$;
+revoke all on function public.attachment_upload_allowed(text) from public;
+grant execute on function public.attachment_upload_allowed(text) to anon, authenticated, service_role;
 drop policy if exists "agent attachments: app can upload" on storage.objects;
 create policy "agent attachments: app can upload" on storage.objects for insert to anon
-  with check (bucket_id = 'agent-attachments' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  with check (bucket_id = 'agent-attachments' and public.attachment_upload_allowed(name));
 
 -- ───────────── the local model's downloads ─────────────
 -- Files the local model's browser downloaded on its own computer (a worksheet off Blackboard) reach the other
 -- computers through this bucket (agent/worker-files.js), so no device has to reach the mini PC. Documents up to
--- 25 MB, in the same hashed folder; the app adds and removes them with the anon key, in that folder only.
--- (supabase/migrations/20261101_agent_files_bucket.sql)
-insert into storage.buckets (id, name, public, file_size_limit)
-  values ('agent-files', 'agent-files', true, 26214400)
-  on conflict (id) do nothing;
+-- 10 MB, in a folder named by a hash of the agent key (never the key). The bucket is public, so a file is served by
+-- its exact address without any policy; everything else (adding, listing, removing) is allowed only to a request
+-- that proves the agent key in an x-romulus-proof header (a hash of the key, never the key), and only for that key's own folder. Without the proof the
+-- bucket lists nothing: a folder name was all it took to read or remove everything in it.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('agent-files', 'agent-files', true, 10485760, array['application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/vnd.oasis.opendocument.text',
+    'application/rtf', 'text/csv', 'text/plain', 'text/markdown', 'application/json', 'application/zip',
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'])
+  on conflict (id) do update set file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+-- the request proves it holds the agent key without showing it (the storage server hands request headers to Postgres
+-- as request.headers, like PostgREST does): the proof is sha256('romulus-files-v1|' || key) and the folder is the hash
+-- of the proof (agent/worker-files.js proofFor, folderFor), so a request sees, adds to and removes from its own folder
+-- only, and the key itself (what the lists are sealed under, end to end) never reaches the server or its logs
+create or replace function public.agent_folder_proved(p_name text)
+returns boolean
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare k text;
+begin
+  begin k := (nullif(current_setting('request.headers', true), '')::json)->>'x-romulus-proof'; exception when others then k := null; end;
+  if k is null or k !~ '^[0-9a-f]{64}$' then return false; end if;
+  return split_part(coalesce(p_name, ''), '/', 1) = 'tk_agent_att_' || left(encode(sha256(convert_to(k, 'UTF8')), 'hex'), 40);
+end $$;
+revoke all on function public.agent_folder_proved(text) from public;
+grant execute on function public.agent_folder_proved(text) to anon, authenticated, service_role;
+
+-- A plain file name (no page that a browser would render from this address), at most 300 files and 100 MB in a
+-- folder, at most 60 uploads per network-hour (the counter is shared with agent-attachments).
+create or replace function public.agent_file_upload_allowed(p_name text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare folder text; cnt int; bytes bigint;
+begin
+  if p_name is null or p_name !~ '^tk_agent_att_[0-9a-f]{40}/[A-Za-z0-9][A-Za-z0-9 ._()-]{0,119}$' then return false; end if;
+  if p_name ~* '\.(html?|xhtml|svg|xml|js|mjs)$' then return false; end if;
+  folder := split_part(p_name, '/', 1);
+  begin
+    select count(*), coalesce(sum((metadata->>'size')::bigint), 0) into cnt, bytes
+      from storage.objects where bucket_id = 'agent-files' and name like folder || '/%';
+    if cnt >= 300 or bytes >= 100 * 1024 * 1024 then return false; end if;
+  exception when others then null; end;
+  delete from public.sync_upload_tries where hour < now() - interval '1 day';
+  insert into public.sync_upload_tries as u (ip_hash, hour, n)
+    values (coalesce(public.sync_caller_ip_hash(), 'none'), date_trunc('hour', now()), 1)
+    on conflict (ip_hash, hour) do update set n = u.n + 1
+    returning u.n into cnt;
+  return cnt <= 60;
+end $$;
+revoke all on function public.agent_file_upload_allowed(text) from public;
+grant execute on function public.agent_file_upload_allowed(text) to anon, authenticated, service_role;
 drop policy if exists "agent files: app can upload" on storage.objects;
 create policy "agent files: app can upload" on storage.objects for insert to anon
-  with check (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  with check (bucket_id = 'agent-files' and public.agent_folder_proved(name) and public.agent_file_upload_allowed(name));
 drop policy if exists "agent files: app can see" on storage.objects;
 create policy "agent files: app can see" on storage.objects for select to anon
-  using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  using (bucket_id = 'agent-files' and public.agent_folder_proved(name));
 drop policy if exists "agent files: app can remove" on storage.objects;
 create policy "agent files: app can remove" on storage.objects for delete to anon
-  using (bucket_id = 'agent-files' and (storage.foldername(name))[1] like 'tk_agent_att_%');
+  using (bucket_id = 'agent-files' and public.agent_folder_proved(name));
+
+-- ───────────── photos and files on any task ─────────────
+-- Encrypted on the device before they go up (renderer/js/task-files.js): the bucket holds only ciphertext under
+-- random names, in a folder named by a hash of the key's id part ('acct_' + sync_account_of). Up to 10 MB a
+-- file. A project of your own is yours alone, so the app may also remove files here directly; the shared Romulus
+-- server does that through a function instead (supabase/migrations/20261109_task_files.sql).
+insert into storage.buckets (id, name, public, file_size_limit)
+  values ('task-files', 'task-files', true, 10485760)
+  on conflict (id) do nothing;
+drop policy if exists "task files: app can upload" on storage.objects;
+create policy "task files: app can upload" on storage.objects for insert to anon
+  with check (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+drop policy if exists "task files: app can see" on storage.objects;
+create policy "task files: app can see" on storage.objects for select to anon
+  using (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
+drop policy if exists "task files: app can remove" on storage.objects;
+create policy "task files: app can remove" on storage.objects for delete to anon
+  using (bucket_id = 'task-files' and (storage.foldername(name))[1] ~ '^acct_[0-9a-f]{64}$');
 
 -- ───────────── pairing codes (supabase/migrations/20261101_sync_pairing.sql) ─────────────
 -- Pairing codes (renderer/js/pair.js). A device that already syncs shows a 12-character code (60 random
@@ -459,7 +589,7 @@ begin
      or p_sealed is null or length(p_sealed) > 8192 then return 'bad'; end if;
   if not public.sync_pair_allow('put', 20) then return 'rate'; end if;
   delete from public.sync_pairs where created_at < now() - interval '1 hour';
-  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 500 then return 'busy'; end if;
+  if (select count(*) from public.sync_pairs where created_at > now() - interval '10 minutes') >= 5000 then return 'busy'; end if; -- each network makes at most 20 an hour
   insert into public.sync_pairs (id, sealed, watch_hash) values (p_id, p_sealed, encode(sha256(convert_to(p_watch, 'UTF8')), 'hex'))
     on conflict (id) do nothing;
   return case when found then null else 'bad' end;
@@ -474,8 +604,8 @@ set search_path = public
 as $$
 declare s text;
 begin
-  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
   if p_id is null or p_id !~ '^[0-9a-f]{64}$' then return; end if;
+  if not public.sync_pair_allow('take', 30) then return query select null::text, 'rate'::text; return; end if;
   select p.sealed into s from public.sync_pairs p
    where p.id = p_id and p.taken_at is null and p.sealed is not null and p.created_at > now() - interval '10 minutes'
    for update;
@@ -517,3 +647,161 @@ revoke all on function public.sync_pair_allow(text, int), public.sync_pair_put(t
 revoke execute on function public.sync_pair_allow(text, int) from anon, authenticated;
 grant execute on function public.sync_pair_put(text, text, text), public.sync_pair_take(text),
   public.sync_pair_state(text, text), public.sync_pair_cancel(text, text) to anon, authenticated, service_role;
+
+-- ── phone notifications (migrations/20261125_push.sql) ──
+-- Each phone's Firebase token and the replies typed into a notification, per account. The words are sealed on
+-- the device, so only ciphertext is kept here. Sent by supabase/functions/push.
+
+create table if not exists public.push_tokens (
+  token      text primary key,
+  account    text not null references public.sync_accounts(account) on delete cascade,
+  platform   text not null default 'android',
+  updated_at timestamptz not null default now()
+);
+create index if not exists push_tokens_account on public.push_tokens(account);
+alter table public.push_tokens enable row level security;
+
+create table if not exists public.push_replies (
+  id         bigint generated always as identity primary key,
+  account    text not null references public.sync_accounts(account) on delete cascade,
+  env        jsonb not null,               -- {iv, ct}: the task id and the words, sealed on the phone
+  created_at timestamptz not null default now()
+);
+create index if not exists push_replies_account on public.push_replies(account);
+alter table public.push_replies enable row level security;
+
+-- notifications sent today, per account
+create table if not exists public.push_sent (
+  account text primary key references public.sync_accounts(account) on delete cascade,
+  day     date not null default current_date,
+  n       int  not null default 0
+);
+alter table public.push_sent enable row level security;
+
+-- the limits, in one place: phones per account, notifications per account a day, replies waiting, a sealed
+-- message's size in characters
+create or replace function public.push_limits()
+returns table(tokens_per_account int, sends_per_account int, replies_waiting int, env_chars int)
+language sql immutable
+as $$ select 8, 300, 40, 8000 $$;
+
+-- the account a row key belongs to, only when it has synced here (null otherwise)
+create or replace function public.push_account(p_row_key text)
+returns text
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare a text;
+begin
+  if p_row_key is null or p_row_key !~ '^tk_[A-Za-z0-9_-]{13,}$' then return null; end if;
+  a := public.sync_account_of(p_row_key);
+  if not exists (select 1 from public.sync_accounts where account = a) then return null; end if;
+  return a;
+end $$;
+
+create or replace function public.push_env_ok(p_env jsonb)
+returns boolean
+language sql immutable
+as $$
+  select p_env is not null and jsonb_typeof(p_env) = 'object'
+     and jsonb_typeof(p_env->'iv') = 'string' and jsonb_typeof(p_env->'ct') = 'string'
+     and length(p_env::text) <= (select env_chars from public.push_limits())
+$$;
+
+-- this phone wants the account's notifications. A token belongs to one account: registering it again moves it.
+create or replace function public.push_register(p_row_key text, p_token text, p_platform text default 'android')
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare a text := public.push_account(p_row_key);
+begin
+  if a is null or p_token is null or length(p_token) < 20 or length(p_token) > 4096 then return false; end if;
+  insert into public.push_tokens (token, account, platform, updated_at)
+    values (p_token, a, case when p_platform = 'ios' then 'ios' else 'android' end, now())
+    on conflict (token) do update set account = excluded.account, platform = excluded.platform, updated_at = now();
+  -- the oldest go when an account has more phones than the limit
+  delete from public.push_tokens where account = a and token not in (
+    select token from public.push_tokens where account = a order by updated_at desc
+     limit (select tokens_per_account from public.push_limits()));
+  return true;
+end $$;
+
+-- notifications turned off on this phone
+create or replace function public.push_unregister(p_row_key text, p_token text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare a text := public.push_account(p_row_key);
+begin
+  if a is null then return false; end if;
+  delete from public.push_tokens where account = a and token = p_token;
+  return found;
+end $$;
+
+-- a reply typed into a notification: 'ok', or why not ('no_account', 'bad', 'too_many')
+create or replace function public.push_reply_put(p_row_key text, p_env jsonb)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare a text := public.push_account(p_row_key);
+begin
+  if a is null then return 'no_account'; end if;
+  if not public.push_env_ok(p_env) then return 'bad'; end if;
+  delete from public.push_replies where created_at < now() - interval '14 days';
+  if (select count(*) from public.push_replies where account = a) >= (select replies_waiting from public.push_limits()) then return 'too_many'; end if;
+  insert into public.push_replies (account, env) values (a, p_env);
+  return 'ok';
+end $$;
+
+-- a device with the lists open takes the waiting replies, oldest first. Each goes to one device only.
+create or replace function public.push_reply_take(p_row_key text)
+returns setof jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare a text := public.push_account(p_row_key);
+begin
+  if a is null then return; end if;
+  return query
+    with gone as (delete from public.push_replies where account = a returning id, env)
+    select env from gone order by id;
+end $$;
+
+-- the push function is about to send one notification: the account's tokens, or none when it has sent its
+-- share today (service role only)
+create or replace function public.push_send_tokens(p_row_key text)
+returns setof text
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  a text := public.push_account(p_row_key);
+  cnt int;
+begin
+  if a is null then return; end if;
+  if not exists (select 1 from public.push_tokens where account = a) then return; end if;
+  insert into public.push_sent (account) values (a) on conflict (account) do nothing;
+  update public.push_sent set day = current_date, n = 0 where account = a and day <> current_date;
+  select n into cnt from public.push_sent where account = a for update;
+  if cnt >= (select sends_per_account from public.push_limits()) then return; end if;
+  update public.push_sent set n = n + 1 where account = a;
+  return query select token from public.push_tokens where account = a;
+end $$;
+
+-- a token Firebase says is gone (the app was removed): forget it (service role only)
+create or replace function public.push_token_gone(p_token text)
+returns void
+language sql security definer
+set search_path = public
+as $$ delete from public.push_tokens where token = p_token $$;
+
+revoke all on table public.push_tokens, public.push_replies, public.push_sent from public, anon, authenticated;
+revoke all on function public.push_limits(), public.push_account(text), public.push_env_ok(jsonb),
+  public.push_register(text, text, text), public.push_unregister(text, text), public.push_reply_put(text, jsonb),
+  public.push_reply_take(text), public.push_send_tokens(text), public.push_token_gone(text) from public, anon, authenticated;
+grant execute on function public.push_register(text, text, text), public.push_unregister(text, text),
+  public.push_reply_put(text, jsonb), public.push_reply_take(text) to anon, authenticated, service_role;
+grant execute on function public.push_send_tokens(text), public.push_token_gone(text) to service_role;

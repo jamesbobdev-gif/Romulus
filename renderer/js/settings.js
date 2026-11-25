@@ -11,9 +11,13 @@ function syncFillForm(){
   $('syncKey').value=p.syncKey||'';
   // a list's own key shows; one made from the personal key shows as blank ("automatic")
   [['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']].forEach(function(x){ const l=c[x[0]]; $(x[1]).value=l&&!l.derived?l.syncKey||'':''; });
+  $('syncKeyF').value=c.family&&c.family.syncKey||''; // the family list's key rides along with the sync code to this person's other devices
   $('syncOffBtn').hidden=!syncEnabled();
   const rb=$('syncRotateBtn'); if(rb)rb.hidden=!(syncState.cfg&&validProfile(syncState.cfg.personal));
   const ob=$('syncOneKeyBtn'); if(ob)ob.hidden=!(validProfile(p)&&syncOwnKeyLists(c).length);
+  const eb=$('syncV2Btn'); if(eb)eb.hidden=!(validProfile(p)&&!p.v2); // gone once the lists are encrypted
+  if(typeof devicesDraw==='function')devicesDraw();
+  syncShowFirstSteps();
 }
 // every Settings panel folds shut by its title; the ones he leaves open stay open next time
 const SETTINGS_OPEN_KEY='tasks.settingsOpen';
@@ -25,6 +29,34 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
       open[d.id]=d.open; if(!d.open)delete open[d.id];
       try{ localStorage.setItem(SETTINGS_OPEN_KEY,JSON.stringify(open)); }catch(e){}
     });
+  });
+})();
+// each top-level panel's title gets a small drawn icon picked from its words, so the sections tell apart
+(function(){
+  const P={
+    agent:'<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    about:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+    tabs:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18M9 5v5"/>',
+    calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    sync:'<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 21v-5h-5"/>',
+    import:'<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+    year:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    update:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+    theme:'<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.5-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="11" cy="7.5" r="1"/><circle cx="16" cy="8.5" r="1"/>',
+    health:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'
+  };
+  const pick=function(t){
+    t=t.toLowerCase();
+    if(/agent|\bai\b/.test(t))return 'agent'; if(/about/.test(t))return 'about'; if(/calendar|email/.test(t))return 'calendar';
+    if(/sync|device/.test(t))return 'sync'; if(/import/.test(t))return 'import'; if(/year/.test(t))return 'year';
+    if(/health/.test(t))return 'health'; if(/update/.test(t))return 'update'; if(/theme|look/.test(t))return 'theme'; if(/tab/.test(t))return 'tabs'; return 'more';
+  };
+  document.querySelectorAll('#settingsPanel>.settings-panel>.settings-label').forEach(function(l){
+    if(l.querySelector('.settings-icon'))return;
+    const i=document.createElement('span'); i.className='settings-icon'; i.setAttribute('aria-hidden','true');
+    i.innerHTML='<svg viewBox="0 0 24 24">'+P[pick(l.textContent)]+'</svg>';
+    l.insertBefore(i,l.firstChild);
   });
 })();
 // a group panel shows only while one of its settings does (each script unhides its own as it finds it applies)
@@ -48,10 +80,22 @@ const SETTINGS_OPEN_KEY='tasks.settingsOpen';
     items.forEach(function(x){
       const b=document.createElement('button'); b.className='settings-alert';
       b.textContent=x.dataset.disconnected; b.appendChild(document.createElement('span')).textContent='Fix ↓';
+      const what=x.dataset.disconnected;
       b.addEventListener('click',function(){
-        for(let d=x.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true;
-        x.scrollIntoView({behavior:'smooth',block:'center'});
-        x.classList.remove('settings-flash'); void x.offsetWidth; x.classList.add('settings-flash');
+        // the row may have been redrawn since this alert was (Calendar & email redraws its accounts each time
+        // Settings opens), so find the one on the page now rather than the old, detached one
+        let t=x;
+        if(!t.isConnected){
+          t=[].slice.call(document.querySelectorAll('#settingsPanel [data-disconnected]')).filter(function(y){
+            return !box.contains(y)&&y.dataset.disconnected===what; })[0];
+          if(!t)return;
+        }
+        for(let d=t.closest('details');d;d=d.parentElement&&d.parentElement.closest('details'))d.open=true;
+        t.scrollIntoView({block:'center'});
+        t.classList.remove('settings-flash'); void t.offsetWidth; t.classList.add('settings-flash');
+        // and put the keyboard on its fix (Renew sign-in), so Enter does it
+        const fix=t.querySelector('[data-renew],#mailRenew:not([hidden])');
+        if(fix)fix.focus({preventScroll:true});
       });
       box.appendChild(b);
     });
@@ -69,7 +113,11 @@ function setSettingsOpen(open){
   if(open){
     syncFillForm();
     try{ $('themeCss').value=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+    $('themeName').value=themeSavedNameOf($('themeCss').value);
+    drawThemeColors(); drawThemeSaved();
     if(gcalRefreshFn)gcalRefreshFn();
+    if(typeof drawSetupList==='function')drawSetupList();
+    if(typeof window.cloudAgDraw==='function')window.cloudAgDraw(); // Romulus cloud's choice and this month's use (cloud-agent.js)
     prefsLoad();
   }
   window.scrollTo(0,0);
@@ -204,7 +252,7 @@ async function routingLoad(){
   if(!d||!Array.isArray(d.rules))d=ROUTING_START;
   $('routingRules').innerHTML=''; d.rules.forEach(function(r){ $('routingRules').appendChild(routingRow(r)); });
   // before auto existed (v1) 'ask' was just the starting value: show auto, as the desktop app now uses
-  $('routingDefault').value=['claude','local','ask'].indexOf(d.default)!==-1&&(d.v>=2||d.default!=='ask')?d.default:'auto';
+  $('routingDefault').value=d.default==='claude'||d.default==='local'?d.default:'auto'; // 'ask' is gone: every task is routed
   $('routingSites').value=(Array.isArray(d.sites)?d.sites:[]).join('\n');
   $('routingPrivate').value=typeof d.private==='string'?d.private:PRIVATE_START;
   $('routingStatus').textContent='';
@@ -252,11 +300,61 @@ $('formFileAddBtn').addEventListener('click',async function(){
   setTimeout(function(){ $('formFilesStatus').textContent=''; },3000);
   formFilesLoad();
 });
+/* His Link wallet (Stripe's Link, desktop only: agent/link-wallet.js): connect by a device code he approves in the
+   Link app, watch that sign-in finish, disconnect, and test mode */
+if(window.desktop&&window.desktop.linkStatus){
+  $('linkSection').hidden=false;
+  let linkPoll=null, linkPolls=0;
+  const money=function(c){ return '$'+(Number(c)/100).toFixed(Number(c)%100?2:0); };
+  const stopPoll=function(){ if(linkPoll){ clearInterval(linkPoll); linkPoll=null; } };
+  const showCode=function(p){ // where he signs in, and the phrase the Link app asks for
+    const box=$('linkCode'); box.hidden=false; box.innerHTML='';
+    box.appendChild(document.createTextNode('Open '));
+    const a=el('a','',p.url.replace(/^https?:\/\//,'').split('?')[0]); a.href='#';
+    a.addEventListener('click',function(ev){ ev.preventDefault(); window.desktop.linkOpen(p.url); });
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(', sign in to Link and, when it asks, enter the phrase '));
+    box.appendChild(el('b','mono',p.phrase||''));
+    box.appendChild(document.createTextNode('. This updates by itself once it goes through.'));
+  };
+  const linkDraw=function(s){
+    $('linkConnectBtn').hidden=!!s.connected; $('linkDisconnectBtn').hidden=!s.connected;
+    $('linkConnectBtn').textContent=s.installed?'Connect Link':'Install and connect Link';
+    $('linkTest').checked=!!s.test;
+    const lim=s.limits&&s.limits.per_transaction&&s.limits.per_transaction.limit!=null?' · up to '+money(s.limits.per_transaction.limit)+' a purchase':'';
+    $('linkStatus').textContent=!s.node?'needs Node.js (see Setup)':s.connected?'connected'+(s.email?' as '+s.email:'')+lim+(s.test?' · test mode':''):s.pending?'waiting for your approval in Link…':'not connected';
+    if(s.connected){ $('linkCode').hidden=true; stopPoll(); }
+    else if(s.pending&&s.pending.url){ showCode(s.pending); startPoll(); }
+    else $('linkCode').hidden=true;
+  };
+  const startPoll=function(){ // a sign-in waits: ask every few seconds whether he has approved it
+    if(linkPoll)return; linkPolls=0;
+    linkPoll=setInterval(async function(){
+      if(++linkPolls>75){ stopPoll(); $('linkStatus').textContent='the sign-in timed out: press Connect again'; $('linkCode').hidden=true; return; }
+      try{ linkDraw(await window.desktop.linkStatus({poll:true})); }catch(e){}
+    },4000);
+  };
+  window.linkLoad=async function(){ try{ linkDraw(await window.desktop.linkStatus()); }catch(e){} };
+  $('linkConnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='getting Link ready…'; $('linkConnectBtn').disabled=true;
+    let r=null; try{ r=await window.desktop.linkConnect(); }catch(e){ r={ok:false,error:e.message}; }
+    $('linkConnectBtn').disabled=false;
+    if(!r||!r.ok){ $('linkStatus').textContent=(r&&r.error)||'could not start the sign-in'; return; }
+    $('linkStatus').textContent='waiting for your approval in Link…';
+    showCode(r); window.desktop.linkOpen(r.url); startPoll();
+  });
+  $('linkDisconnectBtn').addEventListener('click',async function(){
+    $('linkStatus').textContent='disconnecting…'; stopPoll();
+    try{ linkDraw(await window.desktop.linkDisconnect()); }catch(e){ $('linkStatus').textContent='could not disconnect'; }
+  });
+  $('linkTest').addEventListener('change',async function(){ try{ linkDraw(await window.desktop.linkSave({test:this.checked})); }catch(e){} });
+}
 let prefsLoadedAt; // updated_at of the version in the box: Save only replaces that version (undefined = never loaded)
 async function prefsLoad(){
   lockedLoad();
   routingLoad();
   formFilesLoad();
+  if(typeof linkLoad==='function')linkLoad();
   if(typeof standingLoad==='function')standingLoad();
   const p=prefsProfile(); $('prefsSection').hidden=!p; if(!p)return;
   $('prefsStatus').textContent='loading…';
@@ -275,56 +373,132 @@ $('prefsSaveBtn').addEventListener('click',async function(){
   }catch(e){ $('prefsStatus').textContent='save failed ('+e.message+')'; }
   setTimeout(function(){ $('prefsStatus').textContent=''; },2500);
 });
-/* Basic / Advanced: .adv panels show only with the switch on (remembered here) */
-const ADV_KEY='tasks.settingsAdvanced.v1';
-function setAdvanced(on){
-  document.body.classList.toggle('show-adv',!!on); $('advOn').checked=!!on;
-  try{ if(on)localStorage.setItem(ADV_KEY,'1'); else localStorage.removeItem(ADV_KEY); }catch(e){}
-}
-try{ setAdvanced(!!localStorage.getItem(ADV_KEY)); }catch(e){}
-$('advOn').addEventListener('change',function(){ setAdvanced(this.checked); });
 function setThemeMode(mode){
   try{ localStorage.setItem(THEME_MODE_KEY,mode); }catch(e){}
   applyThemeMode(mode); drawThemeModes();
 }
+// the saved theme in use lights up instead of Custom
 function drawThemeModes(){
-  let mode='system'; try{ mode=themeModeSaved(); }catch(e){}
-  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
+  let mode='system', css=''; try{ mode=themeModeSaved(); css=localStorage.getItem(THEME_KEY)||''; }catch(e){}
+  const named=mode==='custom'?themeSavedNameOf(css):'';
+  document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){ const on=b.dataset.mode===mode&&!named; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
+  document.querySelectorAll('.theme-modes [data-saved]').forEach(function(b){ const on=!!named&&b.dataset.saved===named; b.classList.toggle('on',on); b.setAttribute('aria-checked',String(on)); });
 }
 document.querySelectorAll('.theme-modes [data-mode]').forEach(function(b){
-  b.addEventListener('click',function(){
-    let saved=''; try{ saved=localStorage.getItem(THEME_KEY)||''; }catch(e){}
-    if(b.dataset.mode==='custom'&&!saved.trim()){ // nothing saved yet: open the box to paste into
-      $('themeCss').closest('details').open=true; $('themeCss').focus();
-      $('themeStatus').textContent='paste CSS, then Apply';
-      return;
-    }
-    setThemeMode(b.dataset.mode);
-  });
+  b.addEventListener('click',function(){ setThemeMode(b.dataset.mode); });
 });
 drawThemeModes();
+// every unique colour in the box, named (theme-colors.js); redrawn as you type
+function drawThemeColors(){
+  const box=$('themeColors'); box.textContent='';
+  const colors=themeCssColors($('themeCss').value);
+  box.hidden=!colors.length;
+  colors.forEach(function(c){
+    const row=el('span','tc'); row.title=c.used.join(', ');
+    const sw=el('span','theme-swatch'); sw.style.background=c.hex;
+    row.append(sw,el('b',null,c.name),el('span',null,c.hex));
+    box.appendChild(row);
+  });
+}
+// each distinct CSS you've applied, under the name you gave it (else its main colour), in the row beside Light and Dark; click one to switch to it
+function themeSavedNameOf(css){
+  const key=String(css||'').replace(/\s+/g,''); if(!key)return '';
+  const t=themeSavedLoad().find(function(t){ return String(t.css).replace(/\s+/g,'')===key; });
+  return t?t.name:'';
+}
+function themeSavedLoad(){ try{ const l=JSON.parse(localStorage.getItem(THEME_SAVED_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
+function themeSavedStore(list){ try{ localStorage.setItem(THEME_SAVED_KEY,JSON.stringify(list)); }catch(e){} }
+function drawThemeSaved(){
+  const box=$('themeSaved'); box.textContent='';
+  const list=themeSavedLoad();
+  list.forEach(function(t,i){
+    const b=el('button','chip st tap'); b.dataset.saved=t.name; b.setAttribute('role','radio'); b.title=t.colors.length+' colours: '+t.colors.map(function(c){ return c.name; }).join(', ');
+    const sw=el('span','theme-swatch'); if(t.hex)sw.style.background=t.hex;
+    const x=el('span','x','x'); x.setAttribute('role','button'); x.setAttribute('aria-label','Remove '+t.name);
+    b.append(sw,el('span',null,t.name),x);
+    b.addEventListener('click',function(e){
+      if(e.target===x){ const l=themeSavedLoad(); l.splice(i,1); themeSavedStore(l); drawThemeSaved(); return; }
+      $('themeCss').value=t.css; $('themeName').value=t.name; $('themeApplyBtn').click();
+    });
+    box.appendChild(b);
+  });
+  drawThemeModes();
+}
+$('themeCss').addEventListener('input',drawThemeColors);
+drawThemeSaved();
 $('themeApplyBtn').addEventListener('click',function(){
   const css=$('themeCss').value;
   try{ if(css.trim())localStorage.setItem(THEME_KEY,css); else localStorage.removeItem(THEME_KEY); }catch(e){}
+  let name='';
+  if(css.trim()){ const l=themeSaveCss(themeSavedLoad(),css,Date.now(),$('themeName').value); themeSavedStore(l); name=l[0].name; $('themeName').value=name; }
   setThemeMode(css.trim()?'custom':'system');
-  $('themeStatus').textContent=css.trim()?'saved as Custom':'cleared';
+  drawThemeColors(); drawThemeSaved();
+  $('themeStatus').textContent=css.trim()?'saved as '+name:'cleared';
   setTimeout(function(){ $('themeStatus').textContent=''; },2000);
 });
 $('themeResetBtn').addEventListener('click',function(){
-  $('themeCss').value='';
+  $('themeCss').value=''; $('themeName').value=''; drawThemeColors();
   try{ localStorage.removeItem(THEME_KEY); }catch(e){}
   setThemeMode('system');
   $('themeStatus').textContent='reset to default';
   setTimeout(function(){ $('themeStatus').textContent=''; },2000);
 });
-$('supabaseLink').addEventListener('click',function(e){
-  e.preventDefault();
-  if(window.desktop&&window.desktop.gcalOpenUrl)window.desktop.gcalOpenUrl('https://supabase.com');
-  else window.open('https://supabase.com','_blank');
+function openOutside(url){
+  if(window.desktop&&window.desktop.gcalOpenUrl)window.desktop.gcalOpenUrl(url);
+  else window.open(url,'_blank');
+}
+$('supabaseLink').addEventListener('click',function(e){ e.preventDefault(); openOutside('https://supabase.com'); });
+// the first device: nothing to pair with, so Device sync opens on the steps for making the project
+const SETUP_SQL_URL='https://github.com/jamesbobdev-gif/Romulus/blob/main/supabase/setup.sql';
+const SETUP_SQL_RAW='https://raw.githubusercontent.com/jamesbobdev-gif/Romulus/main/supabase/setup.sql';
+// once a Project URL is in the box, this opens that project's SQL Editor; before that, a new project
+function supabaseRef(u){ const m=/^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/i.exec(String(u||'').trim()); return m?m[1].toLowerCase():''; }
+$('syncOpenSupabase').addEventListener('click',function(){
+  const ref=supabaseRef($('syncUrl').value);
+  openOutside(ref?'https://supabase.com/dashboard/project/'+ref+'/sql/new':'https://supabase.com/dashboard/new');
 });
+$('syncOpenSql').addEventListener('click',function(){ openOutside(SETUP_SQL_URL); });
+// the whole setup.sql on the clipboard, so nobody has to find the copy button on GitHub
+$('syncCopySql').addEventListener('click',async function(){
+  const b=this; b.disabled=true;
+  try{
+    const r=await fetch(SETUP_SQL_RAW,{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    await navigator.clipboard.writeText(await r.text());
+    setSyncStatus('setup.sql copied: paste it in the project’s SQL Editor and press Run');
+  }catch(e){
+    setSyncStatus('couldn’t copy it here, so it opens instead: use the copy button at the top right of the file',true);
+    openOutside(SETUP_SQL_URL);
+  }finally{ b.disabled=false; }
+});
+/* Device sync with nothing set up yet shows only what can be used then. Without a pairing server (a build of
+   your own: ROMULUS_PAIR null) and no project, Pair and Add a device have nowhere to meet, so that row goes.
+   The sync key is made by Save & sync, so its box, Generate key, Copy sync code and the per-list keys wait
+   until there is one. A sync code pasted into any box still fills them all in (the paste handler below). */
+function syncShowFirstSteps(){
+  const first=!(syncState.cfg&&validProfile(syncState.cfg.personal));
+  const rp=typeof window!=='undefined'&&window.ROMULUS_PAIR, noServer=first&&!(rp&&rp.url&&rp.key);
+  $('syncFirstSteps').hidden=!first;
+  if(first)$('syncManual').open=true;
+  const pairRow=$('pairCodeIn').closest('.settings-row');
+  pairRow.hidden=noServer;
+  if(pairRow.previousElementSibling)pairRow.previousElementSibling.hidden=noServer; // "Adding a device? …"
+  ['syncKey','syncGenBtn','syncCopyBtn'].forEach(function(id){ $(id).hidden=first; });
+  $('syncKeyW').closest('details').hidden=first;
+  if(window.desktop&&window.desktop.syncQr)$('syncQrBtn').hidden=first;
+  let note=$('syncNoServerNote');
+  if(!note){
+    note=el('p','settings-hint','This build has no Romulus server, so your first device needs a Supabase project of its own. Already syncing on another device? Press Copy sync code there and paste it into the first box below.');
+    note.id='syncNoServerNote'; note.style.margin='0 0 8px';
+    $('syncFirstSteps').prepend(note);
+  }
+  note.hidden=!noServer;
+  return first;
+}
+$('syncSection').addEventListener('toggle',function(){ if(this.open)syncShowFirstSteps(); });
 // one code carries the whole form to another device (the anon key box hides its text, so it can't be copied on its own)
 const SYNC_CODE_PREFIX='tasks-sync:';
-const SYNC_CODE_FIELDS=[['u','syncUrl'],['k','syncAnonKey'],['s','syncKey'],['w','syncKeyW'],['a','syncKeyA'],['c','syncKeyS']];
+const SYNC_CODE_FIELDS=[['u','syncUrl'],['k','syncAnonKey'],['s','syncKey'],['w','syncKeyW'],['a','syncKeyA'],['c','syncKeyS'],['f','syncKeyF']];
 $('syncCopyBtn').addEventListener('click',function(){
   const o={}; SYNC_CODE_FIELDS.forEach(function(x){ const v=$(x[1]).value.trim(); if(v)o[x[0]]=v; });
   if(!o.u||!o.k||!o.s){ setSyncStatus('fill in the three fields first',true); return; }
@@ -387,20 +561,70 @@ const SYNC_KEY_SHAPE=/^tk_[A-Za-z0-9_-]{13,}$/;
 function newSyncKey(){ return 'tk_'+(crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),function(b){ return b.toString(16).padStart(2,'0'); }).join('')); }
 $('syncGenBtn').addEventListener('click',function(){ $('syncKey').value=newSyncKey(); });
 $('syncSaveBtn').addEventListener('click',function(){
-  const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim(), sk=$('syncKey').value.trim();
-  if(!url||!key||!sk){ setSyncStatus('fill in the three fields',true); return; }
+  const url=$('syncUrl').value.trim(), key=$('syncAnonKey').value.trim();
+  if(!url||!key){ setSyncStatus('paste the Project URL and the publishable key first',true); return; }
+  // the first device makes the sync key; a second one gets it by pairing
+  if(!$('syncKey').value.trim())$('syncKey').value=newSyncKey();
+  const sk=$('syncKey').value.trim();
   if(sk.length<16){ setSyncStatus('the sync key must be at least 16 characters (press Generate key)',true); return; }
   if(!SYNC_KEY_SHAPE.test(sk)){ setSyncStatus('a sync key starts with tk_ and has only letters, digits, - and _ (press Generate key)',true); return; }
   // the lists share the project; a key typed for one is its own, blank = made from the sync key
   const raw={personal:{url:url,key:key,syncKey:sk}};
+  const cur=syncState.cfg&&syncState.cfg.personal; if(cur&&cur.v2&&cur.syncKey===sk)raw.personal.v2=true; // the same key stays end-to-end encrypted
   const own=[['work','syncKeyW'],['agent','syncKeyA'],['school','syncKeyS']];
   for(const x of own){ const v=$(x[1]).value.trim(); if(!v)continue; if(v===sk){ setSyncStatus('a list’s own key must differ from the sync key',true); return; } if(!SYNC_KEY_SHAPE.test(v)){ setSyncStatus('a list’s key starts with tk_ and has only letters, digits, - and _',true); return; } raw[x[0]]={url:url,key:key,syncKey:v}; }
   if(raw.agent&&!/^tk_agent_/.test(raw.agent.syncKey)){ setSyncStatus('an Agent key has to start with tk_agent_',true); return; }
-  syncState.cfg=normalizeSyncCfg(raw);
-  syncCfgPersist(syncState.cfg); // config.json on the desktop, localStorage on the phone (sync.js)
-  $('syncOffBtn').hidden=false;
-  render(); // workspace chips may appear/disappear
-  startSyncLoop();
+  // the family list (family-list.js) is always on the Romulus server, whichever project the other lists use
+  const fk=$('syncKeyF').value.trim(), fh=typeof hostedServer==='function'&&hostedServer();
+  if(fk){
+    if(!SYNC_KEY_SHAPE.test(fk)||fk===sk){ setSyncStatus('the family list key starts with tk_ and differs from the sync key',true); return; }
+    if(fh){ const old=syncState.cfg&&syncState.cfg.family; raw.family=old&&old.syncKey===fk?old:{url:fh.url,key:fh.key,syncKey:fk,v2:true}; }
+  }
+  const hosted=typeof hostedIs==='function';
+  const prev=syncState.cfg&&syncState.cfg.personal;
+  // leaving the Romulus server for a project of one's own, same sync key: the other devices are told to follow
+  const leaving=hosted&&validProfile(prev)&&hostedIs(prev.url)&&!hostedIs(url)&&prev.syncKey===sk?Object.assign({},prev):null;
+  const btn=$('syncSaveBtn'); btn.disabled=true;
+  (async function(){
+    if(!(hosted&&hostedIs(url))){
+      setSyncStatus('checking the project…');
+      const bad=await syncCheckProject({url:url,key:key,syncKey:sk});
+      if(bad){ setSyncStatus(bad,true); return; }
+    }
+    // leaving the Romulus server, where the lists are end-to-end encrypted: they stay encrypted in the new project
+    // too. The markers go first, so a device paired there later finds the encrypted lists, never plain ones.
+    if(leaving&&leaving.v2&&typeof hostedSealMarkers==='function'&&syncCryptoOk()){
+      try{ await hostedSealMarkers({url:url,key:key},sk); }
+      catch(e){ setSyncStatus('couldn’t set up encryption in that project: '+e.message,true); return; }
+      raw.personal.v2=true;
+    }
+    clearInterval(syncState.pollTimer); clearTimeout(syncState.pushTimer);
+    for(let i=0;i<40&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); }); // let a sync already running finish
+    syncState.cfg=normalizeSyncCfg(raw);
+    syncState.docs={};
+    syncCfgPersist(syncState.cfg); // config.json on the desktop, localStorage on the phone (sync.js)
+    if(hosted&&!hostedIs(url))hostedSetOptOut(true); // a project of one's own: never start on the Romulus server by itself again
+    if(typeof hostedDraw==='function')setTimeout(hostedDraw,0);
+    $('syncOffBtn').hidden=false;
+    syncShowFirstSteps(); // the key box and its buttons come back now there is a key
+    render(); // workspace chips may appear/disappear
+    let said=null;
+    if(leaving){
+      // this device's lists go up to the new project first; only once that worked are the others sent after them
+      const t0=Date.now();
+      await syncNow();
+      if(syncState.errStreak===0&&(syncState.lastAt||0)>=t0){
+        try{ await syncLeaveMovedNote(leaving,syncState.cfg.personal); said=['moved: your other devices follow on their next sync (one on an older version of the app needs pairing again)',false]; }
+        catch(e){ said=['moved this device, but couldn’t tell the others: pair them again with Add a device',true]; }
+      }
+    }
+    startSyncLoop();
+    if(said){ // after the sync the loop just started, so "synced" doesn't cover it up
+      await new Promise(function(r){ setTimeout(r,50); });
+      for(let i=0;i<120&&syncState.busy;i++)await new Promise(function(r){ setTimeout(r,250); });
+      setSyncStatus(said[0],said[1]);
+    }
+  })().finally(function(){ btn.disabled=false; });
 });
 $('syncOffBtn').addEventListener('click',function(){
   syncState.cfg=null; syncCfgPersist(null);
@@ -412,7 +636,7 @@ $('syncOffBtn').addEventListener('click',function(){
    sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
    back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
    Lists with a key of their own (not made from the sync key) are not touched. */
-const SYNC_SIDE_ROWS={personal:[':ideas',':hours'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance',':kitchen'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros'],work:[],school:[]};
 const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
 function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
   const out=[];
@@ -437,11 +661,13 @@ async function syncCopyRows(moves){ // each row copied to its new key and read b
     if(stableJson(back)!==stableJson(doc))throw new Error('the copy of '+m.ws+m.sfx+' did not read back');
   }
 }
-async function syncRotateKey(){
+// opts.remove: a device id from Settings → Devices (devices.js) that doesn't get the new key; opts.confirmed: asked already
+async function syncRotateKey(opts){
+  opts=opts&&opts.confirmed?opts:{}; // the button's click hands in an event
   const c=syncState.cfg, p=c&&c.personal;
   if(!validProfile(p)){ setSyncStatus('save the sync settings first',true); return; }
-  const moving=['Personal (with Ideas and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
-  if(!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked, so a device still on the old key sees empty lists.\n\nEvery other device (phone, mini PC, widgets) stops syncing until you pair it again: press Copy sync code here afterwards and paste it there. Lists with a key of their own are left alone.'))return;
+  const moving=['Personal (with Notes and Hours)'].concat(['work','agent','school'].filter(function(ws){ return validProfile(c[ws])&&c[ws].derived; }).map(function(ws){ return ws==='agent'?'Agent (with what Claude knows about you, the Locked profile and the routing rules)':ws[0].toUpperCase()+ws.slice(1); }));
+  if(!opts.confirmed&&!confirm('Make a new sync key?\n\nThese lists move to keys made from the new one: '+moving.join(', ')+'. The old rows are blanked.\n\nThe devices listed under Devices move to the new key by themselves the next time they sync. A device not listed there (an older version) stops syncing until you pair it again. Lists with a key of their own are left alone.'))return;
   const newKey=newSyncKey();
   const rotateBtn=$('syncRotateBtn'); if(rotateBtn)rotateBtn.disabled=true;
   // nothing may upload to the old keys while the rows move
@@ -457,14 +683,36 @@ async function syncRotateKey(){
     // 2. this device switches to the new keys
     const raw={personal:{url:p.url,key:p.key,syncKey:newKey}};
     if(p.v2)raw.personal.v2=true;
-    ['work','agent','school'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
+    ['work','agent','school','family'].forEach(function(ws){ if(validProfile(c[ws])&&!c[ws].derived)raw[ws]=c[ws]; });
+    // the device list, read before switching: the kept devices get the new settings sealed to their own keys (devices.js)
+    const oldDevices=devicesProfileOf(p), newDevices=devicesProfileOf(raw.personal);
+    let devDoc=null; try{ devDoc=await syncPull(oldDevices); }catch(e){}
     syncState.cfg=normalizeSyncCfg(raw);
     await syncCfgPersist(syncState.cfg);
+    // 2b. the hand-off under the old key, and the device list without the removed one under the new key
+    // no device list (a database without the ':devices' row yet): nobody can be handed the new key
+    let pairAgain=devDoc&&devDoc.devices?[]:['your other devices'], removedName=null;
+    if(devDoc&&devDoc.devices&&!devDoc.rotated){
+      const me=deviceId(), meNow=await deviceMe();
+      const keep=Object.keys(devDoc.devices).filter(function(id){ return id!==me&&id!==opts.remove; });
+      try{
+        const h=await devicesHandoff(devDoc,keep,JSON.stringify(raw));
+        pairAgain=h.left;
+        await syncPushDoc(oldDevices,{v:1,devices:devDoc.devices,rotated:{at:Date.now(),by:{id:me,name:meNow.name},removed:opts.remove||null,handoff:h.handoff}});
+        const kept={}; Object.keys(devDoc.devices).forEach(function(id){ if(id!==opts.remove)kept[id]=devDoc.devices[id]; });
+        const next=devicesWithMe({v:1,devices:kept},me,meNow,Date.now());
+        await syncPushDoc(newDevices,next);
+        devState.doc=next;
+        if(opts.remove&&devDoc.devices[opts.remove])removedName=devDoc.devices[opts.remove].name||'That device';
+      }catch(e){ pairAgain=['every other device (the hand-off wasn’t saved: '+e.message+')']; }
+    }
     // 3. the old rows are blanked (an old device then shows an empty list, never live data)
     let left=0;
     for(const m of moves){ try{ await syncPushDoc(m.from,m.sfx?Object.assign({text:''},SYNC_TOMBSTONE):SYNC_TOMBSTONE); }catch(e){ left++; } }
+    const said=(removedName?removedName+' is off sync. ':'')+'New sync key saved'+(pairAgain.length?'; pair these again with Add a device: '+pairAgain.join(', '):': your other devices follow by themselves')+(left?' ('+left+' old rows could not be blanked; try again later)':'')+'.';
+    devState.notice={text:said,until:Date.now()+3*60000};
     syncFillForm();
-    setSyncStatus('new sync key saved: pair your other devices again with Copy sync code'+(left?' ('+left+' old rows could not be blanked; try again later)':''));
+    setSyncStatus(said);
   }catch(e){
     setSyncStatus('rotation stopped before switching keys: '+e.message+' (this device is unchanged)',true);
   }
@@ -521,7 +769,7 @@ async function syncUseOneKey(){
    device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
    (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
    Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
-   (buy emails, school feeds, the work calendar) can't read sealed rows yet (docs/phone-only-plan.md). */
+   (school feeds, the work calendar) can't read sealed rows yet. */
 const SYNC_MOVED={moved:'v2'};
 function syncV2Moves(c){
   const out=[];
@@ -570,7 +818,18 @@ async function syncMoveToV2(){
 })();
 (function(){ // the button sits with the other sync buttons and shows only while sync is on
   const b=document.createElement('button'); b.id='syncRotateBtn'; b.className='ghost mono'; b.textContent='Rotate sync key';
-  b.title='Make a new sync key and move every list over to it; other devices must be paired again';
+  b.title='Make a new sync key and move every list over to it; the devices listed under Devices follow by themselves';
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',syncRotateKey);
 })();
+(function(){ // end-to-end encryption (syncMoveToV2): shows while the lists are still plain in the project
+  const b=document.createElement('button'); b.id='syncV2Btn'; b.className='ghost mono'; b.textContent='Encrypt my lists end to end'; b.hidden=true;
+  b.title='Re-upload every list encrypted on this device, so the sync project holds only ciphertext';
+  $('syncGenBtn').insertAdjacentElement('afterend',b);
+  b.addEventListener('click',async function(){
+    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nYour other devices follow on their next sync if they run Romulus 1.0.10 or newer; older ones show a sync error until they update. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
+    b.disabled=true;
+    try{ await syncMoveToV2(); }finally{ b.disabled=false; syncFillForm(); }
+  });
+})();
+

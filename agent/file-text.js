@@ -11,11 +11,13 @@ const { execFile } = require('child_process');
 const { listDownloads } = require('./worker-files');
 
 const MAX_CHARS = 12000;
-const downloadsDir = () => path.join(os.homedir(), 'Downloads');
+const downloadsDir = () => require('./worker-files').downloadsDir(); // the browser's own folder, not the user's Downloads
 
 // a zip's files → {name: Buffer}, from its central directory (stored or deflated, as Office writes them)
+const INFLATE_MAX = 32 * 1024 * 1024, INFLATE_TOTAL = 96 * 1024 * 1024; // a 10 MB file that inflates to gigabytes stops here
 function unzip(buf) {
   const out = {};
+  let total = 0;
   let end = buf.length - 22;
   while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--;
   if (end < 0) throw new Error('not a zip file');
@@ -28,7 +30,8 @@ function unzip(buf) {
     const name = buf.slice(at + 46, at + 46 + nameLen).toString('utf8');
     const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
     const data = buf.slice(start, start + size);
-    if (method === 0) out[name] = data; else if (method === 8) out[name] = zlib.inflateRawSync(data);
+    if (method === 0) out[name] = data; else if (method === 8) out[name] = zlib.inflateRawSync(data, { maxOutputLength: INFLATE_MAX });
+    if (out[name]) { total += out[name].length; if (total > INFLATE_TOTAL) throw new Error('the file unpacks to more than this reader takes'); }
     at += 46 + nameLen + extraLen + commentLen;
   }
   return out;

@@ -2,7 +2,8 @@
 -- row, sealed, under a new lookup id and leaves {"moved":"v2"} under the old key. An older build that still
 -- knows only the old key would read that as an empty list and upload its own copy, in the clear, on top.
 -- From here on a row that says moved takes no write but another moved marker.
--- (Not applied yet: written 2026-10-30. setup.sql gets the same lines when it is.)
+-- setup.sql carries the same lines (and the side-row list sync_put takes has grown there since); a project that
+-- ran setup.sql on or after 2026-11-04 has this. Apply by re-running setup.sql rather than this file.
 
 create or replace function public.sync_is_moved(p_sync_key text)
 returns boolean

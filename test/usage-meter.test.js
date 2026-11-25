@@ -77,3 +77,51 @@ test('ChatGPT and OpenRouter: calls and tokens this month; OpenRouter credit giv
   assert.strictEqual(s.openrouter.calls, 1);
   assert.strictEqual(s.openrouter.pct, 0.25);
 });
+
+test('Groq: requests left today come from its rate-limit headers, and refill once the reset passes', () => {
+  fresh();
+  const now = Date.now();
+  const h = { 'x-ratelimit-limit-requests': '1000', 'x-ratelimit-remaining-requests': '750', 'x-ratelimit-reset-requests': '2m30.5s',
+    'x-ratelimit-limit-tokens': '8000', 'x-ratelimit-remaining-tokens': '7000', 'x-ratelimit-reset-tokens': '7.66s' };
+  meter.noteCall('groq', { tokens: 500 }, now);
+  meter.noteRate('groq', (k) => h[k], now);
+  let s = meter.snapshot(now);
+  assert.strictEqual(s.groq.calls, 1); // the month's count is kept alongside
+  assert.strictEqual(s.groq.rate.left, 750);
+  assert.strictEqual(s.groq.rate.limit, 1000);
+  assert.strictEqual(s.groq.pct, 0.25);
+  assert.strictEqual(s.groq.rate.resetsAt, now + 150500);
+  assert.ok(!s.groq.out);
+  s = meter.snapshot(now + 200000); // past the reset: full again
+  assert.strictEqual(s.groq.rate.left, 1000);
+  assert.strictEqual(s.groq.pct, 0);
+  // none left: out until the reset
+  meter.noteRate('groq', (k) => Object.assign({}, h, { 'x-ratelimit-remaining-requests': '0' })[k], now);
+  assert.strictEqual(meter.snapshot(now).groq.out, now + 150500);
+  // a reply without the headers changes nothing
+  meter.noteRate('groq', () => null, now);
+  assert.strictEqual(meter.snapshot(now).groq.rate.left, 0);
+});
+
+test('parseDuration reads Groq-style reset times', () => {
+  assert.strictEqual(meter.parseDuration('7.66s'), 7660);
+  assert.strictEqual(meter.parseDuration('1h2m3s'), 3723000);
+  assert.strictEqual(meter.parseDuration('120ms'), 120);
+  assert.strictEqual(meter.parseDuration('30'), 30000);
+  assert.strictEqual(meter.parseDuration(''), null);
+});
+test('room left: the tighter Claude window, plan windows, a measured limit, or null for no limit', () => {
+  const snap = {
+    claude: { pct: 0.7, week: 0.95, out: false },
+    openai: { pct: null, plan: { windows: [{ used: 0.4 }, { used: 0.8 }], out: false } },
+    gemini: { pct: 0.25, out: false },
+    groq: { pct: 1, out: Date.now() + 1000 },
+    openrouter: { pct: null },
+  };
+  assert.ok(Math.abs(meter.roomLeft('claude', snap) - 0.05) < 1e-9);
+  assert.ok(Math.abs(meter.roomLeft('openai', snap) - 0.2) < 1e-9);
+  assert.strictEqual(meter.roomLeft('gemini', snap), 0.75);
+  assert.strictEqual(meter.roomLeft('groq', snap), 0);
+  assert.strictEqual(meter.roomLeft('openrouter', snap), null);
+  assert.strictEqual(meter.roomLeft('grok', snap), null); // never used: nothing to measure
+});

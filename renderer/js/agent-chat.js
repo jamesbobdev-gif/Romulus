@@ -116,7 +116,7 @@ document.addEventListener('paste',function(e){
   const go=function(map,id){ e.preventDefault(); map[id].add(imgs); };
   // 1) typing directly in a reply box → that task
   const ae=document.activeElement, focusedReply=ae&&ae.dataset&&ae.dataset.replyFor;
-  const listy=state.activeTab!=='ideas'&&state.activeTab!=='hours'&&state.activeTab!=='calendar'&&state.activeTab!=='finance';
+  const listy=!isViewTab(state.activeTab)&&state.activeTab!=='calendar';
   if(ae&&ae.id==='newTitle'&&listy&&attachProfile()){ e.preventDefault(); addComposerFiles(imgs); return; }
   if(focusedReply&&replies.indexOf(focusedReply)!==-1)return go(attachTargets,focusedReply);
   // 2) the task you're in (focus inside its panel / last clicked / selected / the only open one)
@@ -132,18 +132,7 @@ document.addEventListener('paste',function(e){
   e.preventDefault(); addComposerFiles(imgs); $('newTitle').focus();
 });
 function attachProfile(){ const a=syncState.cfg&&syncState.cfg.agent; return validProfile(a)?a:null; }
-async function shrinkImage(file){ // → JPEG blob, longest side ≤ 1600px
-  const src=URL.createObjectURL(file);
-  try{
-    const img=await new Promise(function(res,rej){ const i=new Image(); i.onload=function(){ res(i); }; i.onerror=function(){ rej(new Error('can\u2019t read that image')); }; i.src=src; });
-    const k=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));
-    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(img.naturalWidth*k)); c.height=Math.max(1,Math.round(img.naturalHeight*k));
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    const blob=await new Promise(function(r){ c.toBlob(r,'image/jpeg',0.85); });
-    if(!blob)throw new Error('can\u2019t read that image');
-    return blob;
-  } finally { URL.revokeObjectURL(src); }
-}
+function shrinkImage(file){ return pictureBlob(file,1600,'can’t read that image'); } // → JPEG blob, longest side ≤ 1600px (util.js)
 async function uploadAttachment(blob){
   const a=attachProfile(); if(!a)throw new Error('agent sync isn\u2019t set up');
   const base=a.url.replace(/\/+$/,''), path=(await attachFolder(a.syncKey))+'/'+uid()+'.jpg';
@@ -161,7 +150,7 @@ async function addComposerFiles(list){
 }
 function drawComposerAtts(){
   const box=document.getElementById('newAtts'); if(!box)return;
-  box.innerHTML=''; box.hidden=!composerAtts.length||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='calendar'||state.activeTab==='finance';
+  box.innerHTML=''; box.hidden=!composerAtts.length||isViewTab(state.activeTab)||state.activeTab==='calendar';
   composerAtts.forEach(function(a,i){
     const th=el('div','att-thumb'); const im=document.createElement('img'); im.src=a.preview; im.alt='Photo for the Agent';
     im.addEventListener('click',function(){ openLightbox(composerAtts.map(function(x,j){ return {image:x.preview,label:'Photo '+(j+1)}; }),i); });
@@ -286,14 +275,16 @@ function retryButton(t){
 }
 function setLane(t,to,ok){
   const from=laneNow(t);
-  if(from===to){ delete laneAsks[t.id]; render(); return; }
+  // picking who already has it keeps it: the choice is settled and the pill goes (lists.js)
+  if(from===to){ delete laneAsks[t.id]; if(!t.laneOk){ t.laneOk=true; touch(); } else render(); return; }
   // switching (not a first pick) asks first — in the panel, not window.confirm: on Windows a native
   // dialog leaves Electron's page deaf to the keyboard afterwards, so the reply box wouldn't type
   const name=LANE_NAMES[to];
   if(from&&!ok){ laneAsks[t.id]=to; render(); return; }
   delete laneAsks[t.id];
+  t.laneOk=true;
   // a pick sticks, over whoever answered last
-  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
+  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; if(!t.routedLane)t.routedLane=t.lane; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
   t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
   agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
   buzz('tap'); touch();
@@ -318,6 +309,8 @@ function moveTask(t,toWs,id){ // id: keep a known one (holoBackToSchool); otherw
   state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:now});
   touch();
+  // its encrypted photos reach Claude as plain copies in the Agent's own photo folder (task-files.js)
+  if(toWs==='agent'&&Array.isArray(c.files)&&c.files.length&&typeof taskFilesToAgent==='function')taskFilesToAgent(c);
 }
 /* Undo the short-lived "every School assignment goes to Holo by itself" (2026-10-17): those Agent tasks
    ("holo-<old id>") go back to School under their old id, so the course calendars still know them. */
@@ -349,6 +342,7 @@ function deleteTask(t){
   if(t.googleEventId && window.desktop && window.desktop.gcalDeleteEvent) window.desktop.gcalDeleteEvent(t.googleEventId,t.calRef);
   state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; }); state.expanded.delete(t.id);
   state.tombstones.push({id:t.id,deletedAt:Date.now()});
+  if(typeof taskFilesForget==='function')taskFilesForget(t); // its photos and files go from the server too
   buzz('delete');
   touch();
 }

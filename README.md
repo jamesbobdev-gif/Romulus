@@ -2,15 +2,18 @@
 
 **Romulus killed Remus. This should kill your need for Meta Muse.**
 
+Romulus is a free, open-source to-do list app with an AI agent built in, for Windows, macOS, Linux and Android. **[Download it free](https://jamesbobdev-gif.github.io/Romulus/)**.
+
 **A to-do list with an agent in it.** Write a task the way you'd tell a person ("find the cheapest flight to Denver the weekend of the 14th", "order the groceries", "apply to these three internships", "draft a reply to the landlord"), hand it to the Agent, and it goes and does it: searches the web, reads pages, fills forms, compares prices, builds the cart, drafts the email. It comes back only when it needs a decision, and it **never buys, sends, submits or books anything until you reply "yes"** to the exact thing it described.
 
 **Bring your own model.** Plug in whatever you already pay for or can run: a Claude or ChatGPT plan, an OpenRouter account (hundreds of models, some free), a Gemini key, the free tiers from Grok, Groq, Cloudflare or NVIDIA, or **your own model on your own hardware** through Ollama. Connect several and the app tries them in your order. Tasks that touch private things (bank, medical, passwords…) only ever go to your local model.
 
 **Your money, without the subscription.** The Finance tab does what people pay Rocket Money, Monarch or Copilot for: every account in one place, recurring bills and subscriptions found automatically (and flagged when one stops), net worth over time, an income statement and balance sheet, receipts pulled from your inbox, live stock prices. The bank connection is read-only and costs about $15 a year; the data sits in an encrypted vault on your computer (and, if you scan a QR code, on your phone behind your fingerprint), not on anyone's server, and no cloud AI can read it.
 
-Plus a School list that pulls due dates from course calendars, an Ideas board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
+Plus a School list that pulls due dates from course calendars, a Kitchen tab whose pantry fills itself from what the Agent orders, a Health tab that ticks goals off from your phone's health data, a Notes board, an Hours log, Google and Microsoft calendars, and an Android app that stays in sync.
 
-<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
+<p align="center"><img src="docs/images/demo.gif" width="560" alt="A 40-second walkthrough: a grocery order typed on the Agent tab, the Agent building the cart and waiting for a yes, the order placed, then the Finance tab with accounts, net worth, subscriptions and stocks"></p>
+<p align="center"><sub>Made-up demo data. <code>npm run demo</code> records this (scripts/demo).</sub></p>
 
 ## Install
 
@@ -18,31 +21,38 @@ Plus a School list that pulls due dates from course calendars, an Ideas board, a
 
 **Windows:** download `Romulus-Setup-<version>.exe` from the [latest release](https://github.com/jamesbobdev-gif/romulus-releases/releases/latest) and run it. The installer isn't code-signed yet, so Windows warns: **More info → Run anyway**. Installed copies update themselves.
 
-**Linux, macOS and Android:** the `.AppImage`, `.dmg` and `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
+**Linux, macOS and Android:** the `.deb` (Ubuntu, Debian, Mint) or `.AppImage` (other distributions), the `.dmg` and the `.apk` are attached to the same releases. The macOS build is unsigned, so the first open needs **System Settings → Privacy & Security → Open Anyway**.
 
 **From source:** Node 22 or newer, then `npm install` and `npm start`.
+
+<p align="center"><img src="docs/images/welcome.jpg" width="560" alt="The welcome card on first launch"></p>
 
 Then read **[docs/SETUP.md](docs/SETUP.md)**: connecting an AI (every option, with the buttons to press), syncing with your phone, calendars, Finance, and where your keys live.
 
 ## What's in the box
 
-<p align="center"><img src="docs/images/human.png" width="400" alt="The Human tab: a list of to-dos with due dates, times, tags and a weekly repeat"> <img src="docs/images/agent.png" width="400" alt="The Agent tab: tasks waiting, working and needing an answer, one opened to the Agent's question about which Denver flight to book"></p>
-<p align="center"><sub>Made-up demo data.</sub></p>
+<p align="center"><img src="docs/images/human.png" width="400" alt="The To do tab: a list of to-dos with due dates, times, tags and a weekly repeat"> <img src="docs/images/agent.png" width="400" alt="The Agent tab: tasks waiting, working and needing an answer, one opened to the Agent's question about which Denver flight to book"></p>
+<p align="center"><sub>Made-up demo data. <code>npm run demo:shots</code> takes these (scripts/demo).</sub></p>
 
 | | |
 |---|---|
-| **Human** | Your own to-dos: due dates, times, tags, subtasks, repeats, drag to reorder, search. |
+| **To do** | Your own to-dos: due dates, times, tags, subtasks, repeats (with a streak for the ones ticked off on time), drag to reorder, search. |
 | **Agent** | Tasks the AI does. Live view of what it's doing, its questions, its results, the conversation. A pill on each task picks which AI. |
-| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. |
+| **School** | Assignments, with due dates pulled from Blackboard or D2L calendar links; the class is the tag. One still open two days after its deadline comes off the list. |
 | **Work** | A second list, synced with the rest. |
-| **Calendar · Ideas · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
-| **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code. |
+| **Calendar · Notes · Hours** | Extra views: the month, a board of note cards, a log of hours per day. |
+| **Finance** | A Rocket Money / Monarch replacement: accounts, recurring bills and subscriptions, net worth, statements, receipts from Gmail, live stock prices. Cancel on a subscription or a monthly bill hands it to the Agent, which gets to the last click and waits for your yes. Bank read-only through SimpleFIN. Encrypted twice, locks itself, never on a server; the phone can get its own copy from a QR code, and picks the bank connection up through sync. |
+| **Kitchen** | What's in the pantry, the recipes you make and which ones you liked, meal ideas from what's there, and a shopping list. A grocery order the Agent places fills the pantry with each item's picture and size; so does a photo of a receipt or of the shopping. Tap a food dark when it's gone. |
+| **Health** | Goals ticked off from your phone's health data (Health Connect on Android, Apple Health on iPhone): "Walk 8,000 steps", "Sleep 7 hours". Today's numbers, and a Food plan of daily calories and macros that the Agent builds grocery orders to meet. The numbers are sealed before they sync and are never shown to an AI. |
+| **Group** | On the Group plan: a list you keep with up to four others, and to-dos you send each other. |
 
-What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes; flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email through Claude; a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; its own headless browser you can watch and take over.
+**Settings → Tabs** switches off the ones you don't use (a phone can show fewer than the computer). **Settings → Backup file** saves every list, note, hour, health total and the pantry to one file you keep, and restores from it by merging, so a restore never loses newer work.
+
+What the Agent can do today: research and writing; shopping on Amazon and Walmart (groceries included) with the cart built and held for your yes, a grocery order adding up to your Food plan and filling the Kitchen pantry once it's placed; any other store through a Link wallet, which hands the Agent's browser a one-time card for the amount you approve in the Link app (the AI never sees the number); flights, tickets and bookings with a seat map you can override; forms and job applications filled from a **Locked** profile only your local model may read; email with any AI you connect, in Gmail or Outlook (it drafts, labels and archives on its own, and sends or trashes after your yes); a morning look-ahead over your calendar and inbox; tasks that start on their own when an email arrives, a calendar event is near or a web page changes; goals planned first and then run as a chain of steps; deep research (`#legion`) that your local model splits into pieces so no single cloud AI sees the whole question; steps you've allowed once and for all so it stops asking; memory of what you've said and what worked on each site; routing on auto that weighs the usage left on each cloud AI you've connected; its own headless browser you can watch and take over.
 
 ## Privacy, in short
 
-Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
+Everything you connect stays on the computer where you connected it. Keys, tokens and sync keys are encrypted with the operating system's own encryption and never synced. The sync key, which is the password to your lists, is kept only there on the computer and in app storage excluded from backups on the phone, and can be rotated from Settings. The Locked profile is encrypted on your device before it is uploaded. The Locked profile and Finance are never given to a cloud AI. Sync goes through a Supabase project *you* own, and the sync table is closed to anyone without the list's key; one button in Settings encrypts every list end to end, so the project holds only ciphertext. There is no telemetry. Details in [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -52,6 +62,7 @@ Everything you connect stays on the computer where you connected it. Keys, token
 npm install
 npm start        # dev mode
 npm test         # unit tests (Node's built-in runner, files in test/)
+npm run lint     # ESLint, bug-finding rules only (eslint.config.js); CI runs both on every push
 npm run dist     # installer into dist/
 ```
 
@@ -70,7 +81,7 @@ One-click Google and Microsoft sign-in needs the app's own OAuth clients in `oau
 
 ### Releases
 
-One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule.
+One version number (`package.json`) covers every device: the desktop installers and the Android APK of a release all carry it, and each installed copy picks the new version up on its own. Computers (`main/updater.js`) check the releases repository every four hours, download quietly and install when idle; the phone (`mobile/update-phone.js`) checks a few times a day and shows an **Update** banner, since Android won't replace an app without a tap. So a release reaches the phone and both computers within hours of each other, each on its own schedule. Settings → Device sync lists every device with the version it runs (and **behind** when another runs a newer one), and on the phone Settings → Updates has **Check for updates**, which looks right away.
 
 **Releasing to every device:** bump the version in `package.json`, commit, and push a `v<version>` tag. That runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS installers and the signed Android APK on GitHub's runners and publishes them all to the public releases repository named in `package.json` → `build.publish`. It needs these repository secrets:
 
@@ -80,6 +91,9 @@ One version number (`package.json`) covers every device: the desktop installers 
 | `ANDROID_KEYSTORE_BASE64` | The Android signing keystore, base64-encoded (`base64 -w0 release.keystore`). Without it the phone build is skipped. |
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Its password, key alias and key password. |
 | `OAUTH_CLIENTS_JSON` | Optional: the app's own Google / Microsoft sign-in clients. |
+| `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_TEAM_ID` | Optional: an App Store Connect API key (Admin role). With them the iPhone app is built and uploaded to App Store Connect too. |
+
+The stores (Google Play, the App Store, the Microsoft Store) and the signing that removes the install warnings on Mac and Windows are covered in [docs/store-release.md](docs/store-release.md): each switches on once its secrets are set.
 
 Make the keystore once (`keytool -genkeypair -v -keystore release.keystore -alias romulus -keyalg RSA -keysize 2048 -validity 10000`) and keep it safe: Android only installs a new APK over an old one when both are signed with the same key, so losing it means everyone reinstalls. A phone that has a debug build from `./gradlew assembleDebug` must uninstall it once before the first signed release goes on (sync brings the tasks back). The Mac and Windows installers stay unsigned until their signing secrets are set; the release workflow lists them.
 
@@ -98,13 +112,17 @@ cd android && ./gradlew assembleGithubDebug
 
 Needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME`. The APK lands in `mobile/android/app/build/outputs/apk/github/debug/` (`assemblePlayDebug` makes the Google Play build instead, with no update banner); it updates an installed copy in place. Its version comes from the root `package.json`. Without a `mobile/sync-config.json` the build bakes in no keys, and the phone is connected by pasting the sync code into Settings → Device sync; that is how the public APK from the releases page is built (see Releases below).
 
+### Phone app (iPhone)
+
+The same web UI in Capacitor's iOS project, `mobile/ios`. On a Mac with Xcode: `cd mobile && node prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`, then run it on a phone from Xcode. Releases are built and uploaded to App Store Connect by the tag workflow, no Mac needed. The Health tab reads Apple Health there (Health Connect on Android). The other Android-only native parts (widgets, calendar sign-in, the Finance vault, voice, the wake word) aren't on iPhone yet; the page does without them. [docs/store-release.md](docs/store-release.md) has the App Store steps.
+
 ### Where your data lives
 
-Tasks are in `tasks.json` in the app's user-data folder (`%APPDATA%\Romulus` on Windows, `~/Library/Application Support/Romulus` on macOS, `~/.config/Romulus` on Linux; copies before 1.0.3 used a `Tasks` folder, moved on first start). Back up that one file. Config and keys are in `config.json` next to it, secrets encrypted.
+Tasks are in `tasks.json` in the app's user-data folder (`%APPDATA%\Romulus` on Windows, `~/Library/Application Support/Romulus` on macOS, `~/.config/Romulus` on Linux; copies before 1.0.3 used a `Tasks` folder, moved on first start). Back up that one file, or use **Settings → Backup file**, which saves the lists, notes, hours, health totals and the pantry to one file you keep (never Finance, keys or connected accounts) and restores from it by merging. Config and keys are in `config.json` next to it, secrets encrypted.
 
 ### Desktop behaviour
 
-The installed app starts at login (toggle in the tray menu), hides to the tray when closed, and reappears when the screen wakes or unlocks. Windows won't let an app pin itself: Start menu → right-click **Romulus** → Pin to taskbar.
+The installed app starts at login (toggle in the tray menu), hides to the tray when closed, and reappears when the screen wakes or unlocks. Windows keeps a new tray icon under the ^ by the clock until you drag it onto the taskbar (the first time the window hides there, a notice says so), and won't let an app pin itself: Start menu → right-click **Romulus** → Pin to taskbar.
 
 ### Theme
 
@@ -125,7 +143,8 @@ Settings → **Theme** takes CSS. The whole look is CSS variables, so a re-skin 
 - ↑/↓ select · Space completes · Enter expands · Delete removes · Esc deselects
 - Drag the dots on a row's left edge to reorder; click a tag chip to filter
 - Hover a row for edit / expand / delete; overdue and due-today rows get a snooze button
-- Ideas: + Add an idea in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**
+- A repeating to-do shows its streak: how many in a row were ticked off on time
+- Notes: + Add a note in a group; drag cards between groups; highlight lines in a description for **→ To-do** or **→ Agent**; search box above the groups (Ctrl+F); **Pin** on an open note keeps it at the top of its group (drag it above the pinned ones or below them to pin or unpin)
 
 ## License
 

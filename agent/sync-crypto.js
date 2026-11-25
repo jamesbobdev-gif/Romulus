@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const SALT = 'romulus-sync-v2';
 const cache = new Map(); // base sync key → {lookup, key}
 
-const splitKey = (k) => { const m = /^(.*?)(:[a-z]+)?$/.exec(String(k || '')); return { base: m[1], sfx: m[2] || '' }; };
+const splitKey = (k) => { const m = /^(.*?)(:[a-z-]+)?$/.exec(String(k || '')); return { base: m[1], sfx: m[2] || '' }; };
 const keyPrefix = (base) => { const m = /^tk_(?:(?:work|agent|school)_)?/.exec(base); return m ? m[0] : 'tk_'; };
 function keys(base) {
   if (!cache.has(base)) {

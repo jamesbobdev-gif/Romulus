@@ -8,7 +8,21 @@ function listItem(x){
   if(typeof x==='string')return {name:x.trim(),every:1,last:null,out:false}; // the first version kept plain lines
   if(!x||!String(x.name||'').trim())return null;
   const every=Math.max(1,Math.min(52,Math.round(Number(x.every)||1)));
-  return {name:String(x.name).trim().slice(0,120),every:every,last:/^\d{4}-\d{2}-\d{2}$/.test(x.last)?x.last:null,out:!!x.out};
+  const it={name:String(x.name).trim().slice(0,120),every:every,last:/^\d{4}-\d{2}-\d{2}$/.test(x.last)?x.last:null,out:!!x.out};
+  const meal=String(x.for||'').replace(/\s+/g,' ').trim().slice(0,80);
+  if(meal)it.for=meal; // the dish it's for: the Kitchen tab lists it under Meals you're buying for
+  return it;
+}
+// the dishes the next order is buying for (items tagged with a meal that are still due) → [{name, items:[names]}]
+function groceryMeals(list,now){
+  const out=[];
+  normList(list).forEach(function(it){
+    if(!it.for||!itemDue(it,now))return;
+    let m=out.find(function(x){ return x.name.toLowerCase()===it.for.toLowerCase(); });
+    if(!m){ m={name:it.for,items:[]}; out.push(m); }
+    m.items.push(it.name);
+  });
+  return out;
 }
 function normList(list){ return (Array.isArray(list)?list:[]).map(listItem).filter(Boolean).slice(0,200); }
 const sameItem=function(a,b){ const n=function(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }; return n(a)===n(b); };
@@ -23,14 +37,22 @@ const isGroceryTask=function(t){ return taskWs(t)==='agent'&&(GROCERY_WORDS.test
 
 // the agent's changes: {add:[{name,every}], bought:[names], remove:[names]}. Never a whole new list,
 // so what he added or removed while it worked stays as he left it
-function applyListUpdate(t,ch){
+// covered: bought names the placed order already put in the pantry, with pictures and sizes (keepLastOrder)
+function applyListUpdate(t,ch,covered){
   if(!ch||typeof ch!=='object')return;
   if(!normList(t.list).length){ const k=groceryTask(); if(k&&k!==t)t.list=normList(k.list); } // a new grocery task starts from his list
   const list=normList(t.list), today=new Date().toISOString().slice(0,10);
   (Array.isArray(ch.remove)?ch.remove:[]).forEach(function(n){ for(let i=list.length-1;i>=0;i--)if(sameItem(list[i].name,n))list.splice(i,1); });
-  (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){ const it=listItem(a); if(it&&!list.some(function(x){ return sameItem(x.name,it.name); }))list.push(it); });
+  (Array.isArray(ch.add)?ch.add:[]).forEach(function(a){
+    const it=listItem(a); if(!it||list.some(function(x){ return sameItem(x.name,it.name); }))return;
+    if(it.for){ it.every=52; it.out=true; } // for one dish: on the next order, not a weekly usual
+    list.push(it);
+  });
   (Array.isArray(ch.bought)?ch.bought:[]).forEach(function(n){ list.forEach(function(x){ if(sameItem(x.name,n)){ x.last=today; x.out=false; } }); });
   t.list=list.length?list:null;
+  const skip=Array.isArray(covered)?covered:[];
+  if(typeof kitchenBought==='function'&&Array.isArray(ch.bought))kitchenBought(ch.bought.filter(function(n){ return skip.indexOf(n)===-1; })); // what it bought goes into the Kitchen tab's pantry (kitchen.js)
+  if(typeof famCheckOff==='function')famCheckOff(ch.bought); // and off the group's shared Groceries list (family.js)
 }
 
 // "we're out of eggs and milk" / "add eggs to groceries" → ['eggs','milk'], or null
@@ -58,8 +80,11 @@ function addToGroceries(text){
     const hit=list.find(function(x){ return sameItem(x.name,n)||sameItem(x.name.split(',')[0],n); });
     if(hit)hit.out=true; else list.push({name:n.charAt(0).toUpperCase()+n.slice(1),every:1,last:null,out:true});
   });
-  t.list=list; touch();
-  return {task:t,names:names};
+  t.list=list;
+  // "we're out of eggs" (not "add eggs to groceries"): eggs leave the Kitchen pantry too (kitchen.js)
+  const pantry=!/^\s*(?:add|put)\s/i.test(text)&&typeof kitchenRanOut==='function'?kitchenRanOut(names):[];
+  touch();
+  return {task:t,names:names,pantry:pantry};
 }
 
 /* ── the 2-week grocery order ──
@@ -95,12 +120,119 @@ function runGroceryTimer(){
   touch();
 }
 if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runGroceryTimer,15*1000); setInterval(runGroceryTimer,60*1000); }
+/* a cart waiting on his yes that he may have ordered himself in the store's own app: a day after it came,
+   and again 3 days after, the Agent looks at that store's order history (t.cartCheck; the groceries skill's
+   "Orders he placed himself"), and an order it finds goes into the pantry (stockOrdered). Any store's cart,
+   not only groceries. t.cartAt is when the cart came (agent-results.js); an older cart counts from now */
+const CART_LOOK_DAYS=[1,3];
+function cartLookDue(t,now){
+  if(taskWs(t)!=='agent'||t.done||t.status!=='needs-you'||!Array.isArray(t.cart)||!t.cart.length||!t.cartAt)return false;
+  const n=t.cartLooks||0;
+  return n<CART_LOOK_DAYS.length&&now>=t.cartAt+CART_LOOK_DAYS[n]*864e5;
+}
+function runCartCheck(){
+  if(!window.desktop||!window.desktop.onAgentResults)return;
+  const now=Date.now(); let changed=false;
+  state.tasks.forEach(function(t){
+    if(taskWs(t)==='agent'&&!t.done&&Array.isArray(t.cart)&&t.cart.length&&!t.cartAt){ t.cartAt=now; changed=true; return; }
+    if(!cartLookDue(t,now))return;
+    t.cartLooks=(t.cartLooks||0)+1; t.cartCheck=true;
+    t.status='queued'; t.reply=null;
+    agentSay(t,'sys','Checking whether you ordered this yourself');
+    changed=true;
+  });
+  if(changed)touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runCartCheck,60*1000); setInterval(runCartCheck,10*60*1000); }
+/* an order he placed himself with no task here at all: the Finance tab saw a charge at that store that no
+   order explains (order-match.js storesToCheck), so an Agent task looks at the store's order history
+   (t.orderLook; the groceries skill's "Orders he placed himself") and what it finds goes into the pantry.
+   The task carries only the store's name: nothing from the bank goes to the Agent */
+const LOOK_NAMES={instacart:'Instacart',ubereats:'Uber Eats',doordash:'DoorDash',shipt:'Shipt',gopuff:'Gopuff',walmart:'Walmart',target:'Target',costco:'Costco',kroger:'Kroger',aldi:'Aldi'};
+function lookForOwnOrders(stores){
+  if(!Array.isArray(stores)||!stores.length)return;
+  stores.forEach(function(s){
+    const name=LOOK_NAMES[s]||s;
+    const t={id:uid(),title:'Check my '+name+' orders for the pantry',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+      created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],orderLook:s};
+    agentSay(t,'sys','Looking at your recent '+name+' orders for food to add to your pantry');
+    state.tasks.push(t);
+  });
+  touch();
+}
+/* the regular look at his orders on the delivery apps he uses (order-match.js regularLooks): every 3 days once he uses it. The
+   last finished look task runs again (t.lookAt), so the Agent list doesn't fill up with them; with none, a new one */
+function runRegularLooks(){
+  if(!window.desktop||!window.desktop.onAgentResults||typeof regularLooks!=='function')return;
+  const stores=regularLooks(state.tasks,Date.now()); if(!stores.length)return;
+  const fresh=[];
+  stores.forEach(function(s){
+    const old=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&t.orderLook===s&&!t.done; })
+      .sort(function(a,b){ return (b.lookAt||b.created||0)-(a.lookAt||a.created||0); })[0];
+    if(!old){ fresh.push(s); return; }
+    old.lookAt=Date.now(); old.status='queued'; old.reply=null; old.note=null;
+    agentSay(old,'sys','Looking at your recent '+(LOOK_NAMES[s]||s)+' orders for food to add to your pantry');
+  });
+  if(fresh.length)lookForOwnOrders(fresh); else touch();
+}
+if(window.desktop&&window.desktop.onAgentResults){ setTimeout(runRegularLooks,2*60*1000); setInterval(runRegularLooks,60*60*1000); }
 // one line in a grocery task's panel: when the next order opens
 function groceryNextLine(){
   const at=nextGroceryAt();
   const d=el('div','panel-meta grocery-next');
   d.appendChild(el('span','lbl','Next order'));
   d.appendChild(el('span','next',at&&at<=Date.now()?'Opening now (once the computer is on)':at?new Date(at).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · asking for groceries starts the 2 weeks over':'2 weeks after you ask for groceries'));
+  return d;
+}
+
+/* ── his EBT wallet (finance-ebt.js), on grocery tasks ──
+   The settings (balance, deposit day, monthly) come from Finance's sealed copy on the computer
+   (main/finance.js finance:ebtNow), or the copy Finance keeps on this device on the phone and with CSV
+   files (finance.js finKeepEbtCopy), so they show while Finance is locked. He chose this (2026-11-06). */
+let groceryEbt={};
+async function loadGroceryEbt(){
+  let e={};
+  try{
+    if(window.desktop&&window.desktop.financeEbtNow)e=await window.desktop.financeEbtNow()||{};
+    else e=JSON.parse(localStorage.getItem('finance.ebtCopy')||'{}')||{};
+  }catch(err){ e={}; }
+  const was=JSON.stringify(groceryEbt);
+  groceryEbt=typeof ebtClean==='function'?ebtClean(e):{};
+  if(JSON.stringify(groceryEbt)!==was&&typeof render==='function')render();
+}
+// once every page script has run (finance-ebt.js loads after this one)
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',loadGroceryEbt); else setTimeout(loadGroceryEbt,0);
+if(window.desktop&&window.desktop.onFinanceUpdated)window.desktop.onFinanceUpdated(function(what){ if(what==='ebt')loadGroceryEbt(); });
+/* Finance → EBT (finance.js finEbtCard): most people don't have EBT, so it's a switch, kept on each device ('ebt.on').
+   Never set: on when there's a sign he uses it (a wallet, an order paid partly with EBT, a grocery task
+   that talks about EBT), else off. Off hides the Finance card and the grocery list's EBT lines, and on the
+   computer grocery runs get no balance (main/finance.js finance:setEbtOn → config.ebtOff) */
+function ebtOn(){
+  let v=null; try{ v=localStorage.getItem('ebt.on'); }catch(e){}
+  if(v==='1')return true; if(v==='0')return false;
+  if(groceryEbt.balance!=null||groceryEbt.day)return true;
+  return state.tasks.some(function(t){
+    return taskWs(t)==='agent'&&((Array.isArray(t.orders)&&t.orders.some(function(o){ return o&&o.ebt>0; }))||/\bEBT\b/i.test(String(t.title||'')+' '+String(t.note||'')));
+  });
+}
+// only his own flip reaches the computer's Agent side: until then grocery runs get the balance when there is one
+function setEbtOn(on){
+  try{ localStorage.setItem('ebt.on',on?'1':'0'); }catch(e){}
+  if(window.desktop&&window.desktop.financeSetEbtOn)window.desktop.financeSetEbtOn(on).catch(function(){});
+  if(typeof render==='function')render();
+}
+// → the wallet (finance-ebt.js ebtWallet) when he's set one up and EBT is on, else null
+function groceryWallet(){
+  if(typeof ebtWallet!=='function'||!ebtOn())return null;
+  const w=ebtWallet(groceryEbt,agentOrders(state.tasks));
+  return w.known?w:null;
+}
+// one line in a grocery task's panel: about what's left on EBT, and the next deposit
+function groceryEbtLine(){
+  const w=groceryWallet(); if(!w)return null;
+  const d=el('div','panel-meta grocery-ebt');
+  d.appendChild(el('span','lbl','EBT left'));
+  d.appendChild(el('span','next','about $'+w.balance.toFixed(2)+(w.nextDeposit!=null?' · next deposit '+new Date(w.nextDeposit).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')));
   return d;
 }
 
@@ -138,19 +270,91 @@ function yesButton(t){
 // Claude shows it when he asks what's on his list (agent/grocery.js lastOrderFor). The last dozen stay in
 // t.orders, with the store and total, so the Finance tab can show what a charge was for (order-match.js).
 // note: what the Agent said about it (its total), when t.note has already moved on
-function keepLastOrder(t,note){
+// bought: his list names it marked bought on this answer (applyListUpdate puts those in the pantry itself)
+function keepLastOrder(t,note,bought){
   if(!Array.isArray(t.cart)||!t.cart.length)return;
   const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
   const items=t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).slice(0,40).map(function(it){
     const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; }); // the size he switched to
     const s=op||it;
-    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined};
+    return {name:s.name,qty:s.qty||undefined,price:s.price||undefined,image:s.image||undefined,url:s.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
   });
   if(!items.length)return;
+  const food=orderFood(t,items,bought);
+  if(typeof kitchenBought==='function')kitchenBought(food.stock);
   t.lastOrder={at:Date.now(),items:items};
   const total=orderTotalFrom(note)||orderTotalFrom(t.note), store=orderStore(items,t.title);
-  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{})]).slice(-12);
+  // the EBT part, for the Finance tab's EBT wallet (finance-ebt.js): what went on EBT, and the balance left
+  const e1=orderEbtFrom(note), e2=orderEbtFrom(t.note);
+  const ebt=e1.ebt||e2.ebt, left=e1.left!=null?e1.left:e2.left;
+  t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([Object.assign({},t.lastOrder,total?{total:total}:{},store?{store:store}:{},
+    ebt?{ebt:ebt}:{},left!=null&&left>=0?{ebtLeft:left}:{})]).slice(-12);
+  return food.covered;
 }
+/* what on a placed order goes into the Kitchen pantry (kitchen.js kitchenBought) →
+   {stock:[{name:"Name, 18 ct", image}], covered:[his list's names these stand for]}:
+   the items the Agent marked food; on a cart from before it marked them, everything on a grocery task or
+   from a food-only store (Instacart, Kroger, Aldi). Each goes in with its picture and how many he got.
+   A name on bought (his list's word for the same thing, "Eggs") that a cart item stands for is in covered,
+   so applyListUpdate doesn't stock it a second time without its size */
+const FOOD_STORES=['instacart','kroger','aldi'];
+function orderFood(t,items,bought){
+  const marked=items.some(function(it){ return typeof it.food==='boolean'; });
+  const all=!marked&&(isGroceryTask(t)||FOOD_STORES.indexOf(orderStore(items,t.title))!==-1);
+  const same=typeof sameFood==='function'?sameFood:sameItem;
+  const food=items.filter(function(it){ return marked?it.food===true:all; });
+  const covered=(Array.isArray(bought)?bought:[]).filter(function(n){
+    const b=String(n||'').split(',')[0];
+    return food.some(function(it){ return same(it.name.split(',')[0],b); });
+  });
+  const stock=food.reduce(function(out,it){ // ×2 of "Rice, 20 lb" is 40 lb: once per one bought, so the sizes add up
+    const pic=it.image&&/^https:\/\//i.test(String(it.image))?String(it.image):undefined;
+    const n=it.qty>1?it.qty:1;
+    // a size in the name ("Rice, 20 lb", "Bananas (10.2 lb)": kitchen.js kSized) goes in once per one bought; with none it's a count
+    const sized=typeof kSized==='function'?kSized(it.name).qty!=null:it.name.indexOf(',')!==-1;
+    if(!sized)out.push({name:it.name+', '+n+' ct',image:pic});
+    else for(let i=0;i<n;i++)out.push({name:it.name,image:pic});
+    return out;
+  },[]);
+  return {stock:stock,covered:covered};
+}
+/* orders he placed himself, outside the app, that a run found in his store account (the answer's `ordered`,
+   agent/task-context.js cleanOrdered): each one's food goes into the Kitchen pantry once, and the order joins
+   t.orders with its number, so no later run stocks it again and the Finance tab can match its charge.
+   → [{store, date, n: how many went into the pantry, covered: the names on bought (his list's words) it stands
+   for, so applyListUpdate doesn't stock those again without a size}] for the orders that were new */
+const orderKey=function(o){ return String(o.store||'').toLowerCase()+'|'+(o.id?String(o.id).toLowerCase():String(o.date||'')+'|'+((o.items||[]).length)); };
+function knownOrderKeys(){
+  const keys=[];
+  state.tasks.forEach(function(x){ (Array.isArray(x.orders)?x.orders:[]).forEach(function(o){ if(o&&o.store&&(o.id||o.date))keys.push(orderKey(o)); }); });
+  return keys;
+}
+function stockOrdered(t,orders,bought){
+  if(!Array.isArray(orders)||!orders.length)return [];
+  const known=knownOrderKeys(), out=[];
+  orders.forEach(function(o){
+    if(!o||!o.store||!Array.isArray(o.items)||!o.items.length)return;
+    const items=o.items.slice(0,60).filter(function(it){ return it&&it.name; }).map(function(it){
+      return {name:String(it.name),qty:it.qty||undefined,price:it.price||undefined,image:it.image||undefined,url:it.url||undefined,food:typeof it.food==='boolean'?it.food:undefined};
+    });
+    const store=orderStore(items,o.store)||String(o.store).toLowerCase();
+    const rec={store:store,id:o.id||undefined,date:o.date||undefined,items:items};
+    if(!items.length||known.indexOf(orderKey(rec))!==-1)return;
+    known.push(orderKey(rec));
+    // unmarked items count as food on a grocery task or from a food-only store, as on an order placed here
+    const food=orderFood({ws:'agent',title:String(t.title||'')+' '+o.store,list:t.list},items,bought);
+    if(typeof kitchenBought==='function'&&food.stock.length)kitchenBought(food.stock);
+    const at=o.date?new Date(o.date+'T12:00:00').getTime():Date.now();
+    rec.at=isNaN(at)?Date.now():at; rec.self=true;
+    if(o.total)rec.total=o.total;
+    t.orders=(Array.isArray(t.orders)?t.orders:[]).concat([rec]).slice(-12);
+    if(!t.lastOrder||!(t.lastOrder.at>=rec.at))t.lastOrder={at:rec.at,items:items};
+    out.push({store:String(o.store),date:o.date||'',n:food.stock.length,covered:food.covered});
+  });
+  return out;
+}
+function orderedLine(s){ return 'Into your pantry from your '+s.store+' order'+(s.date?' of '+new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')+': '+(s.n?s.n+' item'+(s.n===1?'':'s'):'nothing marked as food'); };
+
 // the list cards after a change on his list: removed items go, added ones get a card (a letter until they're bought)
 function listCardsChanged(cards,ch){
   const gone=Array.isArray(ch.remove)?ch.remove:[];
@@ -160,14 +364,14 @@ function listCardsChanged(cards,ch){
   return out.length?out:null;
 }
 // things to look at, not pick (his grocery list): small picture cards, each opening its product page
-function cardsStrip(t){
+function cardsStrip(t,list){
   const box=el('div','mini-cards');
-  t.cards.slice(0,40).forEach(function(it){
+  (list||t.cards).slice(0,40).forEach(function(it){
     const c=el(it.url?'a':'div','mini-card');
     if(it.url){ c.href=it.url; c.target='_blank'; c.rel='noopener'; c.title='Open '+it.name; }
     c.addEventListener('click',function(e){ e.stopPropagation(); });
     const ph=el('div','mini-pic');
-    if(it.image){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
+    if(it.image&&/^https:\/\//i.test(String(it.image))){ const im=document.createElement('img'); im.src=it.image; im.alt=''; im.loading='lazy'; im.referrerPolicy='no-referrer';
       im.onerror=function(){ ph.textContent=it.name.charAt(0); im.remove(); }; ph.appendChild(im); }
     else ph.textContent=it.name.charAt(0);
     c.appendChild(ph);
@@ -175,6 +379,64 @@ function cardsStrip(t){
     if(it.price||it.qty>1)c.appendChild(el('div','mini-price',(it.qty>1?'×'+it.qty+' · ':'')+(it.price||'')));
     box.appendChild(c);
   });
+  return box;
+}
+// while the Agent works on the order he answered (Done, Place order): what he kept, with his size
+// switches, stays on screen as small cards so he can see it until the next answer brings the new cart
+function cartKeptItems(t){
+  const off=Array.isArray(t.cartOff)?t.cartOff:[], pick=t.cartPick&&typeof t.cartPick==='object'?t.cartPick:{};
+  return t.cart.filter(function(it){ return off.indexOf(it.name)===-1; }).map(function(it){
+    const op=pick[it.name]&&Array.isArray(it.options)&&it.options.find(function(o){ return o.name===pick[it.name]; });
+    return op||it;
+  });
+}
+function cartWorkingStrip(t){
+  const items=cartKeptItems(t);
+  const box=el('div','cart-box');
+  const total=items.reduce(function(s,it){ return s+cartPrice(it.price); },0);
+  box.appendChild(el('div','cart-head','Your order · '+items.length+' items'+(total?' · about $'+total.toFixed(2):'')));
+  box.appendChild(cardsStrip(t,items));
+  return box;
+}
+/* Kitchen → Shopping list (kitchen.js kDrawShop): what's going out on the next grocery order, so he can see it
+   without opening the Agent tab. A cart the Agent built shows as its picture cards (what he kept, his swaps);
+   before there's a cart, the items due from his grocery list. Open in Agent goes to the task to change or
+   place it. → an element, or null when there's no grocery task yet */
+function groceryOrderBox(){
+  const open=state.tasks.filter(function(t){ return isGroceryTask(t)&&!t.done&&Array.isArray(t.cart)&&t.cart.length; })
+    .sort(function(a,b){ return (b.created||0)-(a.created||0); })[0];
+  const g=open||groceryTask(); if(!g)return null;
+  const box=el('div','grocery-order');
+  box.appendChild(el('div','kit-k kit-sec','Next grocery order'));
+  if(open){
+    const items=cartKeptItems(open), total=items.reduce(function(s,it){ return s+cartPrice(it.price); },0);
+    box.appendChild(el('div','kit-card-sub',wantsYes(open)?'Ready and waiting for your yes in the Agent tab.':'The Agent is working on it.'));
+    box.appendChild(el('div','cart-head',items.length+' item'+(items.length===1?'':'s')+(total?' · about $'+total.toFixed(2):'')));
+    if(items.length)box.appendChild(cardsStrip(open,items));
+  } else {
+    const due=normList(g.list).filter(function(it){ return itemDue(it); });
+    const at=nextGroceryAt();
+    box.appendChild(el('div','kit-card-sub','The Agent builds the cart from these when the order starts'+(at&&at>Date.now()?', '+new Date(at).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'')+'.'));
+    if(!due.length)box.appendChild(el('div','kit-empty','Nothing due on your grocery list yet.'));
+    due.forEach(function(it){
+      const row=el('div','kit-row');
+      row.appendChild(el('span','kit-row-name',it.name));
+      if(it.out)row.appendChild(el('span','kit-row-for','ran out'));
+      // x takes it off his grocery list, so it's not on this order or later ones
+      const x=iconBtn(I.x,'Take '+it.name+' off the grocery list');
+      x.title='Take it off the grocery list';
+      x.addEventListener('click',function(){
+        const list=normList(g.list).filter(function(y){ return !sameItem(y.name,it.name); });
+        g.list=list.length?list:null; touch();
+      });
+      row.appendChild(x);
+      box.appendChild(row);
+    });
+  }
+  const b=el('button','ghost','Open in Agent');
+  b.title='Go to the grocery task, to change the order or place it';
+  b.addEventListener('click',function(){ openTaskById(g.id); });
+  const btns=el('div','kit-card-btns'); btns.appendChild(b); box.appendChild(btns);
   return box;
 }
 function cartPrice(p){ const m=String(p||'').replace(/,/g,'').match(/\d+(\.\d+)?/); return m?Number(m[0]):0; }
@@ -199,6 +461,12 @@ function cartStrip(t){
     const total=kept.reduce(function(s,it){ return s+cartPrice(shown(it).price); },0);
     const base=items.filter(function(it){ return !it.suggested; }).length, ideas=items.length-base, picked=kept.filter(function(it){ return it.suggested; }).length;
     head.textContent='Your order · '+kept.length+' items'+(ideas?' ('+picked+' of '+ideas+' ideas added)':'')+(total?' · about $'+total.toFixed(2):'');
+    // against his EBT wallet: what's left after it, or how far over (checkout has the real balance)
+    const w=total?groceryWallet():null;
+    if(w){
+      const left=Math.round((w.balance-total)*100)/100;
+      head.appendChild(el('span','cart-ebt'+(left<0?' over':''),left<0?' · about $'+(-left).toFixed(2)+' over EBT':' · about $'+left.toFixed(2)+' left on EBT after'));
+    }
     all.hidden=o.slice().sort().join('|')===startOff().sort().join('|')&&!Object.keys(picks()).length; // as the Agent set it: nothing to reset
     go.disabled=!kept.length;
     go.textContent=!kept.length?'Nothing selected':!asksYes(t)?'Done, use these '+kept.length+' items':o.length?'Place order ('+kept.length+' items)':'Yes, place the order';
@@ -224,7 +492,7 @@ function cartStrip(t){
       const sel=el('select','cart-opt'); sel.title='Other sizes and brands the Agent found';
       sel.setAttribute('aria-label','Options for '+it.name);
       [it].concat(it.options).forEach(function(op,i){
-        const o=el('option',null,(i?'':'★ ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
+        const o=el('option',null,(i?'':'• ')+(op.qty>1?op.qty+'× ':'')+op.name+(op.price?' · '+op.price:'')+(op.unit?' ('+op.unit+')':''));
         o.value=i?op.name:''; sel.appendChild(o);
       });
       sel.value=s.picked?s.name:'';

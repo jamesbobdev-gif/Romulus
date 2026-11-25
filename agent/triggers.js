@@ -24,7 +24,7 @@ const MAX_BEFORE_H = 24 * 14;
 const MAX_FOLLOW_DAYS = 120;                 // a run's check-back is at most this far off
 
 // 'YYYY-MM-DD' in his time zone
-const ymd = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const { dayKey: ymd } = require('./util');
 const isDay = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00').getTime());
 const dayText = (s) => new Date(s + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 

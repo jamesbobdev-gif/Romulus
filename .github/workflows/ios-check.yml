@@ -1,0 +1,33 @@
+# Compiles the iPhone app on a GitHub Mac without signing it, so a broken Xcode project or web bundle shows
+# up before the Apple Developer account and the App Store secrets exist. Nothing is uploaded or published.
+# Run it by hand: Actions → iPhone build check → Run workflow (docs/store-release.md, iPhone section).
+#
+# Supply chain: actions pinned to commit SHAs, like release.yml.
+name: iPhone build check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Build the iPhone app, unsigned
+        shell: bash
+        run: |
+          cd mobile
+          npm ci
+          node prepare-www.js --store appstore
+          npx cap sync ios
+          cd ios/App
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM=
+          echo "the iPhone app compiles; the release workflow's ios job will sign and upload it once the Apple secrets are set"

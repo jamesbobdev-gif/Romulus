@@ -7,12 +7,13 @@
      before it finishes. Those Claude took count as heard: his reply then doesn't start another run.
      A yes or photos sent that way still go round again (a yes unlocks final clicks only from the run's
      start, and photos are fetched then).
-   Only Claude's runs have this: the other AIs get mid-run messages afterwards, as before.
+   The plan and mid-run messages are Claude's only: the other AIs get mid-run messages afterwards, as before.
+   Their browser steps still show live (tail below), read from what the browser launcher writes down.
    No Electron here, so it can be tested on its own. */
 const fs = require('fs');
 const path = require('path');
 
-const { isYes } = require('./helpers');
+const { isYesTo } = require('./helpers');
 
 const MAX_TEXT = 6000;
 
@@ -33,7 +34,15 @@ function describe(name, input) {
     return null;
   }
   if (/^TaskCreate$|^TaskUpdate$|^TaskList$|^TaskGet$/.test(name)) return null;
-  if (/^mcp__claude_ai_Gmail__/.test(name)) return /search/.test(name) ? 'Searching your mail' + (input.query ? ': ' + short(input.query, 80) : '') : 'Reading an email';
+  if (/^mcp__mail__/.test(name)) {
+    const t = name.replace(/^mcp__mail__/, '');
+    const said = { search_threads: 'Searching your mail' + (input.query ? ': ' + short(input.query, 80) : ''), create_draft: 'Saving a draft',
+      change_labels: 'Labeling an email', archive: 'Archiving an email', mark_read: input.read === false ? 'Marking an email unread' : 'Marking an email read',
+      create_label: 'Making a label', send_message: 'Sending an email', reply: 'Replying to an email', forward: 'Forwarding an email',
+      send_draft: 'Sending a draft', trash: 'Moving an email to the trash', list_labels: 'Looking at your labels', list_drafts: 'Looking at your drafts',
+      list_accounts: 'Checking which mailboxes are connected' }[t];
+    return said || 'Reading an email';
+  }
   if (name !== b) { // the agent browser
     if (b === 'browser_navigate') return 'Opening ' + where(input.url);
     if (b === 'browser_navigate_back') return 'Going back';
@@ -44,6 +53,11 @@ function describe(name, input) {
     if (b === 'browser_press_key') return 'Pressing ' + short(input.key, 20);
     if (b === 'browser_snapshot' || b === 'browser_take_screenshot') return 'Looking at the page';
     if (b === 'browser_tabs') return null;
+    // his Link wallet (the launcher's own tools, agent/browser-proxy.js)
+    if (b === 'link_pay_request') return 'Asking Link for a card: ' + short(input.total, 14) + ' at ' + short(input.merchant_name, 40);
+    if (b === 'link_wait') return 'Waiting for your approval in Link';
+    if (b === 'link_enter_card') return 'Entering the Link card';
+    if (b === 'link_cancel') return 'Withdrawing the Link request';
     return short(b.replace(/^browser_/, '').replace(/_/g, ' '), 40).replace(/^./, (c) => c.toUpperCase());
   }
   return null;
@@ -145,13 +159,14 @@ function start({ dir, tasks, send, node }) {
     for (const t of Array.isArray(data.tasks) ? data.tasks : []) {
       if (!ids.includes(t.id) || t.done) continue;
       const from = Number(t.runFrom) || runStart;
+      const asked = ((Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'claude').slice(-1)[0] || {}).text || ''; // its last ask: "yes, cancel it" answers a cancel ask
       for (const h of Array.isArray(t.history) ? t.history : []) {
         if (!h || h.who !== 'you' || !(Number(h.at) > from) || h.heard) continue;
         const name = h.at + '-' + ids.indexOf(t.id) + '.json';
         if (sent.has(name)) continue;
         const photos = Array.isArray(h.images) ? h.images.length : 0;
         const text = short(h.text, 2000);
-        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYes(text) });
+        sent.set(name, { id: t.id, at: h.at, again: !!photos || isYesTo(text, asked) });
         try {
           const tmp = path.join(dir, name + '.tmp');
           fs.writeFileSync(tmp, JSON.stringify({ id: tasks.length > 1 ? String(ids.indexOf(t.id) + 1) : t.id, title: short(t.title, 80), text, at: h.at, photos: photos || undefined }));
@@ -191,8 +206,37 @@ function start({ dir, tasks, send, node }) {
     check();
     for (const [n, s] of sent) if (!s.taken) { sent.delete(n); try { fs.rmSync(path.join(inbox, n), { force: true }); } catch (e) {} }
   }
+  /* The other AIs: their browser calls, as the browser launcher writes them (browser-proxy.js noteStep), read
+     from `file` as it grows. The file is emptied first. → stop(), which reads what's left */
+  const tails = new Set();
+  function tail(file, everyMs = 1000) {
+    let at = 0, rest = '';
+    try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, ''); } catch (e) {}
+    const read = () => {
+      let text = '';
+      try {
+        const size = fs.statSync(file).size;
+        if (size < at) at = 0; // emptied under us
+        if (size === at) return;
+        const fd = fs.openSync(file, 'r'), b = Buffer.alloc(size - at);
+        try { fs.readSync(fd, b, 0, b.length, at); } finally { fs.closeSync(fd); }
+        at = size; text = b.toString('utf8');
+      } catch (e) { return; }
+      const lines = (rest + text).split('\n'); rest = lines.pop();
+      for (const l of lines) {
+        let j; try { j = JSON.parse(l); } catch (e) { continue; }
+        const d = j && j.name ? describe('mcp__browser__' + j.name, j.input) : null;
+        if (d) step(j.blocked ? 'Blocked: ' + d : d);
+      }
+    };
+    const t = setInterval(read, everyMs);
+    const end = () => { clearInterval(t); tails.delete(end); read(); };
+    tails.add(end);
+    return end;
+  }
   return {
-    feed, forward, open, close,
+    feed, forward, open, close, tail,
+    note: (line, id) => step(line, id), // a line of the app's own ("Gemini is on it")
     // times of his messages on this task that Claude took and that don't need another round
     heard: (id) => (heard.get(id) || []).filter((h) => !h.again).map((h) => h.at),
     // what it did, kept on its answer: the plan as it ended, then the steps
@@ -201,7 +245,7 @@ function start({ dir, tasks, send, node }) {
       const head = p.length ? 'Plan:\n' + p.map((x) => (x.status === 'completed' ? '✓ ' : '○ ') + x.text).join('\n') + '\n\n' : '';
       return (head + steps[id]).trim().slice(-MAX_TEXT);
     },
-    stop() { close(); clearTimeout(timer); timer = null; },
+    stop() { close(); [...tails].forEach((end) => end()); clearTimeout(timer); timer = null; },
   };
 }
 

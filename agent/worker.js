@@ -17,31 +17,77 @@ const FRESH_MS = 6 * 60 * 1000; // three heartbeats missed: it's off, asleep or 
 // computer that can, then says so on the task instead of leaving it queued
 const MONEY_WAIT_MS = 5 * 60 * 1000;
 
+/* gone quiet for less than this: most likely restarting (a reboot, an app update, a crash it comes back from).
+   His other computers keep routing to it and hold its tasks instead of trying an address it no longer has */
+const GRACE_MS = 15 * 60 * 1000;
+
 const isWorker = (cfg) => !!((cfg && cfg.localModel) || {}).worker;
 // a heartbeat doc → the worker it describes while it's fresh, else null (pure, for tests)
-function freshWorker(doc, now = Date.now()) {
+function freshWorker(doc, now = Date.now(), within = FRESH_MS) {
   if (!doc || typeof doc !== 'object' || !doc.at) return null;
   const age = now - Number(doc.at);
-  if (!(age >= -60 * 1000 && age < FRESH_MS)) return null; // a clock a minute ahead is fine
+  if (!(age >= -60 * 1000 && age < within)) return null; // a clock a minute ahead is fine
+  const d = doc.doing && typeof doc.doing === 'object' ? doc.doing : null;
   return { name: String(doc.name || doc.host || 'the local model').slice(0, 60), model: String(doc.model || '').slice(0, 80),
-    host: String(doc.host || '').slice(0, 60), busy: !!doc.busy, at: Number(doc.at) };
+    host: String(doc.host || '').slice(0, 60), busy: !!doc.busy, at: Number(doc.at),
+    ...(d ? { doing: { what: String(d.what || '').slice(0, 60), title: String(d.title || '').slice(0, 80) } } : {}) };
+}
+// quiet, but heard from within GRACE_MS: {…the worker, quiet: true}, else null (pure, for tests)
+function returningWorker(doc, now = Date.now()) {
+  if (freshWorker(doc, now)) return null;
+  const w = freshWorker(doc, now, GRACE_MS);
+  return w ? Object.assign(w, { quiet: true }) : null;
 }
 // stats: how its runs went lately (agent/run-log.js summary), so his other computers can see it
 // doing: what it's on right now (agent/local-lane.js nowDoing); version: the app it runs
-const heartbeat = ({ name, model, busy, stats, doing, version }, now = Date.now()) =>
+const heartbeat = ({ name, model, busy, stats, doing, version, actions }, now = Date.now()) =>
   ({ v: 1, at: now, name: String(name || os.hostname()).slice(0, 60), model: String(model || '').slice(0, 80), host: os.hostname().slice(0, 60), busy: !!busy,
-    ...(doing ? { doing } : {}), ...(version ? { version: String(version).slice(0, 20) } : {}), ...(stats ? { stats } : {}) });
+    ...(doing ? { doing } : {}), ...(version ? { version: String(version).slice(0, 20) } : {}), ...(stats ? { stats } : {}),
+    ...(actions && actions.length ? { actions: actionsForBeat(actions) } : {}) });
+
+/* What its browser did that matters (agent/browser-proxy.js logAction: orders, applications, mail opened, uploads)
+   is written to its own agent-actions.log, on its own disk. The newest lines ride along in the heartbeat so his
+   other computers can show them in Settings → What the Agent did (pure, for tests). */
+const ACTIONS_MAX = 30;
+const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
+function actionsForBeat(lines) { // newest first in, newest first out
+  return (Array.isArray(lines) ? lines : []).filter((l) => l && l.at && l.what).slice(0, ACTIONS_MAX).map((l) => {
+    const o = { at: Number(l.at), task: cut(l.task, 120), what: cut(l.what, 40) };
+    if (l.label) o.label = cut(l.label, 80);
+    if (l.url) o.url = cut(l.url, 160);
+    if (Array.isArray(l.files)) o.files = l.files.slice(0, 5).map((f) => cut(f, 80));
+    return o;
+  });
+}
+// this computer's own lines plus the worker's from its last heartbeat, each worker line marked with where it ran
+function mergeActions(local, doc) {
+  const own = Array.isArray(local) ? local : [];
+  const theirs = doc && Array.isArray(doc.actions) ? doc.actions : [];
+  const where = doc ? cut(doc.name || doc.host || 'the local model', 60) : '';
+  const seen = new Set(own.map((l) => l.at + '|' + l.what + '|' + (l.url || '')));
+  const add = theirs.filter((l) => l && l.at && !seen.has(l.at + '|' + l.what + '|' + (l.url || ''))).map((l) => Object.assign({}, l, { where }));
+  return own.concat(add).sort((a, b) => (b.at || 0) - (a.at || 0));
+}
 
 // written compare-and-swap like every row; a write that lost a race reads again and tries once more
+let beatErr = ''; // why the last heartbeat didn't go out ('' when it did), for the log
 async function beat(a, info) {
-  if (!a) return false;
+  if (!a) { beatErr = 'sync isn’t set up on this computer'; return false; }
   for (let i = 0; i < 2; i++) {
-    let prev = null;
-    try { const row = await supabase.readRow(a, SUFFIX); prev = row ? row.updated_at : null; } catch (e) { return false; }
-    try { if (await supabase.writeRow(a, SUFFIX, heartbeat(info), prev)) return true; } catch (e) { return false; }
+    try {
+      const row = await supabase.readRow(a, SUFFIX);
+      if (await supabase.writeRow(a, SUFFIX, heartbeat(info), row ? row.updated_at : null)) { beatErr = ''; return true; }
+      beatErr = 'the row changed while it was being written';
+    } catch (e) { beatErr = String((e && e.message) || e); return false; }
   }
   return false;
 }
+const lastBeatError = () => beatErr;
+/* When the next heartbeat goes (pure, for tests). One that went: in BEAT_MS. One that didn't (the network
+   dropped for a moment, the server was slow): soon, 15 s then 30 s then a minute, so one lost request doesn't
+   cost two minutes of the six his other computers wait before calling it quiet. */
+const BEAT_RETRY_MS = 15 * 1000;
+const nextBeatIn = (ok, fails) => (ok ? BEAT_MS : Math.min(BEAT_MS, BEAT_RETRY_MS * Math.pow(2, Math.max(0, (fails || 1) - 1))));
 
 // the other computers' view, read at most once a minute: the fresh worker, or null
 let seen = { at: 0, doc: null };
@@ -75,6 +121,8 @@ function stateNotice(was, doc, now = Date.now()) {
 }
 const lastDoc = () => seen.doc;
 const forget = () => { seen = { at: 0, doc: null }; };
+// the next present() reads the row again instead of answering from the last minute's copy (which it keeps meanwhile)
+const lookAgain = () => { seen = { at: 0, doc: seen.doc }; };
 
 /* Which queued local-lane tasks this computer should start (pure, for tests):
    - the worker: all of them, except money questions (no Finance here), which it leaves for MONEY_WAIT_MS
@@ -87,4 +135,23 @@ function share(tasks, { worker, workerUp, isMoney, now = Date.now() }) {
   return tasks;
 }
 
-module.exports = { SUFFIX, BEAT_MS, FRESH_MS, MONEY_WAIT_MS, isWorker, freshWorker, heartbeat, beat, present, lastSeen, forget, share, workerState, stateNotice, lastDoc };
+/* Cloud tasks when his other computers are off (pure, for tests). The worker normally leaves the cloud lane to
+   them, but a cloud task nobody has picked up for STANDIN_MS means no computer is on (or awake), so the worker
+   runs it with its own cloud AIs instead of leaving him waiting. Inbox tasks stay for a computer with his
+   mailboxes. config localModel.cloudStandIn: false turns it off.
+   → { ready: the tasks to run now, wait: ms until the next one is old enough, or 0 when none is waiting } */
+const STANDIN_MS = 3 * 60 * 1000;
+function standIn(tasks, { isMail = () => false, now = Date.now(), waitMs = STANDIN_MS } = {}) {
+  const ready = [];
+  let wait = 0;
+  for (const t of tasks) {
+    if (isMail(t)) continue;
+    const left = (Number(t.updatedAt) || 0) + waitMs - now;
+    if (left <= 0) ready.push(t);
+    else if (!wait || left < wait) wait = left;
+  }
+  return { ready, wait };
+}
+const standsIn = (cfg) => isWorker(cfg) && ((cfg && cfg.localModel) || {}).cloudStandIn !== false;
+
+module.exports = { SUFFIX, BEAT_MS, FRESH_MS, GRACE_MS, MONEY_WAIT_MS, STANDIN_MS, standIn, standsIn, isWorker, freshWorker, returningWorker, heartbeat, beat, lastBeatError, nextBeatIn, BEAT_RETRY_MS, present, lastSeen, forget, lookAgain, share, workerState, stateNotice, lastDoc, actionsForBeat, mergeActions, ACTIONS_MAX };

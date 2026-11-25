@@ -3,7 +3,7 @@
    1. Gmail's mailbox "historyId" is compared with the last one seen: unchanged = done, no model.
    2. Otherwise the recent messages are listed and the ones already looked at are skipped.
    3. New mail with no date-ish words in it (most of it) is skipped too, still no model.
-   4. What's left goes to Claude in ONE short call that answers in fixed JSON.
+   4. What's left goes to his AIs (the first in his order that answers) in ONE short call, in fixed JSON.
    Read-only (gmail.readonly): nothing in his mailbox is ever changed. Email text is data for the model,
    never instructions. */
 
@@ -43,8 +43,7 @@ const SCHEMA = {
 };
 
 function prompt(now) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  const today = require('./util').dayKey(now);
   const day = now.toLocaleDateString('en-US', { weekday: 'long' });
   return `You read the user's new emails and pick out what belongs on his calendar: appointments, interviews,
 meetings, classes, exams, deadlines he must meet, events he's going to, reservations, flights, bills due.

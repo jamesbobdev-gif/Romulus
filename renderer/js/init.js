@@ -14,6 +14,8 @@ $('stamp').addEventListener('click',function(){ switchTab('calendar'); });
 store.load().then(async function(data){
   // desktop: the sync settings come from config.json (sync.js started reading them; nothing is kept in localStorage)
   if(syncState.ready){ try{ await syncState.ready; }catch(e){} }
+  // a new install syncs through the Romulus server from the start, encrypted (hosted-sync.js)
+  if(typeof hostedAutoStart==='function'){ try{ await hostedAutoStart(); }catch(e){} }
   // this computer's name: a run another computer claimed ('relay@lupa-…') isn't this one's to put back in the queue
   let host=null; if(window.desktop&&window.desktop.hostName){ try{ host=await window.desktop.hostName(); }catch(e){} }
   if(data&&Array.isArray(data.tasks)){
@@ -33,17 +35,20 @@ store.load().then(async function(data){
       };
       if(t.recur&&t.recur.every&&out.ws!=='agent'){ out.recur=t.recur; if(t.recurNext)out.recurNext=t.recurNext; } // repeating to-do (recur.js)
       if(Array.isArray(t.images)&&t.images.length)out.images=t.images.slice(0,12); // context screenshots on a task
-      if(t.plan){ out.plan=t.plan; out.planSet=t.planSet||null; } // morning swipe decision
       if(out.ws==='school'){ out.kind=schoolKind(t); out.notes=t.notes||null; if(t.site)out.site=String(t.site); } // the school site it came from (agent/course-sites.js)
-      if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; if(Array.isArray(t.list)&&t.list.length)out.list=normList(t.list); }
-      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; if(t.runFrom&&(out.status==='working'||out.status==='queued'))out.runFrom=t.runFrom; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; if(t.routeAsk&&!t.lane)out.routeAsk=true; if(t.parked&&out.status==='needs-you')out.parked=true;
+      if(out.ws==='agent'){ if(t.fromWs)out.fromWs=t.fromWs; if(t.kind)out.kind=t.kind; if(t.notes)out.notes=t.notes; if(t.site)out.site=String(t.site); /* a "chapter 8" task's class site (agent-results.js applyPinned), kept for Move back to School */ if(Array.isArray(t.list)&&t.list.length)out.list=normList(t.list); }
+      if(out.ws==='agent'){ out.status=t.status||'queued'; out.note=t.note||null; out.reply=t.reply||null; out.replyImages=Array.isArray(t.replyImages)?t.replyImages:null; out.waitUntil=t.waitUntil||null; if(t.runFrom&&(out.status==='working'||out.status==='queued'))out.runFrom=t.runFrom; out.useInbox=t.useInbox?true:null; out.options=Array.isArray(t.options)?t.options:null; /* "Who should do this one?" is gone (every task is routed): one left waiting on it goes back in line */ if(t.routeAsk&&!t.lane&&out.status==='needs-you'){ out.status='queued'; out.note=null; } if(t.parked&&out.status==='needs-you')out.parked=true;
         if(out.status==='needs-you'&&t.stuck&&typeof t.stuck==='object'){ out.stuck={reason:String(t.stuck.reason||''),fix:String(t.stuck.fix||'')}; if(t.stuck.verify)out.stuck.verify=true; }
         if(out.status==='needs-you'&&t.shot)out.shot=t.shot;
         if(out.status==='suggested'&&(t.suggest==='look-ahead'||t.suggest==='email'||t.suggest==='bill'||t.suggest==='charge'))out.suggest=t.suggest; // a card on the Human tab (lists.js drawSuggestions)
-        // what a waiting answer brought: its order cards (and his picks on them), tap questions, and ◉ Watch's page
+        // an open order's cards (and his picks on them) stay until it is placed, also while a follow-up about it
+        // is queued or running (cart-keep.js): dropping them here lost the pictures after a restart mid-run
+        if(!out.done&&Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick;
+          // when the cart came and how often the Agent looked whether he ordered it himself (grocery-list.js runCartCheck)
+          if(t.cartAt)out.cartAt=Number(t.cartAt)||null; if(t.cartLooks)out.cartLooks=Number(t.cartLooks)||0; if(t.cartCheck&&(out.status==='queued'||out.status==='working'))out.cartCheck=true; }
+        // what a waiting answer brought: tap questions, and ◉ Watch's page
         if(out.status==='needs-you'){
-          if(Array.isArray(t.cart)&&t.cart.length){ out.cart=t.cart; if(Array.isArray(t.cartOff))out.cartOff=t.cartOff; if(t.cartPick&&typeof t.cartPick==='object')out.cartPick=t.cartPick; }
-          if(Array.isArray(t.ask)&&t.ask.length)out.ask=t.ask;
+          if(Array.isArray(t.ask)&&t.ask.length){ out.ask=t.ask; if(t.askSeen)out.askSeen=String(t.askSeen); } // askSeen: opened on some device (agent-ask.js)
           if(t.seats&&Array.isArray(t.seats.rows))out.seats=t.seats;
           if(t.showtimes&&Array.isArray(t.showtimes.days))out.showtimes=t.showtimes;
           if(t.theaters&&Array.isArray(t.theaters.theaters))out.theaters=t.theaters;
@@ -51,14 +56,18 @@ store.load().then(async function(data){
         }
         if(Array.isArray(t.cards)&&t.cards.length)out.cards=t.cards; // small cards to look at (his grocery list)
         if(t.lastOrder&&Array.isArray(t.lastOrder.items))out.lastOrder=t.lastOrder; // what he got, for "what's on my list?"
+        if(Array.isArray(t.orders)&&t.orders.length)out.orders=t.orders.slice(-12); // its orders (grocery-list.js): Finance matches charges to them, and an order found twice goes into the pantry once
+        if(typeof t.orderLook==='string'&&t.orderLook)out.orderLook=t.orderLook.slice(0,20); // a look at a store's orders (grocery-list.js lookForOwnOrders): also spaces the next one
+        if(t.orderLook&&t.lookAt)out.lookAt=Number(t.lookAt)||null; // when that look last ran again (grocery-list.js runRegularLooks)
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
+        if(t.cloudRun&&typeof t.cloudRun==='object')out.cloudRun=t.cloudRun; // also runs on Romulus cloud when every device is off (cloud-agent.js cloudSched*)
         if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)
         if(Array.isArray(t.goalPlan)&&t.goalPlan.length)out.goalPlan=t.goalPlan; if(t.goalStarted)out.goalStarted=true; if(t.goalDone)out.goalDone=true; // goals.js
         if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
-        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
+        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(t.routedLane==='claude'||t.routedLane==='local')out.routedLane=t.routedLane; if(typeof t.taskType==='string'&&t.taskType)out.taskType=t.taskType.slice(0,40); if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
         // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
         // only its own runs, or one nobody has touched for 3 hours: a computer opening at 19:53 put the mini PC's six running tasks back to queued
@@ -69,13 +78,17 @@ store.load().then(async function(data){
   }
   state.ideas=normIdeas(data&&data.ideas);
   state.hours=normHours(data&&data.hours);
+  state.health=normHealth(data&&data.health); // daily health totals (health.js)
+  state.kitchen=normKitchen(data&&data.kitchen); // the Kitchen tab (kitchen.js)
   rebuildSnap();
   if(spawnMissedRecurs())persist();
-  render(); // list is the default active tab
+  if(sweepSchool())persist(); // assignments two days past their deadline come off (school-overdue.js)
+  // a first launch shows To do, Agent and Notes only; a tasks file with work in it means this install isn't new (tab-picker.js)
+  if(typeof tabsKeepAllIfExisting==='function')tabsKeepAllIfExisting(state.tasks.length>0||(state.ideas.cards||[]).length>0||(state.hours.entries||[]).length>0);
+  if(state.activeTab==='list')render(); else switchTab(state.activeTab); // To do, unless it's switched off in Settings > Tabs (tab-picker.js)
   reviewBannerCheck(); // January and February: last year's review (year-review-view.js)
   holoBackToSchool(); // undo the School → Holo auto-move
   startSyncLoop();
-  setTimeout(function(){ swipeReady=true; maybeShowSwipe(); },4000); // after the first sync, so another device's choices are in
   setTimeout(runDueRepeats,10*1000);
 }).catch(function(e){
   // the tasks file is there but couldn't be read: show the page, but never save over the file (core.js persist)

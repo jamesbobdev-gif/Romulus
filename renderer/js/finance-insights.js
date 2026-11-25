@@ -1,8 +1,10 @@
 /* The Finance tab's look-overs, from what the bank sent (and the stock rows from finance-core.js):
    - debtPlan: each card and loan, the interest it charged, a rough rate from that, which one costs the most
      (pay extra there first), and how long his usual payment takes to clear it.
-   - subscriptionCheck: price rises, how long each one has been charging, and ones that just started (a free
-     trial turning paid looks like that).
+   - subscriptionCheck: price rises, how long each one has been charging, ones that just started, and a small
+     trial charge followed by the full price.
+   - cancelPage: the company's own cancel page for a subscription, or a web search for one.
+   - discountCheck: a student or EBT price on something he already pays full price for (Prime, Spotify...).
    - oddCharges: a possible double charge, $100+ from a payee never paid before, a foreign transaction fee.
    - portfolioMix: what the stocks add up to by sector, industry, holding, and stocks vs funds.
    - stocksCsv: the holdings as a spreadsheet to download.
@@ -76,16 +78,119 @@ function subscriptionCheck(txs,kinds,now){
       if(Math.abs(now2-prev)>0.5&&Math.abs(now2-prev)>prev*0.02&&now-last.posted*1000<70*INS_DAY)raised.push({name:f.name,from:insRound(prev),to:insRound(now2),when:last.posted*1000});
     }
   });
+  // a trial that turned paid: a first charge of $5 or less, then one at least 3 times it (and $5+) 3 to 35 days
+  // later, in the last 60 days. 3 days apart at least, so a card check or a gas pump hold isn't one
+  const trials=[], trialKey={};
+  Object.keys(byKey).forEach(function(k){
+    const g=byKey[k].slice().sort(function(a,b){ return a.posted-b.posted; });
+    const a=g[0];
+    if(-a.amount>5||c.kindOf(a)==='skip'||fc.notSpending.test(insText(a)))return;
+    const b=g.find(function(t){ const gap=(t.posted-a.posted)*1000; return -t.amount>=Math.max(5,-a.amount*3)&&gap>=3*INS_DAY&&gap<=35*INS_DAY; });
+    if(!b||now-b.posted*1000>60*INS_DAY)return;
+    trialKey[k]=1;
+    trials.push({key:k,name:a.description||k,first:insRound(-a.amount),firstWhen:a.posted*1000,then:insRound(-b.amount),thenWhen:b.posted*1000});
+  });
   // started lately: a payee's very first charge in the last 40 days, that looks like a subscription
   if(now-earliest>60*INS_DAY)Object.keys(byKey).forEach(function(k){
+    if(trialKey[k])return; // already said above
     const g=byKey[k].slice().sort(function(a,b){ return a.posted-b.posted; });
     const first=g[0];
     if(now-first.posted*1000>40*INS_DAY||c.kindOf(first)==='skip')return;
     const looksLike=c.kindOf(first)==='fixed'||/\b(trial|subscription|subscr|membership)\b/i.test(insText(first));
-    if(looksLike)fresh.push({name:first.description||k,amount:insRound(-first.amount),when:first.posted*1000});
+    if(looksLike)fresh.push({key:k,name:first.description||k,amount:insRound(-first.amount),when:first.posted*1000});
   });
   subs.sort(function(a,b){ return b.monthly-a.monthly; });
-  return {subs:subs,total:insRound(subs.reduce(function(s,x){ return s+x.monthly; },0)),raised:raised,fresh:fresh};
+  return {subs:subs,total:insRound(subs.reduce(function(s,x){ return s+x.monthly; },0)),raised:raised,fresh:fresh,trials:trials};
+}
+
+/* where to stop a subscription: the company's own cancel or membership page when it's one we know, otherwise a
+   web search for its cancel steps (only the payee's name goes in the search: no amounts, no accounts) →
+   {url, known} */
+const INS_CANCEL=[
+  [/\bnetflix\b/i,'https://www.netflix.com/cancelplan'],
+  [/\bspotify\b/i,'https://www.spotify.com/account/subscription/'],
+  [/\bhulu\b/i,'https://secure.hulu.com/account'],
+  [/\bdisney ?(plus|\+)/i,'https://www.disneyplus.com/account'],
+  [/\byoutube|google \*?youtube/i,'https://www.youtube.com/paid_memberships'],
+  [/\bgoogle \*?(one|storage|play)\b/i,'https://play.google.com/store/account/subscriptions'],
+  [/\bapple\.com\/bill|\bapple (music|tv|one|icloud)\b|\bicloud\b/i,'https://apps.apple.com/account/subscriptions'],
+  [/\b(amazon|amzn) ?prime|\bprime video\b|\bprime membership\b/i,'https://www.amazon.com/mc'],
+  [/\baudible\b/i,'https://www.audible.com/account/overview'],
+  [/\bopenai\b|\bchatgpt\b/i,'https://chatgpt.com/#settings/Account'],
+  [/\banthropic\b|\bclaude\.ai\b/i,'https://claude.ai/settings/billing'],
+  [/\bmicrosoft\b|\bmsft\b|\bxbox\b/i,'https://account.microsoft.com/services'],
+  [/\badobe\b/i,'https://account.adobe.com/plans'],
+  [/\bdropbox\b/i,'https://www.dropbox.com/account/plan'],
+  [/\bpatreon\b/i,'https://www.patreon.com/settings/memberships'],
+  [/\bwalmart ?(\+|plus)/i,'https://www.walmart.com/plus/account'],
+  [/\bgithub\b/i,'https://github.com/settings/billing'],
+  [/\bsupabase\b/i,'https://supabase.com/dashboard/org/_/billing'],
+  [/\bcloudflare\b/i,'https://dash.cloudflare.com/?to=/:account/billing/subscriptions']
+];
+function cancelName(name){
+  return String(name||'').replace(/^\s*(paypal|pp|sq|tst|sp)\s*\*\s*/i,'').replace(/\*(?=[a-z]*\d)[a-z0-9]{4,}\b/gi,' ').replace(/\*/g,' ').replace(/#\s*\d+/g,' ')
+    .replace(/\b\d[\d-]{3,}\b/g,' ').replace(/\s+/g,' ').trim();
+}
+function cancelPage(name){
+  const s=String(name||'');
+  for(let i=0;i<INS_CANCEL.length;i++)if(INS_CANCEL[i][0].test(s))return {url:INS_CANCEL[i][1],known:true};
+  return {url:'https://duckduckgo.com/?q='+encodeURIComponent((cancelName(s)||s)+' cancel subscription'),known:false};
+}
+/* discounts for who he is, on what he already pays for. `who` is {student, ebt} (finance.js finWho works it
+   out from what's already here: tuition paid, a School list, his notes about himself, EBT on). Prices are the
+   usual US ones and may have moved: the page it links to has today's. price null: it varies or it's through
+   the school, so there's no saving to work out */
+const INS_TUITION=/\b(tuition|bursar|college|university|univ|flywire|student acc(oun)?t)\b/i;
+const INS_DEALS=[
+  {id:'prime-student',who:'student',re:/\b(amazon|amzn) ?prime\b|\bprime (video|membership)\b/i,program:'Prime for Young Adults (students and ages 18 to 24)',price:7.49,url:'https://www.amazon.com/joinstudent'},
+  {id:'prime-access',who:'ebt',re:/\b(amazon|amzn) ?prime\b|\bprime (video|membership)\b/i,program:'Prime Access (for people on EBT or Medicaid)',price:6.99,url:'https://www.amazon.com/qualify'},
+  {id:'spotify-student',who:'student',re:/\bspotify\b/i,program:'Spotify Premium Student',price:5.99,url:'https://www.spotify.com/us/student/'},
+  {id:'youtube-student',who:'student',re:/\byoutube\b/i,program:'YouTube Premium Student',price:7.99,url:'https://www.youtube.com/premium/student'},
+  {id:'hulu-student',who:'student',re:/\bhulu\b/i,program:'Hulu for students',price:1.99,url:'https://www.hulu.com/student'},
+  {id:'adobe-student',who:'student',re:/\badobe\b/i,program:'Adobe Creative Cloud for students',price:null,url:'https://www.adobe.com/creativecloud/buy/students.html'},
+  {id:'ms365-student',who:'student',re:/\bmicrosoft\b|\bmsft\b/i,program:'Microsoft 365 through your school (often free)',price:null,url:'https://www.microsoft.com/en-us/education/products/microsoft-365'},
+  {id:'github-student',who:'student',re:/\bgithub\b/i,program:'GitHub Student Developer Pack (free)',price:null,url:'https://education.github.com/pack'},
+  {id:'walmart-assist',who:'ebt',re:/\bwalmart ?(\+|plus)\b|\bwmt plus\b/i,program:'Walmart+ Assist (half price on EBT)',price:6.47,url:'https://www.walmart.com/plus/assist'}
+];
+// tuition or a college paid in the last year: a sign he's a student
+function paysTuition(txs,now){
+  now=now||Date.now();
+  return (txs||[]).some(function(t){ return t&&t.amount<0&&now-insMs(t)<365*INS_DAY&&INS_TUITION.test(insText(t)); });
+}
+/* → [{id, who, program, name (the payee), pays (the last charge), price, saveYear (null when unknown), url}]
+   biggest saving first. Only payees charged in the last 75 days, and not when he already pays the deal's price */
+function discountCheck(txs,who,now){
+  now=now||Date.now(); who=who||{};
+  const fc=insCosts(), last={};
+  (txs||[]).forEach(function(t){
+    if(!t||!(t.amount<0)||now-insMs(t)>75*INS_DAY||fc.notSpending.test(insText(t)))return;
+    const k=fc.costKey(t); if(!last[k]||insMs(t)>insMs(last[k]))last[k]=t;
+  });
+  const out=[], took={};
+  INS_DEALS.forEach(function(d){
+    if(!who[d.who])return;
+    Object.keys(last).forEach(function(k){
+      const t=last[k];
+      if(took[d.id]||!d.re.test(k+' '+insText(t)))return;
+      const pays=insRound(-t.amount);
+      if(d.price!=null&&pays<=d.price+0.5)return; // already on it, or close enough
+      took[d.id]=1;
+      out.push({id:d.id,who:d.who,program:d.program,name:cancelName(t.description||k),pays:pays,price:d.price,
+        saveYear:d.price!=null?Math.round((pays-d.price)*12):null,url:d.url});
+    });
+  });
+  // one Prime deal, not both: the cheaper one
+  const p=out.filter(function(x){ return /^prime-/.test(x.id); });
+  if(p.length>1){ const keep=p.sort(function(a,b){ return a.price-b.price; })[0]; return out.filter(function(x){ return !/^prime-/.test(x.id)||x===keep; }).sort(insBySave); }
+  return out.sort(insBySave);
+}
+function insBySave(a,b){ return (b.saveYear||0)-(a.saveYear||0); }
+
+/* a new or trial subscription as a to-do on the Human list: the name and day only, no amount */
+function newSubTitle(o){
+  const when=new Date(o.thenWhen||o.when).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  return o.thenWhen?'Check '+cancelName(o.name)+': a trial that turned paid on '+when
+    :'Check a new subscription from '+cancelName(o.name)+' (started '+when+')';
 }
 
 /* charges worth a second look, from the last `days` days (pending ones too) →
@@ -156,4 +261,4 @@ function stocksCsv(rows,short,cur){
   return lines.join('\r\n')+'\r\n';
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={debtPlan:debtPlan,subscriptionCheck:subscriptionCheck,oddCharges:oddCharges,oddTitle:oddTitle,portfolioMix:portfolioMix,stocksCsv:stocksCsv}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={debtPlan:debtPlan,subscriptionCheck:subscriptionCheck,oddCharges:oddCharges,oddTitle:oddTitle,cancelPage:cancelPage,cancelName:cancelName,newSubTitle:newSubTitle,paysTuition:paysTuition,discountCheck:discountCheck,portfolioMix:portfolioMix,stocksCsv:stocksCsv}; }

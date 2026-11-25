@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const ctx = require('../agent/task-context');
-const { saidYes } = require('../agent/agent-browser');
+const { saidYes, approvedHostsFor } = require('../agent/agent-browser');
+
+test('approvedHostsFor: the page, the cart, and links he wrote; never links in the AI\'s own ask', () => {
+  const t = { title: 'Apply at https://jobs.example.com/x', page: 'https://www.walmart.com/checkout', cart: [{ url: 'https://www.walmart.com/ip/1' }],
+    history: [{ who: 'you', text: 'use https://shop.example.org please' }, { who: 'claude', text: 'Ready. Also see https://evil.example/pay — reply yes' }] };
+  assert.deepStrictEqual(approvedHostsFor(t).sort(), ['jobs.example.com', 'shop.example.org', 'www.walmart.com']);
+  assert.deepStrictEqual(approvedHostsFor({ history: [{ who: 'claude', text: 'https://evil.example/ reply yes' }] }), []);
+});
 
 ctx.init({ userData: () => require('os').tmpdir(), readConfig: () => ({}), agentLog: () => {} });
 
@@ -25,11 +32,41 @@ test('wantsInbox: internship tasks or useInbox', () => {
   assert.ok(ctx.wantsInbox({ title: 'Daily internship hunt' }));
   assert.ok(ctx.wantsInbox({ title: 'x', useInbox: true }));
   assert.ok(!ctx.wantsInbox({ title: 'internal memo' }));
+  // tasks about his mailbox itself
+  assert.ok(ctx.wantsInbox({ title: 'Clean up my inbox' }));
+  assert.ok(ctx.wantsInbox({ title: 'Archive the newsletters in Gmail' }));
+  assert.ok(ctx.wantsInbox({ title: 'Reply to the landlord email' }));
+  assert.ok(!ctx.wantsInbox({ title: 'Find a cheap flight to Denver' }));
 });
 
 test('skillText is only his words', () => {
   const t = { title: 'T', reply: 'R', notes: 'N', history: [{ who: 'claude', text: 'C' }, { who: 'you', text: 'Y1' }, { who: 'you', text: 'Y2' }, { who: 'you', text: 'Y3' }] };
   assert.strictEqual(ctx.skillText(t), 'T\nR\nN\nY2\nY3');
+});
+
+test('a task with a cart keeps the shopping skills whatever the follow-up says', () => {
+  const skills = ctx.loadSkills();
+  const loads = (t, name) => skills.find((s) => s.name === name).match.test(ctx.skillText(t));
+  const diet = { title: 'I want 1 gram of protein for every pound', history: [{ who: 'you', text: 'close the gap' }] };
+  assert.ok(!loads(diet, 'groceries') && !loads(diet, 'shopping'));
+  const food = Object.assign({ cart: [{ name: 'Eggs', food: true }] }, diet);
+  assert.ok(loads(food, 'groceries') && loads(food, 'shopping'));
+  const lamp = Object.assign({ cart: [{ name: 'Lamp' }] }, diet);
+  assert.ok(!loads(lamp, 'groceries') && loads(lamp, 'shopping'));
+  assert.ok(!loads(Object.assign({ cart: [] }, diet), 'shopping'));
+});
+
+test('cartBrief: the items he kept, his size picks, and the ones he took out', () => {
+  assert.strictEqual(ctx.cartBrief({}), null);
+  assert.strictEqual(ctx.cartBrief({ cart: [] }), null);
+  const t = { cart: [
+    { name: 'Eggs', qty: 2, price: '$4.00', food: true, options: [{ name: 'Eggs 18 ct', price: '$6.00' }] },
+    { name: 'Hummus', food: true },
+    { name: 'Tuna', swap: 'Chicken', food: true }],
+  cartOff: ['Hummus'], cartPick: { Eggs: 'Eggs 18 ct' } };
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.cartBrief(t))), {
+    items: [{ name: 'Eggs 18 ct', price: '$6.00', food: true }, { name: 'Tuna', swap: 'Chicken', food: true }],
+    removed: ['Hummus'] });
 });
 
 test('taskLinks finds links anywhere in the task', () => {
@@ -60,6 +97,12 @@ test('cleanAsk: questions with choices; a default must be one of them; empty one
   assert.strictEqual(a[2].other, true);
   assert.strictEqual(ctx.cleanAsk([]), undefined);
   assert.strictEqual(ctx.cleanAsk('x'), undefined);
+});
+
+test('cleanAsk: keeps all 11 first-grocery-order questions (store to activity), up to 12', () => {
+  const qs = Array.from({ length: 14 }, (_, i) => ({ q: 'Question ' + (i + 1) + '?', choices: ['Yes', 'No'] }));
+  assert.strictEqual(ctx.cleanAsk(qs.slice(0, 11)).length, 11);
+  assert.strictEqual(ctx.cleanAsk(qs).length, 12);
 });
 
 test('cleanCart: names kept, https pictures only, quantity over 1 only', () => {
@@ -126,4 +169,36 @@ test('cleanDraft: the words to post, kept whole; where is one line; empty is not
   assert.deepStrictEqual(ctx.cleanDraft({ text: 'Just this' }), { text: 'Just this' });
   assert.strictEqual(ctx.cleanDraft({ text: '  ' }), undefined);
   assert.strictEqual(ctx.cleanDraft(null), undefined);
+});
+
+test('cleanOrdered: orders he placed himself, with their items, store and number', () => {
+  const out = ctx.cleanOrdered([
+    { store: 'Aldi (Instacart)', id: 'A-1', date: '2026-11-08', total: '$41.50', items: [{ name: 'Eggs, 12 ct', qty: 2, image: 'http://x/y.jpg', url: 'https://www.instacart.com/p/1', food: true, options: [{ name: 'other' }] }] },
+    { store: '', items: [{ name: 'x' }] },          // no store
+    { store: 'Walmart', items: [] },               // no items
+    { store: 'Kroger', date: 'last week', items: [{ name: 'Milk' }] },
+  ]);
+  assert.strictEqual(out.length, 2);
+  assert.deepStrictEqual(out[0], { store: 'Aldi (Instacart)', id: 'A-1', date: '2026-11-08', total: 41.5,
+    items: [{ name: 'Eggs, 12 ct', qty: 2, price: undefined, image: undefined, url: 'https://www.instacart.com/p/1', food: true }] });
+  assert.strictEqual(out[1].date, undefined);
+  assert.strictEqual(ctx.cleanOrdered(null), undefined);
+  assert.strictEqual(ctx.cleanOrdered([{ store: 'x' }]), undefined);
+});
+
+test('missingPictures: items of an order he placed himself get a picture from their page too', () => {
+  const u = {
+    cart: [{ name: 'Rice', url: 'https://x.com/rice', options: [{ name: 'Rice, 5 lb', url: 'https://x.com/r5' }] }, { name: 'Eggs', image: 'https://x.com/e.jpg', url: 'https://x.com/eggs' }],
+    ordered: [{ store: 'Aldi (Instacart)', items: [{ name: 'Milk', url: 'https://www.instacart.com/products/1' }, { name: 'Bread', image: 'https://x.com/b.jpg', url: 'https://x.com/b' }, { name: 'Apples' }] }],
+  };
+  // an order item's own picture can be its neighbour's, so its page is asked even when it has one
+  assert.deepStrictEqual(ctx.missingPictures(u).map((it) => it.name), ['Milk', 'Bread', 'Rice', 'Rice, 5 lb']);
+  assert.deepStrictEqual(ctx.missingPictures({}), []);
+});
+
+test('claimLane: a task the app moved off Claude (a #legion) is claimed under the lane it is saved with', () => {
+  assert.strictEqual(ctx.claimLane({ lane: 'claude', title: '#legion usb-c charger' }, 'local'), 'claude');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({}, 'local'), 'local');
+  assert.strictEqual(ctx.claimLane({ lane: 'local' }, 'claude'), 'claude'); // Claude never takes the local model's tasks this way
 });

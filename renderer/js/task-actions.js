@@ -49,35 +49,97 @@ function setLegion(on){
   legionOn=!!on; const b=$('legionBtn'); b.classList.toggle('on',legionOn); b.setAttribute('aria-pressed',String(legionOn));
   if(state.activeTab==='agent')$('newTitle').placeholder=legionOn?'What should the legion research?':'Add a task for the Agent…';
 }
+/* "You asked this on Tuesday": the notice under the add box when the new task is one he already has
+   (same-ask.js findSameAsk). Open it goes to the old one; Add anyway puts back what he typed and adds it */
+let sameAskForce=false, sameAskHeld=null;
+function hideSameAsk(){ const b=$('sameAsk'); if(b)b.hidden=true; sameAskHeld=null; }
+function showSameAsk(old,held){
+  const b=$('sameAsk'); if(!b)return;
+  sameAskHeld={id:old.id,held:held};
+  const when=sameWhen(old.done&&old.doneAt?old.doneAt:old.created);
+  $('sameAskText').textContent=(old.done?'You did this '+when+': ':'You already asked this '+when+': ')+'“'+old.title+'”. Go to that one?';
+  b.hidden=false;
+  if(wakeLive)wakeBubble('done','You already have “'+old.title+'”. Open it, or add this anyway.');
+}
+function sameAskOpen(){
+  const h=sameAskHeld; if(!h)return;
+  hideSameAsk(); $('newTitle').value=''; openTaskById(h.id);
+}
+async function sameAskAddAnyway(){
+  const h=sameAskHeld; if(!h)return;
+  const v=h.held;
+  $('newTitle').value=v.title; $('newDue').value=v.due||''; $('newTime').value=v.time||''; $('newTime').disabled=!v.due; $('newTag').value=v.tag||'';
+  if(v.legion&&state.activeTab==='agent')setLegion(true);
+  sameAskForce=true; await addTask();
+}
 async function addTask(){
   if(addingTask)return;
   const titleEl=$('newTitle'); let title=titleEl.value.trim();
-  const withPhotos=composerAtts.length>0&&!!attachProfile();
-  if(!title&&withPhotos)title=state.activeTab==='agent'?(composerAtts.length===1?'Look at this photo':'Look at these photos'):'Screenshot';
-  if(!title){ titleEl.focus(); return; }
+  // photos for the Agent go to its own photo folder; on any other list they're encrypted task files (task-files.js)
+  const forAgent=state.activeTab==='agent';
+  const withPhotos=composerAtts.length>0&&(forAgent?!!attachProfile():taskFilesOn());
+  if(!title&&withPhotos)title=forAgent?(composerAtts.length===1?'Look at this photo':'Look at these photos'):(composerAtts.length===1?'Photo':'Photos');
+  if(!title){ titleEl.value=''; titleEl.focus(); return; }
   // typed "we're out of eggs": onto the grocery list, not a new task (grocery-list.js)
-  if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')); return; } }
-  let photoUrls=[];
+  if(!withPhotos&&outOfNames(title)&&groceryTask()){ const g=addToGroceries(title); if(g){ titleEl.value=''; voiceToast('On the next grocery order: '+g.names.join(', ')+(g.pantry.length?'. Taken out of the pantry':'')); return; } }
+  // said something about his health or his kitchen ("I want to walk 10k steps a day", "I have 2 lb of chicken"):
+  // it changes that tab instead of becoming a to-do (tab-route.js); a training goal keeps the date box's date
+  if(!withPhotos&&typeof tabRouteTry==='function'&&tabRouteTry(title,$('newDue').value||null)){ titleEl.value=''; buzz('add'); return 'routed'; }
+  let photoUrls=[], photoFiles=[];
   if(withPhotos){
     addingTask=true; $('addBtn').disabled=true; $('addBtn').textContent='Uploading\u2026';
-    try{ for(const a of composerAtts)photoUrls.push(await uploadAttachment(a.blob)); }
+    try{ for(const a of composerAtts){ if(forAgent)photoUrls.push(await uploadAttachment(a.blob)); else photoFiles.push(await taskFileUpload(new File([a.blob],'photo.jpg',{type:'image/jpeg'}))); } }
     catch(err){ addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add'; alert('Couldn\u2019t upload the photos: '+err.message); return; }
     composerAtts.forEach(function(a){ URL.revokeObjectURL(a.preview); }); composerAtts.length=0; drawComposerAtts();
     addingTask=false; $('addBtn').disabled=false; $('addBtn').textContent='Add';
   }
-  let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; const tag=$('newTag').value.trim()||null;
+  let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; let tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
-  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='family'?'family':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  // typed "#home" and "every sunday" (quick-add.js): the tag and the repeat come out of the title.
+  // Not for the Agent: its #legion is a tag of its own, and its repeats are t.repeat (agent-chat.js)
+  let recur=null;
+  if(ws!=='agent'){
+    if(!tag){ const g=tagFromWords(title); if(g.tag){ title=g.title; tag=g.tag; } }
+    recur=recurFromWords(title); if(recur)title=recur.title;
+  }
   // typed "dentist tomorrow at 3": the date and time come out of the title, as they do when it's said.
   // Not for the Agent (its dates are part of what it's asked) or when the date box is already set.
   if(!due&&ws!=='agent'){ const p=parseSpokenTask(title); if(p.due&&p.title){ title=p.title; due=p.due; dueTime=p.dueTime; } }
+  // typed "call the dentist #health": the hashtag is the tag, as the date came out of the words (never for the Agent: #legion is its own)
+  if(!tag&&ws!=='agent'){ const h=hashTag(title); if(h){ title=h.title; tag=h.tag; } }
+  // "every sunday at 5": the weekday wins over the today-or-tomorrow a lone time would give; a repeat needs a date
+  if(recur&&!$('newDue').value&&(recur.onDay||!due))due=recur.due;
+  // typed "@Sam": it goes to Sam in the group, waiting on their To do tab, not onto my list (family.js)
+  if(ws!=='agent'&&!photoUrls.length&&!recur&&typeof famSendTyped==='function'&&famSendTyped(title,due)){ titleEl.value=''; $('newDue').value=''; buzz('send'); titleEl.focus(); return; }
+  // asked this already this week ("can I get groceries" when "Get groceries" is on the list): offer that one (same-ask.js)
+  const force=sameAskForce; sameAskForce=false; hideSameAsk();
+  if(!force&&!photoUrls.length){
+    const old=findSameAsk(state.tasks,{title:title,ws:ws,due:due});
+    if(old){ showSameAsk(old,{title:titleEl.value,due:$('newDue').value,time:$('newTime').value,tag:$('newTag').value,legion:legionOn}); return 'same'; }
+  }
   const t={id:uid(),title:title,done:false,due:due,dueTime:dueTime,tag:tag,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+  if(recur)t.recur={every:recur.every,dom:Number(t.due.slice(8)),series:t.id};
+  // "legion I need to…" / "Deep research: …" typed as the first words: the same as the Legion button (agent/legion.js LEAD_IN)
+  if(ws==='agent'&&!/(^|\s)#(legion|research)\b/i.test(t.title)){
+    const lead=/^\s*(deep research|legion|research legion)(\s*[:\-–]\s*|\s+(?=\S))/i;
+    if(lead.test(t.title)){ t.title='#legion '+t.title.replace(lead,''); legionOn=true; }
+  }
   if(ws==='agent'&&legionOn){ if(!/(^|\s)#(legion|research)\b/i.test(t.title))t.title='#legion '+t.title; setLegion(false); }
   if(ws==='agent'){ t.status='queued'; t.note=null; if(photoUrls.length){ t.replyImages=photoUrls; agentSay(t,'you',title,{images:photoUrls}); } }
-  if(ws!=='agent'&&photoUrls.length)t.images=photoUrls;
+  if(ws!=='agent'&&photoFiles.length)t.files=photoFiles;
   if(ws==='school')t.kind='regular';
   state.tasks.push(t);
-  titleEl.value=''; buzz('add'); touch(); titleEl.focus();
+  // the date doesn't carry over to the next task: a leftover one was easy to miss and beat a typed "friday"
+  titleEl.value=''; $('newDue').value=''; $('newTime').value=''; $('newTime').disabled=true; buzz('add'); touch(); titleEl.focus();
+  // first launch: the welcome card sits between the add box and the list, so the new row would land off the screen
+  requestAnimationFrame(function(){ const li=document.querySelector('li.task[data-id="'+t.id+'"]'); if(li&&li.getBoundingClientRect().bottom>window.innerHeight)li.scrollIntoView({block:'nearest',behavior:prefersReduced?'auto':'smooth'}); });
+}
+/* "Call the dentist #health" → {title:'Call the dentist', tag:'health'}; no hashtag, or nothing but the hashtag → null */
+function hashTag(text){
+  const m=/(^|\s)#([^\s#]+)/.exec(text||''); if(!m)return null;
+  const title=(text.slice(0,m.index)+' '+text.slice(m.index+m[0].length)).replace(/\s+/g,' ').trim();
+  return title?{title:title,tag:m[2]}:null;
 }
 /* "Call the dentist on Friday at 3pm" → {title:'Call the dentist', due:<Friday>, dueTime:'15:00'}.
    A day you mention becomes the due date (and is taken out of the title); no day → no date. */
@@ -134,17 +196,17 @@ function parseSpokenTask(text,now){
   return {title:title, due:due?formatDate(due):null, dueTime:due&&time?time:null};
 }
 /* Spoken commands ("Hey Romulus …"): where the words go, before parseSpokenTask reads dates out of them.
-     "go to ideas" / "open the work tab"                → {kind:'tab'}
-     "add monkey tinder to app ideas" / "new idea …"    → {kind:'idea', group}
+     "go to notes" / "open the work tab"                → {kind:'tab'}
+     "add monkey tinder to app notes" / "new note …"    → {kind:'idea', group}
      "add finish the report to work"                    → {kind:'task', tab:'work'}
      "send to agent find flights" / "tell Claude to …"  → {kind:'task', tab:'agent'}
    "go to work and add …" goes there first, then reads the rest. Anything else: a task on the tab you're on. */
-const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',calendar:'calendar',ideas:'ideas',idea:'ideas'};
-const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',calendar:'Calendar',ideas:'Ideas'};
-function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():true; }
-// "app" / "app ideas" / "the app ideas group" → that idea group's id ('' = Unsorted); undefined = no such group
+const VOICE_TABS={human:'list','to do':'list','to-do':'list',todo:'list',personal:'list',main:'list',home:'list',agent:'agent',claude:'agent',school:'school',work:'work',family:'family',calendar:'calendar',ideas:'ideas',idea:'ideas',notes:'ideas',note:'ideas'};
+const VOICE_TAB_NAME={list:'To do',agent:'Agent',school:'School',work:'Work',family:'Family',calendar:'Calendar',ideas:'Notes'};
+function voiceTabOk(tab){ return tab==='agent'?agentAvailable():tab==='school'?schoolConfigured():tab==='work'?workConfigured():tab==='family'?familyConfigured():true; }
+// "app" / "app notes" / "the app notes group" → that note group's id ('' = Unsorted); undefined = no such group
 function voiceIdeaGroup(dest){
-  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?)\b/g,' ').replace(/\s+/g,' ').trim(); };
+  const bare=function(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\b(?:the|my|group|ideas?|notes?)\b/g,' ').replace(/\s+/g,' ').trim(); };
   const d=bare(dest); if(!d)return undefined;
   const all=[{id:'',name:state.ideas.inbox.name||'Unsorted'}].concat(state.ideas.groups);
   const hit=all.find(function(g){ return bare(g.name)===d; });
@@ -165,8 +227,8 @@ function parseVoiceCommand(said,curTab,smart){
   let tab=null, m;
   // "we're out of eggs" / "add eggs to groceries": onto his grocery list for the next order (grocery-list.js)
   if(outOfNames(s)&&groceryTask())return {kind:'grocery',text:s};
-  // "go to the ideas tab (and …)" — the tab first, then whatever follows
-  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|ideas?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
+  // "go to the notes tab (and …)" — the tab first, then whatever follows
+  m=/^(?:go|switch|jump|move|take me|bring me|show me|open(?: up)?)\s+(?:(?:to|over to|back to)\s+)?(?:the\s+|my\s+)?(human|to[\s-]?do|personal|main|home|agent|claude|school|work|calendar|ideas?|notes?)(?:\s+(?:tab|list|page|board))?\b[\s,]*(?:(?:and|then|and then)\b[\s,]*)?(.*)$/i.exec(s);
   if(m){ tab=VOICE_TABS[m[1].toLowerCase()]; s=m[2].trim(); if(!s)return {kind:'tab',tab:tab}; }
   // Claude / the agent
   m=/^(?:send|give|hand|pass)\s+(?:this\s+|it\s+)?(?:over\s+)?(?:to\s+)?(?:the\s+)?(?:agent|claude)\s*[,:]?\s*(?:to\s+)?(.+)$/i.exec(s)
@@ -174,10 +236,10 @@ function parseVoiceCommand(said,curTab,smart){
   if(m)return {kind:'task',tab:'agent',text:m[1]};
   m=/^(?:send|give|hand|pass)\s+(.+?)\s+(?:over\s+)?to\s+(?:the\s+)?(?:agent|claude)$/i.exec(s);
   if(m)return {kind:'task',tab:'agent',text:m[1]};
-  // "new idea …" / "add an idea …" / "… as an idea"
-  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?idea|idea)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
+  // "new idea …" / "add an idea …" / "… as an idea"; also "new note …" / "… as a note" (a bare "note X" stays a task, see VERB below)
+  m=/^(?:(?:add|new|save|write|note)\s+(?:a\s+|an\s+)?(?:new\s+)?idea|idea|new\s+note)\s*[,:]?\s*(?:called\s+|for\s+)?(.+)$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
-  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?idea$/i.exec(s);
+  m=/^(?:add|save|write|note|put)\s+(.+?)\s+as\s+(?:a\s+|an\s+)?(?:new\s+)?(?:idea|note)$/i.exec(s);
   if(m)return {kind:'idea',group:'',text:m[1]};
   // "add X to Y": try the last "to/in/on/under" first, so "add go to the store to work" files "go to the store" under work
   // ("right"/"rite": how the recognizer often hears "write")
@@ -230,7 +292,7 @@ function voiceWords(text){
   return String(text||'').toLowerCase().replace(/['’]s\b/g,'').split(/[^a-z0-9]+/).filter(function(w){ return w.length>2&&!VOICE_STOP.has(w); })
     .map(function(w){ return w.length>5?w.replace(/(?:ing|ed|es)$/,''):w.length>3?w.replace(/s$/,''):w; });
 }
-const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent'};
+const VOICE_WS_TAB={personal:'list',work:'work',school:'school',agent:'agent',family:'family'};
 function voiceGuessTab(text){
   const words=Array.from(new Set(voiceWords(text))); if(!words.length)return null;
   const size={}, seen={}; let all=0;
@@ -313,14 +375,14 @@ async function voiceAdd(smart){
     if(cmd.kind==='grocery'){
       ti.value=before;
       const g=addToGroceries(cmd.text);
-      voiceToast(g?'On the next grocery order: '+g.names.join(', '):'Couldn’t find your grocery list',!g);
+      voiceToast(g?'On the next grocery order: '+g.names.join(', ')+(g.pantry.length?'. Taken out of the pantry':''):'Couldn’t find your grocery list',!g);
       return;
     }
     if(cmd.kind==='idea'){
       ti.value=before;
       const text=cmd.text.trim().replace(/^./,function(c){ return c.toUpperCase(); });
       ideaAddCard(cmd.group,text); switchTab('ideas');
-      voiceToast('Added \u201C'+text+'\u201D to Ideas \u2192 '+(ideaGroup(cmd.group).name||'Unsorted'));
+      voiceToast('Added \u201C'+text+'\u201D to Notes \u2192 '+(ideaGroup(cmd.group).name||'Unsorted'));
       return;
     }
     // a task: go to its tab so addTask files it there (and you can see it land)
@@ -332,8 +394,10 @@ async function voiceAdd(smart){
     // fill the boxes like you'd typed it, add, then put the sticky date/time back how they were
     const dueEl=$('newDue'), timeEl=$('newTime'), oldDue=dueEl.value, oldTime=timeEl.value;
     ti.value=p.title; dueEl.value=p.due||''; timeEl.disabled=!p.due; timeEl.value=p.dueTime||'';
-    await addTask();
+    const res=await addTask();
     dueEl.value=oldDue; timeEl.value=oldTime; timeEl.disabled=!oldDue;
+    if(res==='routed')return; // it went to the Health or Kitchen tab, which already said so (tab-route.js)
+    if(res==='same'){ voiceToast('You already have that one. Open it, or add it anyway, just under the add box.'); return; }
     voiceToast(cmd.raw?'Sent to the Agent: \u201C'+p.title+'\u201D':'Added \u201C'+p.title+'\u201D to '+VOICE_TAB_NAME[cmd.tab]+(cmd.learned?' (like your past ones)':'')+' \u00B7 '+(p.due?dateInfo(p.due,p.dueTime).text:'no date'));
   }catch(e){
     ti.value=before; voiceToast((e&&e.message)||'Voice didn\u2019t work',true);
@@ -347,20 +411,20 @@ async function voiceAdd(smart){
 }
 // the site a link goes to, for its button: "Amazon", "Fresha", "Yelp"… (not always Amazon)
 // 3D-model sites: an option there is something to print, not to buy
-// what the card's button does for an option's link: buy (a shop), print (a 3D-model site), or just send
-// him the link (jobs, bookings, articles, forms… anything that isn't a purchase)
+// what an option's link is: buy (a shop), print (a 3D-model site), or just a link (jobs, bookings, articles,
+// forms… anything that isn't a purchase); it words his pick ("I'll print option 2")
 function optionKind(url){
   if(!url)return 'pick';
   if(isModelSite(url))return 'print';
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return 'link'; }
   return /(^|\.)(amazon\.[a-z.]+|amzn\.(to|com)|bestbuy\.com|walmart\.com|target\.com|newegg\.com|ebay\.com|etsy\.com|homedepot\.com|lowes\.com|costco\.com|bhphotovideo\.com|microcenter\.com|bambulab\.com|aliexpress\.com|temu\.com|adorama\.com|rei\.com|ikea\.com)$/.test(h)?'buy':'link';
 }
-// an Amazon product page: The Agent orders it (after a yes) instead of emailing the link
+// an Amazon product page: The Agent orders it (after a yes)
 function isAmazon(url){
   let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return false; }
   return /(^|\.)(amazon\.com|amzn\.(to|com))$/.test(h);
 }
-// a store the Agent orders from itself (after a yes) instead of emailing the link: the big stores where his
+// a store the Agent orders from itself (after a yes): the big stores where his
 // card is saved in his account, and Shopify stores (Shop Pay). → the store's name, or '' (shopping skill)
 function buyStoreOf(o){
   const url=o&&o.url; let h=''; try{ h=new URL(String(url)).hostname.toLowerCase(); }catch(e){ return ''; }
@@ -397,8 +461,8 @@ function openExternal(url){
   else window.open(url,'_blank','noopener');
 }
 const SHARE_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
-// send just the link to people: the phone's Share sheet (Messages, WhatsApp…), else copy it
 const MAIL_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';
+// send just the link to people: the phone's Share sheet (Messages, WhatsApp…), else copy it
 function shareLink(url,btn){
   url=String(url||''); if(!/^https?:\/\//i.test(url))return;
   const cap=window.Capacitor;

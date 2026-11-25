@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Health Connect's library asks for Android 8; the app still installs on 7, where HealthPlugin says it's unavailable -->
+    <uses-sdk tools:overrideLibrary="androidx.health.connect.client" />
     <application
+        android:name=".RomulusApp"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -51,6 +55,28 @@
             </intent-filter>
         </activity>
 
+        <!-- Health Connect's "why this app wants your data" link (HealthDataPlugin.kt): opens the privacy policy.
+             The first is Android 13 and older; the alias is the permission-usage page on Android 14 and later -->
+        <activity
+            android:name=".HealthPrivacyActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".HealthPrivacyActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- invisible stop for widget row taps (check off / open a task) -->
         <activity
             android:name=".WidgetActionActivity"
@@ -75,19 +101,12 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
         </receiver>
-        <receiver android:name=".AgentWidgetProvider" android:label="Romulus: Claude needs you" android:exported="false">
+        <receiver android:name=".AgentWidgetProvider" android:label="Romulus: Agent" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_agent_info" />
-        </receiver>
-        <receiver android:name=".AgentStatusWidgetProvider" android:label="Romulus: Agent status" android:exported="false">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
-            </intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_status_info" />
         </receiver>
         <receiver android:name=".SchoolWidgetProvider" android:label="Romulus: School" android:exported="false">
             <intent-filter>
@@ -108,28 +127,47 @@
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
 
+        <!-- List: Personal or Groceries, picked per widget (kept the old Personal list's name so placed ones stay) -->
         <receiver
             android:name=".TasksWidgetProvider"
-            android:label="Romulus: Personal list"
+            android:label="Romulus: List"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.jartro.tasks.WIDGET_REFRESH" />
+                <action android:name="com.jartro.tasks.LIST_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/tasks_widget_info" />
         </receiver>
 
-        <service
-            android:name=".TasksWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
-            android:exported="false" />
+        <activity
+            android:name=".WidgetListPickerActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <!-- "Hey Romulus": listens for the wake word while the screen is on -->
         <service
             android:name=".WakeWordService"
             android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- the Agent's notifications, through Firebase (PushService), and "Reply" typed in one (PushReplyReceiver) -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".PushReplyReceiver"
             android:exported="false" />
 
         <provider
@@ -151,7 +189,23 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Health Connect, read only: daily totals for tasks that check themselves off (HealthPlugin) -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <!-- his latest weight, for the Food plan ("1 g of protein per pound") -->
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <!-- the rest of the Health tab: resting heart rate, active calories, distance, what food apps logged -->
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_NUTRITION" />
     <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <!-- the apps that write to Health Connect, so HealthPlugin.kt can name the ones feeding each number -->
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>

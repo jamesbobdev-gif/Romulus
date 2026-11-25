@@ -45,9 +45,9 @@ import java.util.concurrent.Executors;
  * hash>, from the Entra app's Android platform). Codes are swapped for tokens here, not in the page,
  * because Microsoft refuses a token request that carries a web Origin from a non-SPA client.
  *
- * Tokens and calendar links stay in this app's private storage (left out of Android backups) and never
- * reach the page: it asks for calendar data through api() and feed(), which add the token themselves
- * and only talk to the Google Calendar and Microsoft Graph APIs.
+ * Tokens and calendar links stay in this app's private storage (left out of Android backups, and sealed
+ * under a Keystore key: Sealed.java) and never reach the page: it asks for calendar data through api()
+ * and feed(), which add the token themselves and only talk to the Google Calendar and Microsoft Graph APIs.
  */
 @CapacitorPlugin(name = "CalAccounts")
 public class CalAccountsPlugin extends Plugin {
@@ -357,10 +357,22 @@ public class CalAccountsPlugin extends Plugin {
     /* ---------- storage ---------- */
 
     private SharedPreferences prefs() { return getContext().getSharedPreferences(STORE, Context.MODE_PRIVATE); }
+    /** The accounts, sealed on disk. A list saved in the clear by an older build is sealed the first time it's read. */
     private JSONArray accounts() {
-        try { return new JSONArray(prefs().getString("accounts", "[]")); } catch (Exception e) { return new JSONArray(); }
+        try {
+            String sealed = prefs().getString("accounts_sealed", null);
+            if (sealed != null) return new JSONArray(Sealed.open(sealed));
+            String plain = prefs().getString("accounts", null);
+            if (plain == null) return new JSONArray();
+            JSONArray list = new JSONArray(plain);
+            save(list);
+            return list;
+        } catch (Exception e) { return new JSONArray(); }
     }
-    private void save(JSONArray list) { prefs().edit().putString("accounts", list.toString()).apply(); }
+    private void save(JSONArray list) {
+        try { prefs().edit().putString("accounts_sealed", Sealed.seal(list.toString())).remove("accounts").apply(); }
+        catch (Exception e) { throw new RuntimeException("Couldn't seal the account list: " + e.getMessage()); }
+    }
     private JSONObject find(String id) throws Exception {
         JSONArray list = accounts();
         for (int i = 0; i < list.length(); i++) if (id.equals(list.getJSONObject(i).optString("id"))) return list.getJSONObject(i);

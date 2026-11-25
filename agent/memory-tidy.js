@@ -41,12 +41,18 @@ async function agentPrefsRow() {
   const row = await supabase.readRow(a, ':prefs');
   return { a, text: (row && row.doc && row.doc.text) || '', updated_at: row ? row.updated_at : null };
 }
+// a task whose words are his private ones, or that ran on the local lane (Finance, the Locked profile): what he
+// said in it stays off the cloud, so it isn't tidied into memory by Claude either
+function privateTask(t) {
+  try { const routing = require('./routing'); return !!(t.financeSeen || routing.privateMatch(t) || routing.laneOf(t) === 'local'); }
+  catch (e) { return true; } // can't tell: keep it out
+}
 function recentReplies() { // the user's own words to Claude in the last 14 days, with the question each one answered
   let data;
   try { data = JSON.parse(fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
   const since = Date.now() - 14 * 24 * 60 * 60 * 1000, out = [];
   for (const t of (Array.isArray(data.tasks) ? data.tasks : [])) {
-    if (t.ws !== 'agent' || !Array.isArray(t.history)) continue;
+    if (t.ws !== 'agent' || !Array.isArray(t.history) || privateTask(t)) continue;
     t.history.forEach((h, i) => {
       if (h.who !== 'you' || !(h.at > since) || !String(h.text || '').trim()) return;
       const asked = t.history.slice(0, i).reverse().find((x) => x.who !== 'you');

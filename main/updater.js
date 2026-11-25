@@ -48,7 +48,7 @@ function versionNewer(candidate, current) {
 // another device), offer it, or nothing (he said Not now to it)
 function onAvailable(version, cfg) {
   if (mode(cfg) === 'auto') return 'download';
-  if (cfg && cfg.updateYes && !versionNewer(version, cfg.updateYes)) return 'download';
+  if (cfg && cfg.updateYes && cfg.updateYes === version) return 'download'; // the version he said yes to, exactly: a "yes" row naming 999 approves nothing
   return cfg && cfg.updateSkip === version ? 'skip' : 'offer';
 }
 
@@ -111,7 +111,14 @@ function start() {
 }
 
 let started = false;
-function checkNow() { if (started) updater().checkForUpdates().catch(() => {}); } // offline: try again next time
+// early access (a paid plan, Settings → Device sync): versions published as pre-releases are offered too
+function earlyAccess(cfg) { return !!(cfg && cfg.earlyAccess); }
+function checkNow() {
+  if (!started) return;
+  const u = updater();
+  u.allowPrerelease = earlyAccess(ctx.readConfig());
+  u.checkForUpdates().catch(() => {}); // offline: try again next time
+}
 
 function download(version) {
   downloading = version; percent = 0;
@@ -173,6 +180,14 @@ const handlers = {
   'update:shared': (_e, doc) => shared(doc && typeof doc === 'object' ? { yes: doc.yes, no: doc.no } : null),
   'update:install': () => { installNow(); return state(); },
   'update:get-mode': () => mode(ctx.readConfig()),
+  'update:get-early': () => earlyAccess(ctx.readConfig()),
+  'update:set-early': (_e, on) => {
+    const cfg = ctx.readConfig();
+    cfg.earlyAccess = !!on;
+    ctx.writeConfig(cfg);
+    checkNow(); // look now, so a pre-release that's out shows up without waiting 4 hours
+    return cfg.earlyAccess;
+  },
   'update:set-mode': (_e, m) => {
     const cfg = ctx.readConfig();
     cfg.updates = m === 'auto' ? 'auto' : 'ask';

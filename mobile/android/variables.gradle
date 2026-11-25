@@ -1,5 +1,5 @@
 ext {
-    minSdkVersion = 24
+    minSdkVersion = 26 // Android 8: the oldest Health Connect's library runs on
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidxActivityVersion = '1.11.0'

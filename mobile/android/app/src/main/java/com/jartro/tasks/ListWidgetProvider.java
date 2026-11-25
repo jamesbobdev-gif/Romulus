@@ -9,44 +9,55 @@ import android.net.Uri;
 import android.widget.RemoteViews;
 
 /**
- * Base for the list widgets (Today, Claude needs you, School). Each subclass picks a mode; the
- * rows and the header text come from ListWidgetService for that mode.
+ * Base for the list widgets (Today, Agent, School, List). Each subclass picks a mode; the
+ * rows and the header text come from ListWidgetService for that mode. The List widget picks
+ * its mode per widget (Personal or Groceries), so the per-id methods default to the class-wide ones.
  */
 public abstract class ListWidgetProvider extends AppWidgetProvider {
     static final String ACTION_REFRESH = "com.jartro.tasks.LIST_WIDGET_REFRESH";
 
-    abstract String mode();         // "today" | "agent" | "status" | "school"
+    abstract String mode();         // "today" | "agent" | "school" | "personal" | "groceries"
     abstract String title();
     abstract String emptyText();
     abstract String tabToOpen();    // tab the header opens: "list" | "agent" | "school"
     abstract int requestBase();     // keeps each widget's PendingIntents distinct
 
+    String mode(Context ctx, int id) { return mode(); }
+    String title(Context ctx, int id) { return title(); }
+    String emptyText(Context ctx, int id) { return emptyText(); }
+    String tabToOpen(Context ctx, int id) { return tabToOpen(); }
+    int requestBase(int id) { return requestBase(); }
+
     @Override
     public void onUpdate(Context ctx, AppWidgetManager mgr, int[] ids) {
-        for (int id : ids) {
-            RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_list);
-            v.setTextViewText(R.id.w_title, title());
-            v.setTextViewText(R.id.w_empty, emptyText());
+        for (int id : ids) draw(ctx, mgr, id);
+    }
 
-            Intent svc = new Intent(ctx, ListWidgetService.class);
-            svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
-            svc.putExtra("mode", mode());
-            svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME))); // one data set per widget
-            v.setRemoteAdapter(R.id.w_list, svc);
-            v.setEmptyView(R.id.w_list, R.id.w_empty);
-            v.setPendingIntentTemplate(R.id.w_list, Widgets.rowTemplate(ctx, requestBase()));
+    void draw(Context ctx, AppWidgetManager mgr, int id) {
+        int req = requestBase(id);
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_list);
+        v.setTextViewText(R.id.w_title, title(ctx, id));
+        v.setTextViewText(R.id.w_empty, emptyText(ctx, id));
+        v.setTextViewText(R.id.w_counts, "");
 
-            PendingIntent open = Widgets.openApp(ctx, requestBase() + 1, "tab", tabToOpen());
-            v.setOnClickPendingIntent(R.id.w_title, open);
-            v.setOnClickPendingIntent(R.id.w_empty, open);
+        Intent svc = new Intent(ctx, ListWidgetService.class);
+        svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
+        svc.putExtra("mode", mode(ctx, id));
+        svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME))); // one data set per widget (and per mode)
+        v.setRemoteAdapter(R.id.w_list, svc);
+        v.setEmptyView(R.id.w_list, R.id.w_empty);
+        v.setPendingIntentTemplate(R.id.w_list, Widgets.rowTemplate(ctx, req));
 
-            Intent refresh = new Intent(ctx, getClass()).setAction(ACTION_REFRESH);
-            v.setOnClickPendingIntent(R.id.w_refresh, PendingIntent.getBroadcast(ctx, requestBase() + 2, refresh,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        PendingIntent open = Widgets.openApp(ctx, req + 1, "tab", tabToOpen(ctx, id));
+        v.setOnClickPendingIntent(R.id.w_title, open);
+        v.setOnClickPendingIntent(R.id.w_empty, open);
 
-            mgr.updateAppWidget(id, v);
-            mgr.notifyAppWidgetViewDataChanged(id, R.id.w_list);
-        }
+        Intent refresh = new Intent(ctx, getClass()).setAction(ACTION_REFRESH);
+        v.setOnClickPendingIntent(R.id.w_refresh, PendingIntent.getBroadcast(ctx, req + 2, refresh,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+
+        mgr.updateAppWidget(id, v);
+        mgr.notifyAppWidgetViewDataChanged(id, R.id.w_list);
     }
 
     @Override

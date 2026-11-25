@@ -19,7 +19,7 @@ const BILL_SELF_CHARGING=/\b(netflix|spotify|hulu|disney|hbo|max\.com|youtube|pa
 
 // that day of the month (the 31st is the 30th in a 30-day month)
 function billDate(y,m,day){ const last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(day,last)); }
-function billYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function billYmd(d){ return (typeof dayKey==='function'?dayKey:require('./util').dayKey)(d); }
 function billMonthAfter(d,day){ return billDate(d.getFullYear(),d.getMonth()+1,day); }
 // the usual day of the month, from the newest few times (ms): toward the late end, since a bill gets paid on
 // or before its due day (an early payment shouldn't pull the due day in)
@@ -56,7 +56,8 @@ function billsOf(accounts,kinds,now){
       due:billYmd(c.due),paidThrough:c.paidThrough?billYmd(c.paidThrough):null,interest:loan||charged,kind:loan?'loan':'card'});
   });
   // the monthly bills; a loan's payment from checking is already there as its account
-  const fc=typeof costsOf==='function'?{costsOf:costsOf,costKey:costKey}:require('./finance-costs'); // page global, or in node
+  const fc=typeof costsOf==='function'?{costsOf:costsOf,costKey:costKey,markInvestMoves:costMarkInvestMoves}:require('./finance-costs'); // page global, or in node
+  fc.markInvestMoves(accounts); // a monthly deposit to his brokerage isn't a bill
   const txs=[].concat.apply([],(accounts||[]).map(function(a){ return a.transactions||[]; }));
   const debtText=debts.map(function(a){ return ((a.org||'')+' '+(a.name||'')).toLowerCase(); }).join(' | ');
   fc.costsOf(txs,kinds,now).fixed.forEach(function(f){

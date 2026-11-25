@@ -11,7 +11,7 @@ switches on once its secrets or variables are set, and does nothing until then.
 | Microsoft Store | `.appx`, a run artifact | builds once the three `MS_STORE_*` variables are set |
 | Mac, signed and notarized | the normal `.dmg` / `.zip` (Apple chip and Intel) | signs once the Apple secrets are set |
 | Windows, signed | the normal installer | signs once the Azure secrets and variables are set |
-| iPhone App Store | not started | needs the Apple account, a Mac with Xcode, and an iOS port of the Android-only parts |
+| iPhone App Store | uploaded to App Store Connect (TestFlight) by the `ios` job | builds once the four `APPLE_API_*` / `APPLE_TEAM_ID` secrets are set; see the iPhone section for what it leaves out |
 
 ## Google Play
 
@@ -42,23 +42,43 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
   gambling or user-to-user chat. Expect Everyone / PEGI 3.
 - **Target audience**: 18 and over (the Agent can shop and fill forms for you), so no Families policy.
 - **Data safety**:
-  - Data collected *by the developer*: none. Data shared with third parties: none by us; the app sends data
-    to services the user connects themselves, which Play counts as user-initiated transfer, not sharing.
+  - Data collected *by the developer*: sync goes through the Romulus server by default
+    (renderer/js/hosted-sync.js), but lists are end-to-end encrypted on the device, and Play doesn't count
+    end-to-end encrypted data as collected. What the server does see: photos on Agent tasks and the files the
+    Agent downloads (not end-to-end encrypted; declare **Photos** and **Files and docs** as collected, for app
+    functionality, deletable), plus a hashed key id, usage counts and a day-old IP hash (abuse limits, which
+    Play counts as **Device or other IDs** for fraud prevention/security). Data shared with third parties:
+    none by us; the app sends data to services the user connects themselves, which Play counts as
+    user-initiated transfer, not sharing.
   - Still declare what the app processes and sends on the user's behalf, marked "processed ephemerally" /
     "not collected" as appropriate: personal info (name, email, address in the Locked profile), financial
-    info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks).
-  - Encrypted in transit: yes. Users can request deletion: data lives on their device and in their own
-    sync project; they delete it there (see PRIVACY.md).
+    info (Finance), messages (Gmail), calendar events, audio (voice input), app activity (tasks), health and
+    fitness (Health Connect daily totals: on the phone, or end-to-end encrypted between his own devices).
+  - Encrypted in transit: yes. Users can request deletion: yes, in the app (Settings → Device sync →
+    Delete my account, which needs the `sync-delete` function deployed; see below). Play's
+    account-deletion rule covers apps that create accounts; Romulus makes an anonymous sync account, so give
+    the privacy policy's "Deleting your data" section as the deletion web link when Play asks for one.
+  - **Payments**: the sync plans ($3 alone, $5 for a family) are Stripe links, and Play requires Play Billing for subscriptions bought
+    inside the app, so the Play build never shows it (`hostedInStore` in hosted-sync.js, keyed on
+    `window.ROMULUS_STORE`). Someone who pays on a computer gets the space on their phone too. The same goes
+    for an iPhone build: give it its own `ROMULUS_STORE` value and the button stays hidden.
 - **Foreground service: microphone** (`WakeWordService`). Declare it as *user-initiated, ongoing*: "Hey
   Romulus" is a wake word the user turns on in Settings; it listens only while the screen is on and shows
   a persistent notification. Play asks for a short video: turn it on in Settings, show the notification,
   say "Hey Romulus", show the app opening to listen.
 - **Exact alarms** (`SCHEDULE_EXACT_ALARM`, from the reminders plugin): declare that reminders at the
   time the user set are a core feature of a task and calendar app.
-- **Health, financial features**: Finance is a personal budget view, not a financial service: answer no to
+- **Financial features**: Finance is a personal budget view, not a financial service: answer no to
   loans, banking and crypto.
-- **AI-generated content**: Romulus shows replies from AI services the user connects. If review treats it as
-  a generative-AI app, it will ask for an in-app way to report offensive output; that isn't built yet.
+- **Health**: the app reads Health Connect (steps, exercise, sleep; read only) so tasks with a goal like
+  "Walk #steps 8000" tick themselves off. Health apps: Yes, Fitness. Health Connect declaration: read Steps,
+  Exercise, Sleep, used only to tick off those tasks, not shared, not for ads, not sent to AI; privacy policy
+  link `.../PRIVACY.md#health`. Data safety: Fitness info, not collected by the developer (on the phone, or
+  synced end-to-end encrypted). Google can take a week or more to review the declaration.
+- **AI-generated content**: Romulus shows replies from AI services the user connects. Every AI reply has a
+  **Report** link (renderer/js/ai-report.js) that sends that one reply, which AI wrote it and a reason to the
+  Romulus server's `ai_reports` table, after the user confirms. Read reports in the Supabase dashboard
+  (Table editor, ai_reports). Needs `supabase/migrations/20261114_ai_reports.sql` pasted in the SQL editor first.
 
 ### Store listing
 
@@ -95,8 +115,8 @@ library is Vosk 0.3.75, the first built for the 16 KB memory pages Play requires
    starting `CN=`), `MS_STORE_PUBLISHER_NAME` (Package/Properties/PublisherDisplayName).
 3. Push a tag; download `microsoft-store-appx` from the run and upload it as a submission. The Store signs it,
    so Store installs have no SmartScreen warning. Use the same privacy URL and listing text as above.
-4. Store tiles currently use electron-builder's stock images; for a better look, add the tile images to
-   `build/appx/` (StoreLogo 50×50, Square44x44Logo, Square150x150Logo, Wide310x150Logo).
+4. The Store tiles (StoreLogo, Square44x44, Small/Square150/Wide310x150/Large, each at 100% and 200%) are in
+   `build/appx/`, made from `build/icon.png`. Remake them the same way if the icon changes.
 
 ## Signing the Windows installer (Azure Trusted Signing)
 
@@ -106,7 +126,9 @@ registration with the *Trusted Signing Certificate Profile Signer* role, then se
 
 - secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
 - variables `AZURE_SIGNING_ENDPOINT` (for example `https://eus.codesigning.azure.net`),
-  `AZURE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE`
+  `AZURE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE`, and `AZURE_PUBLISHER_NAME`: the name on the certificate
+  (Azure portal → the signing account → Certificate profiles → the profile → Subject name, the part after
+  `CN=`). Without it the installer is built unsigned.
 
 ## Mac: signed and notarized download
 
@@ -122,12 +144,69 @@ The Mac App Store is not planned: its sandbox would block the Agent's browser an
 
 ## iPhone (App Store)
 
-Not started. It needs the Apple Developer account above, a Mac with Xcode (or a cloud Mac), and a test
-iPhone. The work: add Capacitor's iOS project, then rebuild what is Android-only today (widgets in
-WidgetKit, the share menu, calendar sign-in, the Finance fingerprint vault, the update banner left out).
-iOS won't let "Hey Romulus" listen in the background, so there it would work only with Romulus open.
+The iPhone app is Capacitor's iOS project in `mobile/ios`, wrapping the same web UI as Android. The release
+workflow's `ios` job builds it on a GitHub Mac and uploads it to App Store Connect, so no Mac of your own is
+needed for releases (one with Xcode is still the way to run it on a test iPhone: `cd mobile && node
+prepare-www.js --store appstore && npx cap sync ios && npx cap open ios`).
+
+1. **Apple Developer Program** ($99 a year), the account from the Mac section above.
+2. **Register the app**: in App Store Connect, My Apps → + → New App, platform iOS, name Romulus, bundle ID
+   `com.jartro.tasks` (register the bundle ID first at developer.apple.com → Identifiers if it isn't offered).
+   The bundle ID can never change.
+3. **API key**: App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys →
+   generate one with the **Admin** role (Admin is what lets Xcode make the signing certificate and
+   provisioning profile itself; a Developer-role key fails at the signing step). Download the `.p8` (only
+   offered once) and note its Key ID and the Issuer ID shown on that page. Your Team ID is at
+   developer.apple.com → Membership.
+4. Set four secrets: `APPLE_API_KEY_P8` (`base64 -i AuthKey_XXXX.p8`), `APPLE_API_KEY_ID`,
+   `APPLE_API_ISSUER_ID`, `APPLE_TEAM_ID` (the Mac section's `APPLE_TEAM_ID` is the same value).
+5. Push a tag. The build appears under TestFlight in App Store Connect once Apple has processed it (ten
+   minutes or so). The first time, Apple emails about **export compliance**; the app already declares it uses
+   no non-exempt encryption (`ITSAppUsesNonExemptEncryption` in `Info.plist`), so there is nothing to answer.
+6. **Release**: App Store Connect → the app → + Version, pick the TestFlight build, fill the listing with
+   the Google Play text above (promotional text is optional; the Play "full description" fits the
+   description field), add screenshots for the 6.7" and 6.5" iPhone sizes, the privacy policy URL, and
+   submit for review. Set **Age rating** from the questionnaire (expect 4+ or 12+ depending on how you answer
+   "unrestricted web access", which the Agent's browser is not on iPhone) and the same answers as Play's Data
+   safety for **App Privacy** ("data not collected" by us; data the user sends to services they connect
+   themselves is not collection).
+7. **Reviewer note** (App Review Information): the same as Play's: no accounts of ours, tasks work offline,
+   AI features need the reviewer's own key, entered in Settings → AI. Apple's reviewers do ask for a demo
+   path; say which free key to use (a Gemini key from aistudio.google.com).
+8. **HealthKit** (the Health tab, `HealthPlugin.swift`): the App ID needs the HealthKit capability. With
+   automatic signing and the Admin key the first build turns it on itself; if the archive fails on
+   "entitlement not supported", switch it on by hand at developer.apple.com → Identifiers →
+   `com.jartro.tasks` → HealthKit. Review checks three things: a privacy policy with a HealthKit section (the
+   Health section of `PRIVACY.md`), the purpose string in `Info.plist`
+   (`NSHealthShareUsageDescription`), and that health data is used for the feature alone. Add to the
+   reviewer note: "The Health tab reads steps, sleep and workouts from Apple Health, read-only, to tick off
+   the user's own goal to-dos such as 'Walk 8,000 steps'. Nothing is stored, synced or shared." App Privacy:
+   Health & Fitness, not collected (it never leaves the phone).
+
+**Before paying Apple**: Actions → *iPhone build check* → Run workflow compiles the project unsigned on a GitHub
+Mac (`.github/workflows/ios-check.yml`), so a broken project shows up before the $99 and before any secret
+exists. The task-photo picker offers the camera on iPhone, so `Info.plist` carries the camera and photo
+library purpose strings; without them iOS closes the app the moment someone taps *Take Photo*.
+
+**What the iPhone app leaves out today**, each because its native plugin is Android-only and the web side
+simply does without it when the plugin is absent: home-screen widgets, the share menu, Google / Microsoft
+calendar sign-in on the phone (calendars still arrive through sync from a computer), the fingerprint-locked
+Finance vault, voice input and "Hey Romulus" (iOS wouldn't let it listen in the background anyway). Tasks,
+all the lists, sync, reminders (local notifications), the Agent's conversation and the Health tab (Apple Health
+in place of Health Connect, the same goal to-dos) all work. There is no update
+banner (`ROMULUS_STORE` is `appstore`): the App Store updates the app. Porting the rest means Swift versions
+of the plugins in `mobile/android/app/src/main/java/com/jartro/tasks/` and WidgetKit widgets.
+
+**Version numbers**: the app's version is the root `package.json` one; its build number is the same figure
+Android uses for `versionCode` (1.0.27 → 1000027), so every tag uploads a build Apple accepts as newer.
 
 ## Before any store goes public
+
+- **Data deletion on the server**: paste `supabase/migrations/20261106_sync_delete_account.sql` into the SQL
+  editor (after `20261106_sync_paid_plan.sql`), deploy `supabase/functions/sync-delete` with JWT
+  verification off, and add an `app_secrets` row `stripe_api_key` (a Stripe restricted key with
+  Subscriptions: write) so deleting also cancels a paid plan. Until the function is deployed the button
+  says it couldn't delete.
 
 - **Gmail access**: the Gmail scope is *restricted*. While the Google sign-in client is in testing mode only
   listed test users can use it; publishing it to everyone needs Google's verification and a yearly security

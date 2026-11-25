@@ -33,8 +33,11 @@ log "3/4 Starting SearXNG (restarts by itself after reboots)"
 docker rm -f searxng >/dev/null 2>&1 || true
 # 127.0.0.1 in -p matters: a bare "-p 8888:8080" binds every interface and Docker's own iptables rules let it
 # through before ufw gets a say, so the firewall would not have protected it.
+# A fixed build, not :latest, so a bad or tampered upload can't arrive on a re-run. The digest is checked by Docker.
+# To move up: pick a tag from hub.docker.com/r/searxng/searxng/tags, copy its digest here, run this again.
+SEARXNG_IMAGE="searxng/searxng:2026.11.14-a7128d5d1@sha256:eb8b09ffa83aebbe8b8d3ded23cfd224b2d3b01db4f3af9eb03876ef6def6dda"
 docker run -d --name searxng --restart unless-stopped -p 127.0.0.1:8888:8080 \
-  -v /opt/searxng:/etc/searxng:rw searxng/searxng:latest
+  -v /opt/searxng:/etc/searxng:rw "$SEARXNG_IMAGE"
 ufw delete allow from 192.168.1.0/24 to any port 8888 proto tcp >/dev/null 2>&1 || true   # the old rule, if this ran before
 # an earlier version of this script published it to a Tailscale tailnet: not any more, this machine only
 if command -v tailscale >/dev/null && tailscale serve status 2>/dev/null | grep -q 8888; then tailscale serve --tcp 8888 off 2>/dev/null || true; fi

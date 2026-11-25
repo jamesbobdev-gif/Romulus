@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { nextRecurDue, recurCopyId } = require('../renderer/js/recur');
+const { nextRecurDue, recurCopyId, recurStreakNext, recurStreakText } = require('../renderer/js/recur');
 
 test('ticked off on the day: the next one is one step on', () => {
   assert.strictEqual(nextRecurDue({ every: 'day' }, '2026-10-15', '2026-10-15'), '2026-10-16');
@@ -41,4 +41,14 @@ test('undated counts from today; an unknown rule gives nothing', () => {
 test('the copy id is the same on every device', () => {
   assert.strictEqual(recurCopyId({ every: 'day', series: 'abc' }, 'xyz', '2026-10-16'), 'r-abc-2026-10-16');
   assert.strictEqual(recurCopyId({ every: 'day' }, 'xyz', '2026-10-16'), 'r-xyz-2026-10-16');
+});
+
+test('a streak counts the ones ticked off on time and starts over after a late one', () => {
+  assert.deepStrictEqual(recurStreakNext({ every: 'day' }, '2026-11-10', '2026-11-10'), { streak: 1, best: 1 });
+  assert.deepStrictEqual(recurStreakNext({ every: 'day', streak: 4, best: 9 }, '2026-11-10', '2026-11-09'), { streak: 5, best: 9 }); // early counts
+  assert.deepStrictEqual(recurStreakNext({ every: 'day', streak: 9, best: 9 }, '2026-11-10', '2026-11-10'), { streak: 10, best: 10 });
+  assert.deepStrictEqual(recurStreakNext({ every: 'day', streak: 6, best: 6 }, '2026-11-10', '2026-11-11'), { streak: 0, best: 6 }); // a day late
+  assert.strictEqual(recurStreakText({ streak: 1 }), '');
+  assert.strictEqual(recurStreakText({ streak: 2 }), '2 in a row');
+  assert.strictEqual(recurStreakText(null), '');
 });

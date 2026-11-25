@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GHSA-fc5q-39xc-vjpf",
+    "package": "picomatch",
+    "reason": "ReDoS in glob matching, reached only by the build tools (electron-builder) on our own file names, never by the app; no fixed version yet",
+    "until": "2027-01-31"
+  }
+]

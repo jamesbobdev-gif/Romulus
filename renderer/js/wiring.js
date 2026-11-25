@@ -4,6 +4,10 @@
 
 /* ── wiring ── */
 $('addBtn').addEventListener('click',addTask);
+// "You already asked this": go to that task, or add the new one anyway; typing something else drops the notice
+$('sameAskOpen').addEventListener('click',sameAskOpen);
+$('sameAskAdd').addEventListener('click',sameAskAddAnyway);
+$('newTitle').addEventListener('input',function(){ if(sameAskHeld&&this.value!==sameAskHeld.held.title)hideSameAsk(); });
 if(window.desktop&&window.desktop.openAgentBrowser){
   $('agentBrowserSection').hidden=false;
   // it has no window of its own (headless): open it in the live view, which starts it if needed
@@ -65,7 +69,11 @@ if(window.desktop&&window.desktop.aiStatus){
       window.desktop.aiModels(listId).then(function(res){ modelLists[listId]=(res&&res.models)||[]; if(sel.isConnected&&sel.value!==OTHER)fill(modelLists[listId]); }).catch(function(){}); }
     return r;
   };
+  // an extra account of an AI (ai-accounts-ui.js): its own card, its own line
+  const acctOf=function(id){ return (ai.accounts||[]).find(function(a){ return a.id===id; })||null; };
+  const acctH={save:function(c,m){ return save(c,m); },say:function(t){ say(t); },set:function(s){ ai=s; aiDraw(); }};
   const statusText=function(id){
+    const acct=acctOf(id); if(acct)return aiAccountStatusText(acct);
     if(id==='claude'){ const c=ai.claude||{};
       if(!c.installed)return 'not installed';
       if(!c.ready)return 'not signed in';
@@ -103,7 +111,7 @@ if(window.desktop&&window.desktop.aiStatus){
     usageDraw();
     // the Agent tab's "Pick an AI" card and nudge (welcome.js) follow this
     const readyNow=!!(ai&&ai.ready);
-    if(window.agentAiReady!==readyNow){ window.agentAiReady=readyNow; if(typeof render==='function')render(); }
+    if(window.agentAiReady!==readyNow){ window.agentAiReady=readyNow; if(typeof render==='function')render(); if(typeof drawSetupList==='function')drawSetupList(); }
     const list=$('aiList'); list.innerHTML='';
     ai.order.forEach(function(p,i){
       const box=el('div',''); box.style.cssText='border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;margin-bottom:8px';
@@ -131,6 +139,8 @@ if(window.desktop&&window.desktop.aiStatus){
         if(site){ const go=el('button','ghost mono','Open '+site[0]+' ↗'); go.addEventListener('click',function(){ openExternal(site[1]); }); w.appendChild(go); }
         box.appendChild(w);
       }
+      const acct=acctOf(p.id);
+      if(acct){ aiAccountCard(box,acct,acctH,ai.names[acct.base]||acct.base); list.appendChild(box); return; }
       if(p.id==='claude'){
         const c=ai.claude||{};
         const busy=function(b,t){ b.disabled=true; b.textContent=t; };
@@ -296,6 +306,8 @@ if(window.desktop&&window.desktop.aiStatus){
         box.appendChild(el('p','settings-hint','OpenRouter gets the agent browser (mail closed) when the model can use tools, but no files or Gmail. It only uses providers that don’t collect or train on what’s sent.'));
         box.lastChild.style.margin='8px 0 0';
       }
+      // once this AI works: room for a second account of it, which takes over when this one runs out
+      if(!/^(not installed|not signed in|needs an API key|no key yet)$/.test(why))aiAddAccountRow(box,p.id,ai.names[p.id],acctH);
       list.appendChild(box);
     });
     // Claude after the others, so his Claude usage is kept for building the app
@@ -345,6 +357,11 @@ if(window.desktop&&window.desktop.aiStatus){
     if(!on.length){ wrap.appendChild(el('p','settings-hint','No AI is switched on.')); box.appendChild(wrap); return; }
     const u=use||{};
     on.forEach(function(id){
+      const acct=acctOf(id);
+      if(acct){ // its own limits aren't read: only whether it's sitting out
+        if(acct.held)row(ai.names[id],1,'out until '+fmtWhen(acct.held),true);
+        else row(ai.names[id],null,acct.ready?'ready · its own usage isn’t shown here':'not set up');
+        return; }
       if(id==='claude'){
         const c=u.claude;
         if(!c){ row('Claude · 5h',null,use?'no reading yet':'checking…'); return; }
@@ -376,6 +393,11 @@ if(window.desktop&&window.desktop.aiStatus){
       } else if(ai[id]&&ai[id].compat){
         const o=u[id];
         if(!ai[id].hasKey){ row(ai.names[id],null,'no key yet'); return; }
+        const rt=o&&o.rate; // Groq's own count of requests left today
+        if(rt){
+          if(o.out){ row(ai.names[id],1,'out until '+(o.out===true?'it resets':fmtWhen(o.out)),true); return; }
+          row(ai.names[id],o.pct,rt.left+' of '+rt.limit+' requests left today'+(rt.resetsAt&&rt.left<rt.limit?' · full again '+fmtWhen(rt.resetsAt):''));
+          return; }
         row(ai.names[id],null,o?o.calls+' calls · '+o.tokensText+' tokens this month (free tier)':'0 calls this month (free tier)');
       } else if(id==='openrouter'){
         const o=u.openrouter;
@@ -397,16 +419,17 @@ if(window.desktop&&window.desktop.aiStatus){
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
    config). Each item keeps its id (from the feed's own UID), so a re-import never adds copies. What the
    feed last said per item is remembered here, so: a deadline the teacher moves is followed unless he set
-   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off. */
-const FEED_SEEN_KEY='tasks.feedSeen';
+   his own date; one he deleted (or finished and cleared) isn't brought back; one the school takes down comes off;
+   one gone two days past its deadline (school-overdue.js) comes back if the school puts it on a day to come. */
 async function importCourseFeeds(){
   if(!window.desktop||!window.desktop.feedsFetch)return null;
   const r=await window.desktop.feedsFetch();
-  let seen={}; try{ seen=JSON.parse(localStorage.getItem(FEED_SEEN_KEY)||'{}')||{}; }catch(e){}
+  const seen=feedSeenRead(); // what the feed last said per item (school-overdue.js, which reads it too)
   const ws=schoolConfigured()?'school':'personal';
   const byId={}; state.tasks.forEach(function(t){ byId[t.id]=t; });
   const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
   const norm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
+  const today=formatDate(new Date());
   let added=0, moved=0, sited=0;
   r.items.forEach(function(e){
     const was=seen[e.id], now=e.due+' '+(e.dueTime||'');
@@ -414,10 +437,14 @@ async function importCourseFeeds(){
     const t=byId[e.id];
     if(t){
       if(e.source&&t.ws==='school'&&t.site!==e.source){ t.site=e.source; sited++; } // which school site it's on (agent/course-sites.js)
+      if(e.wrongTag&&t.tag===e.wrongTag){ t.tag=null; sited++; } // a department name the feed once gave as its class
       if(was&&was!==now&&!t.done&&(t.due+' '+(t.dueTime||''))===was){ t.due=e.due; t.dueTime=e.dueTime; moved++; }
       return;
     }
-    if(was||tombed[e.id])return;
+    // taken off once its deadline was two days gone (the sweep in school-overdue.js, or by hand), and the school has
+    // since put it on a day to come (a quiz reopened): it's back on
+    if(tombed[e.id]&&was&&was!==now&&e.due>=today&&pastSaving(schoolDeadline(null,was),new Date()))state.tombstones=state.tombstones.filter(function(x){ return x.id!==e.id; });
+    else if(was||tombed[e.id])return;
     // he already put it on a list himself: same day, same name
     if(state.tasks.some(function(x){ return x.due===e.due&&norm(x.title)===norm(e.title); }))return;
     const n={id:e.id,title:e.title,done:false,due:e.due,dueTime:e.dueTime,tag:e.course||null,ws:ws,subs:[],googleEventId:null,created:Date.now()};
@@ -429,14 +456,94 @@ async function importCourseFeeds(){
      he hasn't touched (no date of his own, no steps, no plan) comes off. Only when every link answered in full,
      so a feed that hiccups never empties the list */
   const live={}; r.items.forEach(function(e){ live[e.id]=1; });
-  const today=formatDate(new Date());
   const vanished=r.complete?state.tasks.filter(function(t){
     return /^ics-/.test(t.id)&&!live[t.id]&&seen[t.id]&&!t.done&&t.due&&t.due>=today&&
-      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length)&&!t.plan;
+      (t.due+' '+(t.dueTime||''))===seen[t.id]&&!(t.subs&&t.subs.length);
   }).map(function(t){ return t.id; }):[];
   const tidy=tidySchool(r,vanished);
   if(added||moved||sited||tidy.merged||tidy.labeled||tidy.removed||tidy.gone)touch();
+  ensureClassSweep(Array.from(new Set(r.items.map(function(e){ return e.source; }).filter(Boolean))));
   return {added:added,moved:moved,count:r.items.length,errors:r.errors,tidy:tidy};
+}
+/* The class sweep (agent/class-sweep.js): once a week the local model goes through every class on Blackboard /
+   D2L and brings back the work the calendar links miss (a class run from Connect or a syllabus never shows
+   up on them). Its finds come in here, the way calendar items do: each keeps its id ("bbs-…", from the class
+   and the name), a date the course moves is followed unless he set his own, one he deleted isn't brought
+   back, and one the calendar or he already has (same class or none, a day apart, same name give or take)
+   isn't added again; an untagged calendar item it matches gets the class instead. */
+const SWEEP_SEEN_KEY='tasks.sweepSeen';
+function importClassItems(items){
+  if(!Array.isArray(items)||!items.length)return {added:0,moved:0,labeled:0};
+  let seen={}; try{ seen=JSON.parse(localStorage.getItem(SWEEP_SEEN_KEY)||'{}')||{}; }catch(e){}
+  const ws=schoolConfigured()?'school':'personal';
+  const tombed={}; state.tombstones.forEach(function(x){ tombed[x.id]=1; });
+  let added=0, moved=0, labeled=0;
+  items.forEach(function(e){
+    if(!e||!/^bbs-[0-9a-f]{20}$/.test(String(e.id||''))||!e.title||!e.course)return;
+    const was=seen[e.id], now=(e.due||'')+' '+(e.dueTime||'');
+    seen[e.id]=now;
+    const t=state.tasks.find(function(x){ return x.id===e.id; });
+    if(t){
+      if(was!=null&&was!==now&&!t.done&&((t.due||'')+' '+(t.dueTime||''))===was){ t.due=e.due||null; t.dueTime=e.dueTime||null; moved++; }
+      return;
+    }
+    if(tombed[e.id]||was!=null)return;
+    const twin=state.tasks.find(function(x){
+      if(taskWs(x)!=='school'&&x.ws!=='school'&&!(x.tag&&x.tag===e.course))return false;
+      if(x.tag&&x.tag!==e.course)return false;
+      if(!!x.due!==!!e.due||(x.due&&Math.abs((new Date(x.due+'T12:00')-new Date(e.due+'T12:00'))/864e5)>1))return false;
+      return sameAssignment(x.title,e.title);
+    });
+    if(twin){ if(!twin.tag){ twin.tag=e.course; labeled++; } return; }
+    const n={id:e.id,title:e.title,done:false,due:e.due||null,dueTime:e.dueTime||null,tag:e.course,ws:ws,subs:[],googleEventId:null,created:Date.now()};
+    if(ws==='school'){ n.kind=e.kind||'regular'; n.notes=[e.notes,e.url].filter(Boolean).join('\n\n')||null; if(e.source)n.site=e.source; }
+    state.tasks.push(n); added++;
+  });
+  try{ localStorage.setItem(SWEEP_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
+  if(added||moved||labeled)touch();
+  return {added:added,moved:moved,labeled:labeled};
+}
+/* Work the sweep saw turned in on the class site ("1 / 1" attempts, Submitted): its open School item is checked
+   off, and an Agent task made from it. Same class (or none), same name give or take, within a day when both
+   have dates. Each is checked off once: if he opens it again, a later sweep leaves it alone. */
+const SWEEP_DONE_KEY='tasks.sweepDone';
+// the kind of work a title names: a quiz is never its homework twin ("Quiz: Star Life and Death" / "Homework: …")
+function workKind(s){ const m=String(s||'').toLowerCase().match(/\b(quiz|homework|hw|test|exam|midterm|final|discussion|reply|assignment|worksheet|lab|project|essay|paper)\b/); return m?(m[1]==='hw'?'homework':m[1]):null; }
+function markClassDone(items){
+  if(!Array.isArray(items)||!items.length)return {checked:0,titles:[]};
+  let already={}; try{ already=JSON.parse(localStorage.getItem(SWEEP_DONE_KEY)||'{}')||{}; }catch(e){}
+  const checked=[];
+  items.forEach(function(e){
+    if(!e||!e.course||!e.title)return;
+    const t=state.tasks.find(function(x){
+      if(x.done||already[x.id])return false;
+      if(x.ws!=='school'&&!(taskWs(x)==='agent'&&x.fromWs==='school'))return false;
+      if(x.tag&&x.tag!==e.course)return false;
+      if(e.due&&x.due&&Math.abs((new Date(x.due+'T12:00')-new Date(e.due+'T12:00'))/864e5)>1)return false;
+      const a=workKind(x.title), b=workKind(e.title);
+      if(a&&b&&a!==b)return false;
+      return sameAssignment(x.title,e.title);
+    });
+    if(!t)return;
+    already[t.id]=Date.now(); setDone(t,true); checked.push((t.tag?t.tag+': ':'')+t.title);
+  });
+  try{ localStorage.setItem(SWEEP_DONE_KEY,JSON.stringify(already)); }catch(e){}
+  if(checked.length)touch();
+  return {checked:checked.length,titles:checked};
+}
+/* the sweep's task: one, made once on a computer with a course calendar and a local model (the same id
+   everywhere, so two computers don't make two). Every Sunday morning; delete it and it stays gone */
+function ensureClassSweep(hosts){
+  if(typeof localStat==='undefined'||!localStat||!localStat.model)return;
+  if(state.tasks.some(function(x){ return x.id==='class-sweep'; })||state.tombstones.some(function(x){ return x.id==='class-sweep'; }))return;
+  const schools=(hosts||[]).filter(function(h){ return /blackboard|d2l|brightspace/i.test(h); });
+  if(!schools.length)return;
+  const repeat={every:'week',day:0,at:'07:00'};
+  const t={id:'class-sweep',classSweep:true,title:'Check my classes for work the school calendar misses',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
+    created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],lane:'local',repeat:repeat,nextRun:nextRepeatAt(repeat,Date.now()),
+    notes:'My classes are on: '+schools.map(function(h){ return 'https://'+h+(/blackboard/i.test(h)?'/ultra/course':'/d2l/home'); }).join(' and ')};
+  agentSay(t,'sys','Weekly class sweep: '+localModelName()+' goes through every class on your course sites and adds the work your school calendar link misses to your School list. Runs now, then every Sunday at 7:00 AM.');
+  state.tasks.push(t); touch();
 }
 /* Tidy the School list after each import, so each assignment is there once and labeled with its course:
    - course names and loose codes as tags ("Astronomy", "ecn322") become the code ("PHYS 1010", "ECN 322");
@@ -515,7 +622,6 @@ function tidySchool(r,vanished){
       if(!f.tag&&h.tag)f.tag=h.tag;
       if(schoolKind(f)==='regular'&&schoolKind(h)!=='regular')f.kind=h.kind;
       if(h.notes&&String(f.notes||'').indexOf(h.notes)<0)f.notes=h.notes+(f.notes?'\n\n'+f.notes:'');
-      if(!f.plan&&h.plan){ f.plan=h.plan; f.planSet=h.planSet; }
       if(h.subs&&h.subs.length)f.subs=(f.subs||[]).concat(h.subs);
     });
     // one match: keep whichever name says more ("Homework: Gas Giants, Rings, and Moons" over "Homework: Gas Giants")
@@ -579,7 +685,8 @@ function logEntries(){
   logActions.forEach(function(a){
     let what=String(a.what||''); if(a.label)what+=' “'+a.label+'”'; if(Array.isArray(a.files))what+=' '+a.files.join(', ');
     const site=a.url?String(a.url).replace(/^https?:\/\/(www\.)?/,'').slice(0,60):'';
-    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:''),task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
+    const on=a.where?' · on '+a.where:''; // done by the local model's own computer (Lupa), from its heartbeat
+    rows.push({at:a.at||0,kind:'action',text:what+(site?' · '+site:'')+on,task:a.task||'',title:(a.task?a.task+'\n':'')+(a.url||'')});
   });
   state.tasks.forEach(function(t){
     if(taskWs(t)!=='agent'||!Array.isArray(t.history))return;
@@ -666,7 +773,8 @@ if(window.desktop&&window.desktop.feedsFetch){
     // (the Google Play build can't ask for it at all: android/app/src/play/AndroidManifest.xml)
     const canAsk=window.ROMULUS_STORE!=='play';
     $('wakeOverlayBtn').hidden=!s.on||s.overlay||!canAsk;
-    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
+    // iPhone (WakeWordPlugin.swift): iOS lets it listen only while Romulus is open
+    $('wakeStatus').textContent=s.downloading?'downloading…':s.on?(s.foregroundOnly?'listening while Romulus is open':s.overlay?'listening while the screen is on':canAsk?'on · you’ll tap a notification to talk unless you allow this':'on · in another app, tap the notification to talk'):'';
   }
   function refresh(){ call('status').then(show).catch(function(){}); }
   cap.addListener('WakeWord','progress',function(d){ if(d&&d.pct!=null)$('wakeStatus').textContent='downloading speech model… '+d.pct+'%'; });
@@ -699,11 +807,13 @@ $('tabList').addEventListener('click',function(){ switchTab('list'); });
 $('tabAgent').addEventListener('click',function(){ switchTab('agent'); });
 $('connectBtn').addEventListener('click',function(){
   const ws=this.getAttribute('data-ws');
-  // every list syncs once the project is set up, so the personal fields are what to fill in
-  const field='syncUrl', label=null;
+  // every list syncs once the project is set up, so the personal fields are what to fill in. The family list has a
+  // box of its own, drawn once Device sync opens (hosted-sync.js), so it's looked for a moment later
+  const fam=ws==='family'&&$('familyListBox');
   setSettingsOpen(true);
   $('syncSection').open=true;
-  requestAnimationFrame(function(){
+  (fam?function(fn){ setTimeout(fn,900); }:requestAnimationFrame)(function(){
+    const field=fam&&!$('familyListBox').hidden?'familyListBox':fam&&!$('hostedBox').hidden?'hostedBox':'syncUrl', label=null;
     const f=$(field); (label?$(label):f).scrollIntoView({block:'center'}); f.focus();
     [f,label&&$(label)].filter(Boolean).forEach(function(n){ n.classList.add('flash'); setTimeout(function(){ n.classList.remove('flash'); },1800); });
   });
@@ -711,9 +821,12 @@ $('connectBtn').addEventListener('click',function(){
 $('tabCal').addEventListener('click',function(){ switchTab('calendar'); });
 $('tabSchool').addEventListener('click',function(){ switchTab('school'); });
 $('tabWork').addEventListener('click',function(){ switchTab('work'); });
+$('tabFamily').addEventListener('click',function(){ switchTab('family'); });
 $('tabIdeas').addEventListener('click',function(){ switchTab('ideas'); });
 $('tabHours').addEventListener('click',function(){ switchTab('hours'); });
+$('tabKitchen').addEventListener('click',function(){ switchTab('kitchen'); });
 $('tabFinance').addEventListener('click',function(){ switchTab('finance'); });
+$('tabHealth').addEventListener('click',function(){ switchTab('health'); });
 $('calPrev').addEventListener('click',function(){ state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCal(); });
 $('calNext').addEventListener('click',function(){ state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCal(); });
 $('calToday').addEventListener('click',function(){ const n=new Date(); state.calYear=n.getFullYear(); state.calMonth=n.getMonth(); renderCal(); });
@@ -724,7 +837,7 @@ $('clearDone').addEventListener('click',function(){
   else {
     clearTimeout(clearTimer); state.confirmClear=false;
     const now=Date.now();
-    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':'list'; // only clear the tab you're looking at
+    const curTab=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='work'?'work':state.activeTab==='family'?'family':'list'; // only clear the tab you're looking at
     const gone=function(t){ return t.done&&inTab(t,curTab); };
     reviewLogCleared(state.tasks.filter(gone)); // still counted in the year in review
     state.tasks.forEach(function(t){ if(gone(t))state.tombstones.push({id:t.id,deletedAt:now}); });
@@ -733,7 +846,7 @@ $('clearDone').addEventListener('click',function(){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key!=='/'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
+  if(e.key!=='/'||isViewTab(state.activeTab))return; const a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return; e.preventDefault(); $('newTitle').focus();
 });
 
 /* ── search ── */
@@ -742,22 +855,41 @@ $('searchBox').addEventListener('keydown',function(e){
   if(e.key==='Escape'){ this.value=''; state.search=''; render(); this.blur(); }
   if(e.key==='Enter')this.blur();
 });
+/* the tab bar scrolls sideways with its scrollbar hidden: a fade at an edge says there's more that way
+   (styles.css .tabs.more-left / .more-right), and on a computer the mouse wheel scrolls it along */
+(function(){
+  const bar=document.querySelector('.tabs'); if(!bar)return;
+  function edge(){
+    bar.classList.toggle('more-left',bar.scrollLeft>4);
+    bar.classList.toggle('more-right',bar.scrollWidth-bar.clientWidth-bar.scrollLeft>4);
+  }
+  bar.addEventListener('scroll',edge,{passive:true}); window.addEventListener('resize',edge);
+  bar.addEventListener('wheel',function(e){
+    if(bar.scrollWidth<=bar.clientWidth||Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;
+    bar.scrollLeft+=e.deltaY; e.preventDefault();
+  },{passive:false});
+  new MutationObserver(edge).observe(bar,{attributes:true,subtree:true,attributeFilter:['class','hidden']}); // a tab switched off or on
+  edge();
+})();
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     e.preventDefault();
-    if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')switchTab('list');
+    if(state.activeTab==='ideas'){ $('ideaSearch').focus(); $('ideaSearch').select(); return; } // Notes has its own search box
+    if(state.activeTab==='calendar'||isViewTab(state.activeTab))switchTab('list');
     $('searchBox').focus(); $('searchBox').select();
   }
 });
 
-/* ── keyboard navigation: arrows select, Space completes, Enter expands, Delete removes ── */
+/* ── keyboard navigation: arrows select, Enter expands, Delete removes ── */
 function selectNeighbor(){
   const i=navOrder.indexOf(state.selectedId);
   state.selectedId=navOrder[i+1]!==undefined?navOrder[i+1]:(i>0?navOrder[i-1]:null);
 }
 document.addEventListener('keydown',function(e){
-  if(state.activeTab==='calendar'||state.activeTab==='ideas'||state.activeTab==='hours'||state.activeTab==='finance')return;
-  const a=document.activeElement;
+  if(state.activeTab==='calendar'||isViewTab(state.activeTab))return;
+  // the key's own target, not what has focus now: a field's handler (Enter adds a subtask and re-renders, or blurs)
+  // runs first, so by the time this fires the focus is on the body and Enter would collapse the open task
+  const a=e.target&&e.target.tagName?e.target:document.activeElement;
   if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='BUTTON'))return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     e.preventDefault();
@@ -772,7 +904,8 @@ document.addEventListener('keydown',function(e){
   if(!state.selectedId)return;
   const t=state.tasks.find(function(x){ return x.id===state.selectedId; });
   if(!t)return;
-  if(e.key===' '){ e.preventDefault(); selectNeighbor(); setDone(t,!t.done); touch(); }
+  // no Space shortcut: it checked the task off and moved to the next, so a few presses emptied his day.
+  // Checking off is the circle only.
   // only the Delete key — Backspace is too easy to hit while typing (it once deleted a task
   // when a re-render stole focus from the answer box)
   else if(e.key==='Delete'){ e.preventDefault(); selectNeighbor(); deleteTask(t); }

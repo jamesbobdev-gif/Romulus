@@ -21,7 +21,12 @@ mobile/school-sync-config.json
 mobile/android/app/src/main/res/raw/sync_config.json
 mobile/android/app/src/main/res/raw/agent_sync_config.json
 mobile/android/app/src/main/res/raw/oauth_clients.json
+mobile/ios/App/App/oauth_clients.json
 mobile/android/app/src/main/res/raw/school_sync_config.json
+
+# the Firebase project for the Agent's notifications (see mobile/push-config.example.json)
+mobile/push-config.json
+mobile/android/app/src/main/res/raw/push_config.json
 
 # local safety copies made before installs
 .backup-*/
@@ -45,3 +50,10 @@ oauth-clients.json
 *.keystore
 *.jks
 signing/
+
+# the Supabase CLI's link to the project (project ref, pooler address)
+supabase/.temp/
+
+# the demo recording (scripts/demo): the built page and its frames
+scripts/demo/build/
+scripts/demo/frames/

@@ -28,7 +28,7 @@ test('Not now skips that version only', () => {
 
 test('an Update said on any device covers that version and older ones', () => {
   assert.strictEqual(onAvailable('1.0.9', { updateYes: '1.0.9' }), 'download');
-  assert.strictEqual(onAvailable('1.0.8', { updateYes: '1.0.10' }), 'download');
+  assert.strictEqual(onAvailable('1.0.8', { updateYes: '1.0.10' }), 'offer'); // a yes names one version: a shared yes of "999" can't approve every release
   assert.strictEqual(onAvailable('1.0.10', { updateYes: '1.0.9' }), 'offer');
   assert.strictEqual(onAvailable('1.0.9', { updateYes: '1.0.9', updateSkip: '1.0.9' }), 'download');
 });
@@ -41,6 +41,16 @@ test('the answer from another device is remembered here', () => {
   updater.shared({ yes: '1.0.10' });
   assert.strictEqual(cfg.updateYes, '1.0.10');
   assert.strictEqual(updater.shared(null).state, 'none');
+});
+
+test('early access is a setting of its own, off until turned on', () => {
+  let cfg = { updates: 'auto' };
+  updater.init({ readConfig: () => Object.assign({}, cfg), writeConfig: (c) => { cfg = c; }, version: '1.0.8', agentLog: () => {} });
+  assert.strictEqual(updater.handlers['update:get-early'](), false);
+  assert.strictEqual(updater.handlers['update:set-early'](null, true), true);
+  assert.deepStrictEqual(cfg, { updates: 'auto', earlyAccess: true });
+  assert.strictEqual(updater.handlers['update:set-early'](null, 0), false);
+  assert.strictEqual(updater.handlers['update:get-early'](), false);
 });
 
 // renderer/js/update-sync.js, with the sync functions it uses stood in for

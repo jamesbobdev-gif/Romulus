@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { trayTip } = require('../main/tray');
+const { trayTip, hintDue } = require('../main/tray');
 
 const today = new Date(2026, 9, 15, 14, 30);
 
@@ -20,4 +20,12 @@ test('done, undated and agent tasks are left out', () => {
 
 test('only due today', () => {
   assert.strictEqual(trayTip([{ due: '2026-10-15' }], today), 'Romulus — 1 due today');
+});
+
+test('the notice about the ^ overflow is for Windows, once per computer', () => {
+  assert.strictEqual(hintDue({}, 'win32'), true);
+  assert.strictEqual(hintDue(undefined, 'win32'), true);
+  assert.strictEqual(hintDue({ trayHintShown: true }, 'win32'), false);
+  assert.strictEqual(hintDue({}, 'darwin'), false);
+  assert.strictEqual(hintDue({}, 'linux'), false);
 });

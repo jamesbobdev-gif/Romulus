@@ -7,22 +7,24 @@
    The channel's name is a hash of the agent list's sync key, and every message is sealed with AES-GCM
    under a key made from it, so a message that doesn't open is dropped: only his devices can watch or click. */
 const liveRelay=(function(){
-  const LEASE_MS=12000, PING_MS=4000, FRAME_GAP_MS=350, MAX_MSG=230*1024;
+  const LEASE_MS=12000, PING_MS=4000, FRAME_GAP_MS=350, MAX_MSG=230*1024, STALE_MS=30000;
   const INPUT=['Input.dispatchMouseEvent','Input.dispatchKeyEvent','Input.insertText'];
   let info=null, infoAt=0, key=null, sock=null, joined=false, ref=0, hb=null, retry=null, tries=0, lastMsg=0;
 
   /* ── sealing ── */
-  function b64(bytes){ let s=''; for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000)); return btoa(s); }
-  function unb64(s){ const bin=atob(s), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out; }
+  const b64=bytesToB64, unb64=b64ToBytes;
   async function seal(obj){
     const iv=crypto.getRandomValues(new Uint8Array(12));
-    const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,new TextEncoder().encode(JSON.stringify(obj))));
+    const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,new TextEncoder().encode(JSON.stringify(Object.assign({at:Date.now()},obj)))));
     return {iv:b64(iv),ct:b64(ct)};
   }
   async function open(p){
     if(!p||typeof p.iv!=='string'||typeof p.ct!=='string')return null;
-    try{ return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(p.iv)},key,unb64(p.ct)))); }
+    let msg=null;
+    try{ msg=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(p.iv)},key,unb64(p.ct)))); }
     catch(e){ return null; } // not sealed with his key: ignored
+    if(!msg||typeof msg.at!=='number'||Math.abs(Date.now()-msg.at)>STALE_MS)return null; // a message kept and sent again later: ignored
+    return msg;
   }
 
   /* ── the channel (Phoenix, like sync.js's live updates) ── */
@@ -43,13 +45,17 @@ const liveRelay=(function(){
     return info;
   }
   function close(){
-    clearInterval(hb); clearTimeout(retry); joined=false;
+    clearInterval(hb); clearTimeout(retry); retry=null; joined=false;
     if(sock){ const s=sock; sock=null; try{ s.close(); }catch(e){} }
   }
   function connect(){
-    if(!info||sock||typeof WebSocket!=='function')return;
+    // retry: a try is already waiting its turn. tick() calls this every second, and without the wait a refused
+    // socket (a key that wasn't accepted, no network) was opened again about every three seconds, all day
+    if(!info||sock||retry||typeof WebSocket!=='function'||/^enc:/.test(String(info.key||'')))return; // a key the keyring couldn't open
     const s=new WebSocket(info.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(info.key)+'&vsn=1.0.0');
     sock=s; joined=false; lastMsg=Date.now();
+    // never opened, or the join was never answered: start over rather than sit on a socket that carries nothing
+    setTimeout(function(){ if(sock===s&&!joined){ try{ s.close(); }catch(e){} } },15000);
     s.onopen=function(){
       ref++; s.send(JSON.stringify({topic:'realtime:'+info.topic,event:'phx_join',ref:String(ref),join_ref:String(ref),
         payload:{config:{broadcast:{self:false,ack:false},presence:{key:''},postgres_changes:[],private:false}}}));
@@ -62,6 +68,8 @@ const liveRelay=(function(){
       lastMsg=Date.now();
       let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
       if(m.event==='phx_reply'&&m.topic==='realtime:'+info.topic&&m.payload&&m.payload.status==='ok'){ joined=true; tries=0; return; }
+      // the join was refused (too many at once, a server restart): the socket stayed open and nothing ever arrived
+      if(m.event==='phx_reply'&&m.topic==='realtime:'+info.topic&&!joined&&m.payload&&m.payload.status==='error'){ try{ s.close(); }catch(e){} return; }
       if(m.event==='broadcast'&&m.payload&&m.payload.event==='m'){ const msg=await open(m.payload.payload); if(msg)onMessage(msg); }
       else if(m.event==='phx_error'||m.event==='phx_close'){ try{ s.close(); }catch(e){} }
     };
@@ -69,7 +77,7 @@ const liveRelay=(function(){
       clearInterval(hb);
       if(sock!==s)return; // closed on purpose
       sock=null; joined=false;
-      retry=setTimeout(connect,Math.min(30000,1000*Math.pow(2,tries++)));
+      retry=setTimeout(function(){ retry=null; connect(); },Math.min(60000,1000*Math.pow(2,tries++))); // 1s, 2s, 4s … up to a minute
     };
   }
   // one at a time, in order: sealing is async, and a mouse-up that overtakes its mouse-down is no click
@@ -85,24 +93,30 @@ const liveRelay=(function(){
 
   /* ── the mini PC: stream while watched ── */
   // last: the latest picture, sent again to a viewer who just opened it (a page sitting still sends no new ones)
-  const pub={until:0, want:null, cdp:null, page:null, lastFrame:0, last:null, pagesAt:0, nextId:1};
+  const pub={until:0, want:null, cdp:null, page:null, lastFrame:0, last:null, trail:null, size:0, pagesAt:0, nextId:1};
+  // picture sizes, best first: a busy page (a course page full of text) can come out over Realtime's
+  // message size, and a picture that's dropped and never followed by another leaves the viewer on "Connecting…"
+  const SIZES=[{q:45,w:1100},{q:35,w:900},{q:25,w:720},{q:20,w:560}];
   function cdpSend(method,params){ if(pub.cdp&&pub.cdp.readyState===1)pub.cdp.send(JSON.stringify({id:pub.nextId++,method:method,params:params||{}})); }
-  function stopCast(){ pub.last=null; if(pub.cdp){ const c=pub.cdp; pub.cdp=null; pub.page=null; try{ c.close(); }catch(e){} } }
+  function startCast(){ const s=SIZES[pub.size]; cdpSend('Page.startScreencast',{format:'jpeg',quality:s.q,maxWidth:s.w,maxHeight:s.w,everyNthFrame:1}); }
+  function stopCast(){ pub.last=null; clearTimeout(pub.trail); pub.trail=null; if(pub.cdp){ const c=pub.cdp; pub.cdp=null; pub.page=null; try{ c.close(); }catch(e){} } }
   function cast(page){
     stopCast();
+    pub.size=0; pub.lastFrame=0; // a new tab's first picture always goes, whatever the last tab just sent
     const c=new WebSocket(page.ws); pub.cdp=c; pub.page=page;
-    c.onopen=function(){
-      cdpSend('Page.bringToFront'); cdpSend('Page.enable');
-      cdpSend('Page.startScreencast',{format:'jpeg',quality:45,maxWidth:1100,maxHeight:1100,everyNthFrame:1});
-    };
+    c.onopen=function(){ cdpSend('Page.bringToFront'); cdpSend('Page.enable'); startCast(); };
     c.onmessage=function(ev){
       let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
       if(m.method!=='Page.screencastFrame')return;
       cdpSend('Page.screencastFrameAck',{sessionId:m.params.sessionId});
-      const now=Date.now();
-      if(now-pub.lastFrame<FRAME_GAP_MS)return; // a few a second is plenty, and Realtime counts messages
-      pub.lastFrame=now;
+      // sealed, a picture grows by about a third: too big to send → the same page smaller
+      if(m.params.data.length>MAX_MSG*0.72&&pub.size<SIZES.length-1){ pub.size++; cdpSend('Page.stopScreencast'); startCast(); return; }
       pub.last={t:'frame',id:page.id,data:m.params.data,meta:m.params.metadata};
+      // a few a second is plenty, and Realtime counts messages; the latest one still goes once the gap is up,
+      // so a page that stops changing right after a burst isn't left showing nothing
+      const wait=FRAME_GAP_MS-(Date.now()-pub.lastFrame);
+      if(wait>0){ if(!pub.trail)pub.trail=setTimeout(function(){ pub.trail=null; if(pub.cdp===c&&pub.last){ pub.lastFrame=Date.now(); send(pub.last); } },wait); return; }
+      pub.lastFrame=Date.now();
       send(pub.last);
     };
     c.onclose=function(){ if(pub.cdp===c){ pub.cdp=null; pub.page=null; } };
@@ -129,7 +143,7 @@ const liveRelay=(function(){
         if(!was||switched){ pub.pagesAt=0; pubTick(); } // a tab he picked: switch now, not at the next tick
         if(msg.fresh&&pub.last&&pub.last.id===msg.id)send(pub.last);
         else if(msg.fresh&&pub.page&&pub.page.id===msg.id){ // nothing kept yet: starting again draws one
-          cdpSend('Page.stopScreencast'); cdpSend('Page.startScreencast',{format:'jpeg',quality:45,maxWidth:1100,maxHeight:1100,everyNthFrame:1});
+          cdpSend('Page.stopScreencast'); startCast();
         }
       }
       else if(msg.t==='input'&&INPUT.indexOf(msg.method)>=0&&pub.page&&msg.id===pub.page.id)cdpSend(msg.method,msg.params);
@@ -173,6 +187,7 @@ const liveRelay=(function(){
         let m; try{ m=JSON.parse(s); }catch(e){ return; }
         if(INPUT.indexOf(m.method)>=0)send({t:'input',id:page.id,method:m.method,params:m.params});
       };
+      w.again=function(){ send({t:'watch',id:page.id,fresh:true}); }; // no picture yet: ask for one again
       w.close=function(){ w.readyState=3; view.watchers=view.watchers.filter(function(x){ return x!==w; }); };
       view.watchers.push(w); view.wantId=page.id; view.pingAt=Date.now();
       send({t:'watch',id:page.id,fresh:true}); // fresh: send me the picture you have

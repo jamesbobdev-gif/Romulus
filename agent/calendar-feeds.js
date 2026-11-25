@@ -20,7 +20,7 @@ function parse(text, now = new Date()) {
 }
 
 const unescape = (s) => String(s || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1').trim();
-const pad = (n) => String(n).padStart(2, '0');
+const { pad2: pad, dayKey } = require('./util');
 
 // DTEND/DTSTART → local {due, dueTime}; UTC times ("…Z") are shown in this computer's time zone
 function when(p) {
@@ -32,13 +32,14 @@ function when(p) {
   if (!m) return null;
   // a zoned time (TZID=America/New_York) is taken as local: his schools are in his own time zone
   const d = m[7] ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6])) : new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-  return { due: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), dueTime: pad(d.getHours()) + ':' + pad(d.getMinutes()), at: d };
+  return { due: dayKey(d), dueTime: pad(d.getHours()) + ':' + pad(d.getMinutes()), at: d };
 }
 
-// "1170-UNIV-BIO101-2411: Fall 26 (1) BIO 101 Intro to Biology" → "BIO 101"
+// "1170-UNIV-BIO101-2411: Fall 26 (1) BIO 101 Intro to Biology" → "BIO 101". Text with no course code
+// ("Tri-C's School of Liberal Arts and Sciences", a college-wide event) is no class at all: null
 function courseCode(s) {
   const m = String(s || '').match(/\b([A-Z]{2,5})[ -]?(\d{3,4}[A-Z]?)\b/g);
-  if (!m) return String(s || '').trim().slice(0, 40) || null;
+  if (!m) return null;
   return m[m.length - 1].replace(/^([A-Z]+)[ -]?/, '$1 ');
 }
 
@@ -60,7 +61,10 @@ function toItem(ev, now) {
   if (ph) title = title.slice(0, ph.index);
   title = cleanTitle(title);
   const notes = unescape(ev.DESCRIPTION && ev.DESCRIPTION.value).replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').slice(0, 2000);
-  return { uid, title: title.slice(0, 200), course: course ? courseCode(course) : null, courseName: courseName(course),
+  const code = course ? courseCode(course) : null;
+  // before 2026-11-19 that text itself became the class, cut at 40 characters: the page takes it back off (wiring.js)
+  const wrongTag = !code && course.trim() ? course.trim().slice(0, 40) : null;
+  return { uid, title: title.slice(0, 200), course: code, courseName: courseName(course), wrongTag,
     due: t.due, dueTime: t.dueTime, phase, notes: notes || null, url: ev.URL ? ev.URL.value.trim() : null };
 }
 
@@ -107,7 +111,8 @@ async function fetchAll(urls) {
     if (!u) { errors.push(String(raw).slice(0, 40) + '…: not an https link'); continue; }
     const host = new URL(u).hostname;
     try {
-      const r = await fetch(u, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
+      // the link and every redirect it answers with must be public (agent/helpers.js): never this computer or the network
+      const r = await require('./helpers').fetchPublic(u, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } });
       const text = await r.text();
       if (!r.ok || !/BEGIN:VCALENDAR/.test(text)) { errors.push(host + ': ' + (r.ok ? 'not a calendar' : 'HTTP ' + r.status)); complete = false; continue; }
       if (!/BEGIN:VEVENT/.test(text)) complete = false;

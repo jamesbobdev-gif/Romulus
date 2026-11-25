@@ -8,7 +8,7 @@
 
 **Your money, without the subscription.** The Finance tab does what people pay Rocket Money, Monarch or Copilot for: every account in one place, recurring bills and subscriptions found automatically, net worth over time, statements, receipts from your inbox, live stock prices. Read-only, about $15 a year for the bank connection, and the data lives in an encrypted vault on your computer rather than on someone's server.
 
-**And a School list, a phone app, and more.** Read on.
+**And a School list, a Kitchen tab, a Health tab, a phone app, and more.** Read on.
 
 This repository holds the **installers**. Download the latest from the [Releases](../../releases/latest) page.
 
@@ -17,24 +17,29 @@ This repository holds the **installers**. Download the latest from the [Releases
 ## What it does
 
 ### The lists
-- **Human**: your own to-dos. Due dates, times, tags, subtasks, repeats, drag to reorder, search.
+- **To do**: your own to-dos. Due dates, times, tags, subtasks, repeats (with a streak for the ones ticked off on time), drag to reorder, search.
 - **Agent**: tasks the AI does for you. Each one shows what it's working on live, its questions, its results, and the conversation so far. Reply in the task to steer it.
 - **School**: assignments, with due dates pulled in automatically from Blackboard or D2L calendar links; the class is the tag.
 - **Work**: a second list that can sync with a separate project.
-- **Calendar**, **Ideas** (a board of sortable note cards), **Hours** (log time per day for school or work): extra views of the same data.
+- **Calendar**, **Notes** (a board of sortable note cards), **Hours** (log time per day for school or work): extra views of the same data.
+- **Kitchen**: what's in the pantry, the recipes you make, meal ideas from what's there, and a shopping list. A grocery order the Agent places fills the pantry, and so does a photo of a receipt or of the shopping.
+- **Health**: goals ticked off from your phone's health data (Health Connect on Android, Apple Health on iPhone), today's numbers, and a Food plan the Agent builds grocery orders to meet. The numbers are sealed before they sync and are never shown to an AI.
+- **Group**: on the Group plan, a list you keep with up to four others, and to-dos you send each other.
+
+**Settings → Tabs** switches off the ones you don't use. **Settings → Backup file** saves every list, note, hour, health total and the pantry to one file you keep, and restores from it.
 
 ### The Agent
 What it can do today, with the right AI connected:
 - **Research and answers**: web search, read pages, compare options, summarize, write and rewrite.
-- **Shopping**: Amazon, Walmart groceries (including a fortnightly groceries task it opens on its own), price comparison. It builds the order and asks before placing it.
+- **Shopping**: Amazon, Walmart, Target, Best Buy and Shopify stores, and any other store through a one-time Link card for the amount you approve. A grocery order adds up to your Food plan and fills the Kitchen pantry once it's placed. It builds the order and asks before placing it.
 - **Flights, tickets, bookings**: searches, picks seats on a seat map you can override, books after your yes.
 - **Forms and applications**: job portals, questionnaires, sign-ups, filled from a **Locked** profile (resume, address, IDs) that only your local model is allowed to read.
-- **Email** (Claude only): reads your Gmail for context and drafts replies; nothing is sent without a yes.
+- **Email** (any AI you connect, Gmail or Outlook): reads your mail, drafts replies, labels and archives; nothing is sent or trashed without a yes.
 - **Morning look-ahead**: each morning it reads the next two weeks of your calendar and last week's email and suggests what needs doing. It only suggests.
 - **Memory**: it keeps notes of what you've told it and what worked on which site, and tidies them weekly.
 - **Its own browser**: a headless Chrome you can watch and take over in a live view.
 
-Rules you set decide which AI gets which task: a word list, first-match rules, or "auto". Private words always route to the local model.
+Rules you set decide which AI gets which task: a word list, first-match rules, or "auto", which also weighs the usage left on each cloud AI. Private words always route to the local model.
 
 ### Finance (optional)
 The parts of Rocket Money, Monarch, Copilot or Mint that most people actually use, on your own computer:
@@ -64,12 +69,12 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 **Windows**
 1. Download `Romulus-Setup-<version>.exe` from the [latest release](../../releases/latest).
 2. Run it. Windows shows an "unrecognized app" warning because the installer isn't code-signed yet: click **More info → Run anyway**.
-3. Romulus opens. From then on it starts when you log in and lives in the tray by the clock. Closing the window hides it there; right-click the tray icon to quit.
+3. Romulus opens. From then on it starts when you log in and lives in the tray. Closing the window hides it there; on Windows look under the ^ by the clock and drag the coin onto the taskbar to keep it in sight. Right-click the icon to quit.
 4. Optional: Start menu → right-click **Romulus** → Pin to taskbar.
 
 **Mac**: download the `.dmg` and drag Romulus to Applications. The app isn't signed by Apple yet, so the first open is right-click → Open, then allow it in System Settings → Privacy & Security.
 
-**Linux**: download the `.AppImage`, make it executable (`chmod +x Romulus-*.AppImage`) and run it.
+**Linux**: Ubuntu, Debian and Mint take the `.deb` (open it, or `sudo apt install ./Romulus-<version>-amd64.deb`). Elsewhere download the `.AppImage`, make it executable (`chmod +x Romulus-*.AppImage`) and run it.
 
 **Android phone**: download `Romulus-<version>.apk` on the phone and open it (the phone asks once to allow installs from your browser). Then **Settings → Device sync** and paste the sync code copied from your computer's Settings; the lists appear.
 
@@ -82,12 +87,12 @@ The same lists on your phone, kept in sync, with home-screen widgets, a quick-ad
 The first time it opens, a welcome card asks what you want: **just tasks**, **an AI assistant**, or **sync with my phone**. Pick one and it takes you to the right place. Everything below is also reachable from **Settings** (the gear, top right) at any time.
 
 ### 1. Just tasks
-Nothing to do. Add a task above the list. Due date and time are optional; a tag groups tasks and becomes a filter chip. Drag to reorder. Click a task to expand it for subtasks, notes and repeats.
+Nothing to do. Add a task above the list. Due date and time are optional; a tag groups tasks and becomes a filter chip. Drag to reorder. Click a task to expand it for subtasks, notes and repeats; a repeating one shows its streak. The welcome card's **Show me with examples** puts a few example to-dos on the list to try things on, and takes them away again in one click.
 
 ### 2. Connect an AI
 Open **Settings → Agent & AI → AI connections**, or press **Connect an AI** on the Agent tab. Each AI is a card with a switch. Switch one on and follow the button on the card. When several are on, the app tries them top to bottom; the ↑ arrows change the order.
 
-**Claude** (best if you have a Claude Pro or Max plan; the only one that can read your Gmail and your photos)
+**Claude** (best if you have a Claude Pro or Max plan; the only one that can open your photos)
 1. **Install Claude Code**: one button, runs Anthropic's installer, a minute or two.
 2. **Sign in to Claude**: a terminal window opens and your browser asks you to sign in to claude.ai. Come back when it's done; the card updates by itself.
 3. **Check**: Claude answers one word to prove it works.
@@ -130,7 +135,7 @@ Your lists are shared through a free [Supabase](https://supabase.com) project of
 That's every list: Work, Agent and School sync through the same project under keys made from your sync key, so the three values are all a second device needs. (Settings → Per-list keys lets you give one list a different key, for example a Work list shared with a colleague.)
 
 ### 4. Calendars
-**Settings → Calendars.** Press **+ Google** or **+ Microsoft** and sign in; the official installer has sign-in built in. Or **+ Calendar link** for any subscribe link (iCloud, a shared calendar). For **course calendars** (Blackboard: Calendar → → Share Calendar; D2L: Calendar → Subscribe), paste the link under Course calendars and due dates land on School. Per calendar, choose whether events become to-dos and whether your tasks appear on it.
+**Settings → Calendars.** Press **+ Google** or **+ Microsoft** and sign in; the official installer has sign-in built in. Or **+ Calendar link** for any subscribe link (iCloud, a shared calendar). For a calendar of things you have to get done, such as class deadlines (Blackboard: Calendar → settings → Share Calendar; D2L: Calendar → Subscribe), paste the link under Due-date calendars and each one becomes a to-do on its due date (on School if you use it). Per calendar, choose whether events become to-dos and whether your tasks appear on it.
 
 ### 5. Finance
 Open the **Finance** tab; the first visit is the setup. Make an account at bridge.simplefin.org (about $15 a year) and connect your banks there, choose **New connection** and copy the setup token, paste it into the tab, and choose a passphrase. From then on the tab asks for the passphrase (or Windows Hello, once you turn it on) and locks itself after 30 minutes. Receipts from Gmail and stock prices are set up from the same tab.
@@ -146,8 +151,8 @@ Everything you connect stays on the computer where you connected it, in the app'
 | File | What it is |
 |---|---|
 | `Romulus-Setup-<version>.exe` | The Windows installer. |
-| `Romulus-<version>-arm64.dmg`, `Romulus-<version>-arm64-mac.zip` | The Mac app, Apple silicon (the zip is what Mac updates download). |
-| `Romulus-<version>.AppImage` | The Linux app. |
+| `Romulus-<version>-arm64.dmg`, `Romulus-<version>.dmg` | The Mac app: Apple silicon, and Intel. The `-mac.zip` files next to them are what Mac updates download. |
+| `Romulus-<version>-amd64.deb`, `Romulus-<version>.AppImage` | The Linux app: the `.deb` for Ubuntu, Debian and Mint, the AppImage for other distributions. |
 | `Romulus-<version>.apk` | The Android phone app. |
 | `latest*.yml` | What installed copies read to find out a new version exists. |
 | `*.blockmap` | Lets an update download only the parts that changed. |
@@ -159,7 +164,7 @@ The installers aren't code-signed yet (that needs a certificate; until there is 
 
 - **Windows** (PowerShell or Command Prompt): `certutil -hashfile Romulus-Setup-<version>.exe SHA256`
 - **Mac** (Terminal): `shasum -a 256 Romulus-<version>.dmg`
-- **Linux**: `sha256sum Romulus-<version>.AppImage`, or `sha256sum -c SHA256SUMS-linux.txt` in the download folder
+- **Linux**: `sha256sum Romulus-<version>-amd64.deb` (or the AppImage), or `sha256sum -c SHA256SUMS-linux.txt` in the download folder
 - **Android**: on a computer, `certutil` / `shasum` / `sha256sum` on the APK as above, against `SHA256SUMS-android.txt`
 
 If the two differ, don't run the file: delete it, download again from this page, and open an issue if it still differs.

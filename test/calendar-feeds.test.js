@@ -33,3 +33,15 @@ test('complete only when every link answers with events, so a missing item reall
   });
   assert.strictEqual((await feeds.fetchAll([])).complete, false);
 });
+
+test('a location with no course code is no class, and says which old class to take back off', () => {
+  const ev = (loc) => feeds.parse('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Open house\r\nLOCATION:' + loc +
+    '\r\nDTEND:20991231T235900Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')[0];
+  const dept = ev("Example College's School of Liberal Arts and Sciences");
+  assert.strictEqual(dept.course, null);
+  assert.strictEqual(dept.wrongTag, "Example College's School of Liberal Arts");
+  const cls = ev('PHYS-1010-(83263)-Astronomy-Fall 2026');
+  assert.strictEqual(cls.course, 'PHYS 1010');
+  assert.strictEqual(cls.wrongTag, null);
+  assert.strictEqual(feeds.courseCode('Campus events'), null);
+});

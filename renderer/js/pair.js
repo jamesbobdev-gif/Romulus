@@ -17,6 +17,9 @@ function pairNewCode(){
   const b=crypto.getRandomValues(new Uint8Array(PAIR_LEN));
   return Array.from(b,function(x){ return PAIR_ALPHABET[x&31]; }).join(''); // 256 is a multiple of 32: no bias
 }
+const PAIR_QR_PREFIX='tasks-pair:';
+// a scanned QR → the 12 characters, or null
+function pairFromQr(text){ const t=String(text||'').trim(); return t.indexOf(PAIR_QR_PREFIX)===0?pairNormalize(t.slice(PAIR_QR_PREFIX.length)):null; }
 function pairFormat(code){ return code.match(/.{1,4}/g).join('-'); }
 // what he typed → the 12 characters, or null. Lowercase, spaces and dashes are fine; O reads as 0, I and L as 1.
 function pairNormalize(text){
@@ -61,20 +64,20 @@ async function pairRpc(server,fn,body){
 }
 
 if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
-  const addBtn=$('pairAddBtn'), box=$('pairBox'), codeEl=$('pairCode'), infoEl=$('pairInfo');
+  const addBtn=$('pairAddBtn'), box=$('pairBox'), codeEl=$('pairCode'), infoEl=$('pairInfo'), qrEl=$('pairQr');
   let live=null; // {server, id, watch, timer, until}
   const server=function(){ return pairServer($('syncUrl').value.trim(),$('syncAnonKey').value.trim()); };
   const stop=function(withdraw){
     if(!live)return;
     clearInterval(live.timer);
     if(withdraw)pairRpc(live.server,'sync_pair_cancel',{p_id:live.id,p_watch:live.watch}).catch(function(){});
-    live=null; box.hidden=true; codeEl.textContent=''; addBtn.textContent='Add a device';
+    live=null; box.hidden=true; codeEl.textContent=''; qrEl.innerHTML=''; qrEl.hidden=true; addBtn.textContent='Add a device';
   };
   const tick=async function(){
     if(!live)return;
     const left=live.until-Date.now();
     if(left<=0){ stop(true); setSyncStatus('that code ran out: press Add a device for a new one',true); return; }
-    infoEl.textContent='Type it on the new device in Settings → Device sync. Works once, for '+Math.ceil(left/60000)+' more min.';
+    infoEl.textContent=(qrEl.hidden?'Type it':'Type it, or press Scan code on your phone,')+' on the new device in Settings → Device sync. Works once, for '+Math.ceil(left/60000)+' more min.';
     const st=await pairRpc(live.server,'sync_pair_state',{p_id:live.id,p_watch:live.watch}).catch(function(){ return null; });
     if(!live)return;
     if(st==='taken'){ stop(false); setSyncStatus('paired: the other device has your sync settings now. If that wasn’t you, generate a new sync key.'); }
@@ -82,7 +85,7 @@ if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
   };
   addBtn.addEventListener('click',async function(){
     if(live){ stop(true); return; }
-    const sc=syncCodeNow(); if(!sc){ setSyncStatus('set up sync on this device first',true); return; }
+    const sc=syncCodeNow(); if(!sc){ if(typeof syncShowFirstSteps==='function')syncShowFirstSteps(); setSyncStatus('nothing syncs here yet: set this device up first with the steps below',true); return; }
     const srv=server(); if(!srv){ setSyncStatus('fill in the project URL and key first',true); return; }
     addBtn.disabled=true; setSyncStatus('making a code…');
     try{
@@ -92,6 +95,11 @@ if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
       if(why){ setSyncStatus(why==='rate'?'too many codes from this network: try again in an hour':why==='busy'?'pairing is busy right now: try again in a few minutes':'couldn’t make a code',true); return; }
       live={server:srv,id:d.id,watch:watch,until:Date.now()+PAIR_TTL_MS,timer:setInterval(tick,4000)};
       codeEl.textContent=pairFormat(code); box.hidden=false; addBtn.textContent='Hide the code';
+      // the same code as a QR for the phone's Scan code (drawn by main/device-sync.js sync:qr, desktop only)
+      if(window.desktop&&window.desktop.syncQr){
+        const q=await window.desktop.syncQr(PAIR_QR_PREFIX+code).catch(function(){ return null; });
+        if(q&&q.ok&&live&&live.id===d.id){ qrEl.innerHTML=q.svg; qrEl.hidden=false; }
+      }
       setSyncStatus('anyone who types this code in the next 10 minutes gets your lists: only type it on your own device');
       tick();
     }catch(e){ setSyncStatus('couldn’t make a code: '+e.message,true); }
@@ -111,12 +119,32 @@ if(typeof document!=='undefined'&&document.getElementById('pairAddBtn')){
       const text=r&&r.sealed?await pairOpen(d.key,r.sealed):null;
       if(!text||text.indexOf(SYNC_CODE_PREFIX)!==0){ setSyncStatus('that code didn’t work: it may be mistyped, used or run out. Make a new one on the other device.',true); return; }
       input.value='';
+      // say whose project this is before adopting it: a code someone else talked him into typing would otherwise
+      // move his lists into their project without a word
+      let host=''; try{ host=new URL(JSON.parse(atob(text.slice(SYNC_CODE_PREFIX.length))).url).host; }catch(e){}
+      if(!host){ setSyncStatus('that code didn’t hold a sync project address',true); return; }
+      if(!confirm('Use the sync project at '+host+'?\n\nYour lists will be kept there from now on. Only continue if this is your own project (or one you were given on purpose).')){ setSyncStatus('not paired'); return; }
       if(fillFromSyncCode(text)){ setSyncStatus('paired: saving…'); $('syncSaveBtn').click(); }
     }catch(e){ setSyncStatus('couldn’t pair: '+e.message,true); }
     finally{ useBtn.disabled=false; }
   };
   useBtn.addEventListener('click',use);
   input.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); use(); } });
+  // the phone scans the computer's QR with the scanner Finance pairing uses (FinanceVault.scan): a pairing
+  // code pairs at once; the older whole-sync-code QR (Show code for phone) still works too
+  const cap=window.Capacitor;
+  if(cap&&typeof cap.nativePromise==='function'&&cap.isPluginAvailable&&cap.isPluginAvailable('FinanceVault')){
+    const scanBtn=$('pairScanBtn'); scanBtn.hidden=false;
+    scanBtn.addEventListener('click',async function(){
+      let text='';
+      try{ text=String((await cap.nativePromise('FinanceVault','scan',{})).text||'').trim(); }
+      catch(e){ if(!/cancel/i.test(String(e&&(e.code||e.message))))setSyncStatus('the scanner didn’t start',true); return; }
+      const code=pairFromQr(text);
+      if(code){ input.value=pairFormat(code); use(); return; }
+      if(text.indexOf(SYNC_CODE_PREFIX)===0){ if(fillFromSyncCode(text)){ setSyncStatus('paired: saving…'); $('syncSaveBtn').click(); } return; }
+      setSyncStatus('that isn’t a pairing code: press Add a device on the computer and scan the code it shows',true);
+    });
+  }
 }
 
-if(typeof module!=='undefined')module.exports={pairNewCode,pairFormat,pairNormalize,pairDerive,pairSeal,pairOpen,pairServer,PAIR_ALPHABET,PAIR_LEN};
+if(typeof module!=='undefined')module.exports={pairNewCode,pairFormat,pairFromQr,PAIR_QR_PREFIX,pairNormalize,pairDerive,pairSeal,pairOpen,pairServer,PAIR_ALPHABET,PAIR_LEN};

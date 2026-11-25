@@ -9,4 +9,8 @@ contextBridge.exposeInMainWorld('helper', {
   close: () => ipcRenderer.invoke('overlay:close'),
   openApp: () => ipcRenderer.invoke('overlay:open-app'),
   onOpened: (cb) => ipcRenderer.on('overlay:opened', (_event, s) => cb(s)),
+  doIt: (goal) => ipcRenderer.invoke('overlay:do', goal), // "Do it": the AI works his PC (main/overlay.js)
+  stop: () => ipcRenderer.invoke('overlay:stop'),
+  answer: (text) => ipcRenderer.invoke('overlay:answer', text),
+  onStep: (cb) => ipcRenderer.on('overlay:step', (_event, s) => cb(s)),
 });

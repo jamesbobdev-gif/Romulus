@@ -2,9 +2,9 @@
    the Agent, for what the armed tasks wait for, and hands back the ones that fired. The window then
    queues each with t.triggered, and the run starts like a repeat's scheduled round.
    - mail: Gmail's historyId first (unchanged = nothing to do, no model); new mail sharing words with a
-     trigger goes to Claude in ONE tool-less call (like the dates check), which says which really match.
+     trigger goes to his AIs (in his order) in ONE tool-less call (like the dates check), which says which really match.
    - calendar: no model; an event with the trigger's words, once its "hours before" window opens.
-   - page: the page is fetched every 6 hours (public hosts only, 1 MB, 20 s) and Claude, tool-less, says
+   - page: the page is fetched every 6 hours (public hosts only, 1 MB, 20 s) and the AI, tool-less, says
      whether the condition shows on it. It fires once, then not again until the page stops saying so.
    - date: no model; a check-back day that has come, or an email trigger's `by` day with no email yet.
    What fired is remembered in config.triggers so an email or an event starts a task once. */
@@ -57,7 +57,7 @@ async function checkMail(tasks, s) {
   let fired = [];
   if (pairs.length) {
     if (Date.now() < usage.blockedUntil()) return []; // out of usage: nothing is marked seen, so it's asked next time
-    const raw = await gmailDates.claudeJson([{ role: 'system', content: triggers.mailPrompt() }, { role: 'user', content: triggers.mailInput(pairs) }], triggers.MAIL_SCHEMA);
+    const raw = await gmailDates.aiJson([{ role: 'system', content: triggers.mailPrompt() }, { role: 'user', content: triggers.mailInput(pairs) }], triggers.MAIL_SCHEMA);
     let out; try { out = JSON.parse(raw); } catch (e) { throw new Error('the answer wasn’t JSON'); }
     fired = triggers.cleanMail(out, pairs);
     agentLog('triggers: ' + pairs.length + ' email(s) looked like a trigger, ' + fired.length + ' matched');
@@ -73,10 +73,21 @@ async function checkCalendar(tasks, s) {
   const events = (await calendars.upcoming(from, to)).filter((e) => !(e.invite && e.invite.answer === 'declined'));
   return triggers.calendarHits(tasks, events, { fired: s.fired });
 }
+// redirects are followed one at a time, each hop checked: a public address may answer with a redirect to this
+// computer or the network (the agent browser's port, the hub, a router), and that hop must not be fetched
 async function fetchPage(url) {
-  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20000),
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Accept: 'text/html,*/*' } });
-  if (!triggers.safeUrl(res.url || url)) throw new Error('redirected somewhere private');
+  let at = triggers.safeUrl(url), res = null;
+  if (!at) throw new Error('not a public web address');
+  for (let hop = 0; hop < 5; hop++) {
+    res = await fetch(at, { redirect: 'manual', signal: AbortSignal.timeout(20000),
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Accept: 'text/html,*/*' } });
+    if (![301, 302, 303, 307, 308].includes(res.status)) break;
+    const next = (() => { try { return triggers.safeUrl(new URL(res.headers.get('location') || '', at).href); } catch (e) { return null; } })();
+    try { await res.body?.cancel(); } catch (e) {}
+    if (!next) throw new Error('redirected somewhere private');
+    at = next; res = null;
+  }
+  if (!res) throw new Error('too many redirects');
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const reader = res.body.getReader(); const chunks = []; let n = 0;
   for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); n += value.length; if (n > PAGE_BYTES) { reader.cancel().catch(() => {}); break; } }
@@ -90,7 +101,7 @@ async function checkPages(tasks, s) {
     s.pageAt[t.id] = Date.now();
     try {
       const text = await fetchPage(t.trigger.url);
-      const raw = await gmailDates.claudeJson([{ role: 'system', content: triggers.pagePrompt() }, { role: 'user', content: triggers.pageInput(triggers.clean(t.trigger), text) }], triggers.PAGE_SCHEMA);
+      const raw = await gmailDates.aiJson([{ role: 'system', content: triggers.pagePrompt() }, { role: 'user', content: triggers.pageInput(triggers.clean(t.trigger), text) }], triggers.PAGE_SCHEMA);
       let a; try { a = JSON.parse(raw); } catch (e) { throw new Error('the answer wasn’t JSON'); }
       const hit = triggers.cleanPage(a, t);
       agentLog('triggers: ' + t.trigger.url.slice(0, 60) + ' → ' + (hit ? 'yes' : 'no') + (a && a.evidence ? ' (' + String(a.evidence).slice(0, 80) + ')' : ''));

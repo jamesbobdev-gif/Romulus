@@ -87,3 +87,15 @@ test('a personal profile with v2 hands it to the agent channel made from it', ()
   assert.strictEqual(supabase.channel({ sync: { personal: p } }).v2, true);
   assert.strictEqual(supabase.channel({ sync: { personal: Object.assign({}, p, { v2: false }) } }).v2, undefined);
 });
+
+// The same vector as the phone's widgets test (mobile/android/app/src/test/java/com/jartro/tasks/SyncCryptoTest.java):
+// a fixed key gives these lookup ids, and this row (sealed with a fixed iv) opens to this document. If either side's
+// derivation drifts, the phone's widgets would stop opening what the computer wrote.
+test('known answer: the vector the phone widgets are tested against', async () => {
+  assert.strictEqual(node.rowKey(KEY), 'tk_vbFuoN_JuIW3TBw81Ag-JYlKzjIGJtyM');
+  assert.strictEqual(node.rowKey(AGENT + ':prefs'), 'tk_agent_vbFuoN_JuIW3TBw81Ag-JYlKzjIGJtyM:prefs');
+  const row = { e: 1, iv: 'AAECAwQFBgcICQoL', ct: '+ehlC9I6y2FOMdccH/oiIOBIGKkt//JZQjyxNkrT0xTWV0PaKi6jKpUY6Gbk9t1JGQdTXaYPF7VSgqGSXR3KEbZt3NJVe0ljbMpdwtc0EL0ZwU/nHM3oTUNYQr7ZtYwPkwQ8KCo+' };
+  const want = { v: 1, tasks: [{ id: 'a1', title: 'Call the dentist', updatedAt: 1 }], tombstones: [] };
+  assert.deepStrictEqual(node.open(KEY, row), want);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(await page.syncOpen(KEY, row))), want);
+});

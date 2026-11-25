@@ -32,7 +32,9 @@ async function billCheck(){
     if(tombed[id])return; // he denied (or deleted) this one
     if(state.tasks.some(function(t){ return t.id===id||(t.tag===tag&&(taskWs(t)==='personal'||t.status==='suggested')&&(tag===CHARGE_TAG?t.title===b.title:t.due===b.due&&isBillTask(b.prefix,t))); }))return;
     state.tasks.push({id:id,title:b.title,done:false,due:b.due,dueTime:null,tag:tag,ws:'agent',subs:[],googleEventId:null,created:Date.now(),
-      status:'suggested',suggest:tag===CHARGE_TAG?'charge':'bill',note:null,reply:null,options:null,history:[]});
+      status:'suggested',suggest:tag===CHARGE_TAG?'charge':'bill',note:null,reply:null,options:null,history:[],
+      // a new subscription's cancel page (finance-insights.js cancelPage): lists.js shows it as a link on the card
+      notes:b.link&&/^https:\/\//.test(b.link)?'Not yours, or don’t want it? Cancel it on the company’s site: '+b.link:undefined});
     changed=true;
   });
   if(changed)touch();

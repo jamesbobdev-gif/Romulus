@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const MAX_LEARNED = 10; // tips kept per site
-const hostOf = (u) => { try { return new URL(String(u)).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } };
+const { siteOf: hostOf } = require('./util'); // without "www."
 const covers = (domain, host) => !!host && (host === domain || host.endsWith('.' + domain));
 
 function load(dirs) {

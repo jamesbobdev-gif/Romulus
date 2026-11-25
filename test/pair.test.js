@@ -44,3 +44,15 @@ test('codes meet in the release project when the build has one, else in this dev
   assert.deepStrictEqual(pair.pairServer('https://own.supabase.co', 'k'), { url: 'https://rel.supabase.co', key: 'sb_publishable_x' });
   delete global.window;
 });
+
+test('the phone reads a pairing code out of the computer’s QR, and nothing else', () => {
+  assert.strictEqual(pair.pairFromQr(pair.PAIR_QR_PREFIX + 'K7QM4XR9PB2T'), 'K7QM4XR9PB2T');
+  for (const bad of ['', 'K7QM4XR9PB2T', 'tasks-sync:abc', 'tasks-pair:K7QM', 'https://example.com']) assert.strictEqual(pair.pairFromQr(bad), null, bad);
+});
+
+test('the computer draws a QR for a pairing code or a sync code, and refuses anything else', async () => {
+  const qr = require('../main/device-sync').handlers['sync:qr'];
+  assert.ok((await qr(null, 'tasks-pair:K7QM4XR9PB2T')).ok);
+  assert.ok((await qr(null, 'tasks-sync:eyJ1IjoieCJ9')).ok);
+  for (const bad of ['tasks-pair:K7QM', 'tasks-pair:k7qm4xr9pb2t', 'https://evil.example', '']) assert.strictEqual((await qr(null, bad)).ok, false, bad);
+});

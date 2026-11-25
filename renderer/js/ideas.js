@@ -1,4 +1,4 @@
-/* The Ideas tab: note cards sorted into groups.
+/* The Notes tab (ids and sync key still say "ideas", its old name): note cards sorted into groups.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
@@ -8,7 +8,7 @@
    (syncKey+':ideas'), so the task lists, Claude's tools and older builds never see them.
    Per card/group id the newer updatedAt wins; a tombstone beats older copies. */
 const IDEA_COLORS=['yellow','green','blue','pink','purple','plain'];
-const ideaUI={drag:null,gdrag:null,editing:null,adding:null,open:null,descing:null,confirmDel:null,pending:false};
+const ideaUI={drag:null,gdrag:null,editing:null,adding:null,open:null,descing:null,confirmDel:null,pending:false,q:''};
 function normIdeas(raw){
   const r=raw||{}; const num=function(v,d){ return isFinite(v)&&v!==null&&v!==''?+v:d; };
   const groups=(Array.isArray(r.groups)?r.groups:[]).filter(function(g){ return g&&g.id; }).map(function(g,i){
@@ -21,6 +21,7 @@ function normIdeas(raw){
       .map(function(x){ return {id:String(x.id),title:String(x.title||''),body:String(x.body||'')}; });
     if(!secs.length&&c.desc)secs.push({id:'d'+o.id,title:'',body:String(c.desc)}); // the first version had one plain description
     if(secs.length)o.sections=secs;
+    if(c.pinned)o.pinned=num(c.pinned,1); // when it was pinned; only set on pinned cards, so the others stay byte-identical
     return o;
   });
   const tombs=(Array.isArray(r.tombstones)?r.tombstones:[]).filter(function(t){ return t&&t.id; });
@@ -63,9 +64,20 @@ function ideaCard(id){ return state.ideas.cards.find(function(c){ return c.id===
 function ideaGroup(id){ if(id==='')return state.ideas.inbox; return state.ideas.groups.find(function(g){ return g.id===id; }); }
 // a card whose group was deleted on another device falls back to Unsorted
 function ideaGroupOf(c){ return c.group&&ideaGroup(c.group)?c.group:''; }
+// a group's cards: the pinned ones first, then everything in its drag order
 function ideaCardsIn(gid){
   return state.ideas.cards.filter(function(c){ return ideaGroupOf(c)===gid; })
-    .sort(function(a,b){ return a.order-b.order||(a.id<b.id?-1:1); });
+    .sort(function(a,b){ return (b.pinned?1:0)-(a.pinned?1:0)||a.order-b.order||(a.id<b.id?-1:1); });
+}
+function ideaSetPinned(c,on){
+  if(!!c.pinned===!!on)return;
+  if(on)c.pinned=Date.now(); else delete c.pinned;
+  c.updatedAt=Date.now(); persist();
+}
+// the search box above the groups: a card shows when its text has the words, a group when its name does
+function ideaMatches(c,g){
+  const q=ideaUI.q; if(!q)return true;
+  return (g.name||(g.id?'':'Unsorted')).toLowerCase().indexOf(q)>=0||ideaFullText(c).toLowerCase().indexOf(q)>=0;
 }
 function ideaTomb(id){ state.ideas.tombstones.push({id:id,deletedAt:Date.now()}); }
 function ideaRemoveCard(id){
@@ -130,9 +142,12 @@ function drawIdeas(){
   ideaUI.pending=false;
   const wrap=$('ideaGroups'); wrap.textContent='';
   const ib=state.ideas.inbox;
-  const groups=ideaGroupsSorted();
-  let focusEl=null;
+  const groups=ideaGroupsSorted(), q=ideaUI.q;
+  let focusEl=null, shown=0;
   groups.forEach(function(g){
+    const cards=ideaCardsIn(g.id).filter(function(c){ return ideaMatches(c,g); });
+    if(q&&!cards.length)return; // searching: groups with nothing that matches stay out of the way
+    shown++;
     const sec=el('section','idea-group'); sec.dataset.group=g.id; sec.dataset.color=g.color;
     if(g.color!=='plain')sec.style.setProperty('--g','var(--idea-'+g.color+')');
     const head=el('div','idea-ghead');
@@ -147,7 +162,6 @@ function drawIdeas(){
     });
     head.appendChild(grip);
     const name=el('input','idea-gname'); name.value=g.name; name.placeholder='Name this group'; name.setAttribute('aria-label','Group name');
-    const cards=ideaCardsIn(g.id);
     if(!g.id)name.placeholder='Unsorted';
     {
       name.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key==='Escape')name.blur(); });
@@ -165,7 +179,7 @@ function drawIdeas(){
       head.appendChild(col);
     }
     if(g.id){ // the default group stays: it's where new ideas start
-      const del=el('button','idea-gdel','×'); del.title='Remove group (its ideas move to '+(ib.name||'Unsorted')+')'; del.setAttribute('aria-label','Remove group');
+      const del=el('button','idea-gdel','×'); del.title='Remove group (its notes move to '+(ib.name||'Unsorted')+')'; del.setAttribute('aria-label','Remove group');
       del.addEventListener('click',function(){ ideaRemoveGroup(g.id); });
       head.appendChild(del);
     }
@@ -175,7 +189,7 @@ function drawIdeas(){
       const b=el('div','idea-card'); b.dataset.id=c.id;
       if(ideaUI.open===c.id||ideaUI.editing===c.id){ // tapped open: its notes drop down under the title; tap any text to edit
         b.classList.add('open');
-        const fold=el('button','idea-fold','▴'); fold.title='Collapse'; fold.setAttribute('aria-label','Collapse idea');
+        const fold=el('button','idea-fold','▴'); fold.title='Collapse'; fold.setAttribute('aria-label','Collapse note');
         fold.addEventListener('mousedown',function(e){ e.preventDefault(); });
         fold.addEventListener('click',function(){
           const a=document.activeElement; if(a&&b.contains(a))a.blur(); // saves what's being typed first
@@ -195,9 +209,10 @@ function drawIdeas(){
           ta.addEventListener('keydown',function(e){ if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); commit(); } });
           ta.addEventListener('blur',commit);
           b.appendChild(ta); focusEl=ta;
-          if(ideaUI.caret==='notes'&&!c.sections){ ta.value+='\n'; } // "+ Add notes": start on the line under the title
+          if(ideaUI.caret==='notes'&&!c.sections){ ta.value+='\n'; } // "+ Add details": start on the line under the title
           ideaUI.caret=null;
         } else {
+          if(c.pinned)b.appendChild(el('div','idea-pinned mono','Pinned'));
           const tt=el('div','idea-title',c.text); tt.title='Click to edit';
           b.appendChild(tt);
           const secs=el('div','idea-secs');
@@ -212,7 +227,7 @@ function drawIdeas(){
             secs.appendChild(blk);
           });
           if(!c.sections){
-            const add=el('button','idea-secadd','+ Add notes');
+            const add=el('button','idea-secadd','+ Add details');
             add.addEventListener('click',function(){ ideaUI.editing=c.id; ideaUI.caret='notes'; drawIdeas(); });
             secs.appendChild(add);
           }
@@ -221,8 +236,16 @@ function drawIdeas(){
         const foot=el('div','idea-edit-foot idea-ofoot');
         foot.appendChild(el('span','mono',ideaUI.editing===c.id?'esc to save':''));
         const btns=el('span');
+        const pin=el('button','x',c.pinned?'Unpin':'Pin'); pin.title=c.pinned?'Let it sit with the others again':'Keep it at the top of its group'; pin.setAttribute('aria-label',c.pinned?'Unpin note':'Pin note');
+        pin.addEventListener('mousedown',function(e){ e.preventDefault(); });
+        pin.addEventListener('click',function(){
+          const a=document.activeElement; if(a&&b.contains(a))a.blur(); // saves what's being typed first
+          const cc=ideaCard(c.id); if(cc)ideaSetPinned(cc,!cc.pinned);
+          drawIdeas();
+        });
+        btns.appendChild(pin);
         const sure=ideaUI.confirmDel===c.id;
-        const del=el('button','x'+(sure?' sure':''),sure?'Tap again to delete':'Delete'); del.setAttribute('aria-label','Delete idea');
+        const del=el('button','x'+(sure?' sure':''),sure?'Tap again to delete':'Delete'); del.setAttribute('aria-label','Delete note');
         del.addEventListener('mousedown',function(e){ e.preventDefault(); });
         del.addEventListener('click',function(){
           if(!sure){ ideaUI.confirmDel=c.id; drawIdeas(); return; }
@@ -231,9 +254,12 @@ function drawIdeas(){
         btns.appendChild(del); foot.appendChild(btns);
         b.appendChild(foot);
       } else {
-        b.appendChild(el('div','clip',c.text));
-        b.title=c.sections?'Click to open its notes · double-click to edit':'Click to open · double-click to edit';
-        if(c.sections)b.classList.add('hasdesc');
+        // like a sticky note: the title, with a peek at the notes under it
+        const notes=ideaFullText(c).slice(c.text.length).replace(/^\s+/,'');
+        if(c.pinned)b.appendChild(el('div','idea-pinned mono','Pinned'));
+        b.appendChild(el('div','idea-ctitle'+(notes?'':' solo'),c.text));
+        if(notes)b.appendChild(el('div','clip',notes));
+        b.title='Click to open · double-click to edit';
       }
       flow.appendChild(b);
     });
@@ -248,18 +274,75 @@ function drawIdeas(){
       ta.addEventListener('blur',function(){ if(done)return; done=true; ideaUI.adding=null; save(); drawIdeas(); });
       const foot=el('div','idea-edit-foot'); foot.appendChild(el('span','mono','esc to save'));
       b.appendChild(ta); b.appendChild(foot); flow.appendChild(b); focusEl=ta;
-    } else {
-      const add=el('button','idea-addb','+ Add an idea'); add.setAttribute('aria-label','Add an idea to this group');
+    } else if(!q){ // while searching the board is read-only: a new note would vanish into the filter
+      const add=el('button','idea-addb','Take a note…'); add.setAttribute('aria-label','Add a note to this group');
       add.addEventListener('click',function(){ ideaUI.editing=null; ideaUI.adding=g.id; drawIdeas(); });
       flow.appendChild(add);
     }
     if(!g.id&&!cards.length&&!state.ideas.groups.length&&ideaUI.adding!=='')
-      flow.insertBefore(el('div','idea-empty','Write ideas here, then make groups and drag them in.'),flow.firstChild);
+      flow.insertBefore(el('div','idea-empty','Write notes here, then make groups and drag them in.'),flow.firstChild);
     sec.appendChild(flow);
     const sz=el('div','idea-gsize'); sz.title='Drag to make the boxes wider or narrower'; sec.appendChild(sz);
     wrap.appendChild(sec);
   });
+  if(q&&!shown)wrap.appendChild(el('div','idea-empty','No notes with "'+$('ideaSearch').value.trim()+'".'));
+  ideaPack();
   if(focusEl&&!$('ideasView').hidden){ focusEl.focus(); focusEl.setSelectionRange(focusEl.value.length,focusEl.value.length); focusEl.fit(); }
+}
+/* the board packs like notes on a wall: groups stack in columns with no gaps, so a short group never
+   waits under a tall one. Each group keeps its column (kept per device and per column count, since
+   that depends on the window): it's picked once, as the shortest column, and after that only a drag
+   or a different number of columns moves it. So a group growing as you type or open a note only
+   pushes down the groups under it; nothing hops sideways.
+   Grid rows are 1px; each group spans its own height. Re-packs whenever a group or the board resizes. */
+const ideaPackSt={ro:null,raf:0,w:-1,cols:1,phCol:-1,sizes:''};
+function ideaColHints(cols){ // {group id: column}, only if they were saved for this many columns
+  try{ const h=JSON.parse(localStorage.getItem('tasks.ideaCols')); return h&&h.cols===cols&&h.at?h.at:null; }catch(e){ return null; }
+}
+function ideaSaveColHints(at,cols){
+  if(!at){ // from the board as it is (after a drop)
+    at={}; cols=ideaPackSt.cols;
+    Array.from($('ideaGroups').children).forEach(function(n){
+      if(n.classList.contains('idea-group')&&n.style.display!=='none'&&n.dataset.group!=null&&n.style.gridColumn)at[n.dataset.group]=(+n.style.gridColumn)-1;
+    });
+  }
+  try{ localStorage.setItem('tasks.ideaCols',JSON.stringify({cols:cols,at:at})); }catch(e){}
+}
+function ideaPack(){
+  const wrap=$('ideaGroups'), gap=14, st=ideaPackSt;
+  const W=wrap.clientWidth;
+  const groups=Array.from(wrap.children).filter(function(n){ return n.classList.contains('idea-group')&&n.style.display!=='none'; });
+  if(W){ // drawn while the tab is hidden, nothing has a size yet: the resize watcher packs it once it shows
+    const boxW=parseFloat(getComputedStyle(wrap).getPropertyValue('--idea-w'))||280;
+    const phone=window.matchMedia('(max-width:520px)').matches;
+    let cols=phone?1:Math.max(1,Math.floor((W+gap)/(Math.min(boxW,W)+gap)));
+    cols=Math.max(1,Math.min(cols,groups.length));
+    st.cols=cols;
+    wrap.style.gridTemplateColumns=phone?'1fr':'repeat('+cols+',min(var(--idea-w,280px),100%))';
+    let at=ideaColHints(cols), changed=!at; at=at||{};
+    const hs=new Array(cols).fill(0);
+    groups.forEach(function(n){
+      const ph=n.classList.contains('gph'), gid=n.dataset.group;
+      let c=ph?st.phCol:(gid in at?at[gid]:-1);
+      if(!(c>=0&&c<cols)){
+        c=0; for(let i=1;i<cols;i++)if(hs[i]<hs[c])c=i;
+        if(!ph&&gid!=null){ at[gid]=c; changed=true; }
+      }
+      const span=Math.ceil(n.getBoundingClientRect().height)+gap;
+      n.style.gridColumn=String(c+1); n.style.gridRow=(hs[c]+1)+' / span '+span;
+      hs[c]+=span;
+    });
+    if(changed&&!ideaUI.q)ideaSaveColHints(at,cols); // a search hides groups; don't let that reshuffle the saved board
+  }
+  if(typeof ResizeObserver!=='function')return;
+  if(!st.ro)st.ro=new ResizeObserver(function(){
+    const w=wrap.clientWidth, sizes=Array.from(wrap.children).map(function(n){ return n.offsetHeight; }).join();
+    if(w===st.w&&sizes===st.sizes)return; // only the board's own height moved: nothing to re-pack
+    st.w=w; st.sizes=sizes;
+    if(!st.raf)st.raf=requestAnimationFrame(function(){ st.raf=0; ideaPack(); });
+  });
+  st.ro.disconnect(); st.ro.observe(wrap); groups.forEach(function(n){ st.ro.observe(n); });
+  st.w=W; st.sizes=Array.from(wrap.children).map(function(n){ return n.offsetHeight; }).join();
 }
 // a text box that grows with what you type
 function ideaTextBox(text,ph){
@@ -350,18 +433,28 @@ function ideaNote(text){
 (function(){
   const wrap=$('ideaGroups');
   function cardsIn(flow){ return Array.from(flow.querySelectorAll('.idea-card')).filter(function(b){ return !b.classList.contains('ph')&&!b.classList.contains('dragging')&&!b.classList.contains('editing'); }); }
-  // slide every card from where it was to where it lands
+  // slide every card from where it was to where it lands. The groups slide too (a group grows or
+  // shrinks as the gap moves, which pushes the ones under it), and each card moves only within its
+  // group, so a card doesn't drift against its own box.
   function flip(mutate){
+    const gs=Array.from(wrap.querySelectorAll('.idea-group'));
     const all=Array.from(wrap.querySelectorAll('.idea-card:not(.dragging),.idea-addb'));
-    const before=all.map(function(n){ return n.getBoundingClientRect(); });
+    const box=function(n){ return n.getBoundingClientRect(); };
+    const gb=gs.map(box), before=all.map(box), par=all.map(function(n){ return gs.indexOf(n.closest('.idea-group')); });
     mutate();
     if(prefersReduced)return;
-    all.forEach(function(n,i){
-      const r=n.getBoundingClientRect(), dx=before[i].left-r.left, dy=before[i].top-r.top;
+    const ga=gs.map(box), after=all.map(box); // measure everything before any slide starts
+    function slide(n,dx,dy){
       if(!dx&&!dy)return;
       n.style.transition='none'; n.style.transform='translate('+dx+'px,'+dy+'px)';
       n.getBoundingClientRect();
       n.style.transition='transform .18s ease'; n.style.transform='';
+    }
+    gs.forEach(function(g,i){ slide(g,gb[i].left-ga[i].left,gb[i].top-ga[i].top); });
+    all.forEach(function(n,i){
+      const p=par[i];
+      if(p<0){ slide(n,before[i].left-after[i].left,before[i].top-after[i].top); return; }
+      slide(n,(before[i].left-gb[p].left)-(after[i].left-ga[p].left),(before[i].top-gb[p].top)-(after[i].top-ga[p].top));
     });
   }
   function placeAt(d,x,y){
@@ -378,7 +471,7 @@ function ideaNote(text){
       if(y<r.top+r.height/2){ ref=list[i]; break; }
     }
     if(d.ph.parentNode===flow&&(d.ph.nextSibling===ref||(ref===null&&!d.ph.nextSibling)))return;
-    flip(function(){ flow.insertBefore(d.ph,ref); });
+    flip(function(){ flow.insertBefore(d.ph,ref); ideaPack(); });
   }
   function start(d){
     d.active=true; buzz('tick');
@@ -405,10 +498,23 @@ function ideaNote(text){
     const c=ideaCard(d.id);
     if(drop&&c&&d.ph&&d.ph.parentNode){
       const flow=d.ph.parentNode, gid=flow.dataset.group;
-      const prev=d.ph.previousElementSibling, next=d.ph.nextElementSibling;
-      const po=prev&&prev.dataset.id&&ideaCard(prev.dataset.id), no=next&&next.dataset.id&&ideaCard(next.dataset.id);
-      const order=po&&no?(po.order+no.order)/2:po?po.order+1:no?no.order-1:0;
-      if(gid!==ideaGroupOf(c)||order!==c.order){ c.group=gid; c.order=order; c.updatedAt=Date.now(); persist(); }
+      // the other cards of that group, split at the gap: the ones above it and the ones below
+      const toCard=function(n){ return ideaCard(n.dataset.id); };
+      const nodes=cardsIn(flow).filter(function(n){ return n.dataset.id!==c.id&&toCard(n); });
+      const above=nodes.filter(function(n){ return n.compareDocumentPosition(d.ph)&Node.DOCUMENT_POSITION_FOLLOWING; }).map(toCard);
+      const below=nodes.slice(above.length).map(toCard);
+      // the pinned cards sit at the top of the group: dropped under an unpinned one it comes off the top, dropped above a pinned one it joins them
+      const po=above[above.length-1], no=below[0];
+      let pinned=!!c.pinned;
+      if(pinned&&po&&!po.pinned)pinned=false; else if(!pinned&&no&&no.pinned)pinned=true;
+      // its place among the cards that share its pinned state (the sort keeps the two runs apart)
+      const same=function(x){ return !!x.pinned===pinned; };
+      const p2=above.filter(same).pop(), n2=below.filter(same)[0];
+      const order=p2&&n2?(p2.order+n2.order)/2:p2?p2.order+1:n2?n2.order-1:0;
+      if(gid!==ideaGroupOf(c)||order!==c.order||pinned!==!!c.pinned){
+        c.group=gid; c.order=order; if(pinned&&!c.pinned)c.pinned=Date.now(); else if(!pinned)delete c.pinned;
+        c.updatedAt=Date.now(); persist();
+      }
     }
     ideaUI.drag=null;
     drawIdeas();
@@ -465,6 +571,14 @@ function ideaNote(text){
   });
   wrap.addEventListener('contextmenu',function(e){ if(e.target.closest('.idea-card')&&!e.target.closest('.idea-secs'))e.preventDefault(); }); // long-press menu on phones (but sections can still be highlighted)
   $('ideaAddGroup').addEventListener('click',ideaAddGroup);
+  // the search box: typing narrows the board as you go; esc clears it
+  const sb=$('ideaSearch');
+  sb.addEventListener('input',function(){ ideaUI.q=sb.value.trim().toLowerCase(); drawIdeas(); });
+  sb.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){ e.preventDefault(); sb.value=''; ideaUI.q=''; drawIdeas(); sb.blur(); }
+    if(e.key==='Enter')sb.blur();
+  });
+  sb.addEventListener('blur',function(){ if(ideaUI.pending)drawIdeas(); });
 })();
 
 /* box size (desktop): drag the right edge of any group to make every box wider or narrower; the grid
@@ -520,32 +634,38 @@ function ideaNote(text){
       n.style.transition='transform .18s ease'; n.style.transform='';
     });
   }
-  // the gap goes before the first group that comes after the pointer in reading order
+  // which column the pointer is over (the nearest one when it's beside the board)
+  function colAt(x){
+    const tracks=getComputedStyle(wrap).gridTemplateColumns.split(' ').map(parseFloat);
+    const wr=wrap.getBoundingClientRect(), total=tracks.reduce(function(m,t){ return m+t; },0)+14*(tracks.length-1);
+    let left=wr.left+(wr.width-total)/2;
+    for(let i=0;i<tracks.length;i++){ if(x<left+tracks[i]+7)return i; left+=tracks[i]+14; }
+    return tracks.length-1;
+  }
+  // the gap goes into the column under the pointer: before the first group there whose middle is
+  // below the pointer, or after that column's last group
   function placeAt(d,x,y){
-    const list=secs().filter(function(n){ return n!==d.ph; });
-    const rects=list.map(function(n){ return n.getBoundingClientRect(); });
-    let ref=null;
-    for(let i=0;i<list.length;i++){
-      const r=rects[i];
-      const row=rects.filter(function(o){ return Math.abs(o.top-r.top)<2; });
-      const rowBottom=row.reduce(function(m,o){ return Math.max(m,o.bottom); },r.bottom);
-      // alone on its row (the phone's single column): its top half means before it
-      const before=row.length>1?x<r.left+r.width/2:y<r.top+r.height/2;
-      if(y<r.top||(y<rowBottom&&before)){ ref=list[i]; break; }
-    }
-    if(d.ph.nextElementSibling===ref||(ref===null&&!d.ph.nextElementSibling))return;
-    flip(function(){ wrap.insertBefore(d.ph,ref); });
+    const c=colAt(x);
+    const col=secs().filter(function(n){ return n!==d.ph&&n.style.display!=='none'&&+n.style.gridColumn===c+1; });
+    const hit=col.find(function(n){ const r=n.getBoundingClientRect(); return y<r.top+r.height/2; });
+    let ref=hit||(col.length?col[col.length-1].nextElementSibling:null);
+    while(ref&&(ref===d.ph||ref.classList.contains('gdrag')))ref=ref.nextElementSibling;
+    let nx=d.ph.nextElementSibling; while(nx&&nx.classList.contains('gdrag'))nx=nx.nextElementSibling;
+    if(ideaPackSt.phCol===c&&nx===ref)return;
+    flip(function(){ ideaPackSt.phCol=c; wrap.insertBefore(d.ph,ref); ideaPack(); });
   }
   function start(d){
     d.active=true; buzz('tick'); document.body.classList.add('gdragging');
     const r=d.el.getBoundingClientRect();
     d.dx=d.sx-r.left; d.dy=d.sy-r.top;
     d.ph=el('section','idea-group gph'); d.ph.style.height=r.height+'px';
+    ideaPackSt.phCol=(+d.el.style.gridColumn||1)-1;
     d.ghost=d.el.cloneNode(true); d.ghost.classList.add('glifted');
     d.ghost.style.width=r.width+'px'; d.ghost.style.left=r.left+'px'; d.ghost.style.top=r.top+'px';
     document.body.appendChild(d.ghost);
     wrap.insertBefore(d.ph,d.el);
     d.el.classList.add('gdrag'); d.el.style.display='none';
+    ideaPack();
   }
   function finish(d,drop){
     if(d.ghost)d.ghost.remove();
@@ -554,6 +674,7 @@ function ideaNote(text){
       const ids=[];
       Array.from(wrap.children).forEach(function(n){ if(n===d.ph)ids.push(d.id); else if(n!==d.el)ids.push(n.dataset.group); });
       ideaSetGroupOrder(ids);
+      d.ph.dataset.group=d.id; ideaSaveColHints();
     }
     ideaUI.gdrag=null;
     drawIdeas();

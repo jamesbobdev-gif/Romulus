@@ -17,7 +17,7 @@ function finSwitchSource(csv){
   finApi=finUseCsv()?(window.csvFinance||null):finNative; fin.data=null; finSay(''); renderFinance();
 }
 if(window.csvFinance)window.csvFinance.onFinanceLocked(function(){ if(finApi===window.csvFinance){ fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); } });
-if(finApi)$('tabFinance').hidden=false;
+if(finApi)$('tabFinance').hidden=false; // Settings > Tabs (tab-picker.js) can still switch it off
 if(finNative){
   // SimpleFIN's own lock and update events count only while it's the one showing
   finNative.onFinanceLocked(function(){ if(finApi!==finNative)return; fin.data=null; fin.allowCapture=false; if(state.activeTab==='finance')renderFinance(); });
@@ -67,7 +67,9 @@ async function renderFinance(){
 
 /* ── his other computers (main/finance.js finance:shareBox): the SimpleFIN link, sealed under his Finance
    passphrase, kept in the <personal key>:finance sync row. Connecting or unlocking here puts it there; a computer
-   on the same sync that isn't connected yet offers it, and opens it with that passphrase. No bank data goes. ── */
+   on the same sync that isn't connected yet offers it, and opens it with that passphrase. No bank data goes.
+   Phones too (mobile/finance-phone.js, renderer/js/finance-share.js): a phone opens it the same way, and a phone
+   paired with a code can fill an empty row under a passphrase he picks there (finPhoneShareFold). ── */
 function finShareProfile(){
   const p=syncState.cfg&&syncState.cfg.personal;
   return finApi===finNative&&finNative&&finNative.financeShareBox&&validProfile(p)?{url:p.url,key:p.key,syncKey:p.syncKey+':finance'}:null;
@@ -76,9 +78,17 @@ async function finShareUp(){
   try{
     if(syncState.ready)await syncState.ready;
     const p=finShareProfile(); if(!p)return;
-    const r=await finNative.financeShareBox(); if(!r||!r.ok)return;
+    const r=await finNative.financeShareBox();
+    // a phone paired with a code has no copy: if the row is empty too, it offers to make one (finPhoneShareFold)
+    if(r&&r.none){
+      const row=await syncPullRow(p), need=!(row.doc&&row.doc.box);
+      if(need!==!!fin.phoneShareNeed){ fin.phoneShareNeed=need; if(state.activeTab==='finance'&&fin.data&&!fin.busy)renderFinance(); }
+      return;
+    }
+    if(!r||!r.ok)return;
     const row=await syncPullRow(p);
     if(row.doc&&stableJson(row.doc.box)===stableJson(r.box))return; // already there
+    if(finApi.phone&&row.doc&&row.doc.box)return; // a computer's copy wins: the phone's only fills an empty row
     await syncPushDoc(p,{v:1,box:r.box});
   }catch(e){} // sync down or the row not allowed yet: the other computers connect with a token, as before
 }
@@ -98,15 +108,17 @@ async function finShareClear(){
 /* ── first time: SimpleFIN setup token + a passphrase (on the phone: pairing with the computer) ── */
 function drawFinSetup(v,st){
   if(finApi.csv)return drawFinCsvSetup(v,st);
-  if(finApi.phone)return drawFinPair(v);
+  if(finApi.phone&&!finApi.financeSetupShared)return drawFinPair(v);
   if(fin.shared===undefined){ // asked once a visit: is another computer already connected?
     fin.shared=null;
     finShareDown().then(function(box){ fin.shared=box; if(box&&state.activeTab==='finance'&&!fin.busy)renderFinance(); });
   }
   if(fin.shared&&!fin.tokenInstead)return drawFinJoin(v,st);
+  if(finApi.phone)return drawFinPair(v);
   v.textContent='';
   const box=el('div','fin-card fin-setup');
   box.appendChild(el('h3',null,'Connect your bank accounts'));
+  box.appendChild(finCodeJoinFold(v,st,function(){ drawFinSetup(v,st); }));
   const steps=el('ol','fin-steps');
   ['Make an account at bridge.simplefin.org (about $15 a year) and connect your banks there.',
    'On SimpleFIN, choose New connection and copy the setup token.',
@@ -146,24 +158,28 @@ function drawFinSetup(v,st){
 function drawFinJoin(v,st){
   v.textContent='';
   const box=el('div','fin-card fin-setup');
-  box.appendChild(el('h3',null,'Your bank accounts are connected on another computer'));
-  box.appendChild(el('p','fin-note','Type your Finance passphrase from that computer to use the same SimpleFIN connection here. Your bank data is then downloaded and encrypted on this computer too, under the same passphrase.'));
+  const phone=!!finApi.phone;
+  box.appendChild(el('h3',null,phone?'Your bank accounts are connected on another device':'Your bank accounts are connected on another computer'));
+  box.appendChild(el('p','fin-note',phone
+    ?'Type your Finance passphrase from your computer to use the same SimpleFIN connection on this phone. It then gets your accounts from SimpleFIN itself and opens Finance with your fingerprint. Checking the passphrase can take up to half a minute.'
+    :'Type your Finance passphrase from that computer to use the same SimpleFIN connection here. Your bank data is then downloaded and encrypted on this computer too, under the same passphrase.'));
   const pass=finInput('password','Finance passphrase');
   const go=el('button','btn-accent',fin.busy?'Connecting…':'Connect'); go.disabled=fin.busy;
   const join=async function(){
     if(!pass.value||fin.busy)return;
-    fin.busy=true; finSay(''); go.disabled=true; go.textContent='Connecting…';
+    fin.busy=true; finSay(phone?'Checking the passphrase. This can take up to half a minute.':''); go.disabled=true; go.textContent='Connecting…';
     const r=await finNative.financeSetupShared(fin.shared,pass.value).catch(function(e){ return {ok:false,error:e.message}; });
     pass.value=''; fin.busy=false;
-    if(!r.ok){ finSay(r.error,true); return drawFinJoin(v,st); }
+    if(!r.ok){ finSay(r.cancelled?'':r.error,!r.cancelled); return drawFinJoin(v,st); }
     fin.shared=undefined;
-    finSay(r.warning||'',!!r.warning); renderFinance();
+    finSay(r.warning||'',!!r.warning); renderFinance(); finShareUp();
   };
   pass.addEventListener('keydown',function(e){ if(e.key==='Enter')join(); });
   go.addEventListener('click',join);
   const row=el('div','fin-row'); row.appendChild(pass); row.appendChild(go); box.appendChild(row);
   box.appendChild(finMsgEl());
-  const other=el('button','ghost mono','connect with a new setup token instead');
+  if(!phone)box.appendChild(finCodeJoinFold(v,st,function(){ drawFinJoin(v,st); }));
+  const other=el('button','ghost mono',phone?'scan or type a code instead':'connect with a new setup token instead');
   other.addEventListener('click',function(){ fin.tokenInstead=true; finSay(''); renderFinance(); });
   box.appendChild(other);
   box.appendChild(finCsvInstead());
@@ -279,27 +295,52 @@ function finCsvFold(d){
   return fold;
 }
 
-// the phone: scan the code the computer's Finance tab shows, then his fingerprint
+// the phone: scan or type the code another device's Finance tab shows, then his fingerprint
 function drawFinPair(v){
   v.textContent='';
   const box=el('div','fin-card fin-setup');
   box.appendChild(el('h3',null,'Finance on this phone'));
   const steps=el('ol','fin-steps');
-  ['On your computer, open Finance and unlock it.',
-   'At the bottom, open “pair your phone” and choose Show the code.',
-   'Tap Scan below and point the phone at the code, then use your fingerprint.'].forEach(function(t){ steps.appendChild(el('li',null,t)); });
+  ['On your computer or other phone, open Finance and unlock it.',
+   'At the bottom, open “add another device” and choose Show a code.',
+   'Tap Scan below and point this phone at the code, or type the code. Then use your fingerprint.'].forEach(function(t){ steps.appendChild(el('li',null,t)); });
   box.appendChild(steps);
   box.appendChild(el('p','fin-note','This phone then gets your accounts from SimpleFIN and prices from Yahoo Finance itself, and opens Finance only with your fingerprint. Purchase emails stay on the computer.'));
+  const done=function(r){
+    fin.busy=false;
+    if(!r.ok){ finSay(r.cancelled?'':r.error,!r.cancelled); return drawFinPair(v); }
+    fin.shared=undefined; fin.tokenInstead=false;
+    finSay(r.warning||'',!!r.warning); renderFinance(); finShareUp();
+  };
   const go=el('button','btn-accent',fin.busy?'Setting up…':'Scan'); go.disabled=fin.busy;
   go.addEventListener('click',async function(){
     fin.busy=true; finSay(''); go.disabled=true; go.textContent='Setting up…';
-    const r=await finApi.financePair().catch(function(e){ return {ok:false,error:e.message}; });
-    fin.busy=false;
-    if(!r.ok){ finSay(r.cancelled?'':r.error,!r.cancelled); return drawFinPair(v); }
-    finSay(r.warning||'',!!r.warning); renderFinance();
+    if(!finApi.financeScan)return done(await finApi.financePair().catch(function(e){ return {ok:false,error:e.message}; }));
+    const s=await finApi.financeScan().catch(function(e){ return {ok:false,error:e.message}; });
+    if(!s.ok)return done(s);
+    const c=finCodeFromQr(s.text);
+    done(await (c?finJoinWithCode(c):finJoinWithText(s.text)).catch(function(e){ return {ok:false,error:e.message}; }));
   });
   box.appendChild(go);
+  if(finApi.financeJoin){
+    const code=finInput('text','or type the code, like K7QM-4XR9-PB2T'); code.autocapitalize='characters'; code.spellcheck=false;
+    const use=el('button','btn-accent','Use code'); use.disabled=fin.busy;
+    const typed=async function(){
+      const c=pairNormalize(code.value);
+      if(!c){ finSay('A code is 12 letters and numbers, like K7QM-4XR9-PB2T.',true); return drawFinPair(v); }
+      fin.busy=true; finSay(''); use.disabled=go.disabled=true; use.textContent='Setting up…';
+      done(await finJoinWithCode(c).catch(function(e){ return {ok:false,error:e.message}; }));
+    };
+    use.addEventListener('click',typed);
+    code.addEventListener('keydown',function(e){ if(e.key==='Enter')typed(); });
+    const row=el('div','fin-row'); row.appendChild(code); row.appendChild(use); box.appendChild(row);
+  }
   box.appendChild(finMsgEl());
+  if(fin.shared){
+    const back=el('button','ghost mono','use the connection from your computer');
+    back.addEventListener('click',function(){ fin.tokenInstead=false; finSay(''); renderFinance(); });
+    box.appendChild(back);
+  }
   box.appendChild(finCsvInstead());
   v.appendChild(box);
 }
@@ -318,7 +359,7 @@ function drawFinPhoneLocked(v){
     if(r.notVisible){ fin.autoAsked=false; go.textContent='Unlock with fingerprint'; return; } // asked again when the app is back
     finSay(r.ok?(r.warning||''):r.cancelled?'':r.error,!r.ok&&!r.cancelled||!!r.warning);
     if(r.invalidated)fin.invalidated=true;
-    renderFinance();
+    renderFinance(); if(r.ok)finShareUp();
   };
   go.addEventListener('click',unlock);
   box.appendChild(go);
@@ -386,7 +427,7 @@ function finForgetFold(label,note){
   go.addEventListener('click',async function(){
     if(go.disabled)return;
     go.disabled=true;
-    if(finShareProfile())await finShareClear();
+    if(finShareProfile()&&!finApi.phone)await finShareClear(); // removing it from a phone leaves the computers' copy
     await finApi.financeForget(); fin.invalidated=false; fin.shared=undefined; fin.tokenInstead=false;
     finSay(finApi.csv?'Forgotten. Your bank data is gone from here.':finApi.phone?'Removed from this phone. Pair again from the computer whenever you like.':'Forgotten. Remember to disable it on bridge.simplefin.org too.'); renderFinance();
   });
@@ -418,7 +459,7 @@ function finMailLine(m){
   else if(m.busy)p.textContent='Reading purchase emails…';
   else if(m.off){
     const a=el('a',null,'Connect Gmail'); a.href='#'; a.addEventListener('click',function(e){ e.preventDefault(); openSettingsAt('calGroup','gcalSection'); });
-    p.appendChild(a); p.appendChild(document.createTextNode(' in Settings → Calendars to match receipts to these.'));
+    p.appendChild(a); p.appendChild(document.createTextNode(' in Settings → Calendar & email to match receipts to these.'));
   }
   else if(m.error)p.textContent='Purchase emails: '+m.error;
   else p.textContent=m.last?'Receipts from Gmail, '+finAgo(m.last).replace('updated ','checked ')+'.':'Receipts from Gmail: not read yet.';
@@ -697,7 +738,7 @@ function finDrawStocks(box,s,cur,load){
 function finSaveStocksSheet(rows,short,cur,at){
   const csv=stocksCsv(rows,short,cur);
   const d=new Date(at||Date.now());
-  const title='Stocks '+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const title='Stocks '+dayKey(d);
   const say=function(m){ if(typeof pasteToast==='function')pasteToast(m); };
   if(window.desktop&&window.desktop.saveSheet){
     window.desktop.saveSheet(title,csv).then(function(r){
@@ -874,16 +915,14 @@ function finIncomeTable(host,s,cur,d,onMark){
   const rows=[['head','Income']];
   s.income.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   if(!s.income.length)rows.push(['line','No income in these months',null]);
-  // contribution format: variable costs first, the margin they leave, then the fixed costs it has to cover
   rows.push(['sub','Total income',s.incomeTotal],['gap'],['head','Variable costs']);
   s.variable.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
-  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],
-    ['margin','Contribution margin',s.contribution],['pct','Contribution margin ratio',s.contributionRatio],['gap'],['head','Fixed costs']);
+  rows.push(['sub','Total variable costs',s.variableTotal],['gap'],['head','Fixed costs']);
   s.fixed.forEach(function(r){ rows.push(['line',r.name,r.vals,r.items]); });
   rows.push(['sub','Total fixed costs',s.fixedTotal],['gap'],
     ['total','Net income',s.net],['pct','Savings rate',s.savingsRate]);
   finStmtTable(host,s.cols,rows,cur,'Income statement',
-    'Contribution margin is what your income leaves after variable costs, to pay the fixed ones; its ratio is that as a share of income. Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
+    'Tap a line to see the transactions behind it. Transfers between your accounts, card payments, and buying or selling in an investment account aren’t income or spending. Refunds count against spending.',
     // money in: a "not income" button on each, so a transfer counted as income can be taken out
     function(r){ return s.income.indexOf(s.income.find(function(x){ return x.items===r[3]; }))===-1?null:function(x){ return finIncomeTag(x.t,'income',onMark); }; });
 }
@@ -894,9 +933,10 @@ function finBalanceTable(host,b,cur){
   rows.push(['sub','Total assets',b.assetTotal],['gap'],['head','Liabilities']);
   b.liabilities.forEach(function(r){ rows.push(['line',r.name,r.vals]); });
   if(!b.liabilities.length)rows.push(['line','Nothing owed',null]);
-  rows.push(['sub','Total liabilities',b.liabilityTotal],['gap'],['total','Net worth',b.netWorth]);
+  rows.push(['sub','Total liabilities',b.liabilityTotal],['gap'],
+    ['margin','Working capital',b.workingCapital],['gap'],['total','Net worth',b.netWorth]);
   finStmtTable(host,b.cols,rows,cur,'Balance sheet',
-    'Earlier balances are worked back from today’s using the transactions in between. Investment accounts also move with the market, so their earlier values are rougher.');
+    'Working capital is your cash minus what you owe soon (cards and other short-term debt; mortgages and loans paid over years aren’t counted, and neither are investments). Earlier balances are worked back from today’s using the transactions in between. Investment accounts also move with the market, so their earlier values are rougher.');
 }
 
 /* ── the cost charts ── */
@@ -916,6 +956,7 @@ function finFixedChart(c,cur){
     const track=el('span','fin-hbar-track'), b=el('span','fin-hbar-fill');
     b.style.width=Math.max(2,f.monthly/top*100)+'%'; track.appendChild(b); r.appendChild(track);
     r.appendChild(el('span','fin-amt',finMoney(f.monthly,cur)));
+    if(!f.many){ r.classList.add('has-cancel'); r.appendChild(finCancelButton(f.name)); } // the Agent cancels it (same button as Subscriptions)
     box.appendChild(r);
   });
   return finFoldable(box,'fixed','Fixed costs',c.fixed.length?finMoney(c.fixedTotal,cur)+'/mo':'');
@@ -1002,21 +1043,159 @@ function finDebtsCard(d,cur){
     r.appendChild(el('span','fin-amt neg',finMoney(x.owed,cur)));
     box.appendChild(r);
   });
-  box.appendChild(el('p','fin-note','The rate is worked out from the interest actually charged, so it’s rough. On a card, paying the full statement balance by the due date stops new interest.'));
   const owed=p.debts.reduce(function(s,x){ return s+x.owed; },0);
   return finFoldable(box,'debts','Debts',finMoney(owed,cur)+(p.interestMonth>0?' · '+finMoney(p.interestMonth,cur)+' interest/mo':''));
 }
+/* EBT wallet (finance-ebt.js): about what's left on his EBT card, when the next deposit lands, and what the
+   Agent's grocery orders put on it since the last one. He types the balance in now and then; the Agent's
+   checkout notes keep it current in between */
+// the phone and CSV files: a copy of the EBT settings on this device, for the grocery list while Finance is
+// locked (grocery-list.js loadGroceryEbt). The computer keeps a sealed one in main/finance.js instead
+function finKeepEbtCopy(e){
+  if(window.desktop&&window.desktop.financeEbtNow)return;
+  try{ localStorage.setItem('finance.ebtCopy',JSON.stringify(ebtClean(e))); }catch(err){}
+  if(typeof loadGroceryEbt==='function')loadGroceryEbt();
+}
+// a photo he picked → {mime, b64}, at most 1600 px on its long side (small print stays readable, sends quickly)
+function finShrinkImage(file){ return pictureB64(file,1600,'not a picture'); }
+// a saved EBT wallet: Finance's copy and the grocery list's copy. Saved while locked, the copy already has
+// it, marked for the next unlock (finance-ebt.js ebtKeepPending), so it's only read again
+function finEbtSaved(ebt,locked){
+  if(locked){ if(typeof loadGroceryEbt==='function')loadGroceryEbt(); return; }
+  if(fin.data)fin.data.ebt=ebt;
+  finKeepEbtCopy(ebt);
+}
+/* the balance / next deposit / deposit amount boxes and Save, for the Finance card.
+   e: ebtClean settings, w: ebtWallet. → {row, msg, bal}; onSaved runs after a save went through */
+function finEbtForm(e,w,onSaved){
+  const field=function(label,input){ const l=el('label','fin-ebt-field'); l.appendChild(el('span','mono fin-label',label)); l.appendChild(input); return l; };
+  const bal=finInput('text','$0.00'); bal.inputMode='decimal'; bal.title='On your last grocery receipt, your state’s EBT site or the Propel app';
+  // the date his benefits next load: only its day of the month is kept, and it repeats monthly
+  const dd=finInput('date',''); if(w.nextDeposit!=null)dd.value=ebtYmd(w.nextDeposit); dd.title='When your benefits load next. It repeats on that day each month';
+  const mo=finInput('text','$0.00'); mo.inputMode='decimal'; if(e.monthly)mo.value=String(e.monthly); mo.title='How much loads each month';
+  const row=el('div','fin-row fin-ebt-form');
+  row.appendChild(field('Balance',bal)); row.appendChild(field('Next deposit',dd)); row.appendChild(field('Deposit amount',mo));
+  const save=el('button','btn-accent','Save');
+  const msg=el('p','fin-msg err'); msg.hidden=true;
+  save.addEventListener('click',async function(){
+    const money=function(s){ const t=String(s).replace(/[$,\s]/g,''); return t===''?null:Number(t); };
+    const b=money(bal.value), m=money(mo.value), n=/^\d{4}-\d{2}-\d{2}$/.test(dd.value)?Number(dd.value.slice(8,10)):null;
+    if((b!=null&&!(b>=0))||(m!=null&&!(m>0))){ msg.textContent='Use amounts like 143.20.'; msg.hidden=false; return; }
+    const next={day:n||undefined,monthly:m||undefined};
+    if(b!=null){ next.balance=b; next.at=Date.now(); }
+    else if(e.balance!=null){ next.balance=e.balance; next.at=e.at; } // only the deposit changed
+    if(!finApi||!finApi.financeSetEbt){ msg.textContent='Set up Finance first.'; msg.hidden=false; return; }
+    save.disabled=true;
+    const r=await finApi.financeSetEbt(next).catch(function(err){ return {ok:false,error:err.message}; });
+    save.disabled=false;
+    if(!r.ok){ msg.textContent=r.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'; msg.hidden=false; return; }
+    finEbtSaved(r.ebt,r.locked); if(onSaved)onSaved(r.ebt,!!r.locked);
+  });
+  row.appendChild(save);
+  return {row:row,msg:msg,bal:bal};
+}
+/* EBT is a switch on each device (grocery-list.js ebtOn). Off: the card is one line and a button to turn it
+   on. On: the wallet, the low-balance alert (ebt-alerts.js) and a way to turn it off again */
+function finEbtCard(d){
+  if(!ebtOn()){
+    const off=el('div','fin-card fin-ebt');
+    off.appendChild(el('p','fin-note','For SNAP benefits on an EBT card. Turned on, grocery runs know your balance and you get deposit and low balance alerts on this device.'));
+    const on=el('button','ghost mono','I use EBT');
+    on.addEventListener('click',function(){ setEbtOn(true); renderFinance(); });
+    off.appendChild(on);
+    return finFoldable(off,'ebt','EBT','off');
+  }
+  if(JSON.stringify(ebtClean(d.ebt))!==JSON.stringify(groceryEbt))finKeepEbtCopy(d.ebt); // an older copy, or none yet
+  const box=el('div','fin-card fin-chart fin-ebt');
+  box.appendChild(el('h3',null,'EBT'));
+  const w=ebtWallet(d.ebt,agentOrders(state.tasks));
+  const e=ebtClean(d.ebt);
+  const day=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
+  // two short rows: the balance, and the next deposit
+  const line=function(label,sub,amt,neg){
+    const r=el('div','fin-acct');
+    const who=el('span','fin-desc'); who.appendChild(el('b',null,label)); if(sub)who.appendChild(el('span','fin-sub',sub));
+    r.appendChild(who); r.appendChild(el('span','fin-amt'+(neg?' neg':''),amt)); box.appendChild(r);
+  };
+  if(w.known)line('Balance',w.balance<0?'out of date, update it':'as of '+day(w.asOf),finMoney(w.balance),w.balance<0);
+  if(w.nextDeposit!=null)line('Next deposit',w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days',
+    day(w.nextDeposit)+(e.monthly?' · '+finMoney(e.monthly):''));
+  if(w.spent.length){
+    box.appendChild(el('div','mono fin-label fin-org',w.nextDeposit!=null?'Spent since deposit':'Spent, last 30 days'));
+    w.spent.forEach(function(x){
+      const r=el('div','fin-acct');
+      const who=el('span','fin-desc'); who.appendChild(el('span',null,x.title)); who.appendChild(el('span','fin-sub',day(x.at)));
+      r.appendChild(who); r.appendChild(el('span','fin-amt',finMoney(x.ebt)));
+      box.appendChild(r);
+    });
+  }
+  if(finApi.financeSetEbt){
+    const f=finEbtForm(e,w,function(){ box.replaceWith(finEbtCard(fin.data)); });
+    const row=f.row, msg=f.msg, bal=f.bal;
+    const tools=el('div','fin-ebt-tools');
+    // set up: the boxes wait behind "update"; not yet: they're the whole card
+    if(w.known){
+      const up=el('button','ghost mono','update');
+      up.addEventListener('click',function(){ up.hidden=true; row.hidden=false; bal.focus(); });
+      row.hidden=true; tools.appendChild(up);
+    }
+    // a receipt photo: the SNAP balance printed on it becomes the balance (main/finance.js finance:ebtReceipt)
+    if(finApi.financeEbtReceipt){
+      const pick=document.createElement('input'); pick.type='file'; pick.accept='image/*'; pick.hidden=true;
+      const rb=el('button','ghost mono','read a receipt'); rb.title='A photo of a store receipt. Lupa reads it if it’s set up, otherwise your AI connections';
+      rb.addEventListener('click',function(){ pick.click(); });
+      pick.addEventListener('change',async function(){
+        const f=pick.files&&pick.files[0]; pick.value=''; if(!f)return;
+        rb.disabled=true; rb.textContent='reading…'; msg.hidden=true;
+        let r;
+        try{ r=await finApi.financeEbtReceipt(await finShrinkImage(f)); }catch(err){ r={ok:false,error:'That picture can’t be read.'}; }
+        if(r.ok){
+          const s=await finApi.financeSetEbt(Object.assign({},e,{balance:r.balance,at:r.at})).catch(function(err){ return {ok:false,error:err.message}; });
+          if(s.ok){ voiceToast('EBT balance from the receipt: '+finMoney(r.balance)+' (read by '+r.via+')'); fin.data.ebt=s.ebt; finKeepEbtCopy(s.ebt); box.replaceWith(finEbtCard(fin.data)); return; }
+          r={ok:false,error:s.error==='locked'?'Finance locked. Unlock it and try again.':'Couldn’t save that.'};
+        }
+        rb.disabled=false; rb.textContent='read a receipt'; msg.textContent=r.error; msg.hidden=false;
+      });
+      tools.appendChild(rb); tools.appendChild(pick);
+    }
+    if(tools.childNodes.length)box.appendChild(tools);
+    box.appendChild(row); box.appendChild(msg);
+  }
+  // the low-balance alert and the off switch: kept on this device, so they work while Finance is locked too
+  const alertRow=el('div','fin-row fin-ebt-alert');
+  alertRow.appendChild(el('span',null,'Alert me when it’s under $'));
+  const low=finInput('text',''); low.inputMode='decimal'; low.value=String(ebtLow()); low.style.width='80px'; low.setAttribute('aria-label','Low balance alert, in dollars');
+  low.addEventListener('change',function(){ if(!setEbtLow(low.value))low.value=String(ebtLow()); });
+  alertRow.appendChild(low);
+  const offBtn=el('button','ghost mono','I don’t use EBT'); offBtn.title='Hides EBT here and on the grocery list, and stops its alerts on this device';
+  offBtn.addEventListener('click',function(){ setEbtOn(false); renderFinance(); });
+  alertRow.appendChild(offBtn);
+  box.appendChild(alertRow);
+  const sum=w.known?finMoney(w.balance)+' left'+(w.daysToDeposit!=null?' · deposit '+(w.daysToDeposit<=0?'today':w.daysToDeposit===1?'tomorrow':'in '+w.daysToDeposit+' days'):''):'not set up';
+  return finFoldable(box,'ebt','EBT',sum);
+}
 /* Subscriptions (finance-insights.js subscriptionCheck): price rises first, then ones that just started (a free
    trial turning paid looks like that), then everything that charges each month and since when */
-function finSubsCard(s,cur){
+function finSubsCard(s,cur,deals){
   const box=el('div','fin-card fin-chart');
   box.appendChild(el('h3',null,'Subscriptions'));
+  (deals||[]).forEach(function(x){
+    const p=el('p','fin-deal',finDealText(x,cur)+' ');
+    const a=el('a','fin-cancel-link','Sign up ↗'); a.href=x.url; a.target='_blank'; a.rel='noopener';
+    a.title='Opens '+new URL(x.url).hostname.replace(/^www\./,'')+'. You’ll be asked to prove it there';
+    p.appendChild(a); box.appendChild(p);
+  });
   const since=function(ms){ return new Date(ms).toLocaleDateString(undefined,{month:'short',year:'numeric'}); };
+  const alert=function(text,name){ const p=el('p','fin-alert',text+' '); p.appendChild(finCancelLink(name)); box.appendChild(p); };
+  (s.trials||[]).forEach(function(x){
+    alert(x.name+' charged '+finMoney(x.first,cur)+' on '+finDate(x.firstWhen/1000)+', then '+finMoney(x.then,cur)+' on '+finDate(x.thenWhen/1000)+
+      '. That looks like a trial that turned into a subscription, and it usually repeats every month. If you didn’t mean to sign up, cancel it, and ask your card about disputing the charge.',x.name);
+  });
   s.raised.forEach(function(x){
-    box.appendChild(el('p','fin-alert','▲ '+x.name+' went from '+finMoney(x.from,cur)+' to '+finMoney(x.to,cur)+' ('+finDate(x.when/1000)+')'));
+    alert('▲ '+x.name+' went from '+finMoney(x.from,cur)+' to '+finMoney(x.to,cur)+' ('+finDate(x.when/1000)+').',x.name);
   });
   s.fresh.forEach(function(x){
-    box.appendChild(el('p','fin-alert','New: '+x.name+' started charging '+finMoney(x.amount,cur)+' on '+finDate(x.when/1000)+'. If it was a free trial, it’s paid now.'));
+    alert('New: '+x.name+' started charging '+finMoney(x.amount,cur)+' on '+finDate(x.when/1000)+'. If it was a free trial, it’s paid now.',x.name);
   });
   if(!s.subs.length)box.appendChild(el('p','fin-note','No subscriptions found. Tag a charge as fixed in Transactions and it shows here.'));
   else box.appendChild(el('p','fin-note','About '+finMoney(s.total,cur)+' a month across '+s.subs.length+(s.subs.length===1?' subscription.':' subscriptions.')+' Hover one to see how long it’s been charging.'));
@@ -1026,22 +1205,88 @@ function finSubsCard(s,cur){
     const who=el('span','fin-desc'); who.appendChild(el('span',null,x.name)); who.appendChild(el('span','fin-sub','since '+since(x.since)+(x.months>=12?' · over a year':'')));
     r.appendChild(who);
     r.appendChild(el('span','fin-amt',finMoney(x.monthly,cur)+'/mo'));
-    const open=finCancelTask(x.name);
-    const cb=el('button','ghost mono',open?'cancelling':'cancel');
-    cb.title=open?'On your Agent tab':'Have the Agent cancel '+x.name;
-    cb.addEventListener('click',function(){ if(finCancelSub(x.name)){ cb.textContent='cancelling'; cb.title='On your Agent tab'; } });
-    r.appendChild(cb);
+    r.appendChild(finCancelLink(x.name,true));
+    r.appendChild(finCancelButton(x.name));
     box.appendChild(r);
   });
-  const flags=s.raised.length+s.fresh.length;
-  return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo');
+  const flags=s.raised.length+s.fresh.length+(s.trials||[]).length+(deals||[]).length;
+  // open the first time there's something to look at (right after connecting a bank, say)
+  return finFoldable(box,'subs','Subscriptions',(flags?flags+(flags===1?' to look at · ':' to look at · '):'')+finMoney(s.total,cur)+'/mo',flags>0);
 }
-/* cancel, on a subscription: an Agent task of its own (agent/skills/life-admin.md finds the cancel steps, fills
-   the form and stops before the last click). Only the company's name leaves Finance: no amounts, no accounts */
+/* who he is, for discounts (finance-insights.js discountCheck), from what's already on this device: a student
+   when he paid tuition this year, uses the School list, or his notes about himself (Settings, synced ':prefs')
+   say so; EBT when Finance → EBT is on. Nothing here leaves the device */
+let finPrefsStudent=null; // from his notes, read once per start
+function finWho(txs){
+  if(finPrefsStudent===null){
+    finPrefsStudent=false;
+    const p=typeof prefsProfile==='function'?prefsProfile():null;
+    if(p&&typeof syncPullRow==='function')syncPullRow(p).then(function(r){
+      if(/\b(i am|i'm|im) (a )?(college |university |grad |full[- ]time |part[- ]time )?student\b|\b(at|go to|attend|enrolled (at|in)) (a |the )?(community )?(college|university)\b|\bstudent at\b/i.test(String(r&&r.doc&&r.doc.text||''))){
+        finPrefsStudent=true; if(typeof renderFinance==='function')renderFinance();
+      }
+    }).catch(function(){});
+  }
+  const school=state.tasks.some(function(t){ return taskWs(t)==='school'&&Date.now()-(t.created||0)<200*86400000; });
+  return {student:paysTuition(txs)||school||finPrefsStudent,ebt:typeof ebtOn==='function'&&ebtOn()};
+}
+function finDealText(x,cur){
+  const as=x.who==='ebt'?'Since you use EBT, ':'As a student, ';
+  return as+'you may qualify for '+x.program+(x.price!=null?' at about '+finMoney(x.price,cur)+' a month':'')+'. You paid '+x.name+' '+finMoney(x.pays,cur)+
+    ' last time'+(x.saveYear?', so that’s about '+finMoney(x.saveYear,cur)+' a year back.':'.');
+}
+/* each discount told once on this device ('fin.dealsTold'): a notification (the phone's, or the computer's
+   plus a toast). The first time Finance is drawn counts too: that's right after he connects his bank */
+function finTellDeals(deals,cur){
+  if(!deals||!deals.length)return;
+  let told={}; try{ told=JSON.parse(localStorage.getItem('fin.dealsTold')||'{}')||{}; }catch(e){}
+  const fresh=deals.filter(function(x){ return !told[x.id]; });
+  if(!fresh.length)return;
+  fresh.forEach(function(x){ told[x.id]=Date.now(); });
+  try{ localStorage.setItem('fin.dealsTold',JSON.stringify(told)); }catch(e){}
+  const x=fresh[0];
+  const title=fresh.length>1?fresh.length+' discounts you may qualify for':(x.who==='ebt'?'EBT discount: ':'Student discount: ')+x.program.replace(/ \(.*\)$/,'');
+  const body=fresh.length>1?fresh.map(function(y){ return y.program.replace(/ \(.*\)$/,''); }).join(', ')+'. Open Finance → Subscriptions to sign up.'
+    :finDealText(x,cur)+' Open Finance → Subscriptions to sign up.';
+  const call=typeof ebtPhoneNotes==='function'?ebtPhoneNotes():null;
+  if(call)call('requestPermissions').then(function(){ return call('schedule',{notifications:[{id:ebtNoteId('deal|'+x.id),title:title,body:body,schedule:{at:new Date(Date.now()+3000)}}]}); });
+  else{
+    try{ if(window.Notification&&Notification.permission!=='denied')new Notification(title,{body:body,silent:false}); }catch(e){}
+    if(typeof voiceToast==='function')voiceToast(title);
+  }
+}
+/* a link to where it's cancelled (finance-insights.js cancelPage): the company's own page, or a web search for
+   its cancel steps. It opens in his browser; only the name is in the link */
+function finCancelLink(name,short){
+  const p=cancelPage(name), a=el('a','fin-cancel-link',short?'site ↗':p.known?'Cancel page ↗':'How to cancel ↗');
+  a.href=p.url; a.target='_blank'; a.rel='noopener';
+  a.title=p.known?'Open '+new URL(p.url).hostname.replace(/^www\./,'')+' to cancel or change '+cancelName(name):'Search the web for how to cancel '+cancelName(name);
+  return a;
+}
+/* cancel, on a subscription or a monthly bill: an Agent task of its own (agent/skills/life-admin.md finds the cancel
+   steps, fills the form and stops before the last click). Only the company's name leaves Finance: no amounts, no accounts */
 function finCancelTask(name){ return state.tasks.find(function(t){ return t.cancelFor===name&&!t.done; }); }
-function finCancelSub(name){
+// the last cancel task for it that finished: the Agent reported done, or he checked it off
+function finCancelledTask(name){
+  return state.tasks.filter(function(t){ return t.cancelFor===name&&(t.done||t.status==='done'); }).sort(function(a,b){ return (b.updatedAt||0)-(a.updatedAt||0); })[0];
+}
+/* the button on a row: cancel → cancelling (on the Agent tab) → cancelled, with the day and the Agent's last note on hover.
+   A cancelled one still charging can be handed over again; that asks first */
+function finCancelButton(name){
+  const open=finCancelTask(name), was=open?null:finCancelledTask(name);
+  const cb=el('button','ghost mono',open?'cancelling':was?'cancelled':'cancel');
+  const day=was?finDate((was.updatedAt||was.created)/1000):'';
+  const last=was?(was.history||[]).filter(function(h){ return h.who==='claude'; }).slice(-1)[0]:null;
+  const note=was?String((last&&last.text)||was.note||'').replace(/\s+/g,' ').slice(0,200):'';
+  cb.title=open?'On your Agent tab':was?'Cancelled '+day+(note?': '+note:''):'Have the Agent cancel '+name;
+  cb.addEventListener('click',function(){
+    if(finCancelSub(name,was?'This was cancelled on '+day+'. If it is still charging, the Agent can try again.':null)){ cb.textContent='cancelling'; cb.title='On your Agent tab'; }
+  });
+  return cb;
+}
+function finCancelSub(name,lead){
   if(finCancelTask(name)){ voiceToast('Already on your Agent tab'); return false; }
-  if(!confirm('Cancel '+name+'?\n\nThe Agent gets only the name "'+name+'" (no amounts or accounts from Finance), finds how to cancel it and gets it ready.\n\nIt stops before the final cancel click, and never takes a retention offer for you.'))return false;
+  if(!confirm((lead?lead+'\n\n':'')+'Cancel '+name+'?\n\nThe Agent gets only the name "'+name+'" (no amounts or accounts from Finance), finds how to cancel it and gets it ready.\n\nIt stops before the final cancel click, and never takes a retention offer for you.'))return false;
   const nt={id:uid(),title:'Cancel my '+name+' subscription',done:false,due:null,dueTime:null,tag:null,ws:'agent',subs:[],googleEventId:null,
     created:Date.now(),status:'queued',note:null,reply:null,options:null,history:[],cancelFor:name,
     notes:'He wants to stop paying for '+name+'. Find the company’s own cancel steps, get the cancellation ready and stop before the final confirm. If they offer a discount or pause to stay, list it as a choice.'};
@@ -1116,10 +1361,154 @@ function finHelloFold(on){
   return fold;
 }
 
-// the phone gets its own copy of Finance from a QR code shown here (mobile/finance-phone.js)
-function finPairFold(){
+/* ── another device from a code: any phone or computer with Finance unlocked shows a 12-character code (and on the
+   computer a QR of it); the new one types or scans it. The SimpleFIN link and his corrections go sealed under the
+   code through the pairing server (renderer/js/pair.js: 10 minutes, once, only the code opens it). ── */
+const FIN_PAIR_PREFIX='tasks-finpair:';
+function finPairServer(){
+  if(typeof pairServer!=='function')return null;
+  const p=typeof syncState!=='undefined'&&syncState.cfg&&syncState.cfg.personal;
+  return pairServer(p&&p.url,p&&p.key);
+}
+// a scanned QR → the 12 characters, or null
+function finCodeFromQr(text){ const t=String(text||'').trim(); return t.indexOf(FIN_PAIR_PREFIX)===0?pairNormalize(t.slice(FIN_PAIR_PREFIX.length)):null; }
+// a code → { ok, text } with the pairing text the other device sealed
+async function finTakeCode(code){
+  const srv=finPairServer(); if(!srv)return {ok:false,error:'This device has no pairing server. Turn on sync in Settings first.'};
+  try{
+    const d=await pairDerive(code);
+    const r=(await pairRpc(srv,'sync_pair_take',{p_id:d.id}))[0];
+    if(r&&r.refused==='rate')return {ok:false,error:'Too many tries from this network. Wait an hour, then try again.'};
+    const text=r&&r.sealed?await pairOpen(d.key,r.sealed):null;
+    if(!text||text.indexOf('tasks-finance:1:')!==0)return {ok:false,error:'That code didn’t work. It may be mistyped, used or run out. Make a new one on your other device.'};
+    return {ok:true,text:text};
+  }catch(e){ return {ok:false,error:'Couldn’t reach the pairing server: '+e.message}; }
+}
+// the code on the screen survives the tab drawing itself again
+function finShareStop(withdraw){
+  const live=fin.shareLive; if(!live)return;
+  clearInterval(live.timer); fin.shareLive=null;
+  if(withdraw)pairRpc(live.srv,'sync_pair_cancel',{p_id:live.id,p_watch:live.watch}).catch(function(){});
+}
+function finShareFold(){
   const fold=el('details','fin-fold');
-  fold.appendChild(el('summary','mono','pair your phone'));
+  fold.appendChild(el('summary','mono','add another device'));
+  const srv=finPairServer();
+  if(!srv)return finApi.financePairCode?finPairFold(fold):fold; // no pairing server: the computer's direct QR for a phone
+  fold.appendChild(el('p','fin-note','Show a code, then open Finance on your phone or other computer and type the code or scan it. That device gets your accounts from SimpleFIN itself and keeps them encrypted there. Anyone who has this code in the next 10 minutes can read your bank accounts, so only use it on your own devices. It works once.'));
+  const go=el('button','btn-accent','Show a code');
+  const box=el('div','fin-qr');
+  const codeEl=el('div','mono fin-code'), info=el('p','fin-note'), qr=el('div');
+  const hideBtn=el('button','ghost mono','hide the code');
+  box.appendChild(codeEl); box.appendChild(qr); box.appendChild(info); box.appendChild(hideBtn);
+  const draw=function(){
+    const live=fin.shareLive;
+    box.hidden=!live; go.hidden=!!live;
+    if(!live)return;
+    codeEl.textContent=pairFormat(live.code);
+    qr.innerHTML=live.svg||''; // made in the main process by the qrcode package from the code alone
+    info.textContent=(live.svg?'Type it or scan it':'Type it')+' on your other device. Works once, for '+Math.max(1,Math.ceil((live.until-Date.now())/60000))+' more min.';
+  };
+  const tick=async function(){
+    const live=fin.shareLive; if(!live)return;
+    if(Date.now()>=live.until){ finShareStop(true); finSay('That code ran out. Show a new one when you’re ready.'); return renderFinance(); }
+    draw();
+    const st=await pairRpc(live.srv,'sync_pair_state',{p_id:live.id,p_watch:live.watch}).catch(function(){ return null; });
+    if(fin.shareLive!==live)return;
+    if(st==='taken'){ finShareStop(false); finSay('Your other device has Finance now. If that wasn’t you, disable this connection on bridge.simplefin.org.'); renderFinance(); }
+    else if(st==='gone'||st==='expired'){ finShareStop(false); renderFinance(); }
+  };
+  go.addEventListener('click',async function(){
+    go.disabled=true;
+    try{
+      const r=await finApi.financeSharePayload();
+      if(!r||!r.ok){ finSay(r&&r.error||'Couldn’t make a code.',true); return renderFinance(); }
+      const code=pairNewCode(), d=await pairDerive(code);
+      const watch=pairHex(crypto.getRandomValues(new Uint8Array(32)));
+      const why=await pairRpc(srv,'sync_pair_put',{p_id:d.id,p_sealed:await pairSeal(d.key,r.text),p_watch:watch});
+      if(why){ finSay(why==='rate'?'Too many codes from this network. Try again in an hour.':why==='busy'?'Pairing is busy right now. Try again in a few minutes.':'Couldn’t make a code.',true); return renderFinance(); }
+      finShareStop(true);
+      const live=fin.shareLive={code:code,id:d.id,watch:watch,srv:srv,until:Date.now()+10*60*1000,svg:'',timer:null};
+      live.timer=setInterval(tick,4000);
+      if(window.desktop&&window.desktop.syncQr){
+        const q=await window.desktop.syncQr(FIN_PAIR_PREFIX+code).catch(function(){ return null; });
+        if(q&&q.ok&&fin.shareLive===live)live.svg=q.svg;
+      }
+      fold.open=true; draw();
+    }catch(e){ finSay('Couldn’t make a code: '+e.message,true); renderFinance(); }
+    finally{ go.disabled=false; }
+  });
+  hideBtn.addEventListener('click',function(){ finShareStop(true); draw(); });
+  fold.addEventListener('toggle',function(){ if(!fold.open&&fin.shareLive){ finShareStop(true); draw(); } });
+  fold.appendChild(go); fold.appendChild(box);
+  if(fin.shareLive)fold.open=true;
+  draw();
+  return fold;
+}
+/* a phone paired with a code, and no computer has put the link in the :finance row yet: he picks a Finance
+   passphrase here and the phone puts the link up under it, so a computer on this sync connects by typing it */
+function finPhoneShareFold(){
+  const fold=el('details','fin-fold');
+  fold.appendChild(el('summary','mono','let your computers connect by themselves'));
+  fold.appendChild(el('p','fin-note','Pick a Finance passphrase. Your computers on this sync can then connect to SimpleFIN by typing it, without a new setup token or a code. Only the SimpleFIN connection is shared, locked with this passphrase. Your bank data stays on each device. Nobody can reset the passphrase, so keep it somewhere safe.'));
+  const p1=finInput('password','passphrase (at least 10 characters)');
+  const p2=finInput('password','passphrase again');
+  fold.appendChild(p1); fold.appendChild(p2);
+  const go=el('button','btn-accent',fin.busy?'Sharing…':'Share with my computers'); go.disabled=fin.busy;
+  go.addEventListener('click',async function(){
+    if(p1.value.length<10){ finSay('Use at least 10 characters for the passphrase.',true); return renderFinance(); }
+    if(p1.value!==p2.value){ finSay('The two passphrases don’t match.',true); return renderFinance(); }
+    fin.busy=true; go.disabled=true; go.textContent='Sharing…'; finSay('Locking the connection. This can take up to half a minute.');
+    const r=await finApi.financeMakeShareBox(p1.value).catch(function(e){ return {ok:false,error:e.message}; });
+    p1.value=p2.value='';
+    if(!r.ok){ fin.busy=false; finSay(r.error,true); return renderFinance(); }
+    await finShareUp(); fin.busy=false; fin.phoneShareNeed=false;
+    finSay('Shared. On a computer on this sync, open Finance and type this passphrase.'); renderFinance();
+  });
+  fold.appendChild(go);
+  return fold;
+}
+// joining here with a code from the other device: typed, or scanned on the phone
+async function finJoinWithCode(code,passphrase){
+  const got=await finTakeCode(code);
+  if(!got.ok)return got;
+  return finJoinWithText(got.text,passphrase);
+}
+function finJoinWithText(text,passphrase){
+  if(finApi.phone)return finApi.financeJoin(text);
+  return finNative.financeSetupFromPair(text,passphrase);
+}
+// the computer's setup screens: a code from his phone or other computer, and a new passphrase for this one
+function finCodeJoinFold(v,st,redraw){
+  const fold=el('details','fin-fold');
+  fold.appendChild(el('summary','mono','have Finance on your phone or another computer? use a code'));
+  fold.open=!!fin.codeOpen;
+  fold.addEventListener('toggle',function(){ fin.codeOpen=fold.open; });
+  fold.appendChild(el('p','fin-note','On that device, open Finance, unlock it, and choose add another device → Show a code. Type the code here and pick a passphrase for this computer.'));
+  const code=finInput('text','code, like K7QM-4XR9-PB2T'); code.autocapitalize='characters'; code.spellcheck=false;
+  const p1=finInput('password','passphrase (at least '+st.minPassphrase+' characters)');
+  const p2=finInput('password','passphrase again');
+  [code,p1,p2].forEach(function(i){ fold.appendChild(i); });
+  const go=el('button','btn-accent',fin.busy?'Connecting…':'Connect with the code'); go.disabled=fin.busy;
+  go.addEventListener('click',async function(){
+    const c=pairNormalize(code.value);
+    if(!c){ finSay('A code is 12 letters and numbers, like K7QM-4XR9-PB2T.',true); return redraw(); }
+    if(p1.value.length<st.minPassphrase){ finSay('Use at least '+st.minPassphrase+' characters for the passphrase.',true); return redraw(); }
+    if(p1.value!==p2.value){ finSay('The two passphrases don’t match.',true); return redraw(); }
+    fin.busy=true; finSay(''); go.disabled=true; go.textContent='Connecting…';
+    const r=await finJoinWithCode(c,p1.value).catch(function(e){ return {ok:false,error:e.message}; });
+    p1.value=p2.value=''; fin.busy=false;
+    if(!r.ok){ finSay(r.error,true); return redraw(); }
+    code.value=''; fin.codeOpen=false; fin.shared=undefined; fin.tokenInstead=false;
+    finSay(r.warning||'',!!r.warning); renderFinance(); finShareUp();
+  });
+  fold.appendChild(go);
+  return fold;
+}
+
+// no pairing server: the phone gets its own copy of Finance from a QR code shown here (mobile/finance-phone.js)
+function finPairFold(fold){
+  if(!fold){ fold=el('details','fin-fold'); fold.appendChild(el('summary','mono','pair your phone')); }
   fold.appendChild(el('p','fin-note','Open Finance in the Romulus app on your phone, tap Scan, and point it at the code. The phone then gets your accounts from SimpleFIN itself and opens them with your fingerprint. Anyone who scans this code can read your bank accounts, so only show it to your own phone. It hides after 2 minutes.'));
   const go=el('button','btn-accent','Show the code');
   const box=el('div','fin-qr'); box.hidden=true;
@@ -1196,18 +1585,22 @@ function drawFinMain(v){
   v.appendChild(finFoldable(accts,'accounts','Accounts',d.accounts.length+(d.accounts.length===1?' account':' accounts')));
   v.appendChild(finWorthChart(d.accounts,cur));
   const debts=finDebtsCard(d,cur); if(debts)v.appendChild(debts);
+  v.appendChild(finEbtCard(d)); // off: one line to turn it on (grocery-list.js ebtOn)
   if(!d.csv)v.appendChild(finStocksCard(cur)); // a CSV has no holdings
 
   // fixed and variable costs (finance-costs.js): drawn again when he corrects a payee below
   const costBox=el('div','fin-charts');
   v.appendChild(costBox);
   const subsBox=el('div'); v.appendChild(subsBox);
+  costMarkInvestMoves(d.accounts); // money sent to his brokerage isn't spending
   const allTxs=[];
   d.accounts.forEach(function(a){ a.transactions.forEach(function(t){ allTxs.push(t); }); });
   let costs=null;
   const drawCosts=function(){
     costs=costsOf(allTxs,d.kinds); costBox.textContent=''; costBox.appendChild(finFixedChart(costs,cur)); costBox.appendChild(finVariableChart(costs,cur));
-    subsBox.textContent=''; subsBox.appendChild(finSubsCard(subscriptionCheck(allTxs,d.kinds),cur));
+    const deals=discountCheck(allTxs,finWho(allTxs));
+    subsBox.textContent=''; subsBox.appendChild(finSubsCard(subscriptionCheck(allTxs,d.kinds),cur,deals));
+    finTellDeals(deals,cur);
   };
   drawCosts();
 
@@ -1239,6 +1632,8 @@ function drawFinMain(v){
   // what the Agent bought with it (order-match.js), and everything a search can find in a row
   const agentBought=agentOrders(state.tasks);
   const bought=matchOrders(all.map(function(x){ return x.t; }),agentBought.concat(emailOrders(d.receipts,agentBought)));
+  // a food store's charge nothing explains: he ordered in the store's own app, so the Agent looks (grocery-list.js)
+  if(typeof lookForOwnOrders==='function')lookForOwnOrders(storesToCheck(all.map(function(x){ return x.t; }),bought,state.tasks));
   const findable=function(x){
     const m=bought[x.t.id];
     return [x.t.description,x.t.bank,x.t.memo].concat(m?[m.order.title].concat(m.order.items.map(function(it){ return it.name; })):[]).join('\n').toLowerCase();
@@ -1273,7 +1668,8 @@ function drawFinMain(v){
   if(d.csv){ const f=finCsvFold(d); f.classList.add('fin-csv-fold'); v.appendChild(f); }
   if(finApi.financeScreen)v.appendChild(finCaptureFold());
   if(finApi.financeSetHello)v.appendChild(finHelloFold(d.hello));
-  if(finApi.financePairCode)v.appendChild(finPairFold());
+  if(finApi.financeSharePayload)v.appendChild(finShareFold());
+  if(fin.phoneShareNeed&&finApi.financeMakeShareBox)v.appendChild(finPhoneShareFold());
   v.appendChild(d.csv?finForgetFold('remove Finance from here','This deletes all the bank data from your CSV files saved here. Your bank still has it, so you can add the files again.'):finApi.phone?finForgetFold('remove Finance from this phone','This deletes Finance’s data and fingerprint key on this phone only. Your computer and SimpleFIN keep working, and you can pair again from the computer.')
     :finForgetFold('connection settings','Forgetting deletes the saved bank data and up to a year of history from this computer. To see your accounts again you’d connect with a new SimpleFIN token, starting over at 90 days.'));
 }

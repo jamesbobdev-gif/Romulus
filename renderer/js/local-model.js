@@ -24,6 +24,7 @@ if(window.desktop&&window.desktop.localGet){
     try{ cur=await window.desktop.localGet(); }catch(e){ return; }
     $('localUrl').value=cur.url||'';
     $('localOffBtn').hidden=!cur.configured;
+    $('localEasy').hidden=!!cur.configured;
     $('localWorkerRow').hidden=!cur.configured&&!cur.worker; $('localWorkerOn').checked=!!cur.worker;
     window.localWorkerHere=!!cur.worker;
     if(cur.configured){
@@ -62,5 +63,48 @@ if(window.desktop&&window.desktop.localGet){
     if(!r.ok){ say(r.error,true); return; }
     $('localModelRow').hidden=true; await draw(); if(typeof refreshLocalStatus==='function')refreshLocalStatus();
   });
+  /* Set it up for me (agent/ollama-setup.js): Ollama running on this computer (started, or installed on
+     Windows), a model that fits its memory (downloaded here with a progress bar if it has none), switched on. */
+  const easy=$('localEasyBtn'), note=function(t){ $('localEasyNote').textContent=t||''; };
+  const gb=function(b){ return (b/1024/1024/1024).toFixed(1)+' GB'; };
+  // only offered where it can run: enough memory and disk (agent/ollama-setup.js hardwareFit)
+  window.desktop.localSetupInfo().then(function(i){
+    if(i.fit&&!i.fit.ok){ easy.disabled=true; note(i.fit.why+' A computer that can run one can take local tasks for this one: set it up there and turn on Run local tasks here.'); return; }
+    note((i.running?'Ollama is running here.':i.installed?'Ollama is installed; this starts it.':i.canInstall?'Installs Ollama and a '+i.suggest.model+' model ('+i.suggest.sizeGb+' GB) for this computer’s '+i.ramGb+' GB of memory.':'Opens Ollama’s download page; press this again once it’s installed.')+(i.fit&&i.fit.why?' '+i.fit.why:''));
+  }).catch(function(){});
+  window.desktop.onLocalPullProgress(function(p){
+    const bar=$('localPullBar'); bar.hidden=false;
+    const pct=p.total?Math.min(100,Math.round(p.done/p.total*100)):0;
+    $('localPullFill').style.width=pct+'%';
+    note(p.total?'Downloading '+p.model+': '+gb(p.done)+' of '+gb(p.total):(p.status||'Downloading '+p.model+'…'));
+  });
+  const setUp=async function(){
+    easy.disabled=true;
+    try{
+      note('Getting Ollama going…');
+      const inst=await window.desktop.localInstall();
+      if(!inst.ok){ note(inst.error); return; }
+      const info=await window.desktop.localSetupInfo();
+      const r=await window.desktop.localProbe(info.url);
+      if(!r.ok){ note(r.error); return; }
+      // a model it already has: the suggested one, else the one loaded, else the first
+      let model=r.models.indexOf(info.suggest.model)>=0?info.suggest.model:(r.running[0]||r.models[0]);
+      if(!model){
+        note('Downloading '+info.suggest.model+' ('+info.suggest.sizeGb+' GB)…');
+        const p=await window.desktop.localPull(info.suggest.model);
+        if(!p.ok){ note('The download stopped: '+p.error+'. Press again to pick up where it left off.'); return; }
+        model=info.suggest.model;
+      }
+      const s=await window.desktop.localSave({url:info.url,model:model});
+      if(!s.ok){ note(s.error); return; }
+      $('localPullBar').hidden=true;
+      note('Done: '+model+' is on.');
+      await draw(); if(typeof refreshLocalStatus==='function')refreshLocalStatus();
+      if(typeof drawSetupList==='function')drawSetupList();
+    }catch(e){ note('Something went wrong: '+(e&&e.message||e)); }
+    finally{ easy.disabled=false; }
+  };
+  easy.addEventListener('click',setUp);
+  window.localEasySetup=setUp; // the setup list at the top of Settings
   draw();
 }

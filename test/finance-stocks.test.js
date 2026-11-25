@@ -45,3 +45,17 @@ test('the portfolio line: each stock at its latest price by then, cash flat', ()
   const line = portfolioLine(held, { A: { series: [[1000, 10], [3000, 12]] }, B: { series: [[2000, 100]] } });
   assert.deepStrictEqual(line, [[1000, 170], [2000, 170], [3000, 174]]);
 });
+
+test('a symbol that fails one round keeps its last quote (Yahoo rate-limits a batch now and then)', async () => {
+  const good = (price) => ({ ok: true, status: 200, json: async () => chart(price, 100, 1792000000, [], []) });
+  const first = await fetchQuotes(['AAPL', 'MSFT'], async () => good(110), '1d');
+  const fetch = async (url) => (url.includes('MSFT') ? { ok: false, status: 429 } : good(120));
+  const r = await fetchQuotes(['AAPL', 'MSFT'], fetch, '1d', first.quotes);
+  assert.deepStrictEqual([r.quotes.AAPL.c, r.quotes.MSFT.c], [120, 110], 'AAPL moved on, MSFT stays at its last price');
+  assert.match(r.warning, /too many requests/);
+  const all = await fetchQuotes(['AAPL', 'MSFT'], async () => ({ ok: false, status: 429 }), '1d', first.quotes);
+  assert.deepStrictEqual([all.quotes.AAPL.c, all.quotes.MSFT.c], [110, 110], 'a whole round lost: the last prices stay, with the warning');
+  await assert.rejects(fetchQuotes(['AAPL'], async () => ({ ok: false, status: 429 }), '1d', {}), /too many/, 'nothing to fall back on: it throws as before');
+  const sold = await fetchQuotes(['AAPL'], async () => good(120), '1d', first.quotes);
+  assert.deepStrictEqual(Object.keys(sold.quotes), ['AAPL'], 'a symbol no longer held is not carried along');
+});

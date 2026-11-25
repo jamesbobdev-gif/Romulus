@@ -9,9 +9,9 @@ test('a web run asks his whole order, in order', () => {
   assert.deepStrictEqual(runOrder({ order, ready }), ['claude', 'gemini', 'openrouter']);
 });
 
-test('an inbox run asks Claude only', () => {
-  assert.deepStrictEqual(runOrder({ order, mailRun: true, ready }), ['claude']);
-  assert.deepStrictEqual(runOrder({ order: ['gemini'], mailRun: true, ready }), []);
+test('an inbox run asks his whole order too, not Claude only', () => {
+  assert.deepStrictEqual(runOrder({ order, mailRun: true, ready }), ['claude', 'gemini', 'openrouter']);
+  assert.deepStrictEqual(runOrder({ order: ['gemini'], mailRun: true, ready }), ['gemini']);
 });
 
 test('a pinned task asks its AI first, then the rest of his order', () => {
@@ -23,6 +23,12 @@ test('a pinned task asks its AI first, then the rest of his order', () => {
 test('a pinned AI that isn’t set up is skipped, the others still try', () => {
   assert.deepStrictEqual(runOrder({ order, pinned: 'openai', ready: (id) => id !== 'openai' }), ['claude', 'gemini', 'openrouter']);
   assert.deepStrictEqual(runOrder({ order: [], pinned: 'openai', ready: () => false }), []);
+});
+
+test('his yes to an order stays on the AI that asked: any AI may place it', () => {
+  const mine = ['gemini', 'openai', 'nvidia', 'claude'];
+  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'nvidia', ready }), ['nvidia', 'gemini', 'openai', 'claude']);
+  assert.deepStrictEqual(runOrder({ order: mine, pinned: 'openai', ready: (id) => id !== 'claude' }), ['openai', 'gemini', 'nvidia', 'claude']);
 });
 
 test('a task stays on the AI that answered it last', () => {
@@ -65,4 +71,15 @@ test('asking him, offering picks, or done is not "couldn’t"', () => {
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'I couldn’t find the 32 oz, here are others', options: [{ url: 'https://x' }] }), false);
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Which theater?', ask: [{ q: 'Which?' }], cant: 'x' }), false);
   assert.strictEqual(couldntDo({ status: 'needs-you', note: 'Pick a time', showtimes: { days: [] } }), false);
+});
+
+test('cloud room: the pool is only low when every connected AI is', () => {
+  const { cloudRoom } = require('../agent/ai-connections');
+  const snap = { claude: { pct: 0.95, week: 0.2 }, gemini: { pct: 0.5 }, groq: { pct: 0.97 }, openrouter: { pct: null } };
+  assert.deepStrictEqual(cloudRoom(['claude', 'gemini'], snap), { left: 0.5, tight: false, out: false, best: 'gemini' });
+  const tight = cloudRoom(['claude', 'groq'], snap);
+  assert.strictEqual(tight.tight, true); assert.strictEqual(tight.out, false); assert.strictEqual(tight.best, 'claude');
+  assert.strictEqual(cloudRoom(['claude', 'openrouter'], snap).tight, false); // no limit to measure counts as plenty
+  assert.strictEqual(cloudRoom(['claude'], { claude: { pct: 0.2, week: 0.1 } }, true).out, true); // Claude held for its limit
+  assert.strictEqual(cloudRoom([], snap).tight, false);
 });
