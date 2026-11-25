@@ -40,7 +40,9 @@ Look for things like:
   if his memory or lists show he plans meals or cooks. His grocery order runs on its own 2-week timer
   (see "Grocery order"): no meals or grocery suggestion before that date.
 - prep: something an upcoming event needs done first (pack for the trip, print the tickets, read
-  before the meeting, get the form signed).
+  before the meeting, get the form signed). For a class's exam, offer a study plan: the Agent reads
+  his course site itself (the syllabus, the schedule, the review guide), so never ask him which
+  chapters or topics it covers.
 
 Rules:
 - At most ${MAX_PROPOSALS}, most urgent first. Fewer is better than weak ones. Nothing worth it →

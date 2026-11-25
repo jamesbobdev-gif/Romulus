@@ -19,6 +19,9 @@ const providers = require('./providers');
 const helpers = require('./helpers');
 const legion = require('./legion');
 const coach = require('./coach');
+const studyPlan = require('./study-plan');
+// gather-then-write runs (a coach brief, a study plan): which one this task is, or null
+const guideFor = (t) => studyPlan.isStudy(t) ? studyPlan : coach.isCoach(t) ? coach : null;
 const classSweep = require('./class-sweep');
 const findOut = require('./find-out');
 const fileText = require('./file-text');
@@ -438,7 +441,9 @@ async function startLocalRun() {
     if (!tasks.length) { agentLog('local: every queued task was taken'); return; }
     tasks.forEach((t) => heldSince.delete(t.id));
     sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
-    types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'local')])) });
+    types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'local')])),
+    // a study plan or coach task a cloud AI had: his pill moves to the local model with it (routing.js laneOf)
+    moved: tasks.filter((t) => t.lane === 'claude' && guideFor(t)).map((t) => t.id) });
     // nobody took them in time: they all go to the cloud AIs at once
     if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
     for (const t of tasks) {
@@ -482,7 +487,7 @@ async function localFailed(c, t, msg) {
     : /timed? ?out/i.test(msg)
     ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
     : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
-  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t) && !coach.isCoach(t)) { // a legion or a coach task never goes to the cloud whole
+  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t) && !guideFor(t)) { // a legion, a coach task or a study plan never goes to the cloud whole (no cloud AI can open his courses)
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
     return;
   }
@@ -503,25 +508,27 @@ const legionFile = (id) => path.join(ctx.userData(), 'legion', String(id).replac
 const coachFile = (id) => path.join(ctx.userData(), 'coach', String(id).replace(/[^\w-]/g, '') + '.json');
 function loadCoach(id) { try { return JSON.parse(fs.readFileSync(coachFile(id), 'utf8')); } catch (e) { return null; } }
 // the brief, written by Lupa from the notes alone (a fresh context: nothing it read is cut short) → the note he gets
+// guide: agent/coach.js or agent/study-plan.js (the study plan is written the same way, from its own notes)
 async function writeCoachBrief(c, t, saved, { reply, show } = {}) {
-  const topic = coach.topicOf(t);
-  show('\nWriting your brief from everything it found (a few minutes on a local model)…\n', true);
-  let brief = String(await lupaThink(c, coach.WRITE_PROMPT(topic, [t.due, t.dueTime].filter(Boolean).join(' '), saved.dossier || {},
-    { reply, before: reply ? saved.brief : '', gathered: saved.gathered }), { ms: 25 * 60 * 1000 })).replace(/^```(?:markdown)?\s*|```\s*$/g, '').trim();
+  const guide = guideFor(t) || coach;
+  const topic = guide.topicOf(t);
+  show('\n' + guide.WRITING + '\n', true);
+  let brief = String(await lupaThink(c, guide.WRITE_PROMPT(topic, [t.due, t.dueTime].filter(Boolean).join(' '), saved.dossier || {},
+    { reply, before: reply ? saved.brief : '', gathered: saved.gathered, today: new Date().toDateString() }), { ms: 25 * 60 * 1000 })).replace(/^```(?:markdown)?\s*|```\s*$/g, '').trim();
   brief = coach.noEmoji(brief).trim(); // he doesn't want emoji, even when the model adds them
   if (!brief) throw new Error('the model gave no brief');
   let where = '';
   try {
     fs.mkdirSync(path.dirname(coachFile(t.id)), { recursive: true });
-    fs.writeFileSync(coachFile(t.id), JSON.stringify(Object.assign({}, saved, { brief, at: Date.now() })));
-    const dir = path.join(ctx.documents(), 'Claude Agent', 'Coach');
+    fs.writeFileSync(coachFile(t.id), JSON.stringify(Object.assign({}, saved, { kind: guide.KIND, brief, at: Date.now() })));
+    const dir = path.join(ctx.documents(), 'Claude Agent', guide.FOLDER);
     const base = (topic.replace(/[\/:*?"<>|\u0000-\u001F#]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Brief') + ' ' + new Date().toISOString().slice(0, 10);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, base + '.md'), brief);
     fs.writeFileSync(path.join(dir, base + '.docx'), makeDocx(topic.slice(0, 200), brief));
     where = '\n\nSaved: ' + path.join(dir, base + '.docx');
   } catch (e) { agentLog('coach: saving the brief failed: ' + e.message); }
-  return brief.slice(0, 11000) + where + '\n\nReply with changes ("make it 2 minutes", "I want to use my job as the example") and it rewrites this; reply “look again” to go back through the course.';
+  return brief.slice(0, 11000) + where + '\n\n' + guide.AFTER;
 }
 // his reply on a coach task that already has its notes: only the brief changes, no browsing
 async function rewriteCoach(c, t, saved) {
@@ -639,10 +646,13 @@ async function runLocalTask(c, t) {
   let browser = null, sites = [], mySites = [];
   const money = isMoneyTask(t);
   if (money) t.financeSeen = true; // from here on, this task stays on the mini PC (routing.privateMatch)
-  // a coach task (agent/coach.js) goes through his courses, noting what it finds, then a brief is written from the notes
-  const coaching = !money && coach.isCoach(t);
-  const coachSaved = coaching ? loadCoach(t.id) : null;
-  if (coachSaved && coachSaved.dossier && !coach.wantsLookAgain(t.reply)) return rewriteCoach(c, t, coachSaved);
+  // a coach task (agent/coach.js) or a study plan (agent/study-plan.js) goes through his courses, noting what it
+  // finds, then the brief or plan is written from the notes (coaching: either one; guide: which)
+  const guide = money ? null : guideFor(t);
+  const coaching = !!guide;
+  // notes saved before kept no kind: those were coach mode's. Another kind's notes don't fit this write-up: it gathers afresh
+  const coachSaved = coaching ? [loadCoach(t.id)].filter((s) => s && (s.kind || coach.KIND) === guide.KIND)[0] || null : null;
+  if (coachSaved && coachSaved.dossier && !guide.wantsLookAgain(t.reply)) return rewriteCoach(c, t, coachSaved);
   const dossier = {};
   // the weekly class sweep (agent/class-sweep.js): through every class, adding the work the calendar links miss
   const sweeping = !money && !coaching && classSweep.isSweep(t);
@@ -674,7 +684,7 @@ async function runLocalTask(c, t) {
     : 'he hasn\'t added any (Settings → About you → Files for forms). If a site needs his resume, fill the rest and say in your note that he should add it there, then reply "try again".';
   const tools = money ? [FINANCE_TOOL, LOCAL_TOOLS.find((x) => x.function.name === 'search_my_data')]
     : (browser ? LOCAL_TOOLS.concat(FILL_FORM_TOOL, files.length ? [uploadTool(files)] : [], browser.tools) : LOCAL_TOOLS).concat(canAsk ? [ASK_HELPERS_TOOL] : [],
-      coaching ? [coach.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
+      coaching ? [guide.KEEP_NOTE_TOOL].concat(browser ? [fileText.READ_FILE_TOOL] : []) : [],
       sweeping && browser ? [classSweep.ADD_ITEM_TOOL, classSweep.DONE_TOOL, fileText.READ_FILE_TOOL] : [],
       findingOut && browser ? [findOut.PIN_TOOL, fileText.READ_FILE_TOOL] : []);
   // notes on the task's sites go in its instructions; a site it reaches later gets its note then
@@ -695,7 +705,7 @@ async function runLocalTask(c, t) {
   // the class sweep goes through every class: the most room of all
   // finding out first: looking through a class or two, then the work itself
   let maxSteps = browser ? (sweeping ? 120 : coaching || findingOut ? 80 : 40) : LOCAL_MAX_STEPS;
-  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', (mySites.length ? mySites.join(', ') + ', and ' : '') + 'about 100 common sites (Google, Bing, Wikipedia, YouTube, Reddit, the big social sites, Amazon, Walmart, Target and other big stores, food delivery, travel, the big news sites, Indeed, Zillow, USPS/UPS/FedEx, .gov sites like irs.gov, WebMD, Khan Academy, Quizlet, Canva, Zoom). Banks and payment sites are not on it').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? coach.RULES : '') +
+  const system = rules + (money ? LOCAL_FINANCE_RULES : browser ? LOCAL_BROWSER_RULES.replace('SITES', (mySites.length ? mySites.join(', ') + ', and ' : '') + 'about 100 common sites (Google, Bing, Wikipedia, YouTube, Reddit, the big social sites, Amazon, Walmart, Target and other big stores, food delivery, travel, the big news sites, Indeed, Zillow, USPS/UPS/FedEx, .gov sites like irs.gov, WebMD, Khan Academy, Quizlet, Canva, Zoom). Banks and payment sites are not on it').replace('FILES_RULE', filesRule) : LOCAL_NO_BROWSER) + (canAsk ? LOCAL_HELPERS_RULES : '') + (coaching ? guide.RULES : '') +
     (sweeping ? classSweep.RULES + classSweep.listedText(allTasks) : '') + (findingOut && browser ? findOut.RULES + findOut.cluesText(t, allTasks, findOut.readLog(classLogFile())) : '') + calText + classesText +
     (skills.length ? '\n\n## Skills\n' + skills.map((s) => s.body.trim()).join('\n\n') : '') +
     (taskNotes.length ? '\n\n## Notes on the sites in this task\n' + taskNotes.map(siteNotes.show).join('\n\n') : '') +
@@ -806,12 +816,10 @@ async function runLocalTask(c, t) {
         if (ask) { lookedFirst = true; final = null; messages.push({ role: 'user', content: ask }); show('\nLooking on the class site before asking you…\n', true); continue; }
       }
       // a coach task finishing without the instructions, rubric, format or due date in its notes: one more look
-      if (coaching && browser && !askedMissing && step < maxSteps - 4 && coach.missing(dossier).length && !signins.signedOut().length && !wall) {
+      if (coaching && browser && !askedMissing && step < maxSteps - 4 && guide.missing(dossier).length && !signins.signedOut().length && !wall) {
         askedMissing = true; final = null;
-        messages.push({ role: 'user', content: 'Before you finish: ' + coach.progress(dossier) + ' Look for the missing ones (the assignment page itself, ' +
-          'its attachments with read_file, a View Rubric / Grading link, the syllabus, announcements) and keep_note each. If one really isn\'t in the course, ' +
-          'answer again and say where you looked.' });
-        show('\nStill missing ' + coach.missing(dossier).join(', ') + ': looking once more…\n', true);
+        messages.push({ role: 'user', content: 'Before you finish: ' + guide.progress(dossier) + ' ' + guide.LOOK_MORE });
+        show('\nStill missing ' + guide.missing(dossier).join(', ') + ': looking once more…\n', true);
         continue;
       }
       // a "chapter 8" task finishing without having found out which class and what it is: one more look
@@ -859,7 +867,7 @@ async function runLocalTask(c, t) {
           links.forEach((u) => searchedLinks.add(u));
         } else if (name === 'read_page') { show('\nReading: ' + args.url + '\n', true); opened.add(String(args.url)); result = await localReadPage(args.url); }
         else if (money && name === 'my_finances') { show('\nLooking at your finances (' + (args.what || 'overview') + ')…\n', true); result = ctx.finance.forAgent(args); }
-        else if (coaching && name === 'keep_note') { result = coach.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
+        else if (coaching && name === 'keep_note') { result = guide.keepNote(dossier, args); show('\nNoted: ' + String(args.part || '?') + '\n', true); }
         else if (sweeping && name === 'add_class_item') { result = classSweep.addItem(found, args); show('\n' + result.split('. So far')[0] + '\n', true); }
         else if (sweeping && name === 'mark_class_done') { result = classSweep.markDone(doneFound, args); show('\n' + result + '\n', true); }
         else if (findingOut && name === 'pin_down_task') { result = findOut.pin(pinned, args); if (pinned.item) findOut.remember(classLogFile(), pinned.item); show('\n' + result.split('. His task')[0] + '\n', true); }
@@ -872,7 +880,7 @@ async function runLocalTask(c, t) {
           const qs = (Array.isArray(args.questions) ? args.questions : [args.questions || args.question]).map((q) => String(q || '').trim()).filter(Boolean);
           const refused = qs.map((q) => ({ q, why: helpers.leaksPrivate(q, { privateWords: routing.getRouting().private, locked }) ||
             (legion.isLegion(t) && legion.tooRevealing(q, legion.topicOf(t)) ? 'it gives the research away' : null) ||
-            (coaching && legion.tooRevealing(q, coach.topicOf(t)) ? 'it gives the assignment away' : null) }));
+            (coaching && legion.tooRevealing(q, guide.topicOf(t)) ? 'it gives the assignment away' : null) }));
           const ok = refused.filter((x) => !x.why).map((x) => x.q).slice(0, helpers.MAX_QUESTIONS);
           refused.filter((x) => x.why).forEach((x) => { show('\nKept on the local model (' + x.why + '): ' + x.q.slice(0, 80) + '\n', true); agentLog('local: helper question refused, ' + x.why); });
           if (!ok.length) result = qs.length ? 'Not sent: ' + refused.map((x) => x.why).join('; ') + '. Leave his details out of helper questions, or do this part yourself.' : 'Give 1 to 4 questions.';
@@ -991,7 +999,7 @@ async function runLocalTask(c, t) {
     try { final.note = await writeCoachBrief(c, t, { dossier, gathered: String(final.note || '').slice(0, 1500) }, { show }); final.status = 'needs-you'; stuck = null; }
     catch (e) {
       agentLog('coach: writing the brief failed: ' + e.message);
-      try { fs.mkdirSync(path.dirname(coachFile(t.id)), { recursive: true }); fs.writeFileSync(coachFile(t.id), JSON.stringify({ dossier, gathered: final.note, at: Date.now() })); } catch (e2) {}
+      try { fs.mkdirSync(path.dirname(coachFile(t.id)), { recursive: true }); fs.writeFileSync(coachFile(t.id), JSON.stringify({ kind: guide.KIND, dossier, gathered: final.note, at: Date.now() })); } catch (e2) {}
       final.note = String(final.note || '') + '\n\n(It went through the course but couldn’t write the brief: ' + String(e.message).slice(0, 120) + '. Reply “write it” to try again from what it found.)';
     }
   }

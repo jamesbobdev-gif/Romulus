@@ -284,7 +284,7 @@ function setLane(t,to,ok){
   delete laneAsks[t.id];
   t.laneOk=true;
   // a pick sticks, over whoever answered last
-  t.lane=to==='local'?'local':'claude'; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; if(!t.routedLane)t.routedLane=t.lane; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
+  t.lane=to==='local'?'local':'claude'; t.lanePick=t.lane; if(PINNED_CLOUDS.indexOf(to)!==-1||to==='claude')t.cloud=to; else delete t.cloud; delete t.routeAsk; if(!t.routedLane)t.routedLane=t.lane; delete t.claimedBy; delete t.claimedAt; delete t.runFrom;
   t.status='queued'; t.waitUntil=null; if(!from)t.note=null;
   agentSay(t,'sys',(from?'You switched this to ':'You sent this to ')+name);
   buzz('tap'); touch();

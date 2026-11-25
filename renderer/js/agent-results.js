@@ -27,6 +27,9 @@ if(window.desktop&&window.desktop.onAgentResults){
           // the lane it was first sent to and its type: agent/route-learn.js counts how each turns out (done, or switched off it)
           if(!t.routedLane)t.routedLane=lane; const ty=types[id]; if(ty&&ty.type&&!t.taskType)t.taskType=ty.type; delete t.routeAsk;
           if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'+(ty&&ty.note?'. Type '+ty.note:'')); }
+        // a study plan or coach task a cloud AI had: only the local model can open his courses, so it takes it from here (agent/local-lane.js)
+        else if(lane==='local'&&t.lane!=='local'&&p&&Array.isArray(p.moved)&&p.moved.indexOf(id)>=0){ t.lane='local'; delete t.cloud; delete t.lanePick;
+          agentSay(t,'sys','Moved → The local model (it is signed in to your classes and reads the course itself)'); }
         changed=true;
       }
       // the AI the runner is asking now: the pill shows it, and the task stays with it from here on
