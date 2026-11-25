@@ -75,6 +75,49 @@ test('a study plan goes to the local model, which is signed in to his classes', 
   assert.strictEqual(routing.laneOf({ title: 'Study plan for ECN 201 final', lane: 'claude', laneOk: true }), 'local');
 });
 
+test('with the local model off, a study plan stays with the cloud AIs, which read the course in the browser', () => {
+  routing.useRouting(null);
+  routing.noteSituation({ localUp: false, cloudUp: true });
+  try {
+    const r = routing.routeTask({ title: 'Study plan for ECN 201 final (Wed Dec 9)' });
+    assert.strictEqual(r.lane, 'claude');
+    assert.match(r.reason, /cloud AI reads the course/);
+    assert.strictEqual(routing.laneOf({ title: 'Study plan for ECN 201 final (Wed Dec 9)', lane: 'claude' }), 'claude');
+    assert.strictEqual(routing.laneOf({ title: 'Make the intro video for COMM 101', lane: 'claude' }), 'local'); // a coach brief still waits for it
+    // one Lupa had before it went off: the cloud AIs take it (unless he pinned it to Lupa himself)
+    assert.strictEqual(routing.laneOf({ title: 'Study plan for ECN 201 final', lane: 'local' }), 'claude');
+    assert.strictEqual(routing.laneOf({ title: 'Study plan for ECN 201 final', lane: 'local', lanePick: 'local' }), 'local');
+    // his private words still keep it on his own computer
+    routing.useRouting({ v: 2, default: 'auto', private: 'adhd', rules: [] });
+    const priv = routing.routeTask({ title: 'Study plan for PSY 210 final (my ADHD accommodations)' });
+    assert.strictEqual(priv.lane, 'local');
+    assert.match(priv.reason, /private/);
+    assert.strictEqual(routing.laneOf({ title: 'Study plan for PSY 210 final (my ADHD accommodations)', lane: 'local' }), 'local');
+  } finally { routing.noteSituation({ localUp: null, cloudUp: null }); routing.useRouting(null); }
+});
+
+test('a task saved on one lane is claimed under that lane when the other one takes it', () => {
+  const { claimLane } = require('../agent/task-context');
+  assert.strictEqual(claimLane({ lane: 'local', title: 'Study plan for ECN 201 final' }, 'claude'), 'local');
+  assert.strictEqual(claimLane({ lane: 'local', title: 'Write my essay' }, 'claude'), 'claude'); // nothing else of Lupa's
+  assert.strictEqual(claimLane({ lane: 'local', title: 'Study plan for ECN 201 final', financeSeen: true }, 'claude'), 'claude');
+  assert.strictEqual(claimLane({}, 'claude'), 'claude');
+});
+
+test('the cloud AIs get the study-plan skill: open the class site, never ask him what is on it', () => {
+  const fs = require('fs'), path = require('path');
+  const raw = fs.readFileSync(path.join(__dirname, '..', 'agent', 'skills', 'study-plan.md'), 'utf8').replace(/\r/g, '');
+  const meta = raw.match(/^---\n([\s\S]*?)\n---/)[1];
+  assert.match(meta, /^name: study-plan$/m);
+  assert.match(meta, /^browser: yes$/m);
+  // no words of its own: agent/runner.js loads it for what isStudy picks, so "Study for the GRE" never gets it
+  assert.doesNotMatch(meta, /^match:/m);
+  assert.match(raw, /Never ask him which chapters/);
+  assert.match(raw, /classSites/);
+  assert.match(raw, /Never type his password/);
+  assert.doesNotMatch(raw, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u); // no emoji
+});
+
 test('it notes what the exam covers and the exam itself before the plan is written', () => {
   assert.deepStrictEqual(sp.MUST, ['exam', 'coverage']);
   assert.deepStrictEqual(sp.KEEP_NOTE_TOOL.function.parameters.properties.part.enum, Object.keys(sp.PARTS));

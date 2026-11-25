@@ -13,6 +13,8 @@ const usage = require('./usage-limit');
 const meter = require('./usage-meter');
 const { parseUsageLimit, holdForUsage } = usage;
 const { routeTask, routeInfo, isClaudeLane, decided } = require('./routing');
+const studyPlan = require('./study-plan');
+const courseSites = require('./course-sites');
 const { cloudOrder, cloudReady, runOrder, homeCloud, claudeLast, couldntDo, PINNED_CLOUDS, acctCfg, nameOf } = require('./ai-connections');
 const accounts = require('./ai-accounts');
 const { BROWSER_DENIED, findNode, prepareAgentBrowser, mailSeenFile, mailSeen, browserCfgFor, webGuardHooks, saidYes, approvedHostsFor, STORE_HOSTS, stepsFile, spentFile, closeStoreTabs, SHOPS, SHOPS_DENIED, shopAgents, formFiles } = require('./agent-browser');
@@ -297,12 +299,16 @@ async function startAgentRun() {
     goal: goals.needsPlan(t) ? 'plan' : t.goalId ? 'step' : undefined, // plan = answer with a plan only (agent/goals.js); step = one step of a started goal
     calendar: calendar && wantsCalendar(t) ? calendar : undefined,
     whereHeIsNow: here && nearMe.includes(t.id) ? here : undefined, // from this computer's location, for "near me"
+    // a study plan: which site each of his classes is on, so it opens the right one (agent/skills/study-plan.md)
+    classSites: studyPlan.isStudy(t) ? (() => { const c = courseSites.courseSites(allTasks); return c.length ? c.map((x) => x.course + ': ' + x.kind + ' https://' + x.host) : undefined; })() : undefined,
     howTo: (() => { const h = howtosFor(t); return h.length ? h.map(howtos.show) : undefined; })() }));
   // skills: the ones matching these tasks go in full; the rest are listed so Claude can open them itself
   const skills = loadSkills();
   // tasks a `browser: yes` skill matches (seat maps, carts, forms): Gemini won't hand those to Flash-Lite
-  const needsBrowsing = (ids) => tasks.some((t) => ids.includes(t.id) && skills.some((s) => s.browser && s.match && s.match.test(skillText(t))));
-  const loaded = skills.filter((s) => tasks.some((t) => s.match && s.match.test(skillText(t)))).slice(0, 4);
+  // a skill fits a task by its words, and the study plan by its own test (agent/study-plan.js isStudy)
+  const fits = (s, t) => (s.match && s.match.test(skillText(t))) || (s.name === 'study-plan' && studyPlan.isStudy(t));
+  const needsBrowsing = (ids) => tasks.some((t) => ids.includes(t.id) && skills.some((s) => s.browser && fits(s, t)));
+  const loaded = skills.filter((s) => tasks.some((t) => fits(s, t))).slice(0, 4);
   if (loaded.length) agentLog('skills: ' + loaded.map((s) => s.name).join(', '));
   fs.mkdirSync(workDir, { recursive: true });
   try {
@@ -330,7 +336,8 @@ async function startAgentRun() {
   const browses = (id) => !!browserCfg && (!providers.COMPAT[id] || providers.settings(readConfig())[id + 'Browser']);
 
   // why each newly routed task went to Claude (shown on the task)
-  sendToRenderer('agent:working', { ids, lane: 'claude', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
+  sendToRenderer('agent:working', { ids, lane: 'claude', moved: tasks.filter((t) => t.lane === 'local').map((t) => t.id), // a study plan while Lupa is off (routing.js laneOf)
+    reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
     types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'claude')])) });
   // inbox runs never get the agent browser (see mailRun above)
   const browserCfg = mailRun || cfg.browser === false ? null : await prepareAgentBrowser().catch((e) => { agentLog('browser: ' + e.message); return null; });

@@ -442,7 +442,7 @@ async function startLocalRun() {
     tasks.forEach((t) => heldSince.delete(t.id));
     sendToRenderer('agent:working', { ids: tasks.map((t) => t.id), lane: 'local', reasons: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeTask(t).reason])),
     types: Object.fromEntries(tasks.filter((t) => !t.lane).map((t) => [t.id, routeInfo(t, 'local')])),
-    // a study plan or coach task a cloud AI had: his pill moves to the local model with it (routing.js laneOf)
+    // a study plan or coach task a cloud AI had: his pill moves to the local model with it (routing.js laneOf, while Lupa answers)
     moved: tasks.filter((t) => t.lane === 'claude' && guideFor(t)).map((t) => t.id) });
     // nobody took them in time: they all go to the cloud AIs at once
     if (down) agentLog('local: the mini PC isn’t reachable: passing ' + tasks.length + ' task(s) on');
@@ -487,7 +487,7 @@ async function localFailed(c, t, msg) {
     : /timed? ?out/i.test(msg)
     ? { reason: 'The local model’s model stopped answering (' + msg.slice(0, 120) + ').', fix: 'Reply “try again”. If it keeps happening, restart Ollama on the local model, or switch this to Claude.' }
     : { reason: 'Something went wrong: ' + msg.slice(0, 150), fix: 'Reply “try again”, or switch it to Claude.' };
-  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t) && !guideFor(t)) { // a legion, a coach task or a study plan never goes to the cloud whole (no cloud AI can open his courses)
+  if (cloudOrder().length && !money && !privateMatch(t) && !legion.isLegion(t) && (!guideFor(t) || (guideFor(t) === studyPlan && unreachable))) { // a legion or a coach task never goes to the cloud whole; a study plan does once Lupa can't be reached (agent/skills/study-plan.md)
     sendToRenderer('agent:results', [{ id: t.id, lane: 'local', handoff: stuck.reason }]);
     return;
   }

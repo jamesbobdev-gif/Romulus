@@ -243,8 +243,11 @@ async function claimSealed(a, id, worker, lane) {
 }
 /* the lane a claim names: the server only lets a lane claim a task saved with that lane (or none). A task saved
    on Claude that the app moves to the local model itself (a #legion title, his Finance, a private word:
-   routing.js laneOf) is claimed under the lane it's saved with, or nobody could ever take it. Still atomic */
-const claimLane = (t, lane) => (lane === 'local' && t && t.lane === 'claude' ? 'claude' : lane);
+   routing.js laneOf) is claimed under the lane it's saved with, or nobody could ever take it. Still atomic.
+   The other way only for a study plan the cloud AIs take while Lupa is off (agent/study-plan.js): no other
+   task on the local model's lane is ever claimed by Claude */
+const claimLane = (t, lane) => (lane === 'local' && t && t.lane === 'claude' ? 'claude'
+  : lane === 'claude' && t && t.lane === 'local' && !t.financeSeen && require('./study-plan').isStudy(t) ? 'local' : lane);
 // claim on the server first (atomic: only one worker can win a queued task) → the tasks we may run
 async function claimAgentTasks(tasks, lane = 'claude') {
   const a = supabase.channel(readConfig());
