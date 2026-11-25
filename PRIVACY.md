@@ -111,6 +111,20 @@ goes until you say yes, on that device ("Always", "Just this once" or "No thanks
   under the answer.
 - **What is kept**: per account per month, how many cloud tasks you used and roughly what they cost, to apply your
   plan's allowance; and for a day, a hash of your IP address, to stop people making accounts to use free tasks.
+- **Repeating tasks while every device is off** (paid plans, off until you switch it on for a task: "Also run it
+  when all my devices are off", under the task's Repeat). This is the one case where a copy of a task is kept on the
+  Romulus server between runs, so read this before you switch it on:
+  - What is kept: that task's title, your notes on it, its last few messages, and your "What Claude knows about you"
+    notes, with the same things left out as above. A task with a private word, a card number or an ID number can't
+    be switched on, and its copy is removed if it later gains one.
+  - How it is kept: locked with a key that only the cloud Agent's program has, not the database. So the stored copy
+    is not readable in the database, but it is not end-to-end encrypted the way your lists are: whoever runs the
+    server and holds that key could open it. On the Romulus server that is the developer.
+  - When it runs: only if none of your devices ran that round within a few minutes of its time. The answer is locked
+    with a key that lives on the task inside your own encrypted list, so only your devices can read it; it waits
+    until one of them opens the app (14 days at most).
+  - Switching it off, deleting the task or deleting your account removes the copy. A copy none of your devices has
+    refreshed for 14 days is removed by itself, and after three unread answers it stops running until you are back.
 - The code that does this is public: `supabase/functions/cloud-agent` and `renderer/js/cloud-agent.js`.
 
 ## Health Connect (Android)

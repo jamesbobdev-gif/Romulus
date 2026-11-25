@@ -10,6 +10,12 @@
      one-time key made here, so only this device can open it; it's deleted once picked up. The task itself is
      never stored there.
    - Each account has a monthly allowance (free / paid plan); past it, tasks wait for a computer as before.
+   Scheduled runs (cloudSched*, further down): a repeating task can also run on the server when every device is
+   off. That is the one case where a copy of a task is kept there, so it is its own switch on the task, on any
+   device whose lists sync on the Romulus server (a computer too), for paid plans.
+   - The copy is sealed to a key only the cloud-agent function has; the answer is sealed to a key pair made for
+     that task, whose private half stays on the task (t.cloudRun), inside the person's own encrypted list.
+   - A device that is on runs the round itself and moves the time on; the server only runs one that is late.
    The pure part (what may go, the request, sealing) is above the DOM code, for test/cloud-agent.test.js. */
 'use strict';
 
@@ -136,10 +142,59 @@ function cloudAgWhyText(why,r){
   return 'Romulus cloud couldn’t take it. It waits for your computer.';
 }
 
+/* ── scheduled runs: a repeating task on the server while every device is off ── */
+const CLOUD_SCHED_REFRESH_MS=5*24*3600*1000; // sent again this often even unchanged: the server drops one no device has refreshed in 14 days
+/* → why this task can't be scheduled on the server (plain words), or '' */
+function cloudSchedWhyNot(t,privateWords){
+  if(!t||!t.repeat||!t.repeat.every)return 'it doesn’t repeat';
+  return cloudAgWhyNot(Object.assign({},t,{done:false}),privateWords); // a repeating task is "finished" between rounds
+}
+// the task as the server knows it: a hash of its id, never the id
+async function cloudSchedId(id){
+  const d=await cloudAgCrypto().subtle.digest('SHA-256',new TextEncoder().encode('romulus-sched|'+String(id)));
+  return Array.from(new Uint8Array(d).slice(0,20),function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+}
+// what the server needs to run a round: fewer and shorter turns than a live task sends, since it is kept
+function cloudSchedTask(t){
+  const c=cloudAgTask(t);
+  return {title:c.title,notes:c.notes,reply:'',history:c.history.slice(-8).map(function(h){ return {who:h.who,text:h.text.slice(0,1500)}; })};
+}
+function cloudSchedRule(t,tz){ return {every:t.repeat.every,at:t.repeat.at||'08:00',day:t.repeat.day!=null?t.repeat.day:null,tz:tz||'UTC'}; }
+/* a short mark of everything a stored copy depends on: when it differs from the one last sent (t.cloudRun.sent),
+   the copy on the server is out of date. It lives on the task, so every device sees what was sent. */
+function cloudSchedPrint(t,tz){
+  const h=(Array.isArray(t.history)?t.history:[]).filter(function(x){ return x&&(x.who==='you'||x.who==='claude'); });
+  const s=JSON.stringify([t.title||'',t.notes||'',cloudSchedRule(t,tz),t.nextRun||0,h.length,h.length?h[h.length-1].at||0:0]);
+  let n=0x811c9dc5; for(let i=0;i<s.length;i++){ n^=s.charCodeAt(i); n=Math.imul(n,0x01000193)>>>0; }
+  return n.toString(16)+'.'+s.length;
+}
+/* what to do about the scheduled tasks now → {put: tasks to send (again), drop: tasks to take back, clear: tasks
+   whose switch is off and that the server no longer has} */
+function cloudSchedPlan(tasks,privateWords,now,tz){
+  const put=[],drop=[],clear=[];
+  (tasks||[]).forEach(function(t){
+    const c=t&&t.cloudRun; if(!c||typeof c!=='object')return;
+    if(c.on&&!cloudSchedWhyNot(t,privateWords)){
+      if(c.sent!==cloudSchedPrint(t,tz)||now-(Number(c.at)||0)>CLOUD_SCHED_REFRESH_MS)put.push(t);
+    }
+    else if(c.sent)drop.push(t); // switched off, no longer repeats, or it turned private: the server's copy goes
+    else if(!c.on)clear.push(t);
+  });
+  return {put:put,drop:drop,clear:clear};
+}
+// why the server didn't run a round, or wouldn't keep the task → what the task says
+function cloudSchedWhyText(why,r){
+  if(why==='plan')return 'Running a repeating task while all your devices are off comes with a paid plan (Settings, Device sync). It runs when one of your devices is on, as before.';
+  if(why==='limit'&&r&&r.limit)return 'Your plan keeps up to '+r.limit+' repeating tasks on Romulus cloud. Switch one off to add this one.';
+  if(why==='limit'||why==='spend'||why==='new_account')return 'This month’s Romulus cloud allowance is used up, so this round didn’t run while your devices were off. It starts again by itself in the new month, and runs on your own devices meanwhile.';
+  if(why==='off'||why==='no_account')return 'Romulus cloud can’t keep repeating tasks for this account yet. It runs when one of your devices is on, as before.';
+  return 'Romulus cloud couldn’t run this round while your devices were off: '+String(why||'no reason given').slice(0,300);
+}
+
 // said under every Romulus cloud answer that has links: a web page could have planted one
 const CLOUD_AG_LINK_NOTE='Answered by Romulus cloud with web search. Its links come from the web and aren’t checked: look at the address before you sign in or pay anywhere.';
 
-if(typeof module!=='undefined'&&module.exports)module.exports={cloudAgPrivateIn,cloudAgPrefs,cloudAgAccount,CLOUD_AG_LINK_NOTE,cloudAgWhyNot,cloudAgTask,cloudAgDue,cloudAgTriedThisRound,cloudAgKeyPair,cloudAgSeal,cloudAgOpen,cloudAgResult,cloudAgWhyText,CLOUD_AG_WAIT_MS,CLOUD_AG_WORKER_WAIT_MS};
+if(typeof module!=='undefined'&&module.exports)module.exports={cloudSchedWhyNot,cloudSchedId,cloudSchedTask,cloudSchedRule,cloudSchedPrint,cloudSchedPlan,cloudSchedWhyText,CLOUD_SCHED_REFRESH_MS,cloudAgPrivateIn,cloudAgPrefs,cloudAgAccount,CLOUD_AG_LINK_NOTE,cloudAgWhyNot,cloudAgTask,cloudAgDue,cloudAgTriedThisRound,cloudAgKeyPair,cloudAgSeal,cloudAgOpen,cloudAgResult,cloudAgWhyText,CLOUD_AG_WAIT_MS,CLOUD_AG_WORKER_WAIT_MS};
 
 if(typeof document!=='undefined'){
   const cloudAgUI={privateWords:null,privateAt:0,workerUp:false,workerAt:0,status:null,statusAt:0,busy:{},timer:null};
@@ -312,6 +367,122 @@ if(typeof document!=='undefined'){
     }catch(e){ use.textContent=''; }
   }
   window.cloudAgDraw=cloudAgDraw;
-  window.addEventListener('DOMContentLoaded',function(){ cloudAgDraw(); setTimeout(cloudAgTick,3000); });
-  if(document.readyState!=='loading'){ cloudAgDraw(); setTimeout(cloudAgTick,3000); }
+
+  /* ── scheduled runs (the pure part is above) ── */
+  const cloudSchedUI={pub:null,pubAt:0,busy:false,timer:null};
+  // any device whose Agent list syncs on the Romulus server, a computer included: whichever is open keeps the copy fresh
+  function cloudSchedProfile(){
+    const a=syncState&&syncState.cfg&&syncState.cfg.agent;
+    if(!validProfile(a)||typeof hostedIs!=='function'||!hostedIs(a.url))return null;
+    return a;
+  }
+  function cloudSchedTz(){ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'; }catch(e){ return 'UTC'; } }
+  // the key a stored copy is sealed to (the function's own), or null when this server doesn't offer scheduled runs
+  async function cloudSchedPub(p){
+    if(Date.now()-cloudSchedUI.pubAt<10*60*1000)return cloudSchedUI.pub;
+    cloudSchedUI.pubAt=Date.now();
+    try{ const s=await cloudAgCall(p,{action:'status',syncKey:await cloudAgId(p)}); cloudSchedUI.pub=(s&&s.schedPub)||null; }catch(e){}
+    return cloudSchedUI.pub;
+  }
+  // one task's copy to the server (new, or changed since the last one)
+  async function cloudSchedSend(p,key,pub,t,prefs,tz){
+    const c=t.cloudRun;
+    if(!c.pub||!c.priv){ const k=await cloudAgKeyPair(false); c.pub=k.pub; c.priv=k.priv; } // stays on the task: any of their devices can open the answers
+    const print=cloudSchedPrint(t,tz);
+    const r=await cloudAgCall(p,{action:'schedule',syncKey:key,task:await cloudSchedId(t.id),next:t.nextRun||null,rule:cloudSchedRule(t,tz),
+      sealed:await cloudAgSeal(pub,{task:cloudSchedTask(t),prefs:prefs}),pub:c.pub});
+    if(r&&r.ok){ c.sent=print; c.at=Date.now(); if(r.next&&(!t.nextRun||t.nextRun<Date.now()))t.nextRun=Date.parse(r.next)||t.nextRun; return; }
+    c.on=false; c.sent=null; // it can't be kept there: the switch goes off and the task says why
+    agentSay(t,'sys',cloudSchedWhyText(r&&r.why,r));
+  }
+  // what ran while every device was off, onto its tasks
+  async function cloudSchedCollect(p,key,byId){
+    const r=await cloudAgCall(p,{action:'results',syncKey:key});
+    let changed=false;
+    for(const x of (r&&Array.isArray(r.results)?r.results:[])){
+      const t=byId[x.task]; if(!t||!t.cloudRun)continue;
+      changed=true;
+      if(x.next&&(!t.nextRun||t.nextRun<x.next))t.nextRun=x.next;
+      let res=null;
+      if(x.sealed&&t.cloudRun.priv){ try{ res=cloudAgResult(t.id,await cloudAgOpen(t.cloudRun.priv,x.sealed)); }catch(e){} }
+      if(!res){ agentSay(t,'sys',cloudSchedWhyText(x.sealed?'its answer couldn’t be opened on this device':x.why)); continue; }
+      const when=fmtWhen(x.ran||Date.now());
+      if(!t.done&&(t.status==='working'||t.status==='queued')){
+        // a round is going or waiting here already: the server's answer joins the conversation without taking it over
+        agentSay(t,'sys','Romulus cloud also ran this '+when+', while your devices were off:');
+        agentSay(t,'claude',res.note,{model:CLOUD_AG_NAME});
+        continue;
+      }
+      t.done=false; t.status='working'; t.lane='claude'; delete t.cloud; t.runFrom=x.ran||Date.now(); t.reply=null;
+      agentSay(t,'sys','Scheduled run ('+repeatText(t.repeat)+') on Romulus cloud '+when+', while your devices were off');
+      agentApplyResult(res);
+      if(res.options&&res.options.some(function(o){ return o.url; }))agentSay(t,'sys',CLOUD_AG_LINK_NOTE);
+    }
+    // a copy the server still has for a task that is gone here (deleted, or its switch came off on an older app): take it back
+    for(const k of (r&&Array.isArray(r.kept)?r.kept:[])){
+      if(!byId[k.task]||!byId[k.task].cloudRun||!byId[k.task].cloudRun.on){ try{ await cloudAgCall(p,{action:'unschedule',syncKey:key,task:k.task}); }catch(e){} }
+    }
+    return changed;
+  }
+  /* every few minutes while the app is open, and when it comes back: collect, then send what changed */
+  async function cloudSchedTick(){
+    clearTimeout(cloudSchedUI.timer);
+    cloudSchedUI.timer=setTimeout(cloudSchedTick,5*60*1000);
+    const p=cloudSchedProfile();
+    const mine=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&t.cloudRun; });
+    if(!p||!mine.length||cloudSchedUI.busy)return; // nothing scheduled: the server is never asked
+    cloudSchedUI.busy=true;
+    try{
+      await cloudAgRefresh(p);
+      const key=await cloudAgId(p), tz=cloudSchedTz(), byId={};
+      for(const t of mine)byId[await cloudSchedId(t.id)]=t;
+      let changed=false;
+      if(mine.some(function(t){ return t.cloudRun.sent; }))changed=await cloudSchedCollect(p,key,byId);
+      const plan=cloudSchedPlan(mine,cloudAgUI.privateWords,Date.now(),tz);
+      plan.clear.forEach(function(t){ delete t.cloudRun; changed=true; });
+      for(const t of plan.drop){
+        await cloudAgCall(p,{action:'unschedule',syncKey:key,task:await cloudSchedId(t.id)});
+        if(t.cloudRun.on)t.cloudRun.sent=null; else delete t.cloudRun;
+        changed=true;
+      }
+      if(plan.put.length){
+        const pub=await cloudSchedPub(p);
+        if(pub){
+          let prefs='';
+          try{ const pp=typeof prefsProfile==='function'&&prefsProfile(); if(pp){ const r=await syncPullRow(pp); prefs=cloudAgPrefs((r&&r.doc&&r.doc.text)||'',cloudAgUI.privateWords); } }catch(e){}
+          for(const t of plan.put){ await cloudSchedSend(p,key,pub,t,prefs,tz); changed=true; }
+        }
+      }
+      if(changed){ touch(); if(state.activeTab==='agent')render(); }
+    }catch(e){} // no connection: the next tick tries again
+    finally{ cloudSchedUI.busy=false; }
+  }
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden)cloudSchedTick(); });
+
+  /* the switch under a task's Repeat row (lists.js) */
+  function cloudSchedRow(t,opts){
+    const p=cloudSchedProfile(); if(!p||!t.repeat)return;
+    if(!cloudSchedUI.pubAt){ cloudSchedPub(p).then(function(pub){ if(pub&&state.activeTab==='agent')render(); }); return; }
+    if(!cloudSchedUI.pub&&!t.cloudRun)return; // this server doesn't offer it
+    const row=el('div','panel-meta repeat-row cloud-sched-row');
+    const lab=document.createElement('label');
+    const box=document.createElement('input'); box.type='checkbox'; box.checked=!!(t.cloudRun&&t.cloudRun.on);
+    const why=cloudSchedWhyNot(t,cloudAgUI.privateWords);
+    box.disabled=!!why&&!box.checked;
+    lab.appendChild(box); lab.appendChild(document.createTextNode(' Also run it when all my devices are off'));
+    row.appendChild(lab);
+    row.appendChild(el('span','next',why?'Not this one: '+why+'.'
+      :box.checked?(t.cloudRun.sent?'On: Romulus cloud runs it if none of your devices has.':'Saving it on Romulus cloud…')
+      :'Romulus cloud runs it then, with web search only. A copy of this task is kept on the Romulus server for that, locked so only the cloud Agent can open it. Paid plans.'));
+    box.addEventListener('click',function(e){ e.stopPropagation(); });
+    box.addEventListener('change',function(){
+      t.cloudRun=Object.assign({},t.cloudRun,{on:box.checked});
+      touch(); render(); cloudSchedTick();
+    });
+    opts.appendChild(row);
+  }
+  window.cloudSchedRow=cloudSchedRow;
+
+  window.addEventListener('DOMContentLoaded',function(){ cloudAgDraw(); setTimeout(cloudAgTick,3000); setTimeout(cloudSchedTick,8000); });
+  if(document.readyState!=='loading'){ cloudAgDraw(); setTimeout(cloudAgTick,3000); setTimeout(cloudSchedTick,8000); }
 }

@@ -594,6 +594,7 @@ function buildPanel(t){
     rr.appendChild(sel); rr.appendChild(tm);
     if(t.repeat&&t.nextRun)rr.appendChild(el('span','next','next: '+fmtWhen(t.nextRun)));
     opts.appendChild(rr);
+    if(typeof cloudSchedRow==='function')cloudSchedRow(t,opts); // also when every device is off (cloud-agent.js)
     // starts when: the task waits for an email, a calendar event or a web page (triggers.js; the desktop app does the looking)
     const tw=el('div','panel-meta repeat-row trigger-row');
     tw.appendChild(el('span','lbl','Starts when'));
