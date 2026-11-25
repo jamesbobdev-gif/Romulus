@@ -33,6 +33,7 @@ that says what it does; read that first, then this for how the pieces fit and th
 | Calendars and email accounts | `calendars.js`, `connect-accounts.js` | `agent/calendars.js`, `main/calendar-accounts.js`, `main/gcal-sync.js`, `mobile/cal-phone.js` |
 | Settings | `settings.js`, `tab-picker.js`, `local-model.js`, `setup-list.js`, `welcome.js`, `demo.js` (example to-dos), `backup.js` (backup file) | `main/store.js` |
 | Screen helper | `renderer/overlay.*` | `main/overlay.js`, `agent/overlay-ask.js`, `agent/pc-control.js` |
+| Romulus cloud (Agent tasks on the server, repeats with every device off) | `cloud-agent.js` | `supabase/functions/cloud-agent`, `supabase/migrations/2026112*_cloud_agent*.sql` |
 | Phone notifications, reply in the notification | `push.js` | `supabase/functions/push`, `supabase/migrations/20261125_push.sql`, `mobile/android` `Push*.java` |
 | Updates | `update-desktop.js` | `main/updater.js`, `mobile/update-phone.js`, `scripts/release.js` |
 

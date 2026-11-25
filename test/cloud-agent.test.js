@@ -95,3 +95,75 @@ test('every refusal reads as plain words', () => {
   assert.match(c.cloudAgWhyText('busy'), /starts when one of them finishes/);
   assert.match(c.cloudAgWhyText('limit', { limit: 20 }), /20 Romulus cloud tasks/);
 });
+
+/* ── scheduled runs: a repeating task kept on the server for when every device is off ── */
+const rep = (o) => task(Object.assign({ repeat: { every: 'day', at: '08:00', day: null }, nextRun: 1800000000000, done: true, status: 'done' }, o));
+
+test('only a repeating task that could go to the cloud anyway can be scheduled there', () => {
+  assert.strictEqual(c.cloudSchedWhyNot(rep()), ''); // finished between rounds is fine
+  assert.match(c.cloudSchedWhyNot(task()), /doesn’t repeat/);
+  assert.match(c.cloudSchedWhyNot(rep({ title: 'check my bank account fees' })), /private words/);
+  assert.match(c.cloudSchedWhyNot(rep({ lane: 'local' })), /own model/);
+  assert.match(c.cloudSchedWhyNot(rep({ title: 'sort my inbox' })), /email/);
+});
+
+test('the server knows a scheduled task by a hash, and gets a shorter copy than a live task', async () => {
+  const id = await c.cloudSchedId('t1');
+  assert.match(id, /^[0-9a-f]{40}$/);
+  assert.strictEqual(id, await c.cloudSchedId('t1'));
+  assert.notStrictEqual(id, await c.cloudSchedId('t2'));
+  const history = Array.from({ length: 12 }, (_, i) => ({ who: i % 2 ? 'claude' : 'you', text: 'x'.repeat(4000), at: i }));
+  const copy = c.cloudSchedTask(rep({ history, reply: 'something typed just now', notes: 'n' }));
+  assert.strictEqual(copy.history.length, 8);
+  assert.strictEqual(copy.history[0].text.length, 1500);
+  assert.strictEqual(copy.reply, '');
+  assert.deepStrictEqual(Object.keys(copy).sort(), ['history', 'notes', 'reply', 'title']);
+  assert.deepStrictEqual(c.cloudSchedRule(rep({ repeat: { every: 'week', at: '07:00', day: 0 } }), 'America/New_York'),
+    { every: 'week', at: '07:00', day: 0, tz: 'America/New_York' });
+});
+
+test('a copy is sent again only when what it depends on changed, or it is getting old', () => {
+  const now = 1800000000000, tz = 'America/New_York';
+  const t = rep({ cloudRun: { on: true } });
+  assert.deepStrictEqual(c.cloudSchedPlan([t], null, now, tz).put, [t]); // never sent
+  t.cloudRun.sent = c.cloudSchedPrint(t, tz); t.cloudRun.at = now;
+  assert.deepStrictEqual(c.cloudSchedPlan([t], null, now + 1000, tz), { put: [], drop: [], clear: [] });
+  for (const change of [{ title: 'another title' }, { nextRun: t.nextRun + 86400000 }, { repeat: { every: 'day', at: '09:00', day: null } },
+    { history: [{ who: 'you', text: 'cheaper ones please', at: 5 }] }]) {
+    assert.strictEqual(c.cloudSchedPlan([Object.assign({}, t, change)], null, now + 1000, tz).put.length, 1, JSON.stringify(change));
+  }
+  assert.strictEqual(c.cloudSchedPlan([t], null, now + 1000, 'Europe/Paris').put.length, 1); // he moved time zone
+  assert.strictEqual(c.cloudSchedPlan([t], null, now + c.CLOUD_SCHED_REFRESH_MS + 1, tz).put.length, 1); // still in use: say so
+});
+
+test('switched off, no longer repeating or turned private: the server\'s copy is taken back', () => {
+  const now = 1800000000000;
+  const sent = (o) => rep(Object.assign({ cloudRun: { on: true, sent: 'x', at: now } }, o));
+  const off = sent({ cloudRun: { on: false, sent: 'x', at: now } });
+  const noRepeat = sent({ repeat: null });
+  const priv = sent({ title: 'renew my passport every year' });
+  const never = rep({ cloudRun: { on: false } });
+  const plan = c.cloudSchedPlan([off, noRepeat, priv, never, rep()], null, now, 'UTC');
+  assert.deepStrictEqual(plan.drop, [off, noRepeat, priv]);
+  assert.deepStrictEqual(plan.clear, [never]);
+  assert.deepStrictEqual(plan.put, []);
+});
+
+test('a stored copy opens only with the server\'s key, and its answer only with the key on the task', async () => {
+  const server = await c.cloudAgKeyPair(false), onTask = await c.cloudAgKeyPair(false), other = await c.cloudAgKeyPair(false);
+  const copy = { task: c.cloudSchedTask(rep()), prefs: 'Likes quiet places' };
+  const sealed = await c.cloudAgSeal(server.pub, copy);
+  assert.ok(!JSON.stringify(sealed).includes('cafe'));
+  assert.deepStrictEqual(await c.cloudAgOpen(server.priv, sealed), copy); // what the function does (index.ts open)
+  await assert.rejects(c.cloudAgOpen(other.priv, sealed));
+  const answer = await c.cloudAgSeal(onTask.pub, { status: 'done', note: 'Three cafes are open Sunday.' });
+  assert.strictEqual((await c.cloudAgOpen(onTask.priv, answer)).note, 'Three cafes are open Sunday.');
+  await assert.rejects(c.cloudAgOpen(server.priv, answer)); // the server can't read back what it sealed
+});
+
+test('why a round didn\'t run is said in plain words', () => {
+  assert.match(c.cloudSchedWhyText('plan'), /paid plan/);
+  assert.match(c.cloudSchedWhyText('limit', { limit: 20 }), /up to 20/);
+  assert.match(c.cloudSchedWhyText('spend'), /allowance is used up/);
+  assert.match(c.cloudSchedWhyText('Romulus cloud is busy right now.'), /busy right now/);
+});

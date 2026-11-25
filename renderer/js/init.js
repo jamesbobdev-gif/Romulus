@@ -61,6 +61,7 @@ store.load().then(async function(data){
         if(t.orderLook&&t.lookAt)out.lookAt=Number(t.lookAt)||null; // when that look last ran again (grocery-list.js runRegularLooks)
         out.history=Array.isArray(t.history)?t.history:(t.note?[{who:'claude',text:t.note,at:t.updatedAt||Date.now()}]:[]);
         out.repeat=t.repeat&&t.repeat.every?t.repeat:null; out.nextRun=t.nextRun||null; out.repeatDue=!!t.repeatDue;
+        if(t.cloudRun&&typeof t.cloudRun==='object')out.cloudRun=t.cloudRun; // also runs on Romulus cloud when every device is off (cloud-agent.js cloudSched*)
         if(t.trigger&&t.trigger.kind)out.trigger=t.trigger; if(t.triggered&&t.triggered.what)out.triggered=t.triggered; // starts when… (triggers.js)
         if(Array.isArray(t.goalPlan)&&t.goalPlan.length)out.goalPlan=t.goalPlan; if(t.goalStarted)out.goalStarted=true; if(t.goalDone)out.goalDone=true; // goals.js
         if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
