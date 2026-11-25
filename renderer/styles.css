@@ -1537,3 +1537,89 @@ body.review-open .top-right{display:none!important}
 .kit-tile:hover .kit-tile-del,.kit-tile-del:focus-visible{opacity:1}
 .kit-tile-cam{position:absolute;top:80px;left:8px;width:24px;height:24px;background:var(--surface);border-radius:50%;opacity:.75}
 .kit-tile:hover .kit-tile-cam,.kit-tile-cam:focus-visible{opacity:1}
+
+/* ── Home (home.js): a message thread, each message a task card, everything open beside it ── */
+/* --accent-ring, --accent-glow and --accent-soft come with a look that sets them; without one they are mixed from the accent */
+body.home-mode #syncNudge{display:none} /* Home's first message offers sync itself */
+.home-view{margin-top:4px}
+.home-thread{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.home-from{font-size:14.5px;line-height:1.5;max-width:480px}
+.home-from .mono{display:block;margin-bottom:3px;color:var(--muted)}
+.home-setup{display:flex;flex-wrap:wrap;gap:6px 16px;margin:-2px 0 6px}
+.home-me{align-self:flex-end;max-width:85%;background:var(--ink);color:var(--bg);border-radius:16px 16px 4px 16px;padding:8px 14px;font-size:14.5px;line-height:1.4;overflow-wrap:anywhere}
+.home-card{align-self:flex-start;width:min(480px,100%);background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:11px 14px;font-size:14.5px}
+.home-card.need{border-color:var(--accent-ring,color-mix(in srgb,var(--accent) 40%,var(--hairline)));box-shadow:0 0 0 4px var(--accent-glow,color-mix(in srgb,var(--accent) 12%,transparent))}
+.home-card-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.home-check{flex:none;width:18px;height:18px;padding:0;border:1.5px solid var(--faint);border-radius:50%;background:transparent;color:var(--bg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.home-check:hover{border-color:var(--ink)}
+.home-check.on{background:var(--ink);border-color:var(--ink)}
+.home-title{flex:1;min-width:120px;font-weight:600;cursor:pointer;overflow-wrap:anywhere}
+.home-card.done .home-title,.home-r.done .home-r-title{color:var(--muted);text-decoration:line-through;font-weight:400}
+.home-who{color:var(--accent);border-color:var(--accent-ring,color-mix(in srgb,var(--accent) 40%,var(--hairline)));background:var(--accent-soft,color-mix(in srgb,var(--accent) 10%,var(--surface)))}
+.chip.st.late{color:var(--late);border-color:var(--late-line)}
+.home-sub{color:var(--muted);font-size:13px;line-height:1.5;margin:6px 0 0 28px;overflow-wrap:anywhere}
+.home-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:9px 0 1px 28px}
+.home-acts .btn-accent{margin-left:0;padding:6px 14px}
+.home-ghost{border:1.5px solid var(--accent);color:var(--ink);border-radius:8px;padding:4.5px 13px;font-family:var(--display);font-weight:600;font-size:12.5px}
+.home-link{background:none;border:0;padding:0;color:var(--muted);font-family:var(--display);font-size:12.5px;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.home-link:hover{color:var(--ink)}
+.home-earlier{align-self:center}
+.home-try{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.home-try-chip{background:transparent;border:1px solid var(--hairline);border-radius:999px;padding:5px 12px;font-family:var(--display);font-size:12.5px;color:var(--ink);cursor:pointer;text-align:left}
+.home-try-chip.agent{border-color:var(--accent-ring,color-mix(in srgb,var(--accent) 40%,var(--hairline)));color:var(--accent)}
+.home-try-chip:hover{background:var(--chip)}
+.home-box{display:flex;align-items:center;gap:10px;background:var(--surface);border:1.5px solid var(--accent-ring,color-mix(in srgb,var(--accent) 40%,var(--hairline)));border-radius:24px;padding:6px 6px 6px 18px;transition:box-shadow .15s}
+.home-box:focus-within{box-shadow:0 0 0 4px var(--accent-glow,color-mix(in srgb,var(--accent) 12%,transparent))}
+#homeInput{flex:1;min-width:0;border:0;outline:0;background:transparent;font-family:var(--display);font-size:15.5px;font-weight:500;color:var(--ink);padding:7px 0}
+.home-send{flex:none;width:32px;height:32px;border:0;border-radius:50%;background:var(--accent);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.home-send:hover{background:var(--accent-dim)}
+.home-mic{flex:none;width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.home-mic:hover{color:var(--ink);background:var(--chip)}
+.home-mic.on{background:var(--accent-soft,color-mix(in srgb,var(--accent) 10%,var(--surface)));color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow,color-mix(in srgb,var(--accent) 12%,transparent))}
+.home-newtopic{display:block;margin:8px 0 0 18px}
+.home-answer{max-width:min(620px,100%)}
+.home-answer-text{overflow-wrap:anywhere;white-space:pre-wrap}
+.home-answer-text>div{white-space:normal}
+.home-answer-text p{margin:0 0 8px}
+.home-answer-text p:last-child{margin-bottom:0}
+.home-thinking{color:var(--muted);font-size:13px;font-style:italic}
+.home-bar,.home-back{display:none}
+.home-bar-btn{background:none;border:1px solid var(--hairline);border-radius:999px;padding:5px 13px;color:var(--ink);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;cursor:pointer}
+@media(max-width:520px){ /* a phone: Home opens as a chat that fills the screen, like a Messages thread; a swipe left shows
+    the lists and tabs (body.home-dash, set by homePane in home.js), a swipe right comes back */
+  body.home-mode:not(.home-dash):not(.settings-open):not(.review-open) main>.top,
+  body.home-mode:not(.home-dash):not(.settings-open):not(.review-open) main>#counts,
+  body.home-mode:not(.home-dash):not(.settings-open):not(.review-open) main>.rule,
+  body.home-mode:not(.home-dash):not(.settings-open):not(.review-open) main>.tabs,
+  body.home-mode:not(.home-dash) .home-rail{display:none}
+  body.home-mode:not(.home-dash) main{padding-top:0}
+  body.home-mode:not(.home-dash) .home-view{margin-top:0}
+  body.home-mode:not(.home-dash) .home-thread{animation:homeIn .18s ease-out} /* not the whole view: a moving parent would carry the fixed message box with it */
+  body.home-mode:not(.home-dash) .home-bar{display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;margin:0 -16px 12px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--bg);border-bottom:3px double var(--hairline)}
+  .home-bar-name{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
+  body.home-mode:not(.home-dash) .home-thread{padding-bottom:150px}
+  body.home-mode:not(.home-dash) .home-foot{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:8px 16px calc(10px + env(safe-area-inset-bottom));background:var(--bg)}
+  body.home-mode:not(.home-dash) .home-try{flex-wrap:nowrap;overflow-x:auto;margin-bottom:8px;scrollbar-width:none}
+  body.home-mode:not(.home-dash) .home-try-chip{flex:none}
+  body.home-mode:not(.home-dash) .home-newtopic{margin-top:6px}
+  body.home-dash .home-main{display:none}
+  body.home-dash .home-back{display:inline-block;margin-bottom:14px}
+  body.home-dash .home-rail{margin-top:0;animation:homeIn .18s ease-out}
+}
+@keyframes homeIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+.home-rail{margin-top:30px}
+.home-rh{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px double var(--hairline);padding-bottom:6px;margin:20px 0 2px}
+.home-rh:first-child{margin-top:0}
+.home-rh .home-accent{color:var(--accent)}
+.home-r{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--hairline);font-size:13.5px;cursor:pointer}
+.home-r:hover .home-r-title{text-decoration:underline;text-underline-offset:2px}
+.home-r .home-check{width:15px;height:15px}
+.home-r-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-more{display:block;margin-top:8px}
+.home-empty{color:var(--muted);font-size:13px}
+@media(min-width:1000px){ /* a wide window: the thread and the lists side by side */
+  body.home-mode main{max-width:960px}
+  body.home-mode.settings-open main,body.home-mode.review-open main{max-width:620px}
+  .home-view{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:36px;align-items:start}
+  .home-rail{margin-top:0;position:sticky;top:44px;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:16px 16px 12px}
+}

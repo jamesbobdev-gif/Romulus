@@ -1,16 +1,16 @@
 /* Settings > Tabs: switch off the tabs you don't use and they leave the tab bar.
    Kept per device (a phone may want fewer tabs than the computer).
-   A fresh install starts with To do, Agent and Notes; the rest wait in Settings > Tabs.
+   A fresh install starts with Home, To do, Agent and Notes; the rest wait in Settings > Tabs.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
 const TABS_OFF_KEY='tabsOff';
-const TAB_PICK=[['tabList','list','To do'],['tabAgent','agent','Agent'],['tabSchool','school','School'],['tabWork','work','Work'],
+const TAB_PICK=[['tabHome','home','Home'],['tabList','list','To do'],['tabAgent','agent','Agent'],['tabSchool','school','School'],['tabWork','work','Work'],
   ['tabCal','calendar','Calendar'],['tabIdeas','ideas','Notes'],['tabHours','hours','Hours'],['tabKitchen','kitchen','Kitchen'],['tabFinance','finance','Finance'],['tabHealth','health','Health'],['tabFamily','family','Group']];
 // how Settings > Tabs sorts them; a tab missing here isn't shown in the picker, so add new tabs to a group
-const TAB_GROUPS=[['Everyday',['list','agent','calendar','ideas']],['School and work',['school','work','hours']],['Home',['kitchen','health','finance','family']]];
+const TAB_GROUPS=[['Everyday',['home','list','agent','calendar','ideas']],['School and work',['school','work','hours']],['Household',['kitchen','health','finance','family']]];
 // what a new install shows; everything else, Finance and Group included, waits in Settings > Tabs
-const TABS_START_ON=['list','agent','ideas'];
+const TABS_START_ON=['home','list','agent','ideas'];
 const TABS_TOUCHED_KEY='tabsTouched'; // tabs the person switched by hand: the app never switches those back on for them
 // true when this launch wrote the three-tab default: init.js undoes it if the tasks file turns out to hold an older install's work
 let tabsDefaulted=false;

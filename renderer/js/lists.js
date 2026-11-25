@@ -826,6 +826,7 @@ function buildPanel(t){
 /* ── render ── */
 let renderWaiting=false; // a phone, mid-answer: the redraw is held until the box is left
 function render(){
+  if(state.activeTab==='home'&&typeof renderHome==='function')renderHome(); // home.js: its thread and lists are drawn from the same tasks
   if(typeof drawSyncNudge==='function')drawSyncNudge(); // welcome.js: nothing syncing yet → recommend it
   if(typeof demoDraw==='function')demoDraw(); // demo.js: the example to-dos are on the list → say so
   // a background sync or Claude's answer re-renders the list; if you were typing an
@@ -855,7 +856,7 @@ function render(){
   if(typeof famShowTab==='function')famShowTab();
   // every tab shows from the start; one whose list isn't connected yet says how to connect it
   const unconnected=onAgent?!agentAvailable():onSchool?!schoolConfigured():onWork?!workConfigured():onFamily?!familyConfigured():false;
-  document.querySelector('.composer').hidden=unconnected||(typeof isViewTab==='function'&&isViewTab(state.activeTab)); // a background sync re-renders from any tab: keep the box off the tabs that hide it (switchTab)
+  document.querySelector('.composer').hidden=unconnected||state.activeTab==='home'||(typeof isViewTab==='function'&&isViewTab(state.activeTab)); // a background sync re-renders from any tab: keep the box off the tabs that hide it (switchTab)
   $('searchBox').hidden=unconnected;
   $('connectCard').hidden=!unconnected;
   if(unconnected){
