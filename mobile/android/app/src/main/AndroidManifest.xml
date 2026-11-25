@@ -4,6 +4,7 @@
     <!-- Health Connect's library asks for Android 8; the app still installs on 7, where HealthPlugin says it's unavailable -->
     <uses-sdk tools:overrideLibrary="androidx.health.connect.client" />
     <application
+        android:name=".RomulusApp"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -155,6 +156,18 @@
         <service
             android:name=".WakeWordService"
             android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- the Agent's notifications, through Firebase (PushService), and "Reply" typed in one (PushReplyReceiver) -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".PushReplyReceiver"
             android:exported="false" />
 
         <provider

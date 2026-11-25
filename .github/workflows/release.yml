@@ -258,6 +258,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # the Firebase project for the Agent's notifications (mobile/push-config.example.json, on one line); optional
+          PUSH_CONFIG_JSON: ${{ vars.PUSH_CONFIG_JSON }}
         shell: bash
         run: |
           cd mobile

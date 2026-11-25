@@ -6,6 +6,7 @@
 <full-backup-content>
     <exclude domain="sharedpref" path="cal_accounts.xml" />
     <exclude domain="sharedpref" path="finance_vault.xml" />
+    <exclude domain="sharedpref" path="push.xml" />
     <exclude domain="file" path="finance.vault" />
     <exclude domain="root" path="app_webview" />
     <exclude domain="root" path="app_textures" />

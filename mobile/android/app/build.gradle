@@ -70,6 +70,8 @@ dependencies {
     // 0.3.75 or later: its native library is built for 16 KB memory pages, which Google Play requires
     implementation 'com.alphacephei:vosk-android:0.3.75'
     implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    // the Agent's notifications (Push*.java). Set up from res/raw/push_config.json, not google-services.json
+    implementation 'com.google.firebase:firebase-messaging:24.1.0'
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.json:json:20240303" // the real org.json for JVM tests (android.jar only stubs it): SyncCryptoTest
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

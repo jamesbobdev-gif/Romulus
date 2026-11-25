@@ -80,6 +80,15 @@ if (fs.existsSync(path.join(__dirname, 'android'))) {
     microsoft: { clientId: (oauth.microsoft && oauth.microsoft.clientId) || '' }
   };
   fs.writeFileSync(path.join(rawDir, 'oauth_clients.json'), JSON.stringify(phoneClients));
+  // the Firebase project the Agent's notifications come through (Push.java): {projectId, appId, apiKey, senderId},
+  // from the Firebase console's Android app. In mobile/push-config.json, or the PUSH_CONFIG_JSON variable in a
+  // release build. Without it the app is built without notifications.
+  const pushFile = path.join(__dirname, 'push-config.json');
+  let pushCfg = {};
+  try { pushCfg = JSON.parse(fs.existsSync(pushFile) ? fs.readFileSync(pushFile, 'utf8') : (process.env.PUSH_CONFIG_JSON || '{}')); } catch (e) { pushCfg = {}; }
+  const pushSet = !!(pushCfg.projectId && pushCfg.appId && pushCfg.apiKey);
+  fs.writeFileSync(path.join(rawDir, 'push_config.json'), JSON.stringify(pushSet ? { projectId: pushCfg.projectId, appId: pushCfg.appId, apiKey: pushCfg.apiKey, senderId: pushCfg.senderId || '' } : {}));
+  console.log('res/raw/push_config.json written (notifications: ' + (pushSet ? 'set' : 'not set up') + ')');
   console.log('res/raw/oauth_clients.json written (Google: ' + (phoneClients.google.clientId ? 'set' : 'not set up') +
     ', Microsoft: ' + (phoneClients.microsoft.clientId ? 'set' : 'not set up') + ')');
 }

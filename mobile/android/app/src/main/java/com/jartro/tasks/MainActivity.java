@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FinanceVaultPlugin.class); // Finance: fingerprint lock, pairing scan, bank/price requests
         registerPlugin(HealthPlugin.class); // Health Connect: daily steps, workouts and sleep (read only)
         registerPlugin(AiKeysPlugin.class); // his AI keys from the computer's QR code, for Kitchen photos
+        registerPlugin(PushPlugin.class); // the Agent's notifications, and replies typed in them
         super.onCreate(savedInstanceState);
         handle(getIntent());
     }
