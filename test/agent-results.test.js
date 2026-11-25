@@ -231,3 +231,20 @@ test('an answer that leaves him picks or a draft is not finished, whatever the A
   load([n]).cb.results([{ id: 'n', status: 'done', note: 'Your bill is paid through December.' }]);
   assert.strictEqual(n.status, 'done');
 });
+
+test('a repeat that is due is queued here; the local model\'s own computer steps in once it is a few minutes late', () => {
+  const run = (worker, lateMs) => {
+    const t = { id: 'r', ws: 'agent', status: 'done', done: true, repeat: { every: 'day', at: '08:00' }, nextRun: Date.now() - lateMs, history: [] };
+    const { ctx } = load([t]);
+    ctx.window.localWorkerHere = worker;
+    ctx.nextRepeatAt = () => Date.now() + 86400000; ctx.repeatText = () => 'every day';
+    ctx.runDueRepeats();
+    return t;
+  };
+  assert.strictEqual(run(false, 1000).status, 'queued'); // his computer: on time
+  assert.strictEqual(run(true, 1000).status, 'done'); // the mini PC: his computer gets the first go
+  const t = run(true, 4 * 60 * 1000); // nobody did: the mini PC queues it
+  assert.strictEqual(t.status, 'queued');
+  assert.strictEqual(t.done, false);
+  assert.ok(t.nextRun > Date.now());
+});

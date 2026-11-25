@@ -261,7 +261,12 @@ page is blocked, say so and work from the search results.`;
    started after 5 minutes, and on the mini PC's processor reading a long page-heavy prompt can take
    longer than that before the first word. Only our own 10-minute limit applies. onMessage gets each
    streamed {message} as it arrives. */
-function ollamaChat(c, body, onMessage, ms = 10 * 60 * 1000) {
+async function ollamaChat(c, body, onMessage, ms) {
+  // on its own computer: a processor that is too hot cools first, rather than switching the computer off (agent/heat.js)
+  if (worker.isWorker(readConfig()) && (readConfig().localModel || {}).heatGuard !== false) await require('./heat').waitCool({ log: agentLog }).catch(() => {});
+  return ollamaChatNow(c, body, onMessage, ms);
+}
+function ollamaChatNow(c, body, onMessage, ms = 10 * 60 * 1000) {
   return new Promise((resolve, reject) => {
     const u = new URL(c.url + '/api/chat');
     let settled = false, req = null;

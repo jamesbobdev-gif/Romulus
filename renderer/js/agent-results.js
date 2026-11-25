@@ -237,11 +237,14 @@ function fmtWhen(ms){
 }
 // repeating agent tasks: when their time comes, put them back in Claude's queue (desktop only —
 // it's the device that runs Claude). Missed runs while the computer was off happen once on start.
+// The local model's own computer leaves them to his main one, and steps in for a round that is a few
+// minutes late: his computer is off, and that one is always on.
+const REPEAT_STANDIN_MS=3*60*1000;
 function runDueRepeats(){
-  if(!window.desktop||!window.desktop.onAgentResults||window.localWorkerHere)return; // not on the local model's own computer: his main one does it
-  let changed=false; const now=Date.now();
+  if(!window.desktop||!window.desktop.onAgentResults)return;
+  let changed=false; const now=Date.now(), late=window.localWorkerHere?REPEAT_STANDIN_MS:0;
   state.tasks.forEach(function(t){
-    if(taskWs(t)!=='agent'||!t.repeat||!t.nextRun||t.nextRun>now)return;
+    if(taskWs(t)!=='agent'||!t.repeat||!t.nextRun||t.nextRun>now-late)return;
     t.nextRun=nextRepeatAt(t.repeat,now);
     changed=true;
     if(!t.done&&(t.status==='working'||t.status==='queued'))return; // a round is already going

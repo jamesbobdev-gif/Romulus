@@ -62,8 +62,17 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       // the page runs in Chromium's OS-level sandbox; preload.js only needs contextBridge + ipcRenderer
-      sandbox: true
+      sandbox: true,
+      // In the tray the page still takes in the Agent's answers, syncs and keeps its live channels up.
+      // Chromium slows a hidden page's timers to one a minute after five minutes; not this one.
+      backgroundThrottling: false
     }
+  });
+  // With that off the page never hears it was hidden or shown, so say "shown" by hand: what the page does
+  // when he comes back to it (the day's plan, a fresh look at sync) still happens.
+  mainWindow.on('show', () => {
+    const wc = mainWindow.webContents;
+    if (!wc.isLoading()) wc.executeJavaScript("document.dispatchEvent(new Event('visibilitychange'))").catch(() => {});
   });
   // The window only ever shows the app itself: no navigating away, no pop-ups.
   // Web links go to the real browser instead.
@@ -82,6 +91,13 @@ function createWindow() {
   // leaves a blank window forever — retry until it sticks.
   loadApp().catch(() => setTimeout(loadApp, 1500));
   mainWindow.webContents.on('did-fail-load', () => setTimeout(loadApp, 1500));
+  // The page takes in the Agent's answers and syncs them, also while the window sits in the tray. If it
+  // dies there (a crash, out of memory) nobody would see it: load it again.
+  mainWindow.webContents.on('render-process-gone', (_e, d) => {
+    if (isQuitting || (d && d.reason === 'clean-exit')) return;
+    console.error('the page stopped (' + (d && d.reason) + '): loading it again');
+    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) loadApp().catch(() => {}); }, 1500);
+  });
   // a fresh page starts off Finance: drop the capture block it may have left (it sets it again if it opens there)
   mainWindow.webContents.on('did-start-loading', () => protect(false));
   if (OWN_TITLE_BAR) mainWindow.webContents.on('did-finish-load', titleBarFollowsPage);
