@@ -169,6 +169,7 @@ function onHiddenToTray(fn) { onHidden = fn; }
 
 function quit() { isQuitting = true; app.quit(); }
 function setQuitting() { isQuitting = true; }
+const quitting = () => isQuitting; // other windows that hide instead of closing let a quit through (main/overlay.js)
 
 // while Finance is on screen: Windows leaves the window out of every capture (screenshots, screen sharing,
 // Recall / Copilot, an AI assistant's screenshot tools); it shows as black there
@@ -188,4 +189,4 @@ function windowHandle() {
   return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
 }
 
-module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, onHiddenToTray, quit, setQuitting, windowHandle, protect, financeShowing };
+module.exports = { ICON, guardIpc, createWindow, showWindow, sendToRenderer, newHiddenWindow, reloadWindow, onHiddenToTray, quit, setQuitting, quitting, windowHandle, protect, financeShowing };

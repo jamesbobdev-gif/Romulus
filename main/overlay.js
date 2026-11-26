@@ -88,7 +88,7 @@ function createOverlay() {
   handle('overlay:do', (goal) => startDo(goal));
   handle('overlay:stop', () => { stopDo(); return true; });
   handle('overlay:answer', (text) => { if (doing && doing.answer) doing.answer(text == null ? null : String(text).slice(0, 2000)); return true; });
-  overlay.on('close', (e) => { e.preventDefault(); hide(); }); // Alt+F4 hides it; the app keeps it for next time
+  overlay.on('close', (e) => { if (win.quitting()) return; e.preventDefault(); hide(); }); // Alt+F4 hides it; the app keeps it for next time. Quitting closes it: a cancelled close stops the quit
   overlay.loadFile(PAGE).catch((e) => ctx.agentLog('screen helper: page failed to load: ' + e.message));
   applyHidden();
 }
