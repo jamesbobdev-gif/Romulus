@@ -94,6 +94,12 @@ async function prepareMailTools(final) {
 const clearMailTools = () => { try { fs.writeFileSync(path.join(mailDir(), 'accounts.json'), '[]'); } catch (e) {} };
 // its own checklist: the plan shown on the task while it works (agent/run-live.js)
 const PLAN_TOOLS = 'TaskCreate,TaskUpdate';
+// the task's latest note, for a cloud AI's brief: not when the local model wrote it (the same rule as its lines in the
+// conversation below: they can carry what it filled from the Locked profile or read in Finance)
+function briefNote(t) {
+  const last = (Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'claude').slice(-1)[0];
+  return last && last.lane === 'local' ? null : t.note || null;
+}
 function queuedAgentTasks(raw) {
   let data;
   try { data = JSON.parse(raw != null ? raw : fs.readFileSync(dataFile(), 'utf8')); } catch (e) { return []; }
@@ -267,7 +273,7 @@ async function startAgentRun() {
   if (nearMe.length) agentLog(here ? 'location: handed over (±' + (here.accuracyM || '?') + ' m)' : 'location: unavailable (Windows location off?)');
   const brief = tasks.map((t, i) => ({ id: t.id, n: tasks.length > 1 ? i + 1 : undefined, title: t.title, due: t.due, dueTime: t.dueTime, tag: t.tag,
     photos: photos[t.id] || undefined, // files to open with the Read tool (paths relative to your working folder)
-    note: t.note || null, reply: t.reply || null,
+    note: briefNote(t), reply: t.reply || null,
     instructions: t.notes || null, // e.g. a school assignment's rules, carried over when it was handed to Claude
     options: Array.isArray(t.options) ? t.options.map((o) => ({ label: o.label, url: o.url })) : null,
     groceryList: groceryBrief(groceryListFor(t, allTasks)), // his usual groceries; `due` = goes on the next order
@@ -654,4 +660,4 @@ const handlers = {
 // a run (or the memory tidy's own check) is going or about to start
 const isBusy = () => !!(agentProc || agentTimer);
 
-module.exports = { init, handlers, AGENT_GRACE_MS, queuedAgentTasks, scheduleAgentRun, isBusy };
+module.exports = { init, handlers, AGENT_GRACE_MS, queuedAgentTasks, scheduleAgentRun, isBusy, briefNote };
