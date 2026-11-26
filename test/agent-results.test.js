@@ -248,3 +248,15 @@ test('a repeat that is due is queued here; the local model\'s own computer steps
   assert.strictEqual(t.done, false);
   assert.ok(t.nextRun > Date.now());
 });
+
+test('a handoff from the local model clears its claim, its start time and its live log', () => {
+  const t = { id: 'h', ws: 'agent', status: 'working', lane: 'local', claimedBy: 'relay@example-pc', claimedAt: 5, runFrom: 6, history: [] };
+  const { cb, ctx } = load([t]);
+  ctx.liveText.h = 'the local model was typing';
+  cb.results([{ id: 'h', lane: 'local', handoff: 'not reachable' }]);
+  assert.strictEqual(t.lane, 'claude');
+  assert.strictEqual(t.lanePick, 'claude');
+  assert.strictEqual(t.status, 'queued');
+  assert.ok(!('claimedBy' in t) && !('claimedAt' in t) && !('runFrom' in t));
+  assert.ok(!('h' in ctx.liveText));
+});

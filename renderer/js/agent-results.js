@@ -103,7 +103,7 @@ function agentApplyResult(u){
       // the mini PC failed (not reachable, crashed): the cloud AIs take it from here, with his reply still on it
       if(u.pinned)applyPinned(t,u.pinned); // what "chapter 8" turned out to be, before anything else reads the task
       if(u.handoff){
-        t.lane='claude'; t.lanePick='claude'; delete t.cloud; delete t.claimedBy; // sticks: a Lupa that answers pings but can't run it doesn't take it back (routing.js laneOf) delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
+        t.lane='claude'; t.lanePick='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id]; // lanePick sticks: a Lupa that answers pings but can't run it doesn't take it back (routing.js laneOf)
         t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
         agentSay(t,'sys','The local model couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
         return;
