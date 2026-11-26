@@ -17,6 +17,9 @@ test('localApproved: his yes to what the mini PC asked', () => {
   assert.ok(lane.localApproved({ reply: 'yes', history: asked }));
   assert.ok(!lane.localApproved({ reply: 'yes', history: [{ who: 'claude', text: 'Reply yes to submit it.' }] })); // Claude asked, not the mini PC
   assert.ok(!lane.localApproved({ reply: 'wait', history: asked }));
+  // a yes to an earlier ask is not a yes to the next one (a repeat starts with no reply)
+  assert.ok(!lane.localApproved({ history: asked.concat({ who: 'you', text: 'yes' }, asked) }));
+  assert.ok(lane.localApproved({ history: asked.concat({ who: 'you', text: 'yes' }) }));
   // Holo4 quotes the yes instead of bolding it (the Chapter 8 post asked twice for that)
   for (const text of ['The post is typed. **Reply "yes" to submit it.**', 'Reply “yes” to post it.', '**Reply \'yes\'** to send it'])
     assert.ok(lane.localApproved({ reply: 'yes', history: [{ who: 'claude', lane: 'local', text }] }), text);

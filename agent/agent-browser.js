@@ -162,10 +162,13 @@ function webGuardHooks() { // → the hook, for a run's --settings (agent/runner
     hooks: [{ type: 'command', command: hookArg(node) + ' ' + hookArg(path.join(agentBrowserDir(), 'web-guard.js')) + ' ' + hookArg(mailSeenFile()), timeout: 15 }] }] };
 }
 // his latest reply is a yes to something Claude asked him to say yes to (to a cancel ask, "yes, cancel it" too: helpers.isYesTo)
+// With no reply waiting (a repeat or a trigger started the run), only what he wrote after that ask counts: an
+// earlier yes was to an earlier ask.
 function saidYes(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
-  const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
-  const asked = (hist.filter((h) => h.who === 'claude').slice(-1)[0] || {}).text || '';
+  const askAt = hist.map((h) => h.who).lastIndexOf('claude');
+  const lastYou = String(t.reply || (hist.slice(askAt + 1).filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
+  const asked = (hist[askAt] || {}).text || '';
   return isYesTo(lastYou, asked) && /reply\s*\**\s*yes/i.test(asked);
 }
 const { hostOf } = require('./util');
