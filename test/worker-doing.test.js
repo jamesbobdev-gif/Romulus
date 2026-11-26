@@ -34,3 +34,10 @@ test('the heartbeat says what it is doing and which version it runs', () => {
   // the other computers still read it the same way
   assert.strictEqual(worker.freshWorker(hb, 5).busy, true);
 });
+
+// the load in init.js copies a task field by field: one it doesn't name is gone after a restart
+test('a restart keeps what holds a task on its lane', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../renderer/js/init.js'), 'utf8');
+  assert.match(src, /if\(t\.financeSeen\)out\.financeSeen=true;/);
+  assert.match(src, /out\.lanePick=t\.lanePick;/);
+});
