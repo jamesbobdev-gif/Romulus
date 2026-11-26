@@ -117,3 +117,16 @@ test('a copy left on the server for a task that is gone here is taken back', asy
   await tick();
   assert.strictEqual(srv.rows['f'.repeat(40)], undefined);
 });
+
+test('a collected answer is saved even when the next call in the same check fails', async () => {
+  const t = repeating({ cloudRun: { on: true } });
+  const { ctx, srv, tick } = await load([t]);
+  await tick();
+  const id = await c.cloudSchedId('r1');
+  srv.results.push({ task: id, sealed: await c.cloudAgSeal(srv.rows[id].pub, { status: 'done', note: 'Three internships, with links.', options: [] }), why: null, next: Date.now() + 86400000, ran: Date.now() - 3600000 });
+  const real = ctx.fetch, before = ctx.touched;
+  ctx.fetch = async (url, init) => { if (JSON.parse(init.body).action === 'schedule') throw new Error('offline'); return real(url, init); };
+  await tick();
+  assert.strictEqual(t.note, 'Three internships, with links.');
+  assert.ok(ctx.touched > before, 'the answer is saved');
+});
