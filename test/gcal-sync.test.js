@@ -30,3 +30,25 @@ test('school events say the class and kind', () => {
   assert.strictEqual(ev.summary, 'Astronomy test 2');
   assert.strictEqual(ev.description, 'Class: Astronomy\n\nbring a calculator');
 });
+
+test('an event that could not be deleted keeps its id for the next sync', async () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const gcal = require('../main/gcal-sync');
+  const calendars = require('../agent/calendars');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gcal-')), 'tasks.json');
+  const write = () => fs.writeFileSync(file, JSON.stringify({ tasks: [{ id: 'a', title: 'Dentist', due: '2026-10-20', done: true, googleEventId: 'ev1', calRef: 'g1|primary' }] }));
+  const read = () => JSON.parse(fs.readFileSync(file, 'utf8')).tasks[0];
+  const was = { pushTarget: calendars.pushTarget, deleteEvent: calendars.deleteEvent };
+  gcal.init({ readConfig: () => ({ calAccounts: [{ id: 'g1' }] }), dataFile: () => file, sendToRenderer() {} });
+  const err = console.error; console.error = () => {};
+  try {
+    calendars.pushTarget = () => 'g1|primary';
+    write();
+    calendars.deleteEvent = async () => { throw new Error('offline'); };
+    assert.deepStrictEqual(await gcal.performSync(), []);
+    assert.strictEqual(read().googleEventId, 'ev1');
+    calendars.deleteEvent = async () => {};
+    assert.strictEqual((await gcal.performSync()).length, 1);
+    assert.strictEqual(read().googleEventId, null);
+  } finally { Object.assign(calendars, was); console.error = err; }
+});
