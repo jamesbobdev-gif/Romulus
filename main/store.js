@@ -224,8 +224,11 @@ function secretStrings(o) {
 }
 async function sealAll(cfg) {
   const own = ownKeyMode(cfg);
-  await Promise.all(secretStrings(cfg).map((v) => sealText(v, true, own)));
-  const cached = (v) => (Array.isArray(v) ? v.map(cached) : (typeof v === 'string' && sealedOf.has(v) ? sealedOf.get(v) : v));
+  // from what sealText answered, not from sealedOf afterwards: remember() empties that map when it is full, and a
+  // secret sealed earlier in this same pass would then be written as it is
+  const plain = secretStrings(cfg);
+  const sealed = new Map((await Promise.all(plain.map((v) => sealText(v, true, own)))).map((out, i) => [plain[i], out]));
+  const cached = (v) => (Array.isArray(v) ? v.map(cached) : (typeof v === 'string' && sealed.has(v) ? sealed.get(v) : v));
   return mapSecrets(cfg, cached);
 }
 async function openAll(raw) {
