@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { makeStore } from "../_shared/sync-crypto.mjs";
 
 // Remote MCP server that lets Claude (chat, Dispatch, mobile) read and edit the
 // Tasks app's lists. It speaks MCP "streamable HTTP" in stateless JSON mode.
@@ -8,6 +9,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Writes follow the app's sync contract: every changed task gets a fresh
 // updatedAt, deletions leave a tombstone, and moving between lists is
 // tombstone + copy with a new id. Personal/work docs never get status/note.
+//
+// Lists the app has encrypted end to end are opened and sealed here with the list's own sync key
+// (../_shared/sync-crypto.mjs): the table holds ciphertext, and this function reads it because it was given the key.
 
 const BASE = Deno.env.get("SUPABASE_URL")!;
 const SKEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -15,6 +19,9 @@ const H = { apikey: SKEY, Authorization: `Bearer ${SKEY}`, "Content-Type": "appl
 
 // The access token and the lists' sync keys are secrets, so they aren't in this file: they live in the
 // app_secrets table (row-level security on, no policies: only the service role can read it).
+// A sync key set as a function secret instead (SYNC_KEY_PERSONAL, SYNC_KEY_WORK, SYNC_KEY_AGENT, in the dashboard
+// under Edge Functions → Secrets) wins: that keeps the key out of the database and its backups, which matters once
+// the lists are encrypted, since the key is what opens them.
 async function loadSecrets(): Promise<Record<string, string>> {
   try {
     const r = await fetch(`${BASE}/rest/v1/app_secrets?select=name,value&name=in.(tasks_mcp_token,sync_key_personal,sync_key_work,sync_key_agent)`, { headers: H });
@@ -24,10 +31,11 @@ async function loadSecrets(): Promise<Record<string, string>> {
 }
 const SECRETS = await loadSecrets();
 const TOKEN = SECRETS.tasks_mcp_token || "";
+const syncKeyOf = (name: string) => Deno.env.get(name.toUpperCase()) || SECRETS[name] || "";
 const LISTS: Record<string, string> = {
-  personal: SECRETS.sync_key_personal || "",
-  work: SECRETS.sync_key_work || "", // office channel (also feeds Outlook)
-  agent: SECRETS.sync_key_agent || "",
+  personal: syncKeyOf("sync_key_personal"),
+  work: syncKeyOf("sync_key_work"), // office channel (also feeds Outlook)
+  agent: syncKeyOf("sync_key_agent"),
 };
 const LIST_NAMES = Object.keys(LISTS);
 // the app's "What Claude knows about you" memory: its own row next to the agent list, doc {v, text}
@@ -44,14 +52,14 @@ type Task = {
 };
 const LANES = ["claude", "local"];
 type Doc = { v: number; tasks: Task[]; tombstones: { id: string; deletedAt: number }[] };
-type Row = { doc: Doc; updated_at: string | null };
+type Row = { doc: Doc; updated_at: string | null; v2: boolean }; // v2: the list is end-to-end encrypted, so it goes back sealed
 
 class UserError extends Error {}
 
 // ── storage ──────────────────────────────────────────────────────────────
 // The lists are read and written through the same sync_get / sync_put functions the app uses: the list key travels in
 // the request body, never in the address, so it stays out of the API gateway's request logs. sync_put is a
-// compare-and-swap on updated_at: false when somebody else wrote since the read (or the row is sealed, or too large).
+// compare-and-swap on updated_at: false when somebody else wrote since the read (or the row is too large).
 // deno-lint-ignore no-explicit-any
 async function getRow(key: string, what: string): Promise<{ doc: any; updated_at: string | null } | null> {
   const r = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: key }) });
@@ -64,26 +72,30 @@ async function putRow(key: string, doc: unknown, prev: string | null, what: stri
   if (!r.ok) throw new Error(`${what}: HTTP ${r.status}`);
   return (await r.json()) === true;
 }
+// a list or side row whichever way the app keeps it: plain, or (once a device has encrypted the lists) sealed under
+// its lookup id. A plain write never lands on a moved list: the read follows the marker first.
+const store = makeStore({
+  get: (key: string) => getRow(key, "load"),
+  put: (key: string, doc: unknown, prev: string | null) => putRow(key, doc, prev, "save"),
+});
 async function load(list: string): Promise<Row> {
-  const row = await getRow(LISTS[list], `load ${list}`);
-  const doc = row ? row.doc : null;
-  // the app moved this list to end-to-end encryption and left a marker under the old key: writing a plain list over
-  // it would destroy the marker and never reach the real (sealed) list
-  if (doc && doc.moved === "v2") throw new UserError(`The ${list} list is end-to-end encrypted on the devices; this server can't read or change it.`);
+  const row = await store.read(LISTS[list]);
+  const doc = row.doc;
   return {
     doc: {
       v: 1,
       tasks: doc && Array.isArray(doc.tasks) ? doc.tasks : [],
       tombstones: doc && Array.isArray(doc.tombstones) ? doc.tombstones : [],
     },
-    updated_at: row ? row.updated_at : null,
+    updated_at: row.updated_at,
+    v2: row.v2,
   };
 }
 
 // Write only if nobody else wrote since we read (compare-and-swap on
 // updated_at); returns false on a lost race so the caller can retry.
 function save(list: string, row: Row): Promise<boolean> {
-  return putRow(LISTS[list], row.doc, row.updated_at, `save ${list}`);
+  return store.write(LISTS[list], row.doc, row.updated_at, row.v2);
 }
 
 async function mutate<T>(list: string, fn: (doc: Doc) => T): Promise<T> {
@@ -95,11 +107,9 @@ async function mutate<T>(list: string, fn: (doc: Doc) => T): Promise<T> {
   throw new Error("The list kept changing while saving; try again.");
 }
 
-async function loadPrefs(): Promise<{ text: string; updated_at: string | null }> {
-  const row = await getRow(PREFS_KEY, "load preferences");
-  // moved to end-to-end encryption with its list: a plain write here would destroy the marker and never reach the real row
-  if (row && row.doc && row.doc.moved === "v2") throw new UserError("The preferences are end-to-end encrypted on the devices; this server can't read or change them.");
-  return { text: row && row.doc && typeof row.doc.text === "string" ? row.doc.text : "", updated_at: row ? row.updated_at : null };
+async function loadPrefs(): Promise<{ text: string; updated_at: string | null; v2: boolean }> {
+  const row = await store.read(PREFS_KEY); // follows its list when that is end-to-end encrypted
+  return { text: row.doc && typeof row.doc.text === "string" ? row.doc.text : "", updated_at: row.updated_at, v2: row.v2 };
 }
 // same compare-and-swap as the lists, so a change made in the app at the same moment isn't lost
 async function mutatePrefs(fn: (text: string) => string): Promise<string> {
@@ -107,7 +117,7 @@ async function mutatePrefs(fn: (text: string) => string): Promise<string> {
     const cur = await loadPrefs();
     const next = fn(cur.text);
     if (next === cur.text) return next;
-    if (await putRow(PREFS_KEY, { v: 1, text: next }, cur.updated_at, "save preferences")) return next;
+    if (await store.write(PREFS_KEY, { v: 1, text: next }, cur.updated_at, cur.v2)) return next;
   }
   throw new Error("Preferences kept changing while saving; try again.");
 }
@@ -488,13 +498,27 @@ async function callTool(name: string, a: any): Promise<string> {
     case "claim_task": {
       const lane = String(a.lane || "");
       if (!LANES.includes(lane)) throw new UserError("lane must be claude or local");
-      const id = pick((await load("agent")).doc, String(a.id || "")).id;
-      const r = await fetch(`${BASE}/rest/v1/rpc/agent_claim_task`, {
-        method: "POST", headers: H,
-        body: JSON.stringify({ p_sync_key: LISTS.agent, p_task_id: id, p_worker: String(a.worker || lane), p_lane: lane }),
-      });
-      if (!r.ok) throw new Error(`claim: HTTP ${r.status}`);
-      return (await r.json()) === true
+      const row = await load("agent");
+      const t = pick(row.doc, String(a.id || "")), id = t.id;
+      let won: boolean;
+      if (row.v2) {
+        // an encrypted list: the database can't read the task, so it is stamped here and written back compare-and-swap.
+        // Two workers racing read the same version and only the first write lands (agent/task-context.js claimSealed)
+        won = !t.done && (t.status || "queued") === "queued" && (!t.lane || t.lane === lane);
+        if (won) {
+          const now = Date.now();
+          Object.assign(t, { status: "working", lane, claimedBy: String(a.worker || lane).slice(0, 60), claimedAt: now, updatedAt: now });
+          won = await save("agent", row);
+        }
+      } else {
+        const r = await fetch(`${BASE}/rest/v1/rpc/agent_claim_task`, {
+          method: "POST", headers: H,
+          body: JSON.stringify({ p_sync_key: LISTS.agent, p_task_id: id, p_worker: String(a.worker || lane), p_lane: lane }),
+        });
+        if (!r.ok) throw new Error(`claim: HTTP ${r.status}`);
+        won = (await r.json()) === true;
+      }
+      return won
         ? `Claimed ${id.slice(0, 8)} — it's yours (status working). Post your result with finish_task.`
         : `Not claimed: ${id.slice(0, 8)} isn't queued for the ${lane} lane any more (another worker has it, it's assigned to the other lane, or James changed it). Leave it alone.`;
     }

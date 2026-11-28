@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { makeStore } from "../_shared/sync-crypto.mjs";
 
 // Weekly LMS deadline ingester. Reads course calendar feeds (Blackboard .ics, D2L .ics) and ADDS new
 // assignment deadlines to the School list. It never edits or deletes existing tasks, and it respects
@@ -27,7 +28,9 @@ async function loadSecrets(): Promise<Record<string, string>> {
 }
 const SECRETS = await loadSecrets();
 const INGEST_TOKEN = SECRETS.school_ingest_token || "";
-const SCHOOL_KEY = SECRETS.sync_key_school || "";
+// a function secret (SYNC_KEY_SCHOOL, Edge Functions → Secrets) wins over the table: it keeps the key out of the
+// database and its backups, which matters once the list is encrypted, since the key is what opens it
+const SCHOOL_KEY = Deno.env.get("SYNC_KEY_SCHOOL") || SECRETS.sync_key_school || "";
 
 type Feed = { src: string; name: string; url: string; onlyDue: boolean };
 function loadFeeds(): Feed[] {
@@ -115,29 +118,37 @@ class UserError extends Error {}
 // ── storage (compare-and-swap, mirrors tasks-mcp) ───────────────────────────
 // through the same sync_get / sync_put functions the app uses: the list key travels in the request body, never in the
 // address, so it stays out of the API gateway's request logs
+// A list the app has encrypted end to end is opened and sealed here with its own sync key (../_shared/sync-crypto.mjs).
+const store = makeStore({
+  get: async (key: string) => {
+    const r = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: key }) });
+    if (!r.ok) throw new Error(`load: HTTP ${r.status}`);
+    const rows = await r.json();
+    return rows.length && rows[0].updated_at ? { doc: rows[0].doc, updated_at: rows[0].updated_at } : null;
+  },
+  put: async (key: string, doc: unknown, prev: string | null) => {
+    const r = await fetch(`${BASE}/rest/v1/rpc/sync_put`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: key, p_doc: doc, p_prev: prev }) });
+    if (!r.ok) throw new Error(`save: HTTP ${r.status}`);
+    return (await r.json()) === true;
+  },
+});
 async function load() {
-  const r = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: SCHOOL_KEY }) });
-  if (!r.ok) throw new Error(`load: HTTP ${r.status}`);
-  const rows = await r.json();
-  const doc = rows.length && rows[0].updated_at ? rows[0].doc : null;
-  // the app moved this list to end-to-end encryption and left a marker under the old key: writing a plain list
-  // over it would destroy the marker and never reach the real (sealed) list
-  if (doc && doc.moved === "v2") throw new UserError("The School list is end-to-end encrypted on the devices; this server can't read or change it.");
+  const row = await store.read(SCHOOL_KEY);
+  const doc = row.doc;
   return {
     doc: {
       v: 1,
       tasks: doc && Array.isArray(doc.tasks) ? doc.tasks : [],
       tombstones: doc && Array.isArray(doc.tombstones) ? doc.tombstones : [],
     },
-    updated_at: rows.length && rows[0].updated_at ? rows[0].updated_at : null,
+    updated_at: row.updated_at,
+    v2: row.v2,
   };
 }
-// compare-and-swap on updated_at: false when somebody else wrote since the read (or the row is sealed, or too large)
+// compare-and-swap on updated_at: false when somebody else wrote since the read (or the row is too large)
 // deno-lint-ignore no-explicit-any
-async function save(row: any): Promise<boolean> {
-  const r = await fetch(`${BASE}/rest/v1/rpc/sync_put`, { method: "POST", headers: H, body: JSON.stringify({ p_sync_key: SCHOOL_KEY, p_doc: row.doc, p_prev: row.updated_at }) });
-  if (!r.ok) throw new Error(`save: HTTP ${r.status}`);
-  return (await r.json()) === true;
+function save(row: any): Promise<boolean> {
+  return store.write(SCHOOL_KEY, row.doc, row.updated_at, row.v2);
 }
 
 Deno.serve(async (req) => {

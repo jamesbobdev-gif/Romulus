@@ -774,8 +774,9 @@ async function syncUseOneKey(){
    ids, each read back; then this device switches; then the old rows get {moved:'v2'}, which tells a newer
    device to follow (syncAdoptV2 in sync.js). The database refuses plain writes onto a moved row
    (supabase/migrations/20261031_sync_moved_v2.sql), so an older build can't put the lists back in the clear.
-   Not offered in Settings yet: the Android widget, the claude.ai connector and the server-side writers
-   (school feeds, the work calendar) can't read sealed rows yet. */
+   The Android widgets open sealed rows themselves (SyncStore.java). The functions that hold a list's sync key on
+   the project (the claude.ai connector, the School feed, the Work calendar) open and seal them too
+   (supabase/functions/_shared/sync-crypto.mjs), once the project runs this version of them. */
 const SYNC_MOVED={moved:'v2'};
 function syncV2Moves(c){
   const out=[];
@@ -833,7 +834,7 @@ async function syncMoveToV2(){
   b.title='Re-upload every list encrypted on this device, so the sync project holds only ciphertext';
   $('syncGenBtn').insertAdjacentElement('afterend',b);
   b.addEventListener('click',async function(){
-    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nYour other devices follow on their next sync if they run Romulus 1.0.10 or newer; older ones show a sync error until they update. The claude.ai connector, the Work calendar feed and the School feed on the project can no longer read the lists and stop working. There is no way back from Settings.'))return;
+    if(!confirm('Encrypt your lists end to end?\n\nEvery list, with what goes next to it (Notes, Hours, what the Agent knows about you, the Locked profile, routing rules, standing permissions, update answers, the Finance share box, the worker’s files), is uploaded again encrypted on this device under ids that give nothing away, and the old rows are replaced by a marker. From then on the project, its backups and whoever runs it hold only ciphertext.\n\nYour other devices follow on their next sync if they run Romulus 1.0.10 or newer; older ones show a sync error until they update. If your project runs the claude.ai connector, the Work calendar feed or the School feed, update those functions to this version first: older copies can no longer read the lists and stop working. They open the lists with the sync keys you gave them, so those lists stay only as private as the place those keys are kept. There is no way back from Settings.'))return;
     b.disabled=true;
     try{ await syncMoveToV2(); }finally{ b.disabled=false; syncFillForm(); }
   });

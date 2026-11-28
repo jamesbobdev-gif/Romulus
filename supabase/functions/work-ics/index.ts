@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { makeStore } from "../_shared/sync-crypto.mjs";
 
 // The Work list as a calendar feed for Outlook (one all-day or 30-minute event per open task with a due date).
 // Outlook fetches a subscribe link with no auth headers, so access control is the secret token in the URL
@@ -19,7 +20,9 @@ async function loadSecrets(): Promise<Record<string, string>> {
 }
 const SECRETS = await loadSecrets();
 const FEED_TOKEN = SECRETS.work_ics_token || "";
-const WORK_SYNC_KEY = SECRETS.sync_key_work || "";
+// a function secret (SYNC_KEY_WORK, Edge Functions → Secrets) wins over the table: it keeps the key out of the
+// database and its backups, which matters once the list is encrypted, since the key is what opens it
+const WORK_SYNC_KEY = Deno.env.get("SYNC_KEY_WORK") || SECRETS.sync_key_work || "";
 
 // the token compared in constant time, through a hash so lengths don't tell either
 async function tokenOk(given: string | null): Promise<boolean> {
@@ -46,12 +49,19 @@ Deno.serve(async (req: Request) => {
 
   // through the same sync_get function the app uses: the list key travels in the request body, never in the address,
   // so it stays out of the API gateway's request logs
-  const res = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ p_sync_key: WORK_SYNC_KEY }) });
-  const rows = res.ok ? await res.json() : [];
-  const doc = rows.length ? rows[0].doc : null;
-  // the app moved this list to end-to-end encryption: this server can't read it any more, and an empty calendar
-  // would look like "no tasks" rather than "can't read"
-  if (doc && doc.moved === "v2") return new Response("The Work list is end-to-end encrypted on the devices; this feed can't read it.", { status: 409 });
+  // A list the app has encrypted end to end is opened here with its own sync key (../_shared/sync-crypto.mjs); this feed only reads.
+  const store = makeStore({
+    get: async (key: string) => {
+      const res = await fetch(`${BASE}/rest/v1/rpc/sync_get`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ p_sync_key: key }) });
+      const rows = res.ok ? await res.json() : [];
+      return rows.length && rows[0].updated_at ? { doc: rows[0].doc, updated_at: rows[0].updated_at } : null;
+    },
+    put: () => Promise.resolve(false),
+  });
+  let doc;
+  // a list that can't be opened answers with an error: an empty calendar would look like "no tasks"
+  try { doc = (await store.read(WORK_SYNC_KEY)).doc; }
+  catch { return new Response("The Work list couldn't be opened with the key this feed has.", { status: 409 }); }
   const tasks = doc && Array.isArray(doc.tasks) ? doc.tasks : [];
 
   const lines: string[] = [
