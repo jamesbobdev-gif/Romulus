@@ -92,3 +92,25 @@ test('saying Update or Not now writes the shared row next to the personal list',
   assert.strictEqual(s.box.row.yes, '1.0.9');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(await s.updateChoiceRead())), { v: 1, yes: '1.0.9', no: '1.0.9' });
 });
+
+test('an AppImage update is swapped in one step, and a bad download leaves the old app alone', () => {
+  const os = require('os'), crypto = require('crypto');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'romulus-upd-'));
+  const app = path.join(dir, 'Romulus.AppImage'), next = path.join(dir, 'Romulus-9.9.9.AppImage');
+  fs.writeFileSync(app, 'old'); fs.writeFileSync(next, 'new version');
+  const sum = crypto.createHash('sha512').update('new version').digest('base64');
+  // the wrong checksum: nothing changes, and no half-made file is left behind
+  const bad = updater.placeAppImage(next, app, 'not-the-sum');
+  assert.strictEqual(bad.ok, false);
+  assert.strictEqual(fs.readFileSync(app, 'utf8'), 'old');
+  assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['Romulus-9.9.9.AppImage', 'Romulus.AppImage']);
+  // no download at all: the same
+  assert.strictEqual(updater.placeAppImage(path.join(dir, 'missing'), app, sum).ok, false);
+  assert.strictEqual(fs.readFileSync(app, 'utf8'), 'old');
+  // the right one: the app's file is the new version, under its own name
+  assert.deepStrictEqual(updater.placeAppImage(next, app, sum), { ok: true });
+  assert.strictEqual(fs.readFileSync(app, 'utf8'), 'new version');
+  assert.ok(!fs.existsSync(app + '.new'));
+  if (process.platform !== 'win32') assert.ok(fs.statSync(app).mode & 0o100, 'it can be run');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

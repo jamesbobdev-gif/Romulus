@@ -69,11 +69,36 @@ function tell() {
 
 function updater() { return require('electron-updater').autoUpdater; }
 
+/* Linux (AppImage). electron-updater installs by deleting the app's file and then moving the new one to where it
+   was, and it does that as the app quits. A quit that is cut short between the two (systemd stopping the mini
+   PC's service takes the screen away with it) leaves no app at all, and the service then fails to start for good
+   (2026-11-28). So here the new file goes in as soon as it has downloaded: copied next to the old one, checked,
+   then renamed over it, which is one step, so there is always an app at that path. The copy that is running
+   carries on from the file it opened; "installing" is only a restart, and any restart at all brings up the new
+   version. The file keeps its name, also when that name has the old version number in it.
+   placeAppImage → { ok } or { ok: false, error } (the old file is untouched then). */
+function ownsInstall() { return process.platform === 'linux' && !!process.env.APPIMAGE; }
+function placeAppImage(src, dest, sha512) {
+  const fs = require('fs'), tmp = dest + '.new';
+  try {
+    fs.copyFileSync(src, tmp);
+    const sum = require('crypto').createHash('sha512').update(fs.readFileSync(tmp)).digest('base64');
+    if (sha512 && sum !== sha512) throw new Error('the downloaded file does not match its checksum');
+    fs.chmodSync(tmp, 0o755);
+    fs.renameSync(tmp, dest);
+    return { ok: true };
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (e2) {}
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+}
+let placed = false; // the new version is already the app's file: a restart is all that's left
+
 function start() {
   if (!ctx.isPackaged) return; // dev runs update by hand
   const autoUpdater = updater();
   autoUpdater.autoDownload = false; // downloads after his yes, or right away in automatic mode
-  autoUpdater.autoInstallOnAppQuit = true; // only matters once something has downloaded
+  autoUpdater.autoInstallOnAppQuit = !ownsInstall(); // only matters once something has downloaded (an AppImage: placeAppImage, above)
   autoUpdater.logger = { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} }; // errors arrive once, below
   autoUpdater.on('update-available', (info) => {
     if (ready || downloading) return;
@@ -93,9 +118,19 @@ function start() {
   });
   autoUpdater.on('update-downloaded', (info) => {
     if (ready) return;
+    if (ownsInstall()) {
+      const f = (info.files || []).find((x) => /\.AppImage$/i.test(String(x.url || '')));
+      const r = placeAppImage(info.downloadedFile, process.env.APPIMAGE, f && f.sha512);
+      if (!r.ok) { // the old version stays as it was; the next check tries again
+        ctx.agentLog('update: ' + info.version + ' downloaded but could not be put in place: ' + r.error);
+        downloading = null; tell();
+        return;
+      }
+      placed = true;
+    }
     ready = info.version;
     downloading = null; offered = null;
-    ctx.agentLog('update: ' + info.version + ' ready; installs on quit or when the computer is idle');
+    ctx.agentLog('update: ' + info.version + (placed ? ' in place; starts on the next restart, or when the computer is idle' : ' ready; installs on quit or when the computer is idle'));
     tell();
     setInterval(() => {
       if (shouldInstallNow({ idleSec: ctx.powerMonitor.getSystemIdleTime(), busy: ctx.busy() })) installNow();
@@ -169,6 +204,16 @@ function skip() {
 function installNow() {
   if (!ready) return;
   ctx.agentLog('update: installing ' + ready);
+  if (placed) {
+    // the new file is the app already: open it and close this one (run as a service, the service starts it again)
+    const { app } = require('electron');
+    try {
+      require('child_process').spawn(process.env.APPIMAGE, process.argv.slice(1), { detached: true, stdio: 'ignore',
+        env: Object.assign({}, process.env, { APPIMAGE_SILENT_INSTALL: 'true' }) }).unref();
+    } catch (e) { ctx.agentLog('update: could not reopen: ' + e.message); }
+    app.quit();
+    return;
+  }
   // silent install, then the new version opens on its own
   updater().quitAndInstall(true, true);
 }
@@ -197,4 +242,4 @@ const handlers = {
   },
 };
 
-module.exports = { init, start, installNow, shouldInstallNow, mode, onAvailable, versionNewer, shared, handlers };
+module.exports = { init, start, installNow, placeAppImage, shouldInstallNow, mode, onAvailable, versionNewer, shared, handlers };
