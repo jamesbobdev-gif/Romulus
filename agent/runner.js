@@ -301,7 +301,7 @@ async function startAgentRun() {
     whereHeIsNow: here && nearMe.includes(t.id) ? here : undefined, // from this computer's location, for "near me"
     // a study plan: which site each of his classes is on, so it opens the right one (agent/skills/study-plan.md)
     classSites: studyPlan.isStudy(t) ? (() => { const c = courseSites.courseSites(allTasks); return c.length ? c.map((x) => x.course + ': ' + x.kind + ' https://' + x.host) : undefined; })() : undefined,
-    howTo: (() => { const h = howtosFor(t); return h.length ? h.map(howtos.show) : undefined; })() }));
+    howTo: (() => { const h = howtosFor(t, 'claude'); return h.length ? h.map(howtos.show) : undefined; })() }));
   // skills: the ones matching these tasks go in full; the rest are listed so Claude can open them itself
   const skills = loadSkills();
   // tasks a `browser: yes` skill matches (seat maps, carts, forms): Gemini won't hand those to Flash-Lite

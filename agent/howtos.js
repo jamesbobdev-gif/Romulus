@@ -2,8 +2,9 @@
    HIS 110 → Calendar lists everything due; Assignments misses quizzes"). After a run that didn't get
    stuck, the model may leave 2–3 lines; the next task that shares enough words (or the same site plus
    a word) gets the closest one or two in its instructions, marked as possibly out of date.
-   A newer how-to for the same kind of task replaces the old one. Stored on this computer only:
-   <userData>/task-howtos.json. No Electron here, so it can be tested on its own. */
+   A newer how-to for the same kind of task replaces the old one. Stored in <userData>/task-howtos.json and
+   shared with his other computers (agent/learned-sync.js). One from a private task is marked (priv) and is
+   never put in front of a cloud AI. No Electron here, so it can be tested on its own. */
 const fs = require('fs');
 
 const MAX_KEPT = 60;
@@ -36,6 +37,7 @@ function score(h, words, hosts) {
   return { shared, site, specific, total: shared + (site ? 2 : 0) };
 }
 // the closest few for a task: 2+ shared words, its site plus 1 word, or one specific word
+const open = (list) => list.filter((h) => !h.priv); // the ones a cloud AI may read
 function forTask(list, text, urls, max = 2) {
   const words = keyWords(text), hosts = (urls || []).map((u) => /^https?:\/\//i.test(u) ? hostOf(u) : String(u).toLowerCase()).filter(Boolean);
   return list.map((h) => ({ h, s: score(h, words, hosts) }))
@@ -49,7 +51,7 @@ const show = (h) => '- For "' + h.task + '" (' + h.date + (h.lane === 'local' ? 
 
 /* keep what worked. Never his details: anything with an email, phone or long number is dropped. A
    how-to for (nearly) the same task, on the same site, is replaced, so a better way wins. */
-function learn(list, { task, text, urls, lane, today }) {
+function learn(list, { task, text, urls, lane, today, priv }) {
   text = String(text || '').replace(/\s+/g, ' ').trim();
   if (text.length < 20) return null;
   if (text.length > MAX_LEN) text = text.slice(0, MAX_LEN - 1) + '…';
@@ -60,6 +62,7 @@ function learn(list, { task, text, urls, lane, today }) {
   const same = (h) => { const s = score(h, words, sites); return s.shared >= Math.max(2, Math.ceil(Math.min(words.length, (h.words || []).length) * 0.6)) && (s.site || !sites.length || !(h.sites || []).length); };
   const rest = list.filter((h) => !same(h));
   const h = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), task: String(task).slice(0, 120), words, sites, text, lane: lane === 'local' ? 'local' : 'claude', date: today };
+  if (priv) h.priv = true;
   return { list: rest.concat(h), replaced: list.length - rest.length, howto: h };
 }
 
@@ -102,10 +105,11 @@ async function compact(list, { ask, today, maxGroups = 3 }) {
     const h = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), task: label,
       words: [...new Set(g.flatMap((x) => x.words || []))], sites: [...new Set(g.flatMap((x) => x.sites || []))].slice(0, 8), text,
       lane: g.some((x) => x.lane === 'local') ? 'local' : 'claude', date: today, merged: g.reduce((n, x) => n + (x.merged || 1), 0) };
+    if (g.some((x) => x.priv)) h.priv = true;
     out = out.filter((x) => !ids.has(x.id)).concat(h);
     merged++;
   }
   return { list: out, merged };
 }
 
-module.exports = { load, save, forTask, show, learn, keyWords, groups, compact };
+module.exports = { load, save, open, forTask, show, learn, keyWords, groups, compact };

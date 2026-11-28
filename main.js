@@ -211,6 +211,21 @@ if (!gotLock) {
     const cleanAttachments = () => sb.cleanupAttachments(sb.channel(readConfig())).then((n) => { if (n) agentLog('attachments cleanup: removed ' + n + ' old file(s)'); });
     setTimeout(cleanAttachments, 10 * 60 * 1000);
     setInterval(cleanAttachments, 24 * 60 * 60 * 1000);
+    // what the Agent learned (how-tos, site tips, the class log, which lane does what well) is shared between his
+    // computers (agent/learned-sync.js): shortly after start, then every ten minutes. The log says what came in,
+    // and why it didn't work, once per reason
+    const learnedSync = require('./agent/learned-sync');
+    let learnedErr = '';
+    const shareLearned = async () => {
+      const ud = app.getPath('userData');
+      const r = await learnedSync.sync({ a: sb.channel(readConfig()), supabase: sb, howtos: taskContext.howtos, routeLearn: require('./agent/route-learn'),
+        files: { howtos: taskContext.howtoFile(), tipsDir: taskContext.siteNoteDirs()[1], classLog: path.join(ud, 'class-log.json'), state: path.join(ud, 'learned-sync.json') } });
+      if (r.ok && r.got.length) agentLog('learned on another computer, now here too: ' + r.got.join(', '));
+      if (!r.ok && r.error !== learnedErr && !/isn’t set up/.test(r.error)) agentLog('sharing what the Agent learned: ' + r.error);
+      learnedErr = r.ok ? '' : r.error;
+    };
+    setTimeout(() => shareLearned().catch(() => {}), 90 * 1000);
+    setInterval(() => shareLearned().catch(() => {}), 10 * 60 * 1000);
     // still signed in to his school sites on the mini PC? Looked at every 30 min; it runs once a day, when the local model is idle
     setInterval(() => localLane.checkSignins().catch((e) => agentLog('sign-in check crashed: ' + (e && e.message || e))), 30 * 60 * 1000);
 

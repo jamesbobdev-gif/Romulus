@@ -76,14 +76,16 @@ const siteNoteDirs = () => [path.join(__dirname, 'sites'), path.join(ctx.userDat
 // the task's own links: what he wrote (title, notes, replies) and the options shown to him; not links in an AI's note,
 // which a page could have put there (they decide where a shopping run may go, agent/runner.js)
 const taskLinks = (t) => (JSON.stringify([t.title, t.notes, t.reply, (Array.isArray(t.history) ? t.history : []).filter((h) => h && h.who === 'you'), t.options]).match(/https?:\/\/[^\s"'<>)\\]+/g) || []).slice(0, 40);
-// how-tos: what worked on earlier, similar tasks (agent/howtos.js), kept on this computer
+// how-tos: what worked on earlier, similar tasks (agent/howtos.js), shared between his computers (agent/learned-sync.js).
+// One learned on a private task is marked, and a cloud lane (lane 'claude') is never shown it.
 const howtos = require('./howtos');
 const howtoFile = () => path.join(ctx.userData(), 'task-howtos.json');
-function howtosFor(t) { try { return howtos.forTask(howtos.load(howtoFile()), skillText(t), taskLinks(t)); } catch (e) { return []; } }
+function howtosFor(t, lane) { try { const all = howtos.load(howtoFile()); return howtos.forTask(lane === 'claude' ? howtos.open(all) : all, skillText(t), taskLinks(t)); } catch (e) { return []; } }
+const isPrivate = (t) => { try { return !!require('./routing').privateMatch(t); } catch (e) { return true; } };
 function learnHowto(t, text, urls, lane) {
   if (!text) return;
   try {
-    const r = howtos.learn(howtos.load(howtoFile()), { task: t.title, text, urls, lane, today: new Date().toISOString().slice(0, 10) });
+    const r = howtos.learn(howtos.load(howtoFile()), { task: t.title, text, urls, lane, today: new Date().toISOString().slice(0, 10), priv: isPrivate(t) });
     if (!r) return;
     howtos.save(howtoFile(), r.list);
     agentLog((lane === 'local' ? 'local: ' : '') + 'learned a how-to for "' + String(t.title).slice(0, 50) + '"' + (r.replaced ? ' (replaced ' + r.replaced + ' older)' : ''));

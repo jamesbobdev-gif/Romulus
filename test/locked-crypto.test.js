@@ -91,7 +91,10 @@ test('the sync key shape the database checks matches every key the app makes', (
   // 20261127_sync_settings_key.sql adds settings after whichever name is last in the live functions
   const set = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261127_sync_settings_key.sql'), 'utf8');
   assert.ok(set.includes("array['kitchen', 'macros', 'health', 'devices']") && set.includes("'|' || last || '|settings))'"), 'the settings migration adds settings after the last name');
-  assert.ok(mig.includes(m[1].replace('|macros|kitchen|settings))', '|macros))')), 'the macros migration plus the kitchen and settings ones make the setup regex');
+  // 20261128_sync_learned_key.sql does the same for learned
+  const lrn = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261128_sync_learned_key.sql'), 'utf8');
+  assert.ok(lrn.includes("array['settings', 'kitchen', 'macros', 'health', 'devices']") && lrn.includes("'|' || last || '|learned))'"), 'the learned migration adds learned after the last name');
+  assert.ok(mig.includes(m[1].replace('|macros|kitchen|settings|learned))', '|macros))')), 'the macros migration plus the kitchen, settings and learned ones make the setup regex');
   assert.ok(re.test('tk_' + '6f1d2c3b-4a5e-4f60-9b7c-8d9e0f1a2b3c' + ':updates'), 'the shared update answer row (renderer/js/update-sync.js)');
   const uuid = '6f1d2c3b-4a5e-4f60-9b7c-8d9e0f1a2b3c', short = 'm2k9x1a7' + 'q8w3e5r1'; // Generate key, and its fallback without randomUUID
   const personal = ['tk_' + uuid, 'tk_' + short];
@@ -99,7 +102,7 @@ test('the sync key shape the database checks matches every key the app makes', (
     assert.ok(re.test(p), p);
     for (const ws of ['work', 'agent', 'school']) assert.ok(re.test(supabase.deriveSyncKey(p, ws)), ws);
     for (const sfx of [':ideas', ':hours', ':updates', ':finance', ':devices', ':health', ':macros', ':kitchen', ':settings']) assert.ok(re.test(p + sfx), sfx);
-    for (const sfx of [':prefs', ':locked', ':routing', ':standing', require('../agent/worker').SUFFIX, require('../agent/worker-files').FILES, require('../agent/worker-files').GONE]) assert.ok(re.test(supabase.deriveSyncKey(p, 'agent') + sfx), sfx);
+    for (const sfx of [':prefs', ':locked', ':routing', ':standing', require('../agent/worker').SUFFIX, require('../agent/worker-files').FILES, require('../agent/worker-files').GONE, ':macros', require('../agent/learned-sync').SUFFIX]) assert.ok(re.test(supabase.deriveSyncKey(p, 'agent') + sfx), sfx);
   }
   // what it refuses: no tk_, too short, other suffixes, spaces, the storage folder name alone is fine but not a row key with slashes
   for (const bad of ['plainkey12345678', 'tk_short', 'tk_' + uuid + ':other', 'tk_' + uuid + ' ', 'tk_agent_att_abc/stuck-1', '', 'tk_' + uuid + ':prefs:prefs', 'tk_' + uuid + ':files-'])

@@ -3,7 +3,8 @@
    off the lane it was sent to (or the mini PC fails and the cloud takes over), that lane loses one. The chance
    a lane does a type well is (good + 1) / (all + 2), so it starts at 50% and moves with each task.
    agent/routing.js asks pick() before its own guesses: once a type has enough history, the lane with the
-   better record gets it. The counts live in route-stats.json next to the task data. */
+   better record gets it. The counts live in route-stats.json next to the task data, and are shared with his
+   other computers (agent/learned-sync.js). */
 const fs = require('fs');
 const path = require('path');
 
@@ -100,4 +101,13 @@ function learn(raw) {
   return changed;
 }
 
-module.exports = { init, typeOf, chance, pick, describe, learn, TYPES, MIN_TASKS, _reset: () => { stats = empty(); } };
+// for agent/learned-sync.js, which shares the record between his computers: a copy of it, and the merged one to keep
+const snapshot = () => JSON.parse(JSON.stringify(load()));
+function adopt(next) {
+  if (!next || typeof next.types !== 'object' || typeof next.counted !== 'object') return false;
+  stats = { v: 1, types: next.types, counted: next.counted };
+  save();
+  return true;
+}
+
+module.exports = { init, typeOf, chance, pick, describe, learn, snapshot, adopt, TYPES, MIN_TASKS, _reset: () => { stats = empty(); } };
