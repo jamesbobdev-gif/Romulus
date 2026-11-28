@@ -24,7 +24,7 @@ that says what it does; read that first, then this for how the pieces fit and th
 | Buttons, search, keys | `wiring.js` | |
 | Start-up | `init.js` (loads last) | `main.js` |
 | Sync, pairing, devices | `sync.js`, `sync-crypto.js`, `hosted-sync.js`, `pair.js`, `devices.js`, `usage-share.js`, `shared-settings.js`, `update-sync.js` | `supabase/`, `agent/supabase.js` |
-| Agent tab | `agent-*.js`, `busy-line.js`, `goals.js`, `triggers.js`, `standing.js`, `seat-map.js`, `link-email.js`, `same-ask.js` | `agent/routing.js`, `agent/runner.js`, `agent/local-lane.js`, `agent/providers.js`, `agent/task-context.js`, `agent/learned-sync.js` (what it learns, shared between computers), `agent/form-files-sync.js` (his files for forms, on every computer) |
+| Agent tab | `agent-*.js`, `busy-line.js`, `goals.js`, `triggers.js`, `standing.js`, `seat-map.js`, `link-email.js`, `same-ask.js` | `agent/routing.js`, `agent/runner.js`, `agent/local-lane.js`, `agent/providers.js`, `agent/task-context.js`, `agent/learned-sync.js` (what it learns, shared between computers), `agent/form-files-sync.js` (his files for forms, on every computer), `agent/ai-choices-sync.js` (the AI order and models, on every computer) |
 | Groceries | `grocery-list.js`, `ebt-alerts.js`, `order-match.js` | `agent/grocery.js` |
 | Finance | `finance*.js`, `bill-reminders.js` | `main/finance*.js`, `mobile/finance-phone.js` |
 | Kitchen | `kitchen.js` | `main/kitchen-ai.js`, `agent/meal-ideas.js` |

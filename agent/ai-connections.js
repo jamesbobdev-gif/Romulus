@@ -1,5 +1,6 @@
 /* AI connections: which cloud AIs the Agent lane may use, in order. Keys stay in config.json on this
-   computer; the page only ever gets them back masked. */
+   computer; the page only ever gets them back masked. The order, the models and the switches go to his
+   other computers (agent/ai-choices-sync.js); keys, sign-ins and extra accounts never do. */
 const providers = require('./providers');
 const usage = require('./usage-limit');
 const meter = require('./usage-meter');
@@ -69,6 +70,7 @@ handle('ai:save', (_e, change) => {
   for (const k of ['openrouterWeb', 'openrouterZdr', 'openrouterFree', 'helpers', 'claudeLast', ...providers.COMPAT_IDS.map((id) => id + 'Browser')]) if (typeof change[k] === 'boolean') ai[k] = change[k];
   c.ai = ai; writeConfig(c);
   scheduleAgentRun();
+  if (ctx.aiChoicesChanged) ctx.aiChoicesChanged(); // his other computers follow
   return aiStatus();
 });
 // one more account of an AI (switched on, after that AI in the order), or one taken away with its sign-in folder

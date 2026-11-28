@@ -243,6 +243,19 @@ if (!gotLock) {
     ctx.formFilesChanged = () => setTimeout(() => shareForms().catch(() => {}), 2000);
     setTimeout(() => shareForms().catch(() => {}), 2 * 60 * 1000);
     setInterval(() => shareForms().catch(() => {}), 10 * 60 * 1000);
+    // his choices under AI connections (the order, the models, the switches; never a key or a sign-in) are the same on
+    // every one of his computers (agent/ai-choices-sync.js): after start, every ten minutes, and right after he changes one
+    const aiChoicesSync = require('./agent/ai-choices-sync');
+    let aiChoicesErr = '';
+    const shareAiChoices = async () => {
+      const r = await aiChoicesSync.sync({ supabase: sb, readConfig, writeConfig, stamps: path.join(app.getPath('userData'), 'ai-choices-sync.json') });
+      if (r.ok && r.got.length) { agentLog('AI connections: the ' + r.got.map((k) => (k === 'ai.order' ? 'order' : 'models and switches')).join(' and ') + ' set on another computer are in use here now'); scheduleAgentRun(); }
+      if (!r.ok && r.error !== aiChoicesErr && !/isn’t set up/.test(r.error)) agentLog('AI connections, sharing the choices: ' + r.error);
+      aiChoicesErr = r.ok ? '' : r.error;
+    };
+    ctx.aiChoicesChanged = () => setTimeout(() => shareAiChoices().catch(() => {}), 3000);
+    setTimeout(() => shareAiChoices().catch(() => {}), 100 * 1000);
+    setInterval(() => shareAiChoices().catch(() => {}), 10 * 60 * 1000);
     // still signed in to his school sites on the mini PC? Looked at every 30 min; it runs once a day, when the local model is idle
     setInterval(() => localLane.checkSignins().catch((e) => agentLog('sign-in check crashed: ' + (e && e.message || e))), 30 * 60 * 1000);
 
