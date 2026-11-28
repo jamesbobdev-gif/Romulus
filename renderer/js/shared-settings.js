@@ -1,6 +1,7 @@
 /* Settings that are the same on every device: the look (light / dark / custom, the custom CSS, saved themes),
    which tabs show, the Kitchen week plan and recent aims, the EBT switch and its low-balance alert amount, how
-   the Finance tab was left looking, and the Romulus cloud always / never answer. Each used to live in one device's localStorage, so a phone and a computer drifted apart.
+   the Finance tab was left looking, the hints and banners he has put away, and the Romulus cloud always / never
+   answer. Each used to live in one device's localStorage, so a phone and a computer drifted apart.
    They travel in their own row next to the personal list (<personal key>:settings,
    supabase/migrations/20261127_sync_settings_key.sql), sealed like the list when the lists are encrypted, as
    {v:1, s:{<localStorage key>: {v: the saved text or null, at: when it was last changed}}}.
@@ -54,6 +55,14 @@ function sharedMerge(stamps,doc,keys){
   return {set:set,stamps:outStamps,doc:{v:1,s:s},changedRemote:changedRemote};
 }
 
+/* Hints and banners he has put away: the Kitchen "what to connect" card, the "keep your keys private" step and
+   the Year in review banner (one name per year: last year's and this year's are looked at). Put away on one
+   device, they stay away on the others. The welcome card is not here: each device shows its own once, and
+   tab-picker.js reads it to tell a new install. */
+function sharedHintKeys(now){
+  const y=new Date(now||Date.now()).getFullYear();
+  return ['tasks.kitchenConnect.v1','setupKeysRead','review.seen.'+(y-1),'review.seen.'+y];
+}
 /* Unsent replies. Each is its own name in the record, so two replies started on two devices don't cost each
    other anything. drafts: {task id: text} as this device holds them. */
 const SHARED_DRAFT='draft:';
@@ -83,7 +92,7 @@ function sharedDraftForget(stamps,doc,now){
 }
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={sharedNote,sharedMerge,sharedDraftKeys,sharedDraftForget,SHARED_KEYS,SHARED_TAB_KEYS,SHARED_DRAFT,SHARED_DRAFT_FORGET};
+  module.exports={sharedNote,sharedMerge,sharedHintKeys,sharedDraftKeys,sharedDraftForget,SHARED_KEYS,SHARED_TAB_KEYS,SHARED_DRAFT,SHARED_DRAFT_FORGET};
 } else {
   const SHARED_STAMPS_KEY='tasks.shared.stamps', SHARED_TABS_OWN_KEY='tabsOwn';
   const sharedState={unsupported:false,err:null};
@@ -98,7 +107,7 @@ if(typeof module!=='undefined'&&module.exports){
     if(typeof syncNow==='function')syncNow();
   }
   window.sharedTabsOwn=sharedTabsOwn; window.sharedSetTabsOwn=sharedSetTabsOwn;
-  function sharedKeys(){ return sharedTabsOwn()?SHARED_KEYS.filter(function(k){ return SHARED_TAB_KEYS.indexOf(k)<0; }):SHARED_KEYS; }
+  function sharedKeys(){ return (sharedTabsOwn()?SHARED_KEYS.filter(function(k){ return SHARED_TAB_KEYS.indexOf(k)<0; }):SHARED_KEYS).concat(sharedHintKeys(Date.now())); }
   function sharedStampsLoad(){ try{ const s=JSON.parse(localStorage.getItem(SHARED_STAMPS_KEY)||'{}'); return s&&typeof s==='object'?s:{}; }catch(e){ return {}; } }
   function sharedProfile(){
     const p=syncState.cfg&&syncState.cfg.personal;
@@ -114,6 +123,9 @@ if(typeof module!=='undefined'&&module.exports){
       }
       if(has(/^tabs/)){ applyTabsOff(); drawTabPicker(); }
       if(has(/^kitchen\./)&&state.activeTab==='kitchen'&&typeof renderKitchen==='function')renderKitchen();
+      // a hint or banner put away on another device goes from this screen too
+      if(has(/^review\.seen\./)&&typeof reviewBannerCheck==='function')reviewBannerCheck();
+      if(keys.indexOf('tasks.kitchenConnect.v1')>=0&&typeof kDrawConnect==='function')kDrawConnect();
       if(keys.indexOf('ebt.on')>=0){
         let v=null; try{ v=localStorage.getItem('ebt.on'); }catch(e){}
         // the computer's Agent side follows the switch too (grocery-list.js setEbtOn)

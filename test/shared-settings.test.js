@@ -124,3 +124,24 @@ test('the EBT alert amount and the Finance view choices are shared, under the na
   const r = s.sharedMerge(pc, { v: 1, s: { 'ebt.low': { v: '40', at: NOW + 5 } } }, s.SHARED_KEYS);
   assert.deepStrictEqual(r.set, { 'ebt.low': '40' });
 });
+
+test('a hint or banner put away on one device stays away on the others; the welcome card is each device’s own', () => {
+  const fs = require('fs'), path = require('path');
+  const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'renderer', 'js', f), 'utf8');
+  const keys = s.sharedHintKeys(NOW);
+  assert.deepStrictEqual(keys, ['tasks.kitchenConnect.v1', 'setupKeysRead', 'review.seen.2025', 'review.seen.2026']);
+  // the names are the ones the app saves them under
+  assert.ok(src('kitchen.js').includes("KIT_CONNECT_KEY='tasks.kitchenConnect.v1'"));
+  assert.ok(src('setup-list.js').includes("localStorage.setItem('setupKeysRead','1')"));
+  assert.ok(src('year-review-view.js').includes("localStorage.setItem('review.seen.'+"));
+  assert.ok(!keys.includes('tasks.welcomed.v1') && !s.SHARED_KEYS.includes('tasks.welcomed.v1'));
+  // in January the banner is about last year, and that is one of the names looked at
+  assert.ok(s.sharedHintKeys(Date.UTC(2027, 0, 15)).includes('review.seen.2026'));
+  // put away on the phone: the computer, which never touched it, takes that
+  const phone = s.sharedMerge(s.sharedNote(s.sharedNote({}, {}, keys, NOW), { 'review.seen.2026': '1' }, keys, NOW + 5), null, keys);
+  assert.deepStrictEqual(phone.doc.s, { 'review.seen.2026': { v: '1', at: NOW + 5 } });
+  const pc = s.sharedMerge(s.sharedNote({}, {}, keys, NOW + 9), phone.doc, keys);
+  assert.deepStrictEqual(pc.set, { 'review.seen.2026': '1' });
+  // and a device that still shows it never brings it back for the one that put it away
+  assert.deepStrictEqual(s.sharedMerge(phone.stamps, pc.doc, keys).set, {});
+});
