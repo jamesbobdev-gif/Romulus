@@ -93,31 +93,41 @@ const liveRelay=(function(){
 
   /* ── the mini PC: stream while watched ── */
   // last: the latest picture, sent again to a viewer who just opened it (a page sitting still sends no new ones)
-  const pub={until:0, want:null, cdp:null, page:null, lastFrame:0, last:null, trail:null, size:0, pagesAt:0, nextId:1};
+  const pub={until:0, want:null, cdp:null, page:null, lastFrame:0, last:null, trail:null, size:0, pagesAt:0, nextId:1, gotAt:0, sent:null, nudge:null};
   // picture sizes, best first: a busy page (a course page full of text) can come out over Realtime's
   // message size, and a picture that's dropped and never followed by another leaves the viewer on "Connecting…"
   const SIZES=[{q:45,w:1100},{q:35,w:900},{q:25,w:720},{q:20,w:560}];
   function cdpSend(method,params){ if(pub.cdp&&pub.cdp.readyState===1)pub.cdp.send(JSON.stringify({id:pub.nextId++,method:method,params:params||{}})); }
   function startCast(){ const s=SIZES[pub.size]; cdpSend('Page.startScreencast',{format:'jpeg',quality:s.q,maxWidth:s.w,maxHeight:s.w,everyNthFrame:1}); }
-  function stopCast(){ pub.last=null; clearTimeout(pub.trail); pub.trail=null; if(pub.cdp){ const c=pub.cdp; pub.cdp=null; pub.page=null; try{ c.close(); }catch(e){} } }
+  /* A page the mini PC's desktop isn't drawing (its window minimized or covered, or the desktop not painting at
+     all) sends no pictures by itself, and the viewer sat on "Connecting…". Asking for a screenshot (thrown away) makes the
+     browser draw the page once, and that comes out as a picture like any other. Only when none came lately. */
+  const NUDGE_MS=1000;
+  function nudgeDue(gotAt,now){ return now-gotAt>=NUDGE_MS; }
+  function sendFrame(){ pub.lastFrame=Date.now(); pub.sent=pub.last.data; send(pub.last); }
+  function stopCast(){ pub.last=null; pub.sent=null; clearTimeout(pub.trail); pub.trail=null; clearInterval(pub.nudge); pub.nudge=null; if(pub.cdp){ const c=pub.cdp; pub.cdp=null; pub.page=null; try{ c.close(); }catch(e){} } }
   function cast(page){
     stopCast();
     pub.size=0; pub.lastFrame=0; // a new tab's first picture always goes, whatever the last tab just sent
     const c=new WebSocket(page.ws); pub.cdp=c; pub.page=page;
-    c.onopen=function(){ cdpSend('Page.bringToFront'); cdpSend('Page.enable'); startCast(); };
+    c.onopen=function(){ cdpSend('Page.bringToFront'); cdpSend('Page.enable'); startCast(); pub.gotAt=Date.now(); };
+    pub.nudge=setInterval(function(){
+      if(pub.cdp===c&&nudgeDue(pub.gotAt,Date.now()))cdpSend('Page.captureScreenshot',{format:'jpeg',quality:SIZES[pub.size].q}); // the whole page at the stream's quality: a cut-out, or a rougher one, came back as the picture itself
+    },NUDGE_MS);
     c.onmessage=function(ev){
       let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
       if(m.method!=='Page.screencastFrame')return;
       cdpSend('Page.screencastFrameAck',{sessionId:m.params.sessionId});
+      pub.gotAt=Date.now();
       // sealed, a picture grows by about a third: too big to send → the same page smaller
       if(m.params.data.length>MAX_MSG*0.72&&pub.size<SIZES.length-1){ pub.size++; cdpSend('Page.stopScreencast'); startCast(); return; }
       pub.last={t:'frame',id:page.id,data:m.params.data,meta:m.params.metadata};
+      if(m.params.data===pub.sent)return; // the same picture again (a still page, drawn because we asked): already sent
       // a few a second is plenty, and Realtime counts messages; the latest one still goes once the gap is up,
       // so a page that stops changing right after a burst isn't left showing nothing
       const wait=FRAME_GAP_MS-(Date.now()-pub.lastFrame);
-      if(wait>0){ if(!pub.trail)pub.trail=setTimeout(function(){ pub.trail=null; if(pub.cdp===c&&pub.last){ pub.lastFrame=Date.now(); send(pub.last); } },wait); return; }
-      pub.lastFrame=Date.now();
-      send(pub.last);
+      if(wait>0){ if(!pub.trail)pub.trail=setTimeout(function(){ pub.trail=null; if(pub.cdp===c&&pub.last)sendFrame(); },wait); return; }
+      sendFrame();
     };
     c.onclose=function(){ if(pub.cdp===c){ pub.cdp=null; pub.page=null; } };
   }
