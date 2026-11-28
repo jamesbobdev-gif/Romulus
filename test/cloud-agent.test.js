@@ -167,3 +167,31 @@ test('why a round didn\'t run is said in plain words', () => {
   assert.match(c.cloudSchedWhyText('spend'), /allowance is used up/);
   assert.match(c.cloudSchedWhyText('Romulus cloud is busy right now.'), /busy right now/);
 });
+
+test('what the computers learned goes with a cloud task: the same picks a computer makes, nothing private', () => {
+  const howtos = require('../agent/howtos');
+  const siteNotes = require('../agent/site-notes');
+  const how = (id, task, text, sites, extra) => Object.assign({ id, task, words: howtos.keyWords(task), sites, text, lane: 'local', date: '2026-11-0' + id.slice(-1) }, extra);
+  const doc = { v: 1, howtos: [
+    how('h1', 'Find internships for the summer', 'The careers page lists them under Students, then Internships; filter by term.', ['jobs.example.com']),
+    how('h2', 'Compare laptop prices', 'Sort by price on each store, then check the refurbished page as well.', ['shop.example.com']),
+    how('h3', 'Find paid internships near me', 'Use the paid filter first, the unpaid ones are listed last on that site.', ['jobs.example.com'], { priv: true }),
+    how('h4', 'Internships at the clinic', 'Ask at the front desk of the Riverbend clinic on weekdays before noon.', []),
+  ], tips: {
+    'example.com': ['- (2026-11-01) Sign in is under the menu at the top right', '- (2026-11-02) The Riverbend page needs a staff code'],
+    'other.example.org': ['- (2026-11-01) Never shown: the task does not link here'],
+  } };
+  const t = { title: 'Find summer internships', notes: 'start at https://jobs.example.com/students', history: [] };
+  const text = c.cloudAgLearned(doc, t, ['riverbend']);
+  // the open how-tos a computer would pick for the same task, in the same order
+  const picked = howtos.forTask(howtos.open(doc.howtos), t.title + '\n' + t.notes, ['https://jobs.example.com/students'], 3).filter((h) => !/riverbend/i.test(h.text));
+  assert.deepStrictEqual(picked.map((h) => h.id), ['h1']);
+  assert.ok(text.includes('- For "Find internships for the summer" (2026-11-01): The careers page lists them'), text);
+  assert.ok(!/paid filter|Riverbend|laptop|Never shown/.test(text), 'no private how-to, no private word, nothing unrelated: ' + text);
+  assert.ok(text.includes('Tips about example.com from earlier runs (unchecked: may be wrong):\n- (2026-11-01) Sign in is under the menu at the top right'));
+  assert.strictEqual(siteNotes.covers('example.com', 'jobs.example.com'), true);
+  assert.deepStrictEqual(c.cloudAgKeyWords("What's due in my internships class?"), howtos.keyWords("What's due in my internships class?"));
+  // nothing learned, or nothing that fits: nothing sent
+  assert.strictEqual(c.cloudAgLearned(null, t, []), '');
+  assert.strictEqual(c.cloudAgLearned(doc, { title: 'Plan a birthday dinner' }, []), '');
+});

@@ -71,6 +71,47 @@ function cloudAgTask(t){
 function cloudAgPrefs(text,privateWords){
   return String(text||'').split('\n').filter(function(l){ return /^\s*#/.test(l)||!cloudAgPrivateIn(l,privateWords); }).join('\n').slice(0,6000);
 }
+/* What his computers learned (agent/learned-sync.js keeps it in the agent list's ':learned' row), for a task
+   going to the cloud: the one or two how-tos closest to it and the tips about the sites it links to, as a few
+   lines of text. Picked the way agent/howtos.js forTask and agent/site-notes.js forUrls pick them on a computer
+   (test/cloud-agent.test.js holds the two to the same answer). Never a how-to from a private task (h.priv), and
+   never a line with one of his private words in it. */
+const CLOUD_AG_STOP=('a an the my me i you your our for of on in at to from up out into onto through about and or but '+
+  'is are be it this that what which who with please can could should would will just also some any all '+
+  'look find get check see go use do make help try want need have has had new next last one '+
+  'what\'s whats im i\'m it\'s due today tomorrow week local claude').split(' ');
+function cloudAgKeyWords(text){
+  const out=[];
+  (String(text||'').toLowerCase().replace(/#\S+/g,' ').match(/[a-z0-9$][a-z0-9$'+]{2,}/g)||[]).forEach(function(w){
+    w=w.replace(/'s$/,'').replace(/(?<=[a-z]{3})s$/,'');
+    if(CLOUD_AG_STOP.indexOf(w)<0&&out.indexOf(w)<0)out.push(w);
+  });
+  return out;
+}
+function cloudAgHost(u){ const m=/^https?:\/\/([^\/?#:\s]+)/i.exec(String(u||'')); return m?m[1].toLowerCase().replace(/^www\./,''):''; }
+function cloudAgLearned(doc,t,privateWords){
+  if(!doc||typeof doc!=='object')return '';
+  const mine=cloudAgTheirText(t), words=cloudAgKeyWords(String(t.title||'')+'\n'+String(t.notes||'')+'\n'+String(t.reply||''));
+  const hosts=[]; (mine.match(/https?:\/\/[^\s"'<>)\\]+/g)||[]).forEach(function(u){ const h=cloudAgHost(u); if(h&&hosts.indexOf(h)<0)hosts.push(h); });
+  const covers=function(domain,host){ return host===domain||host.slice(-domain.length-1)==='.'+domain; };
+  const clean=function(s){ return typeof s==='string'&&!cloudAgPrivateIn(s,privateWords); };
+  const lines=[];
+  (Array.isArray(doc.howtos)?doc.howtos:[]).filter(function(h){ return h&&!h.priv&&clean(h.text)&&clean(String(h.task||'')); }).map(function(h){
+    const hw=Array.isArray(h.words)?h.words:[], hs=Array.isArray(h.sites)?h.sites:[];
+    const shared=hw.filter(function(w){ return words.indexOf(w)>=0; }).length;
+    const site=hs.some(function(s){ return hosts.some(function(x){ return covers(s,x)||covers(x,s); }); });
+    const specific=hw.some(function(w){ return w.length>=8&&words.indexOf(w)>=0; });
+    return {h:h,shared:shared,site:site,specific:specific,total:shared+(site?2:0)};
+  }).filter(function(x){ return x.shared>=2||(x.shared>=1&&(x.site||x.specific)); })
+    .sort(function(a,b){ return b.total-a.total||String(b.h.date).localeCompare(String(a.h.date)); }).slice(0,2)
+    .forEach(function(x){ lines.push('- For "'+String(x.h.task||'').slice(0,120)+'" ('+x.h.date+'): '+String(x.h.text).slice(0,400)); });
+  const tips=doc.tips&&typeof doc.tips==='object'?doc.tips:{};
+  Object.keys(tips).sort().filter(function(d){ return hosts.some(function(h){ return covers(d,h); }); }).slice(0,3).forEach(function(d){
+    const l=(Array.isArray(tips[d])?tips[d]:[]).filter(clean).slice(-5);
+    if(l.length)lines.push('Tips about '+d+' from earlier runs (unchecked: may be wrong):\n'+l.join('\n'));
+  });
+  return lines.join('\n').slice(0,2500);
+}
 /* the account the server should count this task against, without sending any sync key: 'tk_acct_' + the same
    SHA-256 of the key's id part that sync_account_of makes (supabase/setup.sql), from the row key this device syncs under */
 async function cloudAgAccount(rowKey){
@@ -194,9 +235,22 @@ function cloudSchedWhyText(why,r){
 // said under every Romulus cloud answer that has links: a web page could have planted one
 const CLOUD_AG_LINK_NOTE='Answered by Romulus cloud with web search. Its links come from the web and aren’t checked: look at the address before you sign in or pay anywhere.';
 
-if(typeof module!=='undefined'&&module.exports)module.exports={cloudSchedWhyNot,cloudSchedId,cloudSchedTask,cloudSchedRule,cloudSchedPrint,cloudSchedPlan,cloudSchedWhyText,CLOUD_SCHED_REFRESH_MS,cloudAgPrivateIn,cloudAgPrefs,cloudAgAccount,CLOUD_AG_LINK_NOTE,cloudAgWhyNot,cloudAgTask,cloudAgDue,cloudAgTriedThisRound,cloudAgKeyPair,cloudAgSeal,cloudAgOpen,cloudAgResult,cloudAgWhyText,CLOUD_AG_WAIT_MS,CLOUD_AG_WORKER_WAIT_MS};
+if(typeof module!=='undefined'&&module.exports)module.exports={cloudAgLearned,cloudAgKeyWords,cloudSchedWhyNot,cloudSchedId,cloudSchedTask,cloudSchedRule,cloudSchedPrint,cloudSchedPlan,cloudSchedWhyText,CLOUD_SCHED_REFRESH_MS,cloudAgPrivateIn,cloudAgPrefs,cloudAgAccount,CLOUD_AG_LINK_NOTE,cloudAgWhyNot,cloudAgTask,cloudAgDue,cloudAgTriedThisRound,cloudAgKeyPair,cloudAgSeal,cloudAgOpen,cloudAgResult,cloudAgWhyText,CLOUD_AG_WAIT_MS,CLOUD_AG_WORKER_WAIT_MS};
 
 if(typeof document!=='undefined'){
+  // the ':learned' row, read at most every ten minutes; '' when there is none or it can't be read
+  const cloudAgLearnedSeen={at:0,doc:null};
+  async function cloudAgLearnedFor(t){
+    try{
+      if(Date.now()-cloudAgLearnedSeen.at>10*60*1000){
+        const a=typeof syncState!=='undefined'&&syncState.cfg&&syncState.cfg.agent;
+        if(!a||!validProfile(a))return '';
+        const r=await syncPullRow({url:a.url,key:a.key,syncKey:a.syncKey+':learned',v2:a.v2});
+        cloudAgLearnedSeen.at=Date.now(); cloudAgLearnedSeen.doc=(r&&r.doc)||null;
+      }
+      return cloudAgLearned(cloudAgLearnedSeen.doc,t,cloudAgUI.privateWords);
+    }catch(e){ return ''; }
+  }
   const cloudAgUI={privateWords:null,privateAt:0,workerUp:false,workerAt:0,status:null,statusAt:0,busy:{},timer:null};
 
   /* where it goes: this device has no runner of its own, and its Agent list syncs on the Romulus server */
@@ -267,7 +321,7 @@ if(typeof document!=='undefined'){
       try{ const pp=typeof prefsProfile==='function'&&prefsProfile(); if(pp){ const r=await syncPullRow(pp); prefs=cloudAgPrefs((r&&r.doc&&r.doc.text)||'',cloudAgUI.privateWords); } }catch(e){}
       let keys; try{ keys=await cloudAgKeyPair(!!(await cloudAgIdb())); }catch(e){ keys=await cloudAgKeyPair(false); }
       const today=new Date().toLocaleString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});
-      const r=await cloudAgCall(p,{action:'start',syncKey:await cloudAgId(p),pub:keys.pub,task:cloudAgTask(t),prefs:prefs,today:today});
+      const r=await cloudAgCall(p,{action:'start',syncKey:await cloudAgId(p),pub:keys.pub,task:cloudAgTask(t),prefs:prefs,learned:await cloudAgLearnedFor(t),today:today});
       const cur=state.tasks.find(function(x){ return x.id===t.id; });
       if(!cur||cur.done||cur.status!=='queued')return; // a computer took it meanwhile: the answer, if any, is dropped
       if(r&&r.why==='busy')return; // two of theirs are being answered: this one goes on a later tick, no note
@@ -390,7 +444,7 @@ if(typeof document!=='undefined'){
     if(!c.pub||!c.priv){ const k=await cloudAgKeyPair(false); c.pub=k.pub; c.priv=k.priv; } // stays on the task: any of their devices can open the answers
     const print=cloudSchedPrint(t,tz);
     const r=await cloudAgCall(p,{action:'schedule',syncKey:key,task:await cloudSchedId(t.id),next:t.nextRun||null,rule:cloudSchedRule(t,tz),
-      sealed:await cloudAgSeal(pub,{task:cloudSchedTask(t),prefs:prefs}),pub:c.pub});
+      sealed:await cloudAgSeal(pub,{task:cloudSchedTask(t),prefs:prefs,learned:await cloudAgLearnedFor(t)}),pub:c.pub});
     if(r&&r.ok){ c.sent=print; c.at=Date.now(); if(r.next&&(!t.nextRun||t.nextRun<Date.now()))t.nextRun=Date.parse(r.next)||t.nextRun; return; }
     c.on=false; c.sent=null; // it can't be kept there: the switch goes off and the task says why
     agentSay(t,'sys',cloudSchedWhyText(r&&r.why,r));
