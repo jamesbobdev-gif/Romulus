@@ -575,9 +575,9 @@ async function syncOnce(){
   }
   // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
   if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
+  // the settings every device shares (look, tabs, Kitchen week...): their own row, shared-settings.js (never throws)
+  if(typeof sharedSync==='function'&&await sharedSync())anyLocal=true;
   // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
-  // the Kitchen tab's pantry and recipes: their own row, merged by kitchen.js (never throws)
-  if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }
   }

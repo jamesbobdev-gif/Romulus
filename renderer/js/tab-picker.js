@@ -1,5 +1,6 @@
 /* Settings > Tabs: switch off the tabs you don't use and they leave the tab bar.
-   Kept per device (a phone may want fewer tabs than the computer).
+   The same on every device he syncs (shared-settings.js), unless this one is set to keep its own: a phone may
+   want fewer tabs than the computer.
    A fresh install starts with To do, Agent and Notes; the rest wait in Settings > Tabs.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
@@ -68,6 +69,16 @@ function drawTabPicker(){
     inGroup.forEach(function(p){ row.appendChild(tabPickSwitch(p,off,onCount)); });
     box.appendChild(sec);
   });
+  // with sync on, the choice above follows him to his other devices; this device can opt out
+  if(typeof sharedTabsOwn==='function'&&typeof syncState!=='undefined'&&syncState.cfg&&syncState.cfg.personal){
+    const lab=el('label','switch'); lab.style.marginTop='12px';
+    const inp=document.createElement('input'); inp.type='checkbox'; inp.checked=!sharedTabsOwn();
+    inp.addEventListener('change',function(){ sharedSetTabsOwn(!inp.checked); });
+    const track=el('span','track'); track.setAttribute('aria-hidden','true');
+    const name=document.createElement('span'); name.textContent='Show the same tabs on all my devices';
+    lab.appendChild(inp); lab.appendChild(track); lab.appendChild(name);
+    box.appendChild(lab);
+  }
 }
 function tabPickSwitch(p,off,onCount){
     const lab=el('label','switch');

@@ -23,7 +23,7 @@ that says what it does; read that first, then this for how the pieces fit and th
 | Lists, task rows, subtasks | `lists.js`, `task-actions.js`, `core.js`, `recur.js`, `quick-add.js`, `swipe.js` | `main/persistence.js`, `main/store.js` |
 | Buttons, search, keys | `wiring.js` | |
 | Start-up | `init.js` (loads last) | `main.js` |
-| Sync, pairing, devices | `sync.js`, `sync-crypto.js`, `hosted-sync.js`, `pair.js`, `devices.js`, `usage-share.js`, `update-sync.js` | `supabase/`, `agent/supabase.js` |
+| Sync, pairing, devices | `sync.js`, `sync-crypto.js`, `hosted-sync.js`, `pair.js`, `devices.js`, `usage-share.js`, `shared-settings.js`, `update-sync.js` | `supabase/`, `agent/supabase.js` |
 | Agent tab | `agent-*.js`, `busy-line.js`, `goals.js`, `triggers.js`, `standing.js`, `seat-map.js`, `link-email.js`, `same-ask.js` | `agent/routing.js`, `agent/runner.js`, `agent/local-lane.js`, `agent/providers.js`, `agent/task-context.js` |
 | Groceries | `grocery-list.js`, `ebt-alerts.js`, `order-match.js` | `agent/grocery.js` |
 | Finance | `finance*.js`, `bill-reminders.js` | `main/finance*.js`, `mobile/finance-phone.js` |

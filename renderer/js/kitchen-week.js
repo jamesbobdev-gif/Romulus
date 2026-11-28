@@ -2,8 +2,8 @@
    Monday to Sunday, built by his AIs from the whole pantry and sized to his Food plan (main/kitchen-ai.js
    kitchen:week, agent/meal-prep.js). He picks which meals it covers (breakfast, lunch, dinner, snack). It shows the
    Sunday dishes (portions, numbers, where each keeps), each day's meals with the day's total against the plan, and
-   what to buy, with a button that puts that on his grocery list. Desktop only, like Suggest meals.
-   The week is kept on this device (localStorage) until he plans again.
+   what to buy, with a button that puts that on his grocery list. Planning is desktop only, like Suggest meals;
+   the planned week itself goes to his other devices (shared-settings.js), so the phone shows it too.
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists
    them. The top part has no DOM in it, so test/kitchen-week.test.js can load it in Node. */
 'use strict';
@@ -47,9 +47,12 @@ function kWeekSlots(){ const s=kWeekLoad(KWEEK_SLOTS_KEY,null); return Array.isA
 /* box: where it goes. h: {items, recipes, plan, aim, redraw(), toGroceries(entries) → n or -1} */
 function kWeekDraw(box,h){
   box.innerHTML='';
-  if(!(window.desktop&&window.desktop.kitchenWeek))return;
-  box.appendChild(el('div','kit-k kit-sec','Plan your week'));
   const cook=kWeekCookDay(Date.now()), saved=kWeekLoad(KWEEK_KEY,null), slots=kWeekSlots();
+  // only a computer can plan; a phone shows the week a computer planned
+  const canPlan=!!(window.desktop&&window.desktop.kitchenWeek);
+  if(!canPlan&&!(saved&&saved.week))return;
+  box.appendChild(el('div','kit-k kit-sec',canPlan?'Plan your week':'Your week'));
+  if(canPlan){
   const form=el('div','kit-form kit-week-form');
   const picks=el('div','kit-aim-chips kit-week-slots'); picks.setAttribute('role','group'); picks.setAttribute('aria-label','Meals to plan');
   KWEEK_SLOTS.forEach(function(x){
@@ -87,6 +90,7 @@ function kWeekDraw(box,h){
     (h.plan?', each day adding up to your Food plan.':'. Set a Food plan on the Health tab and each day adds up to it.')+
     (kWeekUI.busy?' This takes a minute.':'')));
   if(kWeekUI.why)box.appendChild(el('div','kit-empty',kWeekUI.why));
+  }
   if(!saved||!saved.week)return;
   const w=saved.week, days=kWeekDays(new Date(saved.cook||cook.getTime()));
   // Sunday: what to cook
