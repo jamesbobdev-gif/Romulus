@@ -6,7 +6,7 @@
 const { session } = require('electron');
 const { AGENT_BROWSER_PORT, agentBrowserUp, ensureAgentBrowser, closeWindowedAgentBrowser } = require('./agent-browser');
 const taskTabs = require('./task-tabs');
-const { QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, ensureQwenBrowser, isHeld } = require('./qwen-browser');
+const { QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, ensureQwenBrowser, wakeForWatcher, isHeld } = require('./qwen-browser');
 
 let ctx = null;
 const handlers = {};
@@ -48,6 +48,7 @@ async function lupaPages() {
     lupaTried = Date.now();
     if (!(await ensureQwenBrowser().catch(() => false))) return { up: false, pages: [] };
   }
+  wakeForWatcher(); // its screen asleep: the browser stops drawing and his clicks do nothing
   const list = await fetch('http://127.0.0.1:' + QWEN_BROWSER_LOCAL_PORT + '/json/list', { signal: AbortSignal.timeout(1500) }).then((r) => r.json()).catch(() => []);
   // a tab waiting on him (a sign-in) comes first, so that's what the view opens on
   return { up: true, pages: (list || []).filter((p) => p.type === 'page' && !/^devtools:|^chrome-extension:/.test(p.url) && p.webSocketDebuggerUrl)

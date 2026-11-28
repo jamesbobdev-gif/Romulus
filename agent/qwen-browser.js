@@ -99,6 +99,18 @@ function wakeLocalDisplay() {
     p.on('exit', () => { clearTimeout(t); resolve(); }); p.on('error', () => { clearTimeout(t); resolve(); });
   });
 }
+/* Someone is watching its browser from another device (agent/live-view.js lupaPages, polled while watched): the
+   displays stay awake for as long as they do, or the page shows its last picture and takes no clicks. Woken at
+   most every WATCH_WAKE_MS. wakeDue is pure, for tests. */
+const WATCH_WAKE_MS = 30 * 1000;
+let watchWokeAt = 0;
+const wakeDue = (last, now) => now - last >= WATCH_WAKE_MS;
+function wakeForWatcher() {
+  if (process.platform !== 'linux' || !wakeDue(watchWokeAt, Date.now())) return false;
+  watchWokeAt = Date.now();
+  wakeLocalDisplay();
+  return true;
+}
 async function ensureLocalBrowser(port) {
   await wakeLocalDisplay();
   if (await qwenBrowserUp()) return true;
@@ -214,4 +226,4 @@ async function miniPcScreenshot() {
   return base + '/storage/v1/object/public/agent-attachments/' + file;
 }
 
-module.exports = { init, QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, tidyAgentTabs, holdTabs, heldPick, startTab, isHeld, looseTabs, ensureQwenBrowser, noFileArgs, startBrowserTools, miniPcScreenshot };
+module.exports = { init, QWEN_BROWSER_LOCAL_PORT, qwenBrowserUp, tidyAgentTabs, holdTabs, heldPick, startTab, isHeld, looseTabs, ensureQwenBrowser, wakeForWatcher, wakeDue, noFileArgs, startBrowserTools, miniPcScreenshot };

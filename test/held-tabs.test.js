@@ -71,3 +71,9 @@ test('a run that keeps stopping holds a few tabs, not every page it opened', asy
 test('looseTabs keeps the held ones', () => {
   assert.deepStrictEqual(qb.looseTabs([{ id: 'a' }, { id: 'b' }], new Set(['b'])), [{ id: 'a' }]);
 });
+
+test('a watched browser wakes the screen at most every half minute', () => {
+  assert.strictEqual(qb.wakeDue(0, Date.now()), true);
+  assert.strictEqual(qb.wakeDue(1000, 1000 + 29 * 1000), false);
+  assert.strictEqual(qb.wakeDue(1000, 1000 + 30 * 1000), true);
+});
