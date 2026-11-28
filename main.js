@@ -226,6 +226,23 @@ if (!gotLock) {
     };
     setTimeout(() => shareLearned().catch(() => {}), 90 * 1000);
     setInterval(() => shareLearned().catch(() => {}), 10 * 60 * 1000);
+    // his files for forms (the resume a job site asks for) on every one of his computers, sealed on the way
+    // (agent/form-files-sync.js): shortly after start, every ten minutes, and right after he adds or removes one
+    const formFilesSync = require('./agent/form-files-sync');
+    let formsErr = '';
+    const shareForms = async () => {
+      const ud = app.getPath('userData');
+      const r = await formFilesSync.sync({ a: sb.channel(readConfig()), supabase: sb, dir: require('./agent/agent-files').dirFor(ud),
+        state: path.join(ud, 'form-files-sync.json'), log: agentLog });
+      if (r.ok && r.got.length) agentLog('files for forms: ' + r.got.join(', ') + ' arrived from another computer');
+      if (r.ok && r.sent.length) agentLog('files for forms: ' + r.sent.join(', ') + ' is on sync for his other computers');
+      if (r.ok && r.removed.length) agentLog('files for forms: ' + r.removed.join(', ') + ' was removed on another computer, and here now');
+      if (!r.ok && r.error !== formsErr && !/isn’t set up/.test(r.error)) agentLog('files for forms: ' + r.error);
+      formsErr = r.ok ? '' : r.error;
+    };
+    ctx.formFilesChanged = () => setTimeout(() => shareForms().catch(() => {}), 2000);
+    setTimeout(() => shareForms().catch(() => {}), 2 * 60 * 1000);
+    setInterval(() => shareForms().catch(() => {}), 10 * 60 * 1000);
     // still signed in to his school sites on the mini PC? Looked at every 30 min; it runs once a day, when the local model is idle
     setInterval(() => localLane.checkSignins().catch((e) => agentLog('sign-in check crashed: ' + (e && e.message || e))), 30 * 60 * 1000);
 

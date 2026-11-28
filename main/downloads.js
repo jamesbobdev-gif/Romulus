@@ -5,7 +5,8 @@
      sit in its own computer's ~/Downloads, not on this one. The worker puts them on sync (agent/worker-files.js);
      these list them from there, copy one here, and remove one (it goes to the trash over there too).
    - forms:files / forms:add / forms:remove: his files for forms (the resume a job site asks for), kept on this
-     computer where the browser launcher runs (agent/agent-files.js); Settings → About you lists them. */
+     computer where the browser launcher runs (agent/agent-files.js); Settings → About you lists them. They go
+     to his other computers too, sealed (agent/form-files-sync.js; main.js runs it and sets ctx.formFilesChanged). */
 const fs = require('fs');
 const path = require('path');
 const { app, dialog, shell } = require('electron');
@@ -23,7 +24,7 @@ async function formAdd() {
     filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'rtf', 'txt', 'odt', 'png', 'jpg', 'jpeg'] }] });
   if (r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true };
   const out = agentFiles.add(formDir(), r.filePaths[0]);
-  if (out.ok) ctx.agentLog('files for forms: added ' + out.file.name);
+  if (out.ok) { ctx.agentLog('files for forms: added ' + out.file.name); if (ctx.formFilesChanged) ctx.formFilesChanged(); }
   return out;
 }
 
@@ -107,7 +108,7 @@ const handlers = {
   'lupa:fetch': lupaFetch,
   'forms:files': () => ({ ok: true, files: agentFiles.list(formDir()) }),
   'forms:add': () => formAdd(),
-  'forms:remove': (_e, name) => agentFiles.remove(formDir(), name),
+  'forms:remove': (_e, name) => { const r = agentFiles.remove(formDir(), name); if (r.ok && ctx.formFilesChanged) ctx.formFilesChanged(); return r; },
 };
 
 module.exports = { init, handlers };

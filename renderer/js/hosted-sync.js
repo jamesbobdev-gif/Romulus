@@ -13,7 +13,7 @@ const HOSTED_OFF_KEY='tasks.syncHostedOff'; // he turned sync off or chose his o
 // every side row a list has (SYNC_SIDE_ROWS in settings.js, plus ':devices'; ':health' is sealed whatever the lists
 // are). test/hosted-sync.test.js fails when a row is added there or in supabase/setup.sql and not here.
 const HOSTED_SIDE_ROWS={personal:[':ideas',':hours',':kitchen',':devices',':updates',':finance',':settings',':review'],
-  agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros',':learned'],work:[],school:[]};
+  agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros',':learned',':forms'],work:[],school:[]};
 const HOSTED_MARKED_KEY='tasks.sealMarked'; // which rows this device has already made sure are marked
 function hostedServer(){ const p=typeof window!=='undefined'&&window.ROMULUS_PAIR; return p&&p.url&&p.key?p:null; }
 function hostedTrim(u){ return String(u||'').trim().replace(/\/+$/,''); }

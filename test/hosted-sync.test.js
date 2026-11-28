@@ -10,7 +10,7 @@ test('every plain key a list or its side rows could be looked for under gets the
     'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:kitchen', 'tk_abc:devices', 'tk_abc:updates', 'tk_abc:finance', 'tk_abc:settings', 'tk_abc:review',
     'tk_work_abc',
     'tk_agent_abc', 'tk_agent_abc:prefs', 'tk_agent_abc:locked', 'tk_agent_abc:routing', 'tk_agent_abc:standing',
-    'tk_agent_abc:worker', 'tk_agent_abc:files', 'tk_agent_abc:files-gone', 'tk_agent_abc:macros', 'tk_agent_abc:learned',
+    'tk_agent_abc:worker', 'tk_agent_abc:files', 'tk_agent_abc:files-gone', 'tk_agent_abc:macros', 'tk_agent_abc:learned', 'tk_agent_abc:forms',
     'tk_school_abc',
   ]);
   // each one is a key the database's sync_set takes (supabase/setup.sql)

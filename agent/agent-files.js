@@ -1,7 +1,7 @@
 /* His files for forms: the resume (and a transcript, a cover letter…) the agents may upload when a
    site asks for one. They sit in <userData>/form-files on this computer, where the browser launcher
    runs, copied in from Settings → About you → Files for forms (main/downloads.js), so the original
-   can move. The launcher (agent/browser-proxy.js) refuses any upload that isn't one of these exact
+   can move, and on his other computers too (agent/form-files-sync.js brings them, sealed). The launcher (agent/browser-proxy.js) refuses any upload that isn't one of these exact
    paths, whatever a page or a prompt says: nothing else on this computer can be sent.
    No Electron here, so it can be tested on its own. */
 const fs = require('fs');

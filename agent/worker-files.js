@@ -184,4 +184,4 @@ async function remove(a, entries, { fetch: f = fetch } = {}) {
   return true;
 }
 
-module.exports = { FILES, GONE, BUCKET, MAX_BYTES, mimeFor, proofFor, folderFor, fileKey, objectPath, publicUrl, downloadsDir, ownPath, listDownloads, plan, addGone, sameList, trashFiles, sync, list, download, remove };
+module.exports = { FILES, GONE, BUCKET, MAX_BYTES, mimeFor, proofFor, folderFor, fileKey, objectPath, publicUrl, downloadsDir, ownPath, putObject, deleteObject, listDownloads, plan, addGone, sameList, trashFiles, sync, list, download, remove };
