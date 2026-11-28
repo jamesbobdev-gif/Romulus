@@ -63,13 +63,15 @@ function switchTab(tab){
   state.activeTab=tab;
   if(tab!=='ideas')ideaLeave();
   if(tab!=='finance')financeLeave();
-  [['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabKitchen','kitchen'],['tabFinance','finance'],['tabHealth','health'],['tabFamily','family']].forEach(function(p){
+  [['tabHome','home'],['tabList','list'],['tabAgent','agent'],['tabSchool','school'],['tabWork','work'],['tabCal','calendar'],['tabIdeas','ideas'],['tabHours','hours'],['tabKitchen','kitchen'],['tabFinance','finance'],['tabHealth','health'],['tabFamily','family']].forEach(function(p){
     $(p[0]).classList.toggle('active',tab===p[1]);
     $(p[0]).setAttribute('aria-selected',String(tab===p[1]));
   });
   const act=document.querySelector('.tab.active'); // the bar scrolls sideways: bring the tab picked into view
   if(act&&act.scrollIntoView)act.scrollIntoView({inline:'center',block:'nearest'}); // centred, so it isn't under an edge fade
-  $('listView').hidden=tab==='calendar'||isViewTab(tab);
+  $('listView').hidden=tab==='home'||tab==='calendar'||isViewTab(tab);
+  $('homeView').hidden=tab!=='home'; // home.js; render() below draws it
+  document.body.classList.toggle('home-mode',tab==='home');
   $('calView').hidden=tab!=='calendar';
   $('ideasView').hidden=tab!=='ideas';
   $('hoursView').hidden=tab!=='hours';
@@ -78,7 +80,7 @@ function switchTab(tab){
   $('healthView').hidden=tab!=='health';
   $('kitchenView').hidden=tab!=='kitchen';
   $('familyView').hidden=tab!=='family';
-  document.querySelector('.composer').hidden=isViewTab(tab);
+  document.querySelector('.composer').hidden=tab==='home'||isViewTab(tab);
   document.body.classList.toggle('ideas-mode',tab==='ideas');
   if(tab==='calendar')$('newTitle').placeholder='Add a task…'; // render() sets it on the list tabs; don't keep the last one's
   if(tab==='calendar') renderCal(); else if(tab==='ideas') renderIdeas(); else if(tab==='hours') renderHours(); else if(tab==='finance') renderFinance(); else if(tab==='health') renderHealth(); else if(tab==='kitchen') renderKitchen(); else if(tab==='family') renderFamily(); else render();

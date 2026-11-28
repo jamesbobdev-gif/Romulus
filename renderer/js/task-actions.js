@@ -6,6 +6,7 @@
 let addingTask=false;
 /* Legion (Agent tab): the task goes out as deep research, every connected AI on a different angle (agent/legion.js) */
 let legionOn=false;
+let addWsOverride=null; // the Home tab (home.js) says whose it is, 'agent' or 'personal', for the one add it is making
 /* Book this, on a legion's report: a booking task of its own goes to the Agent with the trip and his pick. The
    legion stays private; this one AI sees the trip, which he agrees to here. It finds the exact times and prices,
    gets the booking ready and stops for his yes before paying (agent/skills/tickets.md). */
@@ -95,7 +96,7 @@ async function addTask(){
   }
   let due=$('newDue').value||null; let dueTime=due?($('newTime').value||null):null; let tag=$('newTag').value.trim()||null;
   // adding on the Agent tab files it for Claude; on the Work tab (or with the Work filter on), under work
-  const ws=state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='family'?'family':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
+  const ws=addWsOverride?addWsOverride:state.activeTab==='agent'?'agent':state.activeTab==='school'?'school':state.activeTab==='family'?'family':(state.activeTab==='work'||state.wsFilter==='work')?'work':'personal';
   // typed "#home" and "every sunday" (quick-add.js): the tag and the repeat come out of the title.
   // Not for the Agent: its #legion is a tag of its own, and its repeats are t.repeat (agent-chat.js)
   let recur=null;

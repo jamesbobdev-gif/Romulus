@@ -475,6 +475,7 @@
 
   <!-- Tab bar replaces the rule -->
   <div class="tabs" role="tablist">
+    <button id="tabHome" class="tab"        role="tab" aria-selected="false">Home</button>
     <button id="tabList" class="tab active" role="tab" aria-selected="true">To do</button>
     <button id="tabAgent" class="tab"       role="tab" aria-selected="false">Agent</button>
     <button id="tabSchool" class="tab"      role="tab" aria-selected="false">School</button>
@@ -525,6 +526,29 @@
   <div id="wakeBubble" class="wake-bubble" role="status" aria-live="polite" hidden>
     <span class="wake-dot" aria-hidden="true"></span>
     <div class="wake-text"><b id="wakeHead">Listening…</b><span id="wakeWords"></span></div>
+  </div>
+
+  <!-- Home (home.js): message Romulus like a person; each message becomes a task card, with everything open beside it -->
+  <div id="homeView" class="home-view" hidden>
+    <!-- on a phone the chat fills the screen (home.js homePane): this bar is all that shows above it -->
+    <div class="home-bar">
+      <span class="home-bar-name">Romulus</span>
+      <button id="homeDashBtn" class="home-bar-btn" type="button" title="Your lists and tabs. Swiping left does the same.">Lists</button>
+    </div>
+    <button id="homeChatBtn" class="home-bar-btn home-back" type="button" title="Back to the chat. Swiping right does the same.">Chat</button>
+    <div class="home-main">
+      <div id="homeThread" class="home-thread" aria-live="polite"></div>
+      <div class="home-foot">
+      <div id="homeTry" class="home-try"></div>
+      <div class="home-box">
+        <input id="homeInput" placeholder="Message Romulus" aria-label="Message Romulus" autocomplete="off">
+        <button id="homeMicBtn" class="home-mic" type="button" aria-label="Talk to Romulus" title="Talk to Romulus" hidden></button>
+        <button id="homeSendBtn" class="home-send" type="button" aria-label="Send" title="Send"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11.5v-9M3 6.2l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <button id="homeNewTopic" class="home-link home-newtopic" type="button" title="Your next message starts something new" hidden>New topic</button>
+      </div>
+    </div>
+    <aside id="homeRail" class="home-rail" aria-label="Everything open"></aside>
   </div>
 
   <!-- List view -->
@@ -723,6 +747,7 @@
 <script src="js/theme-colors.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/tab-picker.js"></script>
+<script src="js/home.js"></script>
 <script src="js/pair-server.js"></script>
 <script src="js/pair.js"></script>
 <script src="js/hosted-sync.js"></script>

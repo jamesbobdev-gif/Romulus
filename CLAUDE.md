@@ -21,6 +21,7 @@ that says what it does; read that first, then this for how the pieces fit and th
 | Feature | Page (`renderer/js/`) | Behind it |
 | --- | --- | --- |
 | Lists, task rows, subtasks | `lists.js`, `task-actions.js`, `core.js`, `recur.js`, `quick-add.js`, `swipe.js` | `main/persistence.js`, `main/store.js` |
+| Home (message Romulus: a conversation, each message a task card; full-screen chat on a phone) | `home.js` | `task-actions.js` `addTask`, the Agent's task conversations (`agent-chat.js` `agentSay`) |
 | Buttons, search, keys | `wiring.js` | |
 | Start-up | `init.js` (loads last) | `main.js` |
 | Sync, pairing, devices | `sync.js`, `sync-crypto.js`, `hosted-sync.js`, `pair.js`, `devices.js`, `usage-share.js`, `shared-settings.js`, `update-sync.js` | `supabase/`, `agent/supabase.js` |
