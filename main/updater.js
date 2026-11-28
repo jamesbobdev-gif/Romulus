@@ -148,10 +148,15 @@ function start() {
 let started = false;
 // early access (a paid plan, Settings → Device sync): versions published as pre-releases are offered too
 function earlyAccess(cfg) { return !!(cfg && cfg.earlyAccess); }
+/* Pre-releases are looked at only by a released version. A version with a tag of its own (a build made on his
+   computer, "1.3.32-local.1") makes the update library look for releases on a channel of that name ("local"),
+   find none, and stop with "No published versions on GitHub", every time, for good. Such a build takes the
+   newest full release instead. */
+function wantsPrerelease(cfg, version) { return earlyAccess(cfg) && !/-/.test(String(version || '')); }
 function checkNow() {
   if (!started) return;
   const u = updater();
-  u.allowPrerelease = earlyAccess(ctx.readConfig());
+  u.allowPrerelease = wantsPrerelease(ctx.readConfig(), u.currentVersion && u.currentVersion.version);
   u.checkForUpdates().catch(() => {}); // offline: try again next time
 }
 
@@ -242,4 +247,4 @@ const handlers = {
   },
 };
 
-module.exports = { init, start, installNow, placeAppImage, shouldInstallNow, mode, onAvailable, versionNewer, shared, handlers };
+module.exports = { init, start, wantsPrerelease, installNow, placeAppImage, shouldInstallNow, mode, onAvailable, versionNewer, shared, handlers };

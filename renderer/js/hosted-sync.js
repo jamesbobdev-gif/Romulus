@@ -10,7 +10,11 @@
 'use strict';
 
 const HOSTED_OFF_KEY='tasks.syncHostedOff'; // he turned sync off or chose his own project: no auto start again
-const HOSTED_SIDE_ROWS={personal:[':ideas',':hours',':kitchen',':devices'],agent:[':prefs',':locked',':routing',':standing'],work:[],school:[]};
+// every side row a list has (SYNC_SIDE_ROWS in settings.js, plus ':devices'; ':health' is sealed whatever the lists
+// are). test/hosted-sync.test.js fails when a row is added there or in supabase/setup.sql and not here.
+const HOSTED_SIDE_ROWS={personal:[':ideas',':hours',':kitchen',':devices',':updates',':finance',':settings',':review'],
+  agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros',':learned'],work:[],school:[]};
+const HOSTED_MARKED_KEY='tasks.sealMarked'; // which rows this device has already made sure are marked
 function hostedServer(){ const p=typeof window!=='undefined'&&window.ROMULUS_PAIR; return p&&p.url&&p.key?p:null; }
 function hostedTrim(u){ return String(u||'').trim().replace(/\/+$/,''); }
 // a build from an app store (window.ROMULUS_STORE, set per Android flavor): the stores want their own billing for
@@ -51,6 +55,30 @@ async function hostedSealMarkers(p,sk){
       throw new Error(why||'the sync server said no');
     }
   }
+}
+/* Encrypted lists that were set up before a side row existed have no marker under that row's plain key, so a
+   device that held the key but not the "encrypted" setting could put that one row up readable. This marks the
+   rows added since, once per device and list of rows (tried again at most once a day until every one took: an
+   older database refuses a row it doesn't know). Never for lists that aren't encrypted. → how many it marked */
+function hostedMarkerTodo(done,now){ // pure, for tests: done = what localStorage holds
+  let d={}; try{ d=JSON.parse(done||'{}')||{}; }catch(e){ d={}; }
+  const sig=JSON.stringify(HOSTED_SIDE_ROWS);
+  if(d.sig===sig&&d.all)return false;
+  if(d.sig===sig&&d.at&&now-d.at<24*3600*1000)return false;
+  return true;
+}
+async function hostedTopUpMarkers(){
+  const p=syncState.cfg&&syncState.cfg.personal;
+  if(!p||!validProfile(p)||!p.v2||!syncCryptoOk())return 0;
+  let done=null; try{ done=localStorage.getItem(HOSTED_MARKED_KEY); }catch(e){}
+  if(!hostedMarkerTodo(done,Date.now()))return 0;
+  let ok=0, all=true;
+  for(const k of hostedMarkerKeys(p.syncKey)){
+    if(k.indexOf(':')===-1)continue; // a list's own key was marked when the lists were encrypted
+    try{ if((await syncRpc({url:p.url,key:p.key},'sync_set',{p_sync_key:k,p_doc:{moved:'v2'}}))===true)ok++; else all=false; }catch(e){ all=false; }
+  }
+  try{ localStorage.setItem(HOSTED_MARKED_KEY,JSON.stringify({sig:JSON.stringify(HOSTED_SIDE_ROWS),all:all,at:Date.now()})); }catch(e){}
+  return ok;
 }
 async function hostedStart(){
   const h=hostedServer();
@@ -538,4 +566,4 @@ if(typeof document!=='undefined'&&document.getElementById('hostedBox')){
   if(hostedServer())SYNC_REFUSED.full='sync paused: your free online space is full. Your lists are safe on this device. Settings → Device sync has the options.';
 }
 
-if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedSealMarkers,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody,hostedDeleteCode,hostedDeleteCodeShown,hostedDeleteCodeMatches,hostedDeleteStepText};
+if(typeof module!=='undefined')module.exports={hostedJustPaid,hostedMyPlanText,hostedMarkerKeys,hostedSealMarkers,hostedMarkerTodo,HOSTED_SIDE_ROWS,hostedPlanPitch,hostedPlanText,hostedRestorePlan,hostedDayLabel,hostedIs,hostedMb,hostedInStore,hostedCanPay,hostedDeleteBody,hostedDeleteCode,hostedDeleteCodeShown,hostedDeleteCodeMatches,hostedDeleteStepText};

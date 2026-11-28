@@ -579,6 +579,8 @@ async function syncOnce(){
   if(typeof sharedSync==='function'&&await sharedSync())anyLocal=true;
   // the cleared tasks the Year in review still counts: their own row, joined from every device (year-review-view.js; never throws)
   if(typeof reviewLogSync==='function')await reviewLogSync();
+  // encrypted lists: the plain keys of side rows added since they were encrypted get their marker (hosted-sync.js; at most once a day)
+  if(typeof hostedTopUpMarkers==='function'){ try{ await hostedTopUpMarkers(); }catch(e){} }
   // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }

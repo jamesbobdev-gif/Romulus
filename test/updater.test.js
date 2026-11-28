@@ -114,3 +114,10 @@ test('an AppImage update is swapped in one step, and a bad download leaves the o
   if (process.platform !== 'win32') assert.ok(fs.statSync(app).mode & 0o100, 'it can be run');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('a build with a version tag of its own never asks for pre-releases, so it can still update', () => {
+  assert.strictEqual(updater.wantsPrerelease({ earlyAccess: true }, '1.3.54'), true);
+  assert.strictEqual(updater.wantsPrerelease({ earlyAccess: true }, '1.3.32-local.1'), false);
+  assert.strictEqual(updater.wantsPrerelease({ earlyAccess: false }, '1.3.54'), false);
+  assert.strictEqual(updater.wantsPrerelease({}, undefined), false);
+});

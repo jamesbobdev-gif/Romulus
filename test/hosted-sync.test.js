@@ -7,14 +7,41 @@ const h = require('../renderer/js/hosted-sync');
 test('every plain key a list or its side rows could be looked for under gets the encrypted-list marker', () => {
   const keys = h.hostedMarkerKeys('tk_abc');
   assert.deepStrictEqual(keys, [
-    'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:kitchen', 'tk_abc:devices',
+    'tk_abc', 'tk_abc:ideas', 'tk_abc:hours', 'tk_abc:kitchen', 'tk_abc:devices', 'tk_abc:updates', 'tk_abc:finance', 'tk_abc:settings', 'tk_abc:review',
     'tk_work_abc',
     'tk_agent_abc', 'tk_agent_abc:prefs', 'tk_agent_abc:locked', 'tk_agent_abc:routing', 'tk_agent_abc:standing',
+    'tk_agent_abc:worker', 'tk_agent_abc:files', 'tk_agent_abc:files-gone', 'tk_agent_abc:macros', 'tk_agent_abc:learned',
     'tk_school_abc',
   ]);
   // each one is a key the database's sync_set takes (supabase/setup.sql)
-  const shape = /^tk_[A-Za-z0-9_-]{13,}(:(prefs|locked|routing|standing|ideas|hours|worker|updates|finance|files|files-gone|devices|kitchen))?$/;
+  const fs = require('fs'), path = require('path');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'setup.sql'), 'utf8');
+  const shape = new RegExp(sql.match(/p_sync_key !~ '([^']+)'/)[1]);
   for (const k of h.hostedMarkerKeys('tk_26dbc739-a57d-4d40-900d-984640e0415d')) assert.ok(shape.test(k), k);
+});
+
+test('no side row is left without a marker: the list here covers every row the app and the database know', () => {
+  const fs = require('fs'), path = require('path');
+  const marked = h.HOSTED_SIDE_ROWS.personal.concat(h.HOSTED_SIDE_ROWS.agent);
+  // every row that moves with the sync key (settings.js)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'js', 'settings.js'), 'utf8');
+  const rows = src.match(/SYNC_SIDE_ROWS=\{personal:\[([^\]]*)\],agent:\[([^\]]*)\]/);
+  const list = (s) => s.split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean);
+  for (const sfx of list(rows[1])) assert.ok(h.HOSTED_SIDE_ROWS.personal.includes(sfx), 'personal ' + sfx);
+  for (const sfx of list(rows[2])) assert.ok(h.HOSTED_SIDE_ROWS.agent.includes(sfx), 'agent ' + sfx);
+  // every row the database takes; ':health' is always sealed (health.js), so it needs none
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'setup.sql'), 'utf8');
+  for (const name of sql.match(/\(:\(([a-z|-]+)\)\)\?\$/)[1].split('|')) if (name !== 'health') assert.ok(marked.includes(':' + name), 'the database takes :' + name);
+});
+
+test('the markers for newer rows are topped up once, tried again a day later if some did not take', () => {
+  const sig = JSON.stringify(h.HOSTED_SIDE_ROWS), now = Date.UTC(2026, 10, 28);
+  assert.strictEqual(h.hostedMarkerTodo(null, now), true);
+  assert.strictEqual(h.hostedMarkerTodo('not json', now), true);
+  assert.strictEqual(h.hostedMarkerTodo(JSON.stringify({ sig, all: true, at: now - 9e9 }), now), false);
+  assert.strictEqual(h.hostedMarkerTodo(JSON.stringify({ sig, all: false, at: now - 3600 * 1000 }), now), false);
+  assert.strictEqual(h.hostedMarkerTodo(JSON.stringify({ sig, all: false, at: now - 25 * 3600 * 1000 }), now), true);
+  assert.strictEqual(h.hostedMarkerTodo(JSON.stringify({ sig: 'an older list of rows', all: true, at: now }), now), true);
 });
 
 test('the space line, and the choice once the free space is nearly used', () => {
