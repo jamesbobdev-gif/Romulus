@@ -333,6 +333,70 @@ if(window.desktop&&window.desktop.aiStatus){
   let use=null, useBusy=false;
   const pctTxt=function(x){ return Math.round((x||0)*100)+'%'; };
   const atTime=function(ms){ return new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); };
+  const usageOn=function(){ return ai.order.filter(function(p){ return p.on; }).map(function(p){ return p.id; }); };
+  /* what this computer can say by itself: {id, name, pct, text, out, share}. share marks a real reading (true,
+     or the time it resets): those are the rows his other devices get to show (usage-share.js) */
+  function usageRows(){
+    const rows=[]; let cur=null;
+    const row=function(name,pct,text,out,share){ rows.push({id:cur,name:name,pct:pct,text:text,out:!!out,share:share||false}); };
+    const u=use||{};
+    usageOn().forEach(function(id){
+      cur=id;
+      const acct=acctOf(id);
+      if(acct){ // its own limits aren't read: only whether it's sitting out
+        if(acct.held)row(ai.names[id],1,'out until '+fmtWhen(acct.held),true);
+        else row(ai.names[id],null,acct.ready?'ready · its own usage isn’t shown here':'not set up');
+        return; }
+      if(id==='claude'){
+        const c=u.claude;
+        // sign-ins and keys stay on each computer, so one that was never signed in has nothing to read
+        if(ai.claude&&!ai.claude.installed){ row('Claude',null,'Claude Code isn’t installed on this computer'); return; }
+        if(ai.claude&&!ai.claude.signedIn){ row('Claude',null,'not signed in on this computer · sign in under AI connections below'); return; }
+        if(!c){ row('Claude · 5h',null,use?'no reading yet':'checking…'); return; }
+        if(c.out){ row('Claude',1,'out until '+(c.out===true?'it resets':fmtWhen(c.out)),true,c.out); return; }
+        row('Claude · 5h',c.pct,pctTxt(c.pct)+' used'+(c.fiveReset?' · resets '+atTime(c.fiveReset):''),false,c.fiveReset||true);
+        row('Claude · week',c.week,pctTxt(c.week)+' used'+(c.weekReset?' · resets '+fmtWhen(c.weekReset):''),false,c.weekReset||true);
+      } else if(id==='gemini'){
+        const g=u.gemini;
+        if(!ai.gemini.hasKey){ row('Gemini',null,'no key yet'); return; }
+        if(!g){ row('Gemini',null,'…'); return; }
+        if(g.out){ row('Gemini',1,'out until '+fmtWhen(g.out),true,g.out); return; }
+        row('Gemini',g.pct,g.perDay?g.calls+' of '+g.perDay+' today':g.calls+' today · daily limit not hit yet',false,true);
+      } else if(id==='openai'){
+        const o=u.openai;
+        if(ai.openai.via==='chatgpt'){
+          if(!ai.openai.codex.signedIn){ row('ChatGPT',null,'not signed in'); return; }
+          if(!o){ row('ChatGPT',null,'…'); return; }
+          const pl=o.plan, runs=o.calls+' run'+(o.calls===1?'':'s')+' · '+o.tokensText+' tokens this month';
+          if(!pl||!pl.windows.length){ row('ChatGPT',null,runs+(pl?'':' · limit not read yet'),false,true); return; }
+          if(pl.out){ row('ChatGPT',1,'out until '+(pl.out===true?'it resets':fmtWhen(pl.out)),true,pl.out); return; }
+          // Codex names each window by its length: 5 hours, a week, 30 days on the free plan
+          const span=function(m){ return !m?'':m<=1440?' · '+Math.round(m/60)+'h':m<=10080?' · week':' · month'; };
+          pl.windows.forEach(function(w,i){
+            row('ChatGPT'+span(w.mins),w.used,pctTxt(w.used)+' used'+(w.resetsAt?' · resets '+fmtWhen(w.resetsAt):'')+(i===pl.windows.length-1?' · '+runs:''),false,w.resetsAt||true);
+          });
+          return; }
+        if(!ai.openai.hasKey){ row('ChatGPT',null,'no key yet'); return; }
+        row('ChatGPT',null,o?o.calls+' calls · '+o.tokensText+' tokens this month (pay as you go)':'…',false,!!o);
+      } else if(ai[id]&&ai[id].compat){
+        const o=u[id];
+        if(!ai[id].hasKey){ row(ai.names[id],null,'no key yet'); return; }
+        const rt=o&&o.rate; // Groq's own count of requests left today
+        if(rt){
+          if(o.out){ row(ai.names[id],1,'out until '+(o.out===true?'it resets':fmtWhen(o.out)),true,o.out); return; }
+          row(ai.names[id],o.pct,rt.left+' of '+rt.limit+' requests left today'+(rt.resetsAt&&rt.left<rt.limit?' · full again '+fmtWhen(rt.resetsAt):''),false,rt.resetsAt||true);
+          return; }
+        row(ai.names[id],null,o?o.calls+' calls · '+o.tokensText+' tokens this month (free tier)':'0 calls this month (free tier)',false,!!o);
+      } else if(id==='openrouter'){
+        const o=u.openrouter;
+        if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
+        if(!o){ row('OpenRouter',null,'…'); return; }
+        const cr=o.credit;
+        row('OpenRouter',o.pct,cr?'$'+Number(cr.usage||0).toFixed(2)+(cr.limit?' of $'+cr.limit:' used · no limit set'):o.calls+' calls this month',false,true);
+      }
+    });
+    return rows;
+  }
   function usageDraw(){
     const box=$('aiUsage'); box.innerHTML='';
     if(!ai)return;
@@ -343,7 +407,8 @@ if(window.desktop&&window.desktop.aiStatus){
     const rf=el('button','ghost mono',useBusy?'checking…':'↻'); rf.title='Check again now'; rf.disabled=useBusy;
     rf.addEventListener('click',function(){ usageLoad(true); });
     head.appendChild(rf); wrap.appendChild(head);
-    const row=function(name,pct,text,out){
+    const draw=function(x){
+      const name=x.name, pct=x.pct, text=x.text, out=x.out;
       const r=el('div',''); r.style.cssText='display:flex;align-items:center;gap:10px;margin-top:8px';
       const n=el('span','',name); n.style.cssText='width:96px;flex:none;font-size:13px';
       const track=el('div',''); track.style.cssText='flex:1;height:8px;border-radius:4px;background:var(--chip);overflow:hidden;min-width:60px';
@@ -353,67 +418,27 @@ if(window.desktop&&window.desktop.aiStatus){
       const t=el('span','mono',text); t.style.cssText='flex:1.3;font-size:11px;color:'+(out?'var(--late)':'var(--muted)')+';text-transform:none;letter-spacing:0';
       r.appendChild(n); r.appendChild(track); r.appendChild(t); wrap.appendChild(r);
     };
-    const on=ai.order.filter(function(p){ return p.on; }).map(function(p){ return p.id; });
-    if(!on.length){ wrap.appendChild(el('p','settings-hint','No AI is switched on.')); box.appendChild(wrap); return; }
-    const u=use||{};
-    on.forEach(function(id){
-      const acct=acctOf(id);
-      if(acct){ // its own limits aren't read: only whether it's sitting out
-        if(acct.held)row(ai.names[id],1,'out until '+fmtWhen(acct.held),true);
-        else row(ai.names[id],null,acct.ready?'ready · its own usage isn’t shown here':'not set up');
-        return; }
-      if(id==='claude'){
-        const c=u.claude;
-        if(!c){ row('Claude · 5h',null,use?'no reading yet':'checking…'); return; }
-        if(c.out){ row('Claude',1,'out until '+(c.out===true?'it resets':fmtWhen(c.out)),true); return; }
-        row('Claude · 5h',c.pct,pctTxt(c.pct)+' used'+(c.fiveReset?' · resets '+atTime(c.fiveReset):''));
-        row('Claude · week',c.week,pctTxt(c.week)+' used'+(c.weekReset?' · resets '+fmtWhen(c.weekReset):''));
-      } else if(id==='gemini'){
-        const g=u.gemini;
-        if(!ai.gemini.hasKey){ row('Gemini',null,'no key yet'); return; }
-        if(!g){ row('Gemini',null,'…'); return; }
-        if(g.out){ row('Gemini',1,'out until '+fmtWhen(g.out),true); return; }
-        row('Gemini',g.pct,g.perDay?g.calls+' of '+g.perDay+' today':g.calls+' today · daily limit not hit yet');
-      } else if(id==='openai'){
-        const o=u.openai;
-        if(ai.openai.via==='chatgpt'){
-          if(!ai.openai.codex.signedIn){ row('ChatGPT',null,'not signed in'); return; }
-          if(!o){ row('ChatGPT',null,'…'); return; }
-          const pl=o.plan, runs=o.calls+' run'+(o.calls===1?'':'s')+' · '+o.tokensText+' tokens this month';
-          if(!pl||!pl.windows.length){ row('ChatGPT',null,runs+(pl?'':' · limit not read yet')); return; }
-          if(pl.out){ row('ChatGPT',1,'out until '+(pl.out===true?'it resets':fmtWhen(pl.out)),true); return; }
-          // Codex names each window by its length: 5 hours, a week, 30 days on the free plan
-          const span=function(m){ return !m?'':m<=1440?' · '+Math.round(m/60)+'h':m<=10080?' · week':' · month'; };
-          pl.windows.forEach(function(w,i){
-            row('ChatGPT'+span(w.mins),w.used,pctTxt(w.used)+' used'+(w.resetsAt?' · resets '+fmtWhen(w.resetsAt):'')+(i===pl.windows.length-1?' · '+runs:''));
-          });
-          return; }
-        if(!ai.openai.hasKey){ row('ChatGPT',null,'no key yet'); return; }
-        row('ChatGPT',null,o?o.calls+' calls · '+o.tokensText+' tokens this month (pay as you go)':'…');
-      } else if(ai[id]&&ai[id].compat){
-        const o=u[id];
-        if(!ai[id].hasKey){ row(ai.names[id],null,'no key yet'); return; }
-        const rt=o&&o.rate; // Groq's own count of requests left today
-        if(rt){
-          if(o.out){ row(ai.names[id],1,'out until '+(o.out===true?'it resets':fmtWhen(o.out)),true); return; }
-          row(ai.names[id],o.pct,rt.left+' of '+rt.limit+' requests left today'+(rt.resetsAt&&rt.left<rt.limit?' · full again '+fmtWhen(rt.resetsAt):''));
-          return; }
-        row(ai.names[id],null,o?o.calls+' calls · '+o.tokensText+' tokens this month (free tier)':'0 calls this month (free tier)');
-      } else if(id==='openrouter'){
-        const o=u.openrouter;
-        if(!ai.openrouter.hasKey){ row('OpenRouter',null,'no key yet'); return; }
-        if(!o){ row('OpenRouter',null,'…'); return; }
-        const cr=o.credit;
-        row('OpenRouter',o.pct,cr?'$'+Number(cr.usage||0).toFixed(2)+(cr.limit?' of $'+cr.limit:' used · no limit set'):o.calls+' calls this month');
-      }
-    });
+    // an AI this computer has no reading of (not signed in here, no key here) shows what another device read
+    const now=Date.now(), others=usageShareOthers(window.devState&&window.devState.doc,window.deviceId?window.deviceId():null,now);
+    const rows=usageShareMerge(usageRows(),others,usageOn(),now);
+    if(!rows.length)wrap.appendChild(el('p','settings-hint','No AI is switched on.'));
+    rows.forEach(draw);
     box.appendChild(wrap);
   }
+  // what this computer reads goes up with its entry in the devices list (devices.js deviceMe), for the ones that can't
+  function usageShare(){ if(ai)window.usageShared=usageShareMine(usageRows(),Date.now()); }
   function usageLoad(refresh){
     if(!window.desktop.aiUsage||useBusy)return;
     useBusy=true; usageDraw();
-    window.desktop.aiUsage(refresh).then(function(u){ use=u; }).catch(function(){}).then(function(){ useBusy=false; usageDraw(); });
+    window.desktop.aiUsage(refresh).then(function(u){ use=u; return window.desktop.aiStatus(); })
+      .then(function(s){ if(ai&&s&&s.claude)ai.claude=s.claude; }) // the sign-in check finishes a few seconds after start
+      .catch(function(){}).then(function(){ useBusy=false; usageShare(); usageDraw(); });
   }
+  // a look at the readings as they stand (no AI is asked anything) keeps what's shared with his other devices current
+  setInterval(function(){
+    if(!ai||useBusy||!window.desktop.aiUsagePeek)return;
+    window.desktop.aiUsagePeek().then(function(u){ if(u){ use=u; usageShare(); } }).catch(function(){});
+  },5*60*1000);
   window.desktop.aiStatus().then(function(s){ ai=s; aiDraw(); usageLoad(false); }).catch(function(){ $('aiSection').hidden=true; $('aiUsage').hidden=true; });
 }
 /* Course calendars: Blackboard / D2L iCal links → School list (desktop only; the links stay in its
