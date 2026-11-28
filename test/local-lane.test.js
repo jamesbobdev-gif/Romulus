@@ -3,6 +3,17 @@ const assert = require('node:assert');
 const lane = require('../agent/local-lane');
 const tools = require('../agent/local-tools');
 
+// v1.3.43: "lockAllow = allow" ran above its own "let", so every local task with a browser failed
+// ("Cannot access 'lockAllow' before initialization") before the browser opened
+test('the browser lock list is declared before the browser starts', () => {
+  const src = require('fs').readFileSync(require.resolve('../agent/local-lane'), 'utf8');
+  const declared = src.indexOf('let lockAllow');
+  assert.ok(declared > 0, 'lockAllow is declared');
+  assert.strictEqual(src.indexOf('let lockAllow', declared + 1), -1, 'declared once');
+  assert.ok(declared < src.search(/(^|[^\w ])\s*lockAllow\s*=[^=]/m), 'declared above where it is set');
+  assert.ok(declared < src.indexOf('lockAllow.map'), 'declared above where it is read');
+});
+
 test('staleMarked marks what the agents said before his latest reply', () => {
   const h = [{ who: 'claude', text: 'screen is locked' }, { who: 'you', text: 'unlocked it' }, { who: 'claude', text: 'ok' }];
   const out = lane.staleMarked(h);

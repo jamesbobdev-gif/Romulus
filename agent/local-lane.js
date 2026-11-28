@@ -644,6 +644,7 @@ async function runLocalTask(c, t) {
     cal.events.slice(0, 60).map((e) => '- ' + String(e.start).replace('T', ' ').slice(0, 16) + ' ' + e.title + (e.where ? ' @ ' + e.where : '') + (e.invitedBy ? ' (invited by ' + e.invitedBy + ')' : '')).join('\n') : '';
   // Qwen's browser, when the mini PC's is reachable: locked to the task's links + his allowed sites
   let browser = null, sites = [], mySites = [];
+  let lockAllow = []; // what the browser lock let this run open (set where the browser starts, just below)
   const money = isMoneyTask(t);
   if (money) t.financeSeen = true; // from here on, this task stays on the mini PC (routing.privateMatch)
   // a coach task (agent/coach.js) or a study plan (agent/study-plan.js) goes through his courses, noting what it
@@ -698,7 +699,6 @@ async function runLocalTask(c, t) {
   const schools = courseSites.schoolHosts(classes, prefs); // his real Blackboard / D2L, for when it strays onto the companies' sites
   if (earlier.length) agentLog('local: ' + earlier.length + ' how-to(s) from earlier tasks');
   const noted = new Set(taskNotes.map((n) => n.name)), visited = new Set(), wanted = new Set(); // wanted: sites its browser refused (agent/local-sites.js)
-  let lockAllow = []; // what the browser lock let this run open
   // 40 browser steps; once it's filling forms, up to 120 (a 30-page questionnaire takes ~2 a page:
   // fill_form, then Next). A shopping task with 120 went round in circles for too long
   // a coach task goes through the assignment, its files and rubric, the week's material and announcements: more room than shopping
