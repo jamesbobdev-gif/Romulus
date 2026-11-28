@@ -107,3 +107,39 @@ test('after a click on a long page, the view starts at what was clicked', () => 
   assert.match(o.text, /top of the page left out/);
   assert.match(o.text, /Quiz, Ch 8 Quiz/);
 });
+
+test('opening one page and finding the same words round and round is stopped', async () => {
+  const calls = [];
+  const browser = { async call(name) { calls.push(name); return name === 'browser_find' ? 'No matches found' : name === 'browser_snapshot' ? '- Page URL: https://bb.example/outline\n- button "Chapter 9" [ref=e1]' : '### Result\nok'; } };
+  const state = {}, open = { url: 'https://bb.example/outline' }, find = { text: 'Chapter 10' };
+  let r;
+  for (let i = 1; i <= 3; i++) {
+    r = await pageReader.step(browser, 'browser_navigate', open, state);
+    assert.ok(!r.blocked, 'open ' + i + ' runs');
+    assert.strictEqual(/opened this same page earlier/.test(r.text), i >= 2);
+    r = await pageReader.step(browser, 'browser_find', find, state);
+    assert.ok(!r.blocked, 'find ' + i + ' runs');
+    assert.strictEqual(/same words before/.test(r.text), i >= 2);
+    await pageReader.step(browser, 'browser_snapshot', {}, state);
+  }
+  const before = calls.length;
+  r = await pageReader.step(browser, 'browser_navigate', open, state);
+  assert.ok(r.blocked && r.failed && /^Not done: you keep coming back/.test(r.text));
+  assert.strictEqual(calls.length, before); // not sent to the browser
+  r = await pageReader.step(browser, 'browser_find', find, state);
+  assert.ok(r.blocked);
+});
+
+test('doing something on a page starts the count again, and other pages and words are their own', () => {
+  const state = { url: 'https://bb.example/a' };
+  assert.strictEqual(pageReader.circling(state, 'browser_find', { text: 'Quiz' }), 1);
+  assert.strictEqual(pageReader.circling(state, 'browser_find', { text: 'quiz ' }), 2);
+  assert.strictEqual(pageReader.circling(state, 'browser_find', { text: 'Exam' }), 1);
+  state.url = 'https://bb.example/b';
+  assert.strictEqual(pageReader.circling(state, 'browser_find', { text: 'Quiz' }), 1);
+  assert.strictEqual(pageReader.circling(state, 'browser_navigate', { url: 'https://bb.example/a/' }), 1);
+  assert.strictEqual(pageReader.circling(state, 'browser_navigate', { url: 'https://bb.example/a' }), 2);
+  assert.strictEqual(pageReader.circling(state, 'browser_press_key', { key: 'End' }), 0);
+  assert.strictEqual(pageReader.circling(state, 'browser_navigate', { url: 'https://bb.example/a' }), 1);
+  assert.strictEqual(pageReader.circling(state, 'browser_snapshot', {}), 0);
+});

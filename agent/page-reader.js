@@ -389,6 +389,27 @@ function findResults(res, args, state) {
     (left ? '\n… ' + left + ' more match(es) not shown: search for more exact words to see them.' : '');
 }
 
+/* The same few steps round and round: open the course page, find "Chapter 10", look, find, open it again.
+   No two alike in a row, so the three-in-a-row check in step never fired, and Holo4 spent 24 minutes on a
+   Blackboard course list that only showed chapters 1-9. Opening a page or finding words on it again, with
+   no click, typing or key press in between, shows what it already showed.
+   → how many times this run has asked for exactly this since it last did something to a page (0: not counted) */
+const ACTS = new Set(['browser_click', 'browser_type', 'browser_fill_form', 'browser_select_option', 'browser_press_key', 'browser_file_upload']);
+function circling(state, name, args) {
+  if (ACTS.has(name)) { state.again = {}; return 0; }
+  const a = args || {};
+  const key = name === 'browser_navigate' ? 'open ' + String(a.url || '').trim().toLowerCase().replace(/\/+$/, '')
+    : name === 'browser_find' ? 'find ' + String(a.text || a.regex || '').trim().toLowerCase() + ' @ ' + (state.url || '') : null;
+  if (!key) return 0;
+  state.again = state.again || {};
+  return state.again[key] = (state.again[key] || 0) + 1;
+}
+const WAY_OUT = 'If what you want isn\'t shown, press End to load the rest of a long list, try other words, click into another section (the gradebook or the assignments list), or answer now and say what you looked for and where.';
+const ROUND = {
+  browser_navigate: '(You opened this same page earlier and have done nothing on a page since, so it shows the same thing. Don\'t open it again. ' + WAY_OUT + ')',
+  browser_find: '(You searched this page for the same words before, and nothing on it has changed. Don\'t search again. ' + WAY_OUT + ')',
+};
+
 async function step(browser, name, args0, state, opts = {}) {
   const max = opts.max || 5000;
   // labels and short refs can only be matched against a page we've seen: look once, quietly
@@ -402,6 +423,9 @@ async function step(browser, name, args0, state, opts = {}) {
   if (name === 'browser_snapshot') return { args, text: await look(browser, state, max) + (repeats >= 2 ? '\n\n(You already looked at this page and nothing changed. Act on it, or answer.)' : '') };
   // a third identical call in a row isn't run at all: a small model that loops there never gets out by itself
   if (repeats >= 3) return { args, text: 'Not done: this is the 3rd time in a row you asked for exactly this, and it isn\'t working. Do something different, or answer now with what is done and what is stuck.', failed: true, blocked: true };
+  // the fourth time round the same page or search with nothing done in between isn't run either
+  const round = circling(state, name, args);
+  if (round >= 4) return { args, text: 'Not done: you keep coming back to exactly this, and nothing on the page has changed in between. ' + WAY_OUT, failed: true, blocked: true };
   // how many tabs are open before a click, so a link that opens a new tab can be followed (below)
   if (name === 'browser_click' && state.tabs == null) state.tabs = tabLines(await browser.call('browser_tabs', { action: 'list' })).length || 1;
   // a section that is already open (Blackboard's learning modules): clicking it again closes it
@@ -420,7 +444,7 @@ async function step(browser, name, args0, state, opts = {}) {
   } else res = await browser.call(name, args);
   if (name === 'browser_find') {
     if (/^Refused or failed|^Browser error/.test(res)) return { args, text: res.slice(0, 1500) };
-    return { args, text: findResults(res, args, state) };
+    return { args, text: findResults(res, args, state) + (round >= 2 ? '\n\n' + ROUND[name] : '') };
   }
   const failed = /^Refused or failed|^Browser error/.test(res);
   const locked = /^Refused or failed: (This browser is locked|Locked:)/.test(res);
@@ -436,6 +460,7 @@ async function step(browser, name, args0, state, opts = {}) {
   if (clickTimeout) text += '\n(Clicks are timing out: the mini PC\'s screen is probably locked or asleep. Typing still works. If clicks keep failing, answer "needs-you" and say his mini PC\'s screen needs unlocking.)';
   else if (loadTimeout) text += '\n(The page took too long to load: the site is slow or the mini PC is busy. It may have partly loaded: look at the page below. If it is empty, open it once more; if it keeps timing out, answer "needs-you" and say the site wouldn\'t load.)';
   if (repeats >= 2) text += '\n(You have now done exactly this twice. If it still isn\'t right, try another way: a third time won\'t be run.)';
+  if (round >= 2 && repeats < 2) text += '\n' + ROUND[name];
   if (wasOpen && !failed) text += '\n(That section was already open, so this click closed it. Its items were already on the page: use browser_find with words from them.)';
   /* a link that opens in a new tab (Blackboard's discussions, McGraw Hill quizzes): Playwright stays on
      the old tab, so the page looked the same and the model clicked again and again. Move to the new one. */
@@ -454,4 +479,4 @@ async function step(browser, name, args0, state, opts = {}) {
   return { args, text, failed, locked, clickTimeout, loadTimeout };
 }
 
-module.exports = { outline, fixArgs, step, parse, FINAL };
+module.exports = { outline, fixArgs, step, parse, FINAL, circling };
