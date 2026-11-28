@@ -62,3 +62,49 @@ test('a setting cleared on another device is cleared here; a key left out is not
   assert.deepStrictEqual(r.stamps.tabsOff, { at: NOW, seen: '["work"]' });
   assert.deepStrictEqual(s.sharedMerge(stamps, doc, ['tabsOff', 'ebt.on']).set, { tabsOff: null, 'ebt.on': '0' });
 });
+
+test('a reply started on one device is in the box on the other, and gone from both once it is sent', () => {
+  const all = (drafts, stamps, doc) => s.sharedDraftKeys(drafts, stamps, doc);
+  const vals = (drafts, keys) => Object.fromEntries(keys.map((k) => [k, drafts[k.slice(6)] || null]));
+  // the phone has half a reply
+  let phone = { drafts: { t1: 'Yes, the blue one, but' }, stamps: {} }, pc = { drafts: {}, stamps: {} }, doc = null;
+  const pass = (dev, now) => {
+    const old = s.sharedDraftForget(dev.stamps, doc, now), keys = all(dev.drafts, old.stamps, old.doc);
+    const r = s.sharedMerge(s.sharedNote(old.stamps, vals(dev.drafts, keys), keys, now), old.doc, keys);
+    Object.keys(r.set).forEach((k) => { if (r.set[k]) dev.drafts[k.slice(6)] = r.set[k]; else delete dev.drafts[k.slice(6)]; });
+    dev.stamps = r.stamps;
+    if (r.changedRemote || old.changed) doc = JSON.parse(JSON.stringify(r.doc));
+    return r;
+  };
+  pass(pc, NOW); // nothing yet: a device with no drafts puts up nothing
+  assert.strictEqual(doc, null);
+  pass(phone, NOW + 1);
+  pass(pc, NOW + 2);
+  assert.deepStrictEqual(pc.drafts, { t1: 'Yes, the blue one, but' });
+  // he goes on typing on the computer, and starts another on the phone: neither costs the other
+  pc.drafts.t1 = 'Yes, the blue one, but in a medium';
+  phone.drafts.t2 = 'Not that week';
+  pass(pc, NOW + 1000); pass(phone, NOW + 2000); pass(pc, NOW + 3000);
+  assert.deepStrictEqual(phone.drafts, { t1: 'Yes, the blue one, but in a medium', t2: 'Not that week' });
+  assert.deepStrictEqual(pc.drafts, phone.drafts);
+  // sent from the computer: the box is empty on the phone too
+  delete pc.drafts.t1;
+  pass(pc, NOW + 5000); pass(phone, NOW + 6000);
+  assert.deepStrictEqual(phone.drafts, { t2: 'Not that week' });
+  assert.deepStrictEqual(doc.s['draft:t1'], { v: null, at: NOW + 5000 });
+  // and settled: neither has anything more to say
+  assert.strictEqual(pass(pc, NOW + 7000).changedRemote, false);
+  assert.strictEqual(pass(phone, NOW + 8000).changedRemote, false);
+  // a month on, the sent one is forgotten everywhere, the unsent one is still there
+  const later = NOW + s.SHARED_DRAFT_FORGET + 9000;
+  pass(pc, later); pass(phone, later + 1); pass(pc, later + 2);
+  assert.deepStrictEqual(Object.keys(doc.s), ['draft:t2']);
+  assert.deepStrictEqual([Object.keys(pc.stamps), Object.keys(phone.stamps)], [['draft:t2'], ['draft:t2']]);
+  assert.strictEqual(pass(phone, later + 3).changedRemote, false);
+});
+
+test('a very long reply stays on its own device, and odd names in the record are ignored', () => {
+  const keys = s.sharedDraftKeys({ short: 'hi', long: 'x'.repeat(9000) }, { 'draft:seen': { at: 5, seen: 'a' }, 'tasks.theme.v1': { at: 1, seen: 'x' } },
+    { v: 1, s: { 'draft:theirs': { v: 'b', at: 9 }, 'draft:': { v: 'c', at: 9 }, ['draft:' + 'y'.repeat(200)]: { v: 'd', at: 9 }, 'ai.order': { v: '[]', at: 2 } } });
+  assert.deepStrictEqual(keys, ['draft:seen', 'draft:short', 'draft:theirs']);
+});

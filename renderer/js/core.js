@@ -5,7 +5,8 @@
 /* ── state ── */
 const state={ tasks:[], tombstones:[], ideas:{inbox:{name:'Unsorted',color:'plain',order:-1,updatedAt:0},groups:[],cards:[],tombstones:[]}, hours:{entries:[],tombstones:[]}, health:{days:{}}, kitchen:{items:[],recipes:[],tombstones:[]}, filter:null, wsFilter:null, search:'', selectedId:null, showDone:false, confirmClear:false, expanded:new Set(), activeTab:'list', calYear:new Date().getFullYear(), calMonth:new Date().getMonth() };
 let navOrder=[]; // ids of open tasks in rendered order, for arrow-key navigation
-// unsent answers to Claude, by task id — kept on disk so a restart or a lost task never eats them
+// unsent answers to Claude, by task id — kept on disk so a restart or a lost task never eats them, and shared
+// with his other devices (shared-settings.js), so a reply started on the phone is in the box on the computer
 const DRAFTS_KEY='tasks.replyDrafts';
 const replyDrafts=(function(){ try{ return JSON.parse(localStorage.getItem(DRAFTS_KEY))||{}; }catch(e){ return {}; } })();
 function saveDrafts(){ try{ localStorage.setItem(DRAFTS_KEY,JSON.stringify(replyDrafts)); }catch(e){} }

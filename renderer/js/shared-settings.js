@@ -8,6 +8,9 @@
    value that differs from the one it saw last was changed here, at that moment. The newer change wins, key
    by key. What a device had before it first ran this counts as old (at 1), and a setting never touched
    counts as nothing, so a computer nobody set up can't overwrite the one he did.
+   A reply to the Agent he has started and not sent (core.js replyDrafts) rides along too, one name per task
+   ('draft:<task id>'), so half a reply typed on the phone is in the box on the computer, and goes everywhere
+   once it is sent. A sent or cleared one is forgotten after a month.
    Keys and sign-ins are not here and never will be (main/store.js).
    The top part has no DOM in it, so test/shared-settings.test.js can load it in Node. */
 'use strict';
@@ -48,8 +51,36 @@ function sharedMerge(stamps,doc,keys){
   return {set:set,stamps:outStamps,doc:{v:1,s:s},changedRemote:changedRemote};
 }
 
+/* Unsent replies. Each is its own name in the record, so two replies started on two devices don't cost each
+   other anything. drafts: {task id: text} as this device holds them. */
+const SHARED_DRAFT='draft:';
+const SHARED_DRAFT_MAX=8000;            // longer than this stays on the device it was typed on
+const SHARED_DRAFT_FORGET=30*86400000;  // a sent or cleared one is dropped from the record after this
+// → the names to look at this time: every draft here, every one this device has seen, every one in the record
+function sharedDraftKeys(drafts,stamps,doc){
+  const out={}, add=function(k){ if(k.indexOf(SHARED_DRAFT)===0&&k.length>SHARED_DRAFT.length&&k.length<=SHARED_DRAFT.length+80)out[k]=1; };
+  Object.keys(drafts||{}).forEach(function(id){ if(String(drafts[id]||'').length<=SHARED_DRAFT_MAX)add(SHARED_DRAFT+id); });
+  Object.keys(stamps||{}).forEach(add);
+  Object.keys((doc&&doc.s)||{}).forEach(add);
+  return Object.keys(out).sort();
+}
+// → {stamps, doc, changed}: without the replies that were sent or cleared more than a month ago
+function sharedDraftForget(stamps,doc,now){
+  const st=Object.assign({},stamps), s=Object.assign({},(doc&&doc.s)||{});
+  let changed=false;
+  Object.keys(s).forEach(function(k){
+    if(k.indexOf(SHARED_DRAFT)!==0)return;
+    const r=s[k];
+    if(r&&r.v==null&&typeof r.at==='number'&&now-r.at>SHARED_DRAFT_FORGET){ delete s[k]; delete st[k]; changed=true; }
+  });
+  Object.keys(st).forEach(function(k){
+    if(k.indexOf(SHARED_DRAFT)===0&&!s[k]&&st[k]&&st[k].seen==null&&now-(st[k].at||0)>SHARED_DRAFT_FORGET)delete st[k];
+  });
+  return {stamps:st,doc:doc?Object.assign({},doc,{s:s}):doc,changed:changed};
+}
+
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={sharedNote,sharedMerge,SHARED_KEYS,SHARED_TAB_KEYS};
+  module.exports={sharedNote,sharedMerge,sharedDraftKeys,sharedDraftForget,SHARED_KEYS,SHARED_TAB_KEYS,SHARED_DRAFT,SHARED_DRAFT_FORGET};
 } else {
   const SHARED_STAMPS_KEY='tasks.shared.stamps', SHARED_TABS_OWN_KEY='tabsOwn';
   const sharedState={unsupported:false,err:null};
@@ -90,6 +121,20 @@ if(typeof module!=='undefined'&&module.exports){
   }
   /* Called from sync.js on every sync. → true when a setting changed here. Never throws: the lists sync either
      way. Until the database takes the ':settings' row (that migration) each device keeps its own, as before. */
+  // replies started (or sent, or cleared) on another device: kept here, and shown in the reply box if it is on
+  // screen and he isn't typing in it right now
+  function sharedDraftsApply(names,set){
+    names.forEach(function(k){
+      const id=k.slice(SHARED_DRAFT.length), v=set[k];
+      if(v)replyDrafts[id]=v; else delete replyDrafts[id];
+      try{
+        document.querySelectorAll('textarea[data-reply-for]').forEach(function(ta){
+          if(ta.dataset.replyFor===id&&document.activeElement!==ta)ta.value=v||'';
+        });
+      }catch(e){}
+    });
+    if(typeof saveDrafts==='function')saveDrafts();
+  }
   async function sharedSync(){
     const p=sharedProfile(); if(!p||sharedState.unsupported)return false;
     let changed=false;
@@ -98,9 +143,18 @@ if(typeof module!=='undefined'&&module.exports){
         const row=await syncPullRow(p);
         const keys=sharedKeys(), values={};
         keys.forEach(function(k){ try{ values[k]=localStorage.getItem(k); }catch(e){ values[k]=null; } });
-        const r=sharedMerge(sharedNote(sharedStampsLoad(),values,keys,Date.now()),row.doc,keys);
-        const got=Object.keys(r.set);
+        // unsent replies to the Agent (core.js replyDrafts), one name each
+        const drafts=typeof replyDrafts==='object'&&replyDrafts?replyDrafts:{};
+        const old=sharedDraftForget(sharedStampsLoad(),row.doc,Date.now());
+        const draftKeys=sharedDraftKeys(drafts,old.stamps,old.doc);
+        draftKeys.forEach(function(k){ const v=drafts[k.slice(SHARED_DRAFT.length)]; values[k]=v?String(v):null; });
+        const all=keys.concat(draftKeys);
+        const r=sharedMerge(sharedNote(old.stamps,values,all,Date.now()),old.doc,all);
+        if(old.changed)r.changedRemote=true;
+        const got=Object.keys(r.set).filter(function(k){ return k.indexOf(SHARED_DRAFT)!==0; });
         got.forEach(function(k){ try{ if(r.set[k]==null)localStorage.removeItem(k); else localStorage.setItem(k,r.set[k]); }catch(e){} });
+        const gotDrafts=Object.keys(r.set).filter(function(k){ return k.indexOf(SHARED_DRAFT)===0; });
+        if(gotDrafts.length)sharedDraftsApply(gotDrafts,r.set);
         try{ localStorage.setItem(SHARED_STAMPS_KEY,JSON.stringify(r.stamps)); }catch(e){}
         if(got.length){ changed=true; sharedApply(got); }
         if(!r.changedRemote)break;
