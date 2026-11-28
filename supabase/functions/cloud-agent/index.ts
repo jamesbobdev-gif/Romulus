@@ -17,6 +17,15 @@ import { CLOUD_PROMPT } from "./prompt.ts";
 // POST {action: 'status', syncKey}                          → {enabled, plan, used, limit}
 // POST {action: 'start', syncKey, pub, task, prefs, today}  → {ok, job, used, limit} | {ok: false, why}
 // POST {action: 'take', syncKey, job}                       → {state: 'working'|'done'|'failed'|'gone', sealed?, why?}
+// Scheduled runs (a repeating task that runs with every device off; supabase/migrations/20261126_cloud_agent_schedules.sql):
+// POST {action: 'schedule', syncKey, task, next, rule, sealed, pub} → {ok, next} | {ok: false, why}
+// POST {action: 'unschedule', syncKey, task?}                        → {dropped}
+// POST {action: 'results', syncKey}                                  → {results: [{task, sealed, why, next, ran}], kept}
+// POST {action: 'tick'} with the clock's x-cron-secret header        → {claimed}
+// - A scheduled task is the one thing kept here between runs: the device seals it to this function's own key
+//   (the CLOUD_SCHEDULE_KEY secret, a P-256 private key as JWK; 'status' hands out its public half), so the table
+//   holds ciphertext and only this function, while it runs, can open it. It is still never logged.
+// - Its answer is sealed to a key that lives on the task in the person's own list, and waits for one of their devices.
 // syncKey names the account: tk_acct_ + the hash sync_account_of makes (the app since v1.3.28, so no sync key is
 // sent), or a lookup id / sync key from older versions (cloud_agent_account_of, migration 20261122).
 
@@ -131,6 +140,32 @@ async function seal(pub: JsonWebKey, data: unknown) {
   const epk = await crypto.subtle.exportKey("jwk", mine.publicKey);
   return { v: 1, epk: { kty: epk.kty, crv: epk.crv, x: epk.x, y: epk.y }, iv: b64(iv), ct: b64(ct) };
 }
+// the other way round: what a device sealed to this function's own key (cloudAgSeal in renderer/js/cloud-agent.js)
+async function open(priv: JsonWebKey, sealed: any) {
+  const mine = await crypto.subtle.importKey("jwk", priv, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveKey"]);
+  const theirs = await crypto.subtle.importKey("jwk", sealed.epk, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const key = await crypto.subtle.deriveKey({ name: "ECDH", public: theirs }, mine, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const un = (b: string) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: un(sealed.iv) }, key, un(sealed.ct))));
+}
+// the key that opens stored scheduled tasks: this function's secret, never in a table. Without it, nothing can be scheduled.
+const SCHED_KEY: JsonWebKey | null = (() => {
+  const raw = Deno.env.get("CLOUD_SCHEDULE_KEY") ||
+    (Object.entries(Deno.env.toObject()).find(([k]) => k.toUpperCase() === "CLOUD_SCHEDULE_KEY") || ["", ""])[1] || "";
+  try {
+    const j = JSON.parse((raw.match(/\{[^{}]*\}/) || [""])[0]);
+    return j && j.kty === "EC" && j.crv === "P-256" && j.x && j.y && j.d ? { kty: j.kty, crv: j.crv, x: j.x, y: j.y, d: j.d } : null;
+  } catch { return null; }
+})();
+const SCHED_PUB = SCHED_KEY ? { kty: SCHED_KEY.kty, crv: SCHED_KEY.crv, x: SCHED_KEY.x, y: SCHED_KEY.y } : null;
+const okSealed = (x: any) => x && typeof x === "object" && okPub(x.epk) && typeof x.iv === "string" && x.iv.length < 40 &&
+  typeof x.ct === "string" && x.ct.length < 120000;
+const okTaskId = (x: unknown) => typeof x === "string" && /^[0-9a-f]{32,64}$/.test(x);
+function cleanRule(r: any) {
+  if (!r || typeof r !== "object" || ["day", "weekday", "week"].indexOf(r.every) < 0) return null;
+  return { every: r.every, at: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.at)) ? String(r.at) : "08:00",
+    day: Number.isInteger(r.day) && r.day >= 0 && r.day <= 6 ? r.day : null, tz: clip(r.tz, 60) || "UTC" };
+}
 const okPub = (p: any) => p && p.kty === "EC" && p.crv === "P-256" && typeof p.x === "string" && typeof p.y === "string" && !p.d;
 
 // a failure in words written here, safe to show the person (anything else is replaced by a plain message)
@@ -142,10 +177,21 @@ const AI_KEY_CLEAN = (AI_KEY.match(/sk-ant-[A-Za-z0-9_-]+/) || [""])[0] || (/^\S
 // for the status call: whether the key secret is there and usable, never anything about its value
 const KEY_STATE = AI_KEY_CLEAN ? "ok" : AI_KEY ? "unusable" : "missing";
 
+// why it failed, in our own words: a library's error text can carry the request's headers, key and all
+function whyOf(e: unknown): string {
+  console.error("cloud-agent job failed:", e instanceof Anthropic.APIError ? `HTTP ${e.status}` : (e as Error).name); // never the task
+  return e instanceof SayError ? e.message
+    : e instanceof Anthropic.APIError
+    ? (e.status === 429 || (e.status || 0) >= 500 ? "Romulus cloud is busy right now. Try again in a few minutes." : "Romulus cloud couldn’t ask the AI (HTTP " + e.status + ").")
+    : "Romulus cloud couldn’t ask the AI. Try again later.";
+}
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 // ── one task, start to finish ─────────────────────────────────────────────
-async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, today: string, cfg: any) {
-  let cents = 0;
-  try {
+// asks the AI → {status, note, options}; spent.cents counts what it cost, also when it throws
+async function ask(task: Task, prefs: string, today: string, cfg: any, spent: { cents: number }) {
+  {
+    let cents = 0;
     const client = new Anthropic({ apiKey: AI_KEY_CLEAN, timeout: RUN_MS, maxRetries: 1 });
     const model = String(cfg.model || "claude-opus-5-5");
     const price = PRICES[model] || PRICES["claude-opus-5-5"];
@@ -176,7 +222,7 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
       };
       const msg = await client.beta.messages.stream(params, { timeout: left }).finalMessage();
       const u: any = msg.usage || {};
-      cents += ((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) * 1.25 + (u.cache_read_input_tokens || 0) * price.read) * price.in / 1e4
+      spent.cents = cents += ((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) * 1.25 + (u.cache_read_input_tokens || 0) * price.read) * price.in / 1e4
         + (u.output_tokens || 0) * price.out / 1e4
         + ((u.server_tool_use && u.server_tool_use.web_search_requests) || 0) * SEARCH_CENTS;
       // token counts only (never the task), so the logs show whether caching works: "read" should be most of the input
@@ -191,15 +237,40 @@ async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, t
     }
     const a = readAnswer(text);
     if (!a) throw new SayError("No answer came back. Try again.");
-    await rpc("cloud_agent_finish", { p_job: job, p_sealed: await seal(pub, a), p_why: null, p_cents: Math.round(cents * 100) / 100 });
+    return a;
+  }
+}
+// a task a device just sent: the answer waits for that device
+async function answer(job: string, pub: JsonWebKey, task: Task, prefs: string, today: string, cfg: any) {
+  const spent = { cents: 0 };
+  try {
+    const a = await ask(task, prefs, today, cfg, spent);
+    await rpc("cloud_agent_finish", { p_job: job, p_sealed: await seal(pub, a), p_why: null, p_cents: round2(spent.cents) });
   } catch (e) {
-    // only our own words go back to the person: a library's error text can carry the request's headers, key and all
-    const why = e instanceof SayError ? e.message
-      : e instanceof Anthropic.APIError
-      ? (e.status === 429 || (e.status || 0) >= 500 ? "Romulus cloud is busy right now. Try again in a few minutes." : "Romulus cloud couldn’t ask the AI (HTTP " + e.status + ").")
-      : "Romulus cloud couldn’t ask the AI. Try again later.";
-    console.error("cloud-agent job failed:", e instanceof Anthropic.APIError ? `HTTP ${e.status}` : (e as Error).name); // never the task
-    await rpc("cloud_agent_finish", { p_job: job, p_sealed: null, p_why: why, p_cents: Math.round(cents * 100) / 100 }).catch(() => {});
+    await rpc("cloud_agent_finish", { p_job: job, p_sealed: null, p_why: whyOf(e), p_cents: round2(spent.cents) }).catch(() => {});
+  }
+}
+// a scheduled task whose time has come with none of the person's devices on: the answer waits for any of them
+// deno-lint-ignore no-explicit-any
+async function runScheduled(c: any) {
+  const spent = { cents: 0 };
+  const done = (sealed: unknown, why: string | null, pause: boolean) => rpc("cloud_schedule_done", { p_account: c.account, p_task: c.task,
+    p_job: c.job, p_sealed: sealed, p_why: why, p_cents: round2(spent.cents), p_pause: pause });
+  try {
+    if (!SCHED_KEY) throw new SayError("Scheduled runs aren’t set up on this server yet.");
+    // deno-lint-ignore no-explicit-any
+    let kept: any;
+    try { kept = await open(SCHED_KEY, c.sealed); } catch { throw new SayError("The saved copy of this task couldn’t be opened. Open the app and it is saved again."); }
+    const task = cleanTask(kept && kept.task);
+    if (!task) throw new SayError("The saved copy of this task couldn’t be read. Open the app and it is saved again.");
+    const rule = cleanRule(c.rule);
+    let today: string;
+    try { today = new Date().toLocaleString("en-US", { timeZone: (rule && rule.tz) || "UTC", weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); }
+    catch { today = new Date().toUTCString(); }
+    const a = await ask(task, clip(kept.prefs, 6000), today + " (a scheduled run: nobody is at the app right now)", c, spent);
+    await done(await seal(c.pub, a), null, a.status !== "done"); // a question waits for them before it runs again
+  } catch (e) {
+    await done(null, whyOf(e), false).catch(() => {});
   }
 }
 
@@ -208,14 +279,41 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   let b: any;
   try { b = await req.json(); } catch { return json({ error: "bad request" }, 400); }
-  if (!b || !okKey(b.syncKey)) return json({ error: "bad request" }, 400);
+  if (!b) return json({ error: "bad request" }, 400);
   const ip = await ipHash(req);
   if (tooMany(ip)) return json({ error: "slow down" }, 429);
   try {
+    // the database's clock (cloud_schedule_tick), known by the password only the database has
+    if (b.action === "tick") {
+      const secret = req.headers.get("x-cron-secret") || "";
+      if (secret.length < 32 || !(await rpc("cloud_cron_ok", { p_secret: secret }))) return json({ error: "no" }, 403);
+      if (!AI_KEY_CLEAN || !SCHED_KEY) return json({ claimed: 0 });
+      const due = await rpc("cloud_schedule_claim", { p_max: 2 }); // two at a time: each has this call's few minutes to finish
+      const list = Array.isArray(due) ? due : [];
+      if (list.length) EdgeRuntime.waitUntil(Promise.all(list.map(runScheduled)));
+      return json({ claimed: list.length });
+    }
+    if (!okKey(b.syncKey)) return json({ error: "bad request" }, 400);
     if (b.action === "status") {
       const s = await rpc("cloud_agent_status", { p_sync_key: b.syncKey });
-      return json({ enabled: !!s.enabled && !!AI_KEY_CLEAN, plan: s.plan || null, used: s.used || 0, limit: s.limit || 0, key: KEY_STATE });
+      return json({ enabled: !!s.enabled && !!AI_KEY_CLEAN, plan: s.plan || null, used: s.used || 0, limit: s.limit || 0, key: KEY_STATE,
+        schedPub: s.enabled && AI_KEY_CLEAN ? SCHED_PUB : null }); // the key a device seals a scheduled task to; null = not offered here
     }
+    if (b.action === "schedule") {
+      const rule = cleanRule(b.rule);
+      if (!okTaskId(b.task) || !rule || !okSealed(b.sealed) || !okPub(b.pub)) return json({ error: "bad request" }, 400);
+      if (!AI_KEY_CLEAN || !SCHED_KEY) return json({ ok: false, why: "off" });
+      const next = Number(b.next);
+      return json(await rpc("cloud_schedule_put", { p_key: b.syncKey, p_task: b.task,
+        p_next: next > 0 && next < 4e12 ? new Date(next).toISOString() : null, p_rule: rule,
+        p_sealed: { v: 1, epk: { kty: b.sealed.epk.kty, crv: b.sealed.epk.crv, x: b.sealed.epk.x, y: b.sealed.epk.y }, iv: b.sealed.iv, ct: b.sealed.ct },
+        p_pub: { kty: b.pub.kty, crv: b.pub.crv, x: b.pub.x, y: b.pub.y } }));
+    }
+    if (b.action === "unschedule") {
+      if (b.task != null && !okTaskId(b.task)) return json({ error: "bad request" }, 400);
+      return json({ dropped: await rpc("cloud_schedule_drop", { p_key: b.syncKey, p_task: b.task ?? null }) });
+    }
+    if (b.action === "results") return json(await rpc("cloud_schedule_take", { p_key: b.syncKey }));
     if (b.action === "take") {
       if (!okJob(b.job)) return json({ error: "bad request" }, 400);
       return json(await rpc("cloud_agent_take", { p_sync_key: b.syncKey, p_job: b.job }));

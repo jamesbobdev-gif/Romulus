@@ -16,6 +16,7 @@ const supabase = require('./supabase');
 const decider = require('./decider');
 const { isLegion } = require('./legion');
 const { isCoach } = require('./coach');
+const { isStudy } = require('./study-plan');
 const { isVague } = require('./find-out');
 const learn = require('./route-learn');
 
@@ -135,6 +136,10 @@ function routeTask(t) {
   if (ctx && ctx.finance && moneyQuestion(t)) return { lane: 'local', reason: 'about his money: The local model reads Finance' };
   // deep research: Lupa splits it so no cloud AI sees the whole request, and writes the report itself (agent/legion.js)
   if (isLegion(t)) return { lane: 'local', reason: 'deep research: your local model leads a legion of cloud AIs' };
+  // a study plan for a class's exam: Lupa, signed in to his courses, reads what's on it there (agent/study-plan.js)
+  if (isStudy(t)) return up('local') ? { lane: 'local', reason: 'studying for a class: your local model reads the course (syllabus, schedule, review guide) and writes the plan' }
+    : privateMatch(t) ? { lane: 'local', reason: 'private: ' + privateMatch(t) + ' (a study plan waits for your local model)' }
+    : { lane: 'claude', reason: 'studying for a class: the local model isn’t answering, so a cloud AI reads the course in the browser (syllabus, schedule, review guide)' };
   // only he can do it (a video, a presentation): Lupa, signed in to his courses, reads the assignment and coaches him (agent/coach.js)
   if (isCoach(t)) return { lane: 'local', reason: 'only you can do this one: your local model reads the assignment and coaches you' };
   if (/(^|\s)#claude\b/i.test(title)) return { lane: 'claude', reason: 'tagged #claude' };
@@ -159,8 +164,11 @@ function routeTask(t) {
 // a #legion task is Lupa's even if it was on Claude before (its title was edited): only Lupa may see the whole request
 // a private word that arrives later (in a reply, or typed into a task already on Claude) moves the task to the mini PC
 // before the next run, whatever lane it had: only a #claude tag in the title keeps it on the cloud (same as routeTask)
-const laneOf = (t) => t.financeSeen || isLegion(t) || isCoach(t) ? 'local'
+// a coach task is Lupa's even if a cloud AI had it first, unless he picked a cloud AI on its pill himself. A study plan too, while
+// Lupa answers (it is signed in to his classes); with Lupa off, the cloud AIs do it in the agent browser (agent/skills/study-plan.md)
+const laneOf = (t) => t.financeSeen || isLegion(t) || ((isCoach(t) || (isStudy(t) && up('local'))) && !(t.lane === 'claude' && t.lanePick === 'claude')) ? 'local'
   : t.lane === 'claude' && !/(^|\s)#claude\b/i.test(String(t.title || '')) && privateMatch(t) ? 'local'
+  : t.lane === 'local' && t.lanePick !== 'local' && isStudy(t) && !up('local') && !privateMatch(t) ? 'claude'
   : t.lane === 'claude' || t.lane === 'local' ? t.lane : routeTask(t).lane;
 function isClaudeLane(t) { return laneOf(t) === 'claude'; }
 // the task's type and how likely the lane it went to is to do it well, for the "Routed" note: {type, note}

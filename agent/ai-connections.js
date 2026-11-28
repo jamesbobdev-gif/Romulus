@@ -212,6 +212,8 @@ handle('ai:usage', async (_e, refresh) => {
   await Promise.all(waits);
   return meter.snapshot();
 });
+// the readings as they stand, asking no AI anything: for sharing them with his other devices (renderer/js/usage-share.js)
+handle('ai:usage-peek', () => meter.snapshot());
 // the cloud AIs a task can be pinned to on the pill (t.cloud; its lane stays 'claude' on the server)
 const PINNED_CLOUDS = ['gemini', 'openai', 'openrouter', ...providers.COMPAT_IDS];
 function cloudReady(id) {

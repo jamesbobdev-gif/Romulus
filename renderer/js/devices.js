@@ -31,6 +31,8 @@ function devicesNeedBeat(doc,id,me,now){
   if(!e)return true;
   if(['name','kind','os','version'].some(function(k){ return (e[k]||null)!==(me[k]||null); }))return true;
   if(JSON.stringify(e.pub||null)!==JSON.stringify(me.pub||null))return true;
+  // its usage readings, for the devices that have none of their own (usage-share.js)
+  if(me.usage&&typeof usageShareChanged==='function'&&usageShareChanged(e.usage,me.usage,now))return true;
   return !(now-(e.seen||0)<DEVICES_BEAT_MS);
 }
 // the doc's devices, this one first, then the most recently seen
@@ -158,7 +160,9 @@ if(typeof module!=='undefined'&&module.exports){
     }
     let name=null; try{ name=localStorage.getItem(DEV_NAME_KEY); }catch(e){}
     const k=await deviceKeys();
-    return {name:(name||devState.info.name).slice(0,60),kind:devState.info.kind,os:devState.info.os,version:devState.info.version,pub:k.pub};
+    const me={name:(name||devState.info.name).slice(0,60),kind:devState.info.kind,os:devState.info.os,version:devState.info.version,pub:k.pub};
+    if(window.usageShared)me.usage=window.usageShared; // what this computer's Usage card reads (wiring.js)
+    return me;
   }
   window.deviceId=deviceId;
   window.deviceMe=deviceMe;

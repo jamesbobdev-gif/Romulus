@@ -27,6 +27,10 @@ if(window.desktop&&window.desktop.onAgentResults){
           // the lane it was first sent to and its type: agent/route-learn.js counts how each turns out (done, or switched off it)
           if(!t.routedLane)t.routedLane=lane; const ty=types[id]; if(ty&&ty.type&&!t.taskType)t.taskType=ty.type; delete t.routeAsk;
           if(reasons[id])agentSay(t,'sys','Routed → '+(lane==='local'?'The local model':'Claude')+' ('+reasons[id]+')'+(ty&&ty.note?'. Type '+ty.note:'')); }
+        // a study plan or coach task a cloud AI had goes to the local model, signed in to his classes (agent/local-lane.js);
+        // a study plan on the local model's lane goes to the cloud AIs while it's off (agent/runner.js)
+        else if(t.lane!==lane&&p&&Array.isArray(p.moved)&&p.moved.indexOf(id)>=0){ t.lane=lane; delete t.cloud; delete t.lanePick;
+          agentSay(t,'sys',lane==='local'?'Moved → The local model (it is signed in to your classes and reads the course itself)':'Moved → the cloud AIs (the local model is off; they read your class site in the browser)'); }
         changed=true;
       }
       // the AI the runner is asking now: the pill shows it, and the task stays with it from here on
@@ -99,7 +103,7 @@ function agentApplyResult(u){
       // the mini PC failed (not reachable, crashed): the cloud AIs take it from here, with his reply still on it
       if(u.pinned)applyPinned(t,u.pinned); // what "chapter 8" turned out to be, before anything else reads the task
       if(u.handoff){
-        t.lane='claude'; delete t.cloud; delete t.claimedBy; delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
+        t.lane='claude'; t.lanePick='claude'; delete t.cloud; delete t.claimedBy; // sticks: a Lupa that answers pings but can't run it doesn't take it back (routing.js laneOf) delete t.claimedAt; delete t.runFrom; delete liveText[t.id];
         t.status='queued'; t.waitUntil=null; t.stuck=null; t.shot=null;
         agentSay(t,'sys','The local model couldn’t finish ('+String(u.handoff).slice(0,160)+'): passing it to the next AI');
         return;

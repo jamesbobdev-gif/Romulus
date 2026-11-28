@@ -54,31 +54,37 @@ const PARTS = {
 const MUST = ['instructions', 'rubric', 'format', 'due_submit'];
 const NOTE_CHARS = 3500, DOSSIER_CHARS = 26000;
 
-const KEEP_NOTE_TOOL = { type: 'function', function: { name: 'keep_note', description: 'Keep what you found for his brief. Your memory only keeps the latest page, so note everything that matters as soon as you read it: the brief is written from these notes alone. Copy the important parts close to word for word.', parameters: { type: 'object', properties: {
-  part: { type: 'string', enum: Object.keys(PARTS) }, text: { type: 'string', description: 'what you found, close to the exact words' }, source: { type: 'string', description: 'the page address or file name it came from' } }, required: ['part', 'text'] } } };
-
-// the notes so far: {part: [{text, source}]}. → the result the model sees
-function keepNote(dossier, args) {
-  const part = PARTS[args && args.part] ? args.part : null;
-  const text = String((args && args.text) || '').trim();
-  if (!part) return 'part must be one of: ' + Object.keys(PARTS).join(', ');
-  if (!text) return 'Nothing to keep: put what you found in text.';
-  const used = dossierText(dossier).length;
-  if (used >= DOSSIER_CHARS) return 'Your notes are full. Answer now: the brief gets written from them.';
-  (dossier[part] = dossier[part] || []).push({ text: text.slice(0, Math.min(NOTE_CHARS, DOSSIER_CHARS - used)), source: String((args && args.source) || '').slice(0, 300) });
-  return 'Kept (' + part + '). ' + progress(dossier);
+/* notes kept part by part while it gathers, for a write-up done afterwards from them alone. Coach mode and
+   the study plan (agent/study-plan.js) each have their own parts: parts {name: what goes in it}, must: the
+   ones it has to look for, what: what gets written from them ("brief", "study plan") */
+function notebook(parts, must, what) {
+  const KEEP_NOTE_TOOL = { type: 'function', function: { name: 'keep_note', description: 'Keep what you found for his ' + what + '. Your memory only keeps the latest page, so note everything that matters as soon as you read it: the ' + what + ' is written from these notes alone. Copy the important parts close to word for word.', parameters: { type: 'object', properties: {
+    part: { type: 'string', enum: Object.keys(parts) }, text: { type: 'string', description: 'what you found, close to the exact words' }, source: { type: 'string', description: 'the page address or file name it came from' } }, required: ['part', 'text'] } } };
+  // the notes so far: {part: [{text, source}]}. → the result the model sees
+  function keepNote(dossier, args) {
+    const part = parts[args && args.part] ? args.part : null;
+    const text = String((args && args.text) || '').trim();
+    if (!part) return 'part must be one of: ' + Object.keys(parts).join(', ');
+    if (!text) return 'Nothing to keep: put what you found in text.';
+    const used = dossierText(dossier).length;
+    if (used >= DOSSIER_CHARS) return 'Your notes are full. Answer now: the ' + what + ' gets written from them.';
+    (dossier[part] = dossier[part] || []).push({ text: text.slice(0, Math.min(NOTE_CHARS, DOSSIER_CHARS - used)), source: String((args && args.source) || '').slice(0, 300) });
+    return 'Kept (' + part + '). ' + progress(dossier);
+  }
+  const missing = (dossier) => must.filter((p) => !(dossier[p] && dossier[p].length));
+  function progress(dossier) {
+    const have = Object.keys(parts).filter((p) => dossier[p] && dossier[p].length);
+    const need = missing(dossier), may = Object.keys(parts).filter((p) => !have.includes(p) && !must.includes(p));
+    return 'Notes so far: ' + (have.join(', ') || 'none') + '.' + (need.length ? ' Still to find: ' + need.join(', ') + '.' : '') +
+      (may.length ? ' If the course has them: ' + may.join(', ') + '.' : '');
+  }
+  function dossierText(dossier) {
+    return Object.keys(parts).filter((p) => dossier[p] && dossier[p].length)
+      .map((p) => '### ' + p + '\n' + dossier[p].map((n) => n.text + (n.source ? '\n(from: ' + n.source + ')' : '')).join('\n\n')).join('\n\n');
+  }
+  return { KEEP_NOTE_TOOL, keepNote, missing, progress, dossierText };
 }
-const missing = (dossier) => MUST.filter((p) => !(dossier[p] && dossier[p].length));
-function progress(dossier) {
-  const have = Object.keys(PARTS).filter((p) => dossier[p] && dossier[p].length);
-  const need = missing(dossier), may = Object.keys(PARTS).filter((p) => !have.includes(p) && !MUST.includes(p));
-  return 'Notes so far: ' + (have.join(', ') || 'none') + '.' + (need.length ? ' Still to find: ' + need.join(', ') + '.' : '') +
-    (may.length ? ' If the course has them: ' + may.join(', ') + '.' : '');
-}
-function dossierText(dossier) {
-  return Object.keys(PARTS).filter((p) => dossier[p] && dossier[p].length)
-    .map((p) => '### ' + p + '\n' + dossier[p].map((n) => n.text + (n.source ? '\n(from: ' + n.source + ')' : '')).join('\n\n')).join('\n\n');
-}
+const { KEEP_NOTE_TOOL, keepNote, missing, progress, dossierText } = notebook(PARTS, MUST, 'brief');
 
 // what Lupa is told on top of its usual rules (agent/local-prompt.md) while it gathers
 const RULES = `
@@ -144,4 +150,13 @@ const wantsLookAgain = (reply) => !String(reply || '').trim() || LOOK_AGAIN.test
 // he doesn't want emoji: what Lupa writes and the live box both go through this (agent/helpers.js)
 const { noEmoji } = require('./helpers');
 
-module.exports = { noEmoji, isCoach, topicOf, RULES, SCHOOL_HOSTS, PARTS, MUST, KEEP_NOTE_TOOL, keepNote, missing, progress, dossierText, WRITE_PROMPT, wantsLookAgain };
+// how agent/local-lane.js runs it: the live line while writing, the folder in Documents/Claude Agent, the last
+// line he gets, and the nudge when it's about to finish without a must-have part
+const WRITING = 'Writing your brief from everything it found (a few minutes on a local model)…';
+const FOLDER = 'Coach', KIND = 'coach'; // KIND: which notes these are, saved with them
+const AFTER = 'Reply with changes ("make it 2 minutes", "I want to use my job as the example") and it rewrites this; reply “look again” to go back through the course.';
+const LOOK_MORE = 'Look for the missing ones (the assignment page itself, its attachments with read_file, a View Rubric / Grading link, ' +
+  'the syllabus, announcements) and keep_note each. If one really isn\'t in the course, answer again and say where you looked.';
+
+module.exports = { noEmoji, isCoach, topicOf, RULES, SCHOOL_HOSTS, PARTS, MUST, notebook, KEEP_NOTE_TOOL, keepNote, missing, progress, dossierText, WRITE_PROMPT, wantsLookAgain,
+  WRITING, FOLDER, KIND, AFTER, LOOK_MORE, TAG, LEAD_IN };

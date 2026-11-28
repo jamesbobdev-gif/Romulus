@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('desktop', {
   aiCompatCheck: (id) => ipcRenderer.invoke('ai:compat-check', id),
   aiModels: (id) => ipcRenderer.invoke('ai:models', id),
   aiUsage: (refresh) => ipcRenderer.invoke('ai:usage', !!refresh),
+  aiUsagePeek: () => ipcRenderer.invoke('ai:usage-peek'),
   agentRetry: (ids) => ipcRenderer.invoke('agent:retry', ids),
   // documents from the Agent tab: an answer as a Word file, and files the mini PC's browser downloaded
   saveDoc: (title, text) => ipcRenderer.invoke('doc:save', title, text),

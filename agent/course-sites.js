@@ -54,7 +54,7 @@ function relevant(t, list, { coaching } = {}) {
 /* About to ask him for what's on the class site ("I need the actual questions", "What exactly do you need?"):
    Holo4 did that four times without opening the class. The nudge sends it there first, once. visited: the
    hosts it reached this run. → the nudge, or null */
-const ASKS_HIM = /\b(i need (more|the|you to (share|send|paste|give|provide|tell))|could you (please )?(share|provide|send|paste|give|tell)|can you (share|provide|send|paste)|what exactly|which (assignment|class|course|quiz|chapter)|more (details|info(rmation)?)( about)?)\b/i;
+const ASKS_HIM = /\b(i need (more|the|you to (share|send|paste|give|provide|tell))|could you (please )?(share|provide|send|paste|give|tell)|can you (share|provide|send|paste)|what exactly|which (assignments?|class(es)?|courses?|quiz(zes)?|chapters?|topics?|modules?)|(i need to know|(could|can) you (please )?let me know)[^.?!\n]{0,40}\b(chapters?|topics?|modules?|units?|material|assignments?|questions|syllabus|exam|final|midterm|quiz)|more (details|info(rmation)?)( about)?)\b/i;
 function lookFirst(note, { site, visited } = {}) {
   if (!ASKS_HIM.test(String(note || ''))) return null;
   const seen = [...(visited || [])];
