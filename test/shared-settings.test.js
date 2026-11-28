@@ -108,3 +108,19 @@ test('a very long reply stays on its own device, and odd names in the record are
     { v: 1, s: { 'draft:theirs': { v: 'b', at: 9 }, 'draft:': { v: 'c', at: 9 }, ['draft:' + 'y'.repeat(200)]: { v: 'd', at: 9 }, 'ai.order': { v: '[]', at: 2 } } });
   assert.deepStrictEqual(keys, ['draft:seen', 'draft:short', 'draft:theirs']);
 });
+
+test('the EBT alert amount and the Finance view choices are shared, under the names the app saves them by', () => {
+  const fs = require('fs'), path = require('path');
+  const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'renderer', 'js', f), 'utf8');
+  assert.ok(s.SHARED_KEYS.includes('ebt.low') && src('ebt-alerts.js').includes("EBT_LOW_KEY='ebt.low'"));
+  for (const k of ['finStockRange', 'finStockSort', 'finMixView', 'finStmt']) {
+    assert.ok(s.SHARED_KEYS.includes(k), k);
+    assert.ok(src('finance.js').includes("localStorage.setItem('" + k + "'"), k + ' is still what finance.js saves');
+  }
+  // what was already alerted, and which cards are open, stay per device
+  for (const k of ['ebt.alerted', 'finStocksOpen', 'fin.dealsTold']) assert.ok(!s.SHARED_KEYS.includes(k), k);
+  // a new amount set on the phone reaches the computer
+  const pc = s.sharedNote({}, { 'ebt.low': '25' }, s.SHARED_KEYS, NOW);
+  const r = s.sharedMerge(pc, { v: 1, s: { 'ebt.low': { v: '40', at: NOW + 5 } } }, s.SHARED_KEYS);
+  assert.deepStrictEqual(r.set, { 'ebt.low': '40' });
+});

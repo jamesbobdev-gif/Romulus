@@ -1,6 +1,6 @@
 /* Settings that are the same on every device: the look (light / dark / custom, the custom CSS, saved themes),
-   which tabs show, the Kitchen week plan and recent aims, the EBT switch, and the Romulus cloud always / never
-   answer. Each used to live in one device's localStorage, so a phone and a computer drifted apart.
+   which tabs show, the Kitchen week plan and recent aims, the EBT switch and its low-balance alert amount, how
+   the Finance tab was left looking, and the Romulus cloud always / never answer. Each used to live in one device's localStorage, so a phone and a computer drifted apart.
    They travel in their own row next to the personal list (<personal key>:settings,
    supabase/migrations/20261127_sync_settings_key.sql), sealed like the list when the lists are encrypted, as
    {v:1, s:{<localStorage key>: {v: the saved text or null, at: when it was last changed}}}.
@@ -16,7 +16,10 @@
 'use strict';
 
 const SHARED_KEYS=['tasks.themeMode.v1','tasks.theme.v1','tasks.themes.v1','tabsOff','tabsTouched',
-  'kitchen.week.v1','kitchen.week.slots.v1','kitchen.aims.v1','ebt.on','tasks.cloudAgent'];
+  'kitchen.week.v1','kitchen.week.slots.v1','kitchen.aims.v1','ebt.on','tasks.cloudAgent',
+  // the EBT low-balance alert amount, and how he left the Finance tab looking (chart range, stock sort, the mix
+  // and statement shown): choices, not money. Each is read when its card is drawn, so nothing has to redraw
+  'ebt.low','finStockRange','finStockSort','finMixView','finStmt'];
 const SHARED_TAB_KEYS=['tabsOff','tabsTouched']; // left out on a device set to keep its own tabs
 const SHARED_SFX=':settings';
 

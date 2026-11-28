@@ -10,7 +10,7 @@
    One of the page scripts in renderer/js: they share one global scope and load in the order index.html lists them. */
 'use strict';
 
-const EBT_SEEN_KEY='ebt.alerted', EBT_LOW_KEY='ebt.low', EBT_LOW_START=25;
+const EBT_SEEN_KEY='ebt.alerted', EBT_LOW_KEY='ebt.low', EBT_LOW_START=25; // ebt.low is the same on every device (shared-settings.js); what was alerted is per device
 const EBT_DEPOSIT_NOTE=880000001; // the phone's set-ahead deposit notification (one at a time)
 function ebtLow(){ try{ const v=localStorage.getItem(EBT_LOW_KEY); if(v==null)return EBT_LOW_START; const n=Number(v); return n>=0?n:EBT_LOW_START; }catch(e){ return EBT_LOW_START; } }
 function ebtPhoneNotes(){

@@ -1167,7 +1167,8 @@ function finEbtCard(d){
     if(tools.childNodes.length)box.appendChild(tools);
     box.appendChild(row); box.appendChild(msg);
   }
-  // the low-balance alert and the off switch: kept on this device, so they work while Finance is locked too
+  // the low-balance alert and the off switch: kept outside the vault, so they work while Finance is locked too
+  // (and shared with his other devices, shared-settings.js)
   const alertRow=el('div','fin-row fin-ebt-alert');
   alertRow.appendChild(el('span',null,'Alert me when it’s under $'));
   const low=finInput('text',''); low.inputMode='decimal'; low.value=String(ebtLow()); low.style.width='80px'; low.setAttribute('aria-label','Low balance alert, in dollars');
