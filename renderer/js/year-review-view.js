@@ -17,6 +17,32 @@ const YR_LIST_NAMES={personal:'To do',work:'Work',school:'School',agent:'Agent'}
 // the cleared done tasks the year still counts (wiring.js calls this when he clears them)
 function reviewLog(){ try{ return JSON.parse(localStorage.getItem(YR_LOG_KEY))||[]; }catch(e){ return []; } }
 function reviewLogCleared(tasks){ try{ localStorage.setItem(YR_LOG_KEY,JSON.stringify(reviewLogAdd(reviewLog(),tasks,Date.now()))); }catch(e){} }
+/* The log on his other devices too: only the device that clears a task writes it down, so without this the
+   review counts different tasks on each one. Its own row next to the personal list (':review', sealed when the
+   lists are), joined from every device (reviewLogMerge in year-review.js). sync.js calls this on each pass;
+   it never throws. → true when this device's log gained something */
+const YR_LOG_SFX=':review';
+const yrLogState={unsupported:false,err:null};
+async function reviewLogSync(){
+  const c=typeof syncState!=='undefined'&&syncState.cfg&&syncState.cfg.personal;
+  if(!c||!validProfile(c)||yrLogState.unsupported)return false;
+  const p={url:c.url,key:c.key,syncKey:c.syncKey+YR_LOG_SFX};
+  let changed=false;
+  try{
+    for(let attempt=0;attempt<4;attempt++){
+      const row=await syncPullRow(p);
+      const r=reviewLogMerge(reviewLog(),row.doc&&row.doc.log,Date.now());
+      if(r.changedLocal){ try{ localStorage.setItem(YR_LOG_KEY,JSON.stringify(r.log)); changed=true; }catch(e){} }
+      if(!r.changedRemote||(!row.doc&&!r.log.length))break;
+      if(await syncPushCas(p,{v:1,log:r.log},row.updatedAt))break;
+      if(attempt===0){ // refused outright: a database without the ':review' key yet (supabase/migrations/20261129_sync_review_key.sql)
+        try{ const u=await syncRpc(p,'sync_usage',{p_sync_key:await syncRowKey(p)}); if(Array.isArray(u)&&u.length===0){ yrLogState.unsupported=true; break; } }catch(e){}
+      }
+    }
+    yrLogState.err=null;
+  }catch(e){ yrLogState.err=String((e&&e.message)||e); }
+  return changed;
+}
 
 function yrNum(n){ return Math.round(n).toLocaleString(); }
 function yrPlural(n,one,many){ return yrNum(n)+' '+(Math.round(n)===1?one:many||one+'s'); }

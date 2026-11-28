@@ -1,7 +1,8 @@
 /* Year in review: the numbers behind the look back at a whole year (year-review-view.js draws them).
    Tasks: what he checked off (when: t.doneAt, set by setDone since 2026-11; older ones fall back to the last
    change, which for a done task is about when it was ticked), plus the ones he cleared away, kept in a small
-   log (reviewLogCleared) so "clear" doesn't wipe them from the year. Agent: the answers in each Agent task's
+   log (reviewLogCleared) so "clear" doesn't wipe them from the year; the log is joined across his devices
+   (reviewLogMerge; year-review-view.js syncs it), so a task cleared on the phone counts on the computer. Agent: the answers in each Agent task's
    conversation, by who wrote them. Hours: the Hours tab's entries. Money: the Finance tab's own income
    statement (finance-statements.js) over the year's months, so transfers, card payments and brokerage moves
    don't count and refunds come off spending, exactly as on the tab; net worth at each end of the year is
@@ -46,6 +47,31 @@ function reviewLogAdd(log,tasks,now){
   const have={}; (log||[]).forEach(function(e){ have[e.id]=1; });
   return (log||[]).concat((tasks||[]).filter(function(t){ return t&&t.done&&!have[t.id]; }).map(reviewLogEntry))
     .filter(function(e){ return new Date(e.at).getFullYear()>=keepFrom; });
+}
+/* the logs of two devices as one: each cleared task once, oldest first, nothing from before last year. Where
+   both have the same task, the copy with more Agent answers is kept (the row's, when they are level, so every
+   device settles on the same one). → {log, changedLocal, changedRemote} */
+function reviewLogMerge(local,remote,now){
+  const keepFrom=new Date(now||Date.now()).getFullYear()-1, by={};
+  const when=function(e){ return new Date(e.at).getTime(); };
+  const clean=function(e){
+    if(!e||typeof e!=='object'||e.id==null||String(e.id).length>80)return null;
+    if(!(new Date(e.at).getFullYear()>=keepFrom))return null;
+    const o={id:e.id,at:e.at,ws:yrWs(e),tag:e.tag?String(e.tag).slice(0,60):null,title:String(e.title||'').slice(0,120)};
+    if(e.due)o.due=String(e.due).slice(0,10);
+    const runs=(Array.isArray(e.runs)?e.runs:[]).filter(function(r){ return Array.isArray(r)&&r[0]; }).map(function(r){ return [r[0],String(r[1]||'claude').slice(0,30)]; });
+    if(runs.length)o.runs=runs;
+    return o;
+  };
+  const theirs=Array.isArray(remote)?remote:[], mine=Array.isArray(local)?local:[];
+  theirs.concat(mine).forEach(function(e){
+    const c=clean(e); if(!c)return;
+    const had=by[c.id];
+    if(!had||(c.runs||[]).length>(had.runs||[]).length)by[c.id]=c;
+  });
+  const log=Object.keys(by).map(function(k){ return by[k]; }).sort(function(a,b){ return when(a)-when(b)||String(a.id).localeCompare(String(b.id)); });
+  const s=JSON.stringify(log);
+  return {log:log,changedLocal:s!==JSON.stringify(mine),changedRemote:s!==JSON.stringify(theirs)};
 }
 // an Agent task's answers: [[at, who]] — who is 'local' (his own model) or the cloud that wrote it
 function yrRuns(t){
@@ -235,4 +261,4 @@ function reviewSample(year,now){
   return {tasks:tasks,log:log,hours:entries,accounts:accounts,kinds:{}};
 }
 
-if(typeof module!=='undefined'&&module.exports){ module.exports={reviewYearFor:reviewYearFor,tasksYear:tasksYear,agentYear:agentYear,hoursYear:hoursYear,moneyYear:moneyYear,reviewLogAdd:reviewLogAdd,reviewLogEntry:reviewLogEntry,reviewSample:reviewSample}; }
+if(typeof module!=='undefined'&&module.exports){ module.exports={reviewYearFor:reviewYearFor,tasksYear:tasksYear,agentYear:agentYear,hoursYear:hoursYear,moneyYear:moneyYear,reviewLogAdd:reviewLogAdd,reviewLogEntry:reviewLogEntry,reviewLogMerge:reviewLogMerge,reviewSample:reviewSample}; }

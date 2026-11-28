@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { reviewYearFor, tasksYear, agentYear, hoursYear, moneyYear, reviewLogAdd, reviewSample } = require('../renderer/js/year-review');
+const { reviewYearFor, tasksYear, agentYear, hoursYear, moneyYear, reviewLogAdd, reviewLogMerge, reviewSample } = require('../renderer/js/year-review');
 
 const at = (m, d, h) => new Date(2026, m, d, h || 12).getTime();
 const sec = (y, m, d) => Math.floor(new Date(y, m, d, 12).getTime() / 1000);
@@ -141,4 +141,29 @@ test('the made-up year is the same every time and covers every part', () => {
   assert.ok(m.in > m.out && m.places.length === 5 && m.biggest.name === 'Best Buy');
   const soFar = reviewSample(2026, new Date(2026, 9, 31).getTime());
   assert.ok(soFar.tasks.concat(soFar.log).every((x) => (x.doneAt || x.at || 0) <= new Date(2026, 9, 31).getTime() || !x.done && !x.at));
+});
+
+test('the cleared-task logs of two devices become one, and then neither has anything to add', () => {
+  const now = new Date(2026, 10, 28).getTime(), at = (m, d) => new Date(2026, m, d, 12).getTime();
+  const phone = [{ id: 'b', at: at(5, 2), ws: 'personal', tag: null, title: 'Cleared on the phone' }, { id: 'old', at: new Date(2024, 3, 1).getTime(), ws: 'personal', tag: null, title: 'Two years back' }];
+  const pc = [{ id: 'a', at: at(2, 9), ws: 'agent', tag: null, title: 'Cleared on the computer', runs: [[at(2, 9), 'claude']] }, { id: 'b', at: at(5, 2), ws: 'personal', tag: null, title: 'Cleared on the phone' }];
+  const first = reviewLogMerge(phone, null, now); // the phone puts its log up, without the one from before last year
+  assert.deepStrictEqual(first.log.map((e) => e.id), ['b']);
+  assert.deepStrictEqual([first.changedLocal, first.changedRemote], [true, true]);
+  const second = reviewLogMerge(pc, first.log, now); // the computer adds its own, oldest first
+  assert.deepStrictEqual(second.log.map((e) => e.id), ['a', 'b']);
+  assert.deepStrictEqual([second.changedLocal, second.changedRemote], [false, true]);
+  const row = JSON.parse(JSON.stringify(second.log));
+  const third = reviewLogMerge(first.log, row, now); // the phone takes the computer's
+  assert.deepStrictEqual([third.changedLocal, third.changedRemote], [true, false]);
+  for (const mine of [third.log, second.log]) { const r = reviewLogMerge(mine, row, now); assert.deepStrictEqual([r.changedLocal, r.changedRemote], [false, false]); }
+  // the year counts both, whichever device looks
+  assert.strictEqual(tasksYear([], third.log, 2026).total, 2);
+});
+
+test('the same cleared task on two devices is kept once, with the fuller record; junk in the row is left out', () => {
+  const now = new Date(2026, 10, 28).getTime(), t = new Date(2026, 4, 4, 12).getTime();
+  const r = reviewLogMerge([{ id: 'x', at: t, ws: 'agent', tag: null, title: 'Ask', runs: [[t, 'local'], [t + 5, 'claude']] }],
+    [{ id: 'x', at: t, ws: 'agent', tag: null, title: 'Ask', runs: [[t, 'local']] }, null, { at: t }, { id: 'y', at: 'not a date' }, { id: 'z', at: t, ws: 'elsewhere', title: 'T'.repeat(300) }], now);
+  assert.deepStrictEqual(r.log.map((e) => [e.id, (e.runs || []).length, e.ws, e.title.length]), [['x', 2, 'agent', 3], ['z', 0, 'personal', 120]]);
 });

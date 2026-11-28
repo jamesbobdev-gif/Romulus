@@ -577,6 +577,8 @@ async function syncOnce(){
   if(typeof kitchenSync==='function'&&await kitchenSync())anyLocal=true;
   // the settings every device shares (look, tabs, Kitchen week...): their own row, shared-settings.js (never throws)
   if(typeof sharedSync==='function'&&await sharedSync())anyLocal=true;
+  // the cleared tasks the Year in review still counts: their own row, joined from every device (year-review-view.js; never throws)
+  if(typeof reviewLogSync==='function')await reviewLogSync();
   // the family's shared lists and sent to-dos: their own row, merged and drawn by family.js
   if(typeof familySync==='function'){
     try{ await familySync(); }catch(e){ if(!firstErr)firstErr=e; }

@@ -636,7 +636,7 @@ $('syncOffBtn').addEventListener('click',function(){
    sync code sent somewhere it shouldn't have gone, a phone lost). Order: copy every row and read each copy
    back, only then switch this device, only then blank the old rows, so a failure half-way changes nothing.
    Lists with a key of their own (not made from the sync key) are not touched. */
-const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance',':kitchen',':settings'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros',':learned'],work:[],school:[]};
+const SYNC_SIDE_ROWS={personal:[':ideas',':hours',':updates',':finance',':kitchen',':settings',':review'],agent:[':prefs',':locked',':routing',':standing',':worker',':files',':files-gone',':macros',':learned'],work:[],school:[]};
 const SYNC_TOMBSTONE={v:1,tasks:[],tombstones:[],rotated:true}; // what an old device finds under the old key
 function syncRotateMoves(c,newKey){ // every row that follows the personal key: old profile → new profile
   const out=[];
@@ -647,6 +647,12 @@ function syncRotateMoves(c,newKey){ // every row that follows the personal key: 
       const v2=!!prof.v2; // an encrypted list stays encrypted, under the new key's lookup id and content key
       out.push({ws:ws,sfx:sfx,oldBase:prof.syncKey,newBase:nk,from:{url:prof.url,key:prof.key,syncKey:prof.syncKey+sfx,v2:v2},to:{url:prof.url,key:prof.key,syncKey:nk+sfx,v2:v2}});
     });
+    // the health totals (health.js) sit sealed under the personal key whatever the lists are, so they are not in
+    // the list above: they move too, and the old copy is blanked like the rest, so a device taken off sync
+    // can't go on reading it
+    if(ws==='personal'&&typeof healthProfileOf==='function'&&typeof syncCryptoOk==='function'&&syncCryptoOk()){
+      out.push({ws:ws,sfx:':health',oldBase:prof.syncKey,newBase:nk,from:healthProfileOf(prof,true),to:healthProfileOf({url:prof.url,key:prof.key,syncKey:nk},true)});
+    }
   });
   return out;
 }
