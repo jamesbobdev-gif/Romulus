@@ -70,7 +70,9 @@ async function performSyncOnce() {
     const want = target && onCalendar && !t.done && t.due ? target : null;
     try {
       if (t.googleEventId && refOf(t) !== want) {
-        try { await calendars.deleteEvent(refOf(t), t.googleEventId); } catch (e) {}
+        // a delete that didn't get through (offline, sign-in expired) keeps the id, so the next sync tries again;
+        // an event that is already gone counts as deleted (the providers' remove in agent/calendars.js)
+        await calendars.deleteEvent(refOf(t), t.googleEventId);
         t.googleEventId = null; t.calRef = null;
         changed.push(t);
       }

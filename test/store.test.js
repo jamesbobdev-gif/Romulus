@@ -262,3 +262,15 @@ test('a Linux computer that is not the worker, and every other system, keep the 
   await store.writeConfig(workerCfg);
   assert.match(disk(win).sync.personal.key, /^enc:v1:/);
 });
+
+test('every secret stays sealed in the file however many values have been sealed in one run', async () => {
+  const dir = windows(asyncSafe());
+  const file = path.join(dir, 'config.json');
+  for (let i = 0; i < 2100; i++) {
+    store.writeConfig({ ai: { anthropicKey: 'STATIC-EXAMPLE-KEY' }, calAccounts: [{ id: 'g1', tokens: { access_token: 'token-' + i, refresh_token: 'STATIC-EXAMPLE-REFRESH' } }] });
+    await store.flush();
+    const raw = fs.readFileSync(file, 'utf8');
+    assert.ok(!/STATIC-EXAMPLE|token-\d/.test(raw), 'write ' + i + ' left a secret readable');
+  }
+  assert.strictEqual(store.readConfig().ai.anthropicKey, 'STATIC-EXAMPLE-KEY');
+});

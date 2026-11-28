@@ -432,11 +432,11 @@ if(typeof document!=='undefined'){
     const mine=state.tasks.filter(function(t){ return taskWs(t)==='agent'&&t.cloudRun; });
     if(!p||!mine.length||cloudSchedUI.busy)return; // nothing scheduled: the server is never asked
     cloudSchedUI.busy=true;
+    let changed=false;
     try{
       await cloudAgRefresh(p);
       const key=await cloudAgId(p), tz=cloudSchedTz(), byId={};
       for(const t of mine)byId[await cloudSchedId(t.id)]=t;
-      let changed=false;
       if(mine.some(function(t){ return t.cloudRun.sent; }))changed=await cloudSchedCollect(p,key,byId);
       const plan=cloudSchedPlan(mine,cloudAgUI.privateWords,Date.now(),tz);
       plan.clear.forEach(function(t){ delete t.cloudRun; changed=true; });
@@ -453,9 +453,9 @@ if(typeof document!=='undefined'){
           for(const t of plan.put){ await cloudSchedSend(p,key,pub,t,prefs,tz); changed=true; }
         }
       }
-      if(changed){ touch(); if(state.activeTab==='agent')render(); }
     }catch(e){} // no connection: the next tick tries again
-    finally{ cloudSchedUI.busy=false; }
+    // saved also when a later call failed: a collected answer is no longer on the server
+    finally{ cloudSchedUI.busy=false; if(changed){ touch(); if(state.activeTab==='agent')render(); } }
   }
   document.addEventListener('visibilitychange',function(){ if(!document.hidden)cloudSchedTick(); });
 

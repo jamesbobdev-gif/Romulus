@@ -212,8 +212,10 @@ async function localStatus({ direct = false } = {}) {
 // his latest reply is a yes to submitting what the mini PC last asked about
 function localApproved(t) {
   const hist = Array.isArray(t.history) ? t.history : [];
-  const lastYou = String(t.reply || (hist.filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
-  const asked = (hist.filter((h) => h.who === 'claude' && h.lane === 'local').slice(-1)[0] || {}).text || '';
+  // with no reply waiting, only what he wrote after that ask counts (agent-browser.js saidYes)
+  const askAt = hist.map((h) => h.who === 'claude' && h.lane === 'local').lastIndexOf(true);
+  const lastYou = String(t.reply || (hist.slice(askAt + 1).filter((h) => h.who === 'you').slice(-1)[0] || {}).text || '');
+  const asked = (hist[askAt] || {}).text || '';
   // Holo4 writes the ask its own ways: Reply **yes**, Reply "yes", **Reply “yes” to submit it.**
   return helpers.isYesTo(lastYou, asked) && /reply\s*[*"“”'‘’]*\s*yes\b/i.test(asked);
 }

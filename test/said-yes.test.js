@@ -22,3 +22,14 @@ test('not a yes: a hold, a question, an ask that wanted no yes, or an order ask 
   assert.ok(!saidYes(task('The cart is ready. Reply **yes** to place the order.', 'yes, cancel it')));
   assert.ok(!saidYes(task(cancel, '')));
 });
+
+test('a yes to an earlier ask does not carry over to a later one', () => {
+  const order = 'The cart is ready. Reply **yes** to place the order.';
+  const again = 'Three replies are drafted. Reply **yes** to send them.';
+  const hist = [{ who: 'claude', text: order, at: 1 }, { who: 'you', text: 'yes', at: 2 }, { who: 'claude', text: again, at: 3 }];
+  assert.ok(!saidYes({ history: hist }), 'a repeat that starts with no reply');
+  assert.ok(!saidYes({ history: hist, reply: null }));
+  assert.ok(saidYes({ history: hist, reply: 'yes' }), 'his new reply counts');
+  assert.ok(saidYes({ history: hist.concat({ who: 'you', text: 'yes', at: 4 }) }));
+  assert.ok(saidYes({ history: hist.concat({ who: 'you', text: 'yes', at: 4 }, { who: 'sys', text: 'Moved to Claude', at: 5 }) }));
+});

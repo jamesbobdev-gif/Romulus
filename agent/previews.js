@@ -52,6 +52,15 @@ async function hiddenWindowPreview(url) {
   const w = ctx.newHiddenWindow({ show: false, width: 1200, height: 900, webPreferences: { sandbox: true, contextIsolation: true, partition: 'preview-' + Date.now() + '-' + previewWindows } });
   w.webContents.setAudioMuted(true);
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // it only reads the page's picture: no camera, microphone, location or any other permission (Electron grants them
+  // all when nothing answers), no downloads, and it stays on public https pages wherever the page sends it
+  const ses = w.webContents.session;
+  ses.setPermissionRequestHandler((_wc, _what, answer) => answer(false));
+  ses.setPermissionCheckHandler(() => false);
+  ses.on('will-download', (e) => e.preventDefault());
+  const stay = (e, to) => { const next = String(to || e.url || ''); if (!/^https:\/\//i.test(next) || !isPublicUrl(next)) e.preventDefault(); };
+  w.webContents.on('will-navigate', stay);
+  w.webContents.on('will-redirect', stay);
   try {
     await Promise.race([w.loadURL(url, { userAgent: PREVIEW_UA }).catch(() => {}), new Promise((r) => setTimeout(r, 15000))]);
     for (let i = 0; i < 16; i++) { // a bot check takes a few seconds to wave the page through
@@ -191,4 +200,4 @@ async function kitchenPictureFor(_e, name) {
 }
 const handlers = { 'kitchen:picture': kitchenPicture, 'kitchen:pictureFor': kitchenPictureFor };
 
-module.exports = { init, handlers, PREVIEW_UA, absHttps, pagePreviewImage, enrichOption, instacartPick, amazonAsinPicture };
+module.exports = { init, handlers, PREVIEW_UA, absHttps, pagePreviewImage, hiddenWindowPreview, enrichOption, instacartPick, amazonAsinPicture };

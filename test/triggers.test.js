@@ -137,3 +137,16 @@ test('followUp: what a run may arm on its case', () => {
   assert.strictEqual(tr.followUp([{ on: '2026-11-14', why: 'x' }], now), null);
   assert.ok(tr.clean(tr.followUp({ on: '2026-11-14', why: 'x' }, now))); // what it arms is a trigger the app acts on
 });
+
+test('calendar: an all-day event is that day here, not midnight UTC', () => {
+  const t = { id: 'c2', ws: 'agent', trigger: { kind: 'calendar', what: 'rent due', before: 2 } };
+  const events = [{ id: 'd1', allDay: true, start: '2026-11-30', end: '2026-12-01', title: 'Rent due' }];
+  const at = (h, m, day = 30) => new Date(2026, 10, day, h, m).getTime(); // local time, whatever zone the test runs in
+  assert.deepStrictEqual(tr.calendarHits([t], events, { now: at(21, 0, 29) }), [], 'more than two hours before the day starts');
+  assert.strictEqual(tr.calendarHits([t], events, { now: at(22, 30, 29) }).length, 1);
+  const hit = tr.calendarHits([t], events, { now: at(8, 0) });
+  assert.strictEqual(hit.length, 1, 'a computer switched on that morning still fires it');
+  assert.match(hit[0].what, /on Mon, Nov 30$/);
+  assert.deepStrictEqual(tr.calendarHits([t], events, { now: at(8, 0, 31) }), [], 'over the next day');
+  assert.deepStrictEqual(tr.calendarHits([t], events, { now: at(8, 0), fired: { c2: [hit[0].key] } }), []);
+});

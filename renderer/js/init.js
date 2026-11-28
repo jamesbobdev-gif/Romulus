@@ -67,7 +67,9 @@ store.load().then(async function(data){
         if(t.goalId){ out.goalId=t.goalId; out.goalStep=t.goalStep||null; if(t.goalWait)out.goalWait=true; }
         if(t.buyEmail&&t.buyEmail.url)out.buyEmail=t.buyEmail; // chosen product → desktop emails the buy link
         // lane = which worker gets it ('claude' here, 'local' = the mini PC); a worker claims a task before starting
-        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane; if(t.routedLane==='claude'||t.routedLane==='local')out.routedLane=t.routedLane; if(typeof t.taskType==='string'&&t.taskType)out.taskType=t.taskType.slice(0,40); if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
+        if(t.financeSeen)out.financeSeen=true; // the local model read Finance for it: it stays off the cloud AIs after a restart too (agent/routing.js)
+        if(t.lanePick==='claude'||t.lanePick==='local')out.lanePick=t.lanePick; // the lane he, or a handoff, put it on (agent/routing.js laneOf)
+        if(t.lane==='claude'||t.lane==='local')out.lane=t.lane;if(t.routedLane==='claude'||t.routedLane==='local')out.routedLane=t.routedLane; if(typeof t.taskType==='string'&&t.taskType)out.taskType=t.taskType.slice(0,40); if((PINNED_CLOUDS.indexOf(t.cloud)!==-1||t.cloud==='claude')&&out.lane==='claude')out.cloud=t.cloud; if(t.claimedBy){ out.claimedBy=t.claimedBy; out.claimedAt=t.claimedAt||null; }
         // this computer runs the Claude lane: its own run cut off by a restart goes back in the queue
         // (the desktop also coordinates the mini PC lane, so its interrupted runs go back too)
         // only its own runs, or one nobody has touched for 3 hours: a computer opening at 19:53 put the mini PC's six running tasks back to queued

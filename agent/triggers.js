@@ -149,13 +149,15 @@ function cleanMail(answer, pairs) {
 
 /* ---------- calendar ---------- */
 // events: [{id, start, end, title, where, notes}] → [{id: task id, key, what}] for tasks whose window has opened
+const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 function calendarHits(tasks, events, { now = Date.now(), fired = {} } = {}) {
   const out = [];
   for (const t of tasks) {
     const tr = clean(t.trigger); if (!tr || tr.kind !== 'calendar') continue;
     const ws = words(tr.what), done = new Set(fired[t.id] || []);
-    const ev = (Array.isArray(events) ? events : []).map((e) => Object.assign({ startMs: new Date(e.start).getTime() }, e))
-      .filter((e) => !isNaN(e.startMs) && e.startMs > now - 60 * 60 * 1000 && now >= e.startMs - tr.before * 3600 * 1000)
+    // an all-day event's start is a bare date (agent/calendars.js): that day here, from midnight, and it counts all day
+    const ev = (Array.isArray(events) ? events : []).map((e) => { const day = DAY_ONLY.test(e.start); return Object.assign({ day, startMs: new Date(day ? e.start + 'T00:00:00' : e.start).getTime() }, e); })
+      .filter((e) => !isNaN(e.startMs) && e.startMs > now - (e.day ? 24 : 1) * 60 * 60 * 1000 && now >= e.startMs - tr.before * 3600 * 1000)
       .filter((e) => enough(ws, [e.title, e.where, e.notes].join(' ')))
       .filter((e) => !done.has('cal:' + e.id + ':' + e.startMs))
       .sort((a, b) => a.startMs - b.startMs)[0];
@@ -163,7 +165,7 @@ function calendarHits(tasks, events, { now = Date.now(), fired = {} } = {}) {
     const when = new Date(ev.startMs);
     out.push({ id: t.id, kind: 'calendar', key: 'cal:' + ev.id + ':' + ev.startMs,
       what: 'Calendar: "' + String(ev.title || '').replace(/\s+/g, ' ').slice(0, 100) + '" on ' + when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
-        ' at ' + when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + (ev.where ? ' (' + String(ev.where).slice(0, 60) + ')' : ''), link: null });
+        (ev.day ? '' : ' at ' + when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })) + (ev.where ? ' (' + String(ev.where).slice(0, 60) + ')' : ''), link: null });
   }
   return out;
 }
