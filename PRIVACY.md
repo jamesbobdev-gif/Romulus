@@ -17,8 +17,10 @@ goes only to services *you* connect, under your own accounts and keys.
   with the operating system's own encryption (DPAPI, Keychain or the Linux keyring).
 - Finance (bank data and receipts): encrypted with AES-256-GCM under a passphrase that is never saved, and on
   a phone under a key released only by your fingerprint. It is never sent to a cloud AI. When sync is on, the
-  SimpleFIN access link alone (no bank data) is kept in your sync storage so your other computers can connect,
-  encrypted under that same passphrase, which never leaves the computer you type it on.
+  SimpleFIN access link and a copy of your Finance data (accounts, history, your fixed and variable marks, EBT
+  settings, purchases read from email) are kept in your sync storage so all your own devices show the same
+  thing. Both are encrypted on the device, before they leave it, under a key made from that same passphrase,
+  which never leaves the device you type it on. The sync server holds only ciphertext it cannot open.
 - The Locked profile (resume, address, ID numbers for forms): read only by a local AI model you run yourself.
 - "Hey Romulus" on Android listens for its wake word entirely on the phone, only while the screen is on. No
   audio is recorded or sent anywhere. The speech model is downloaded once from alphacephei.com.

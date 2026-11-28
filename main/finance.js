@@ -17,6 +17,10 @@
      Finance tab keeps that sealed copy in the <personal key>:finance sync row (end-to-end encrypted again
      when the lists are). Someone holding the sync key (a paired device, the Claude connector) still needs
      the passphrase to open it; finance:setupShared opens it on the other computer.
+     Since 2026-11-28 (he asked for Finance to be the same on every device) the accounts, their history, his
+     fixed/variable marks, the EBT settings and the purchases read from email go in that row too
+     (renderer/js/finance-sync.js, finance:sync), sealed under the same passphrase key before they leave here.
+     Still nothing a cloud AI, the sync server or a device without the passphrase can read.
    - It only ever talks to simplefin.org over HTTPS, never follows redirects, and the log never gets amounts,
      names or the link.
    - Purchase emails (main/finance-mail.js) come the other way: his Gmail's receipts go to his AIs (in his order, no tools) to be read,
@@ -36,6 +40,7 @@ const hello = require('./finance-hello');
 const billsLib = require('../renderer/js/finance-bills');
 const insights = require('../renderer/js/finance-insights');
 const { ebtClean, ebtReceiptAnswer, EBT_RECEIPT_ASK } = require('../renderer/js/finance-ebt');
+const finSync = require('../renderer/js/finance-sync');
 // the SimpleFIN reading the phone shares (renderer/js/finance-core.js)
 const { checkSimplefinUrl, cleanAccounts, mergeAccounts: mergeWith, downloadAccounts, txt } = require('../renderer/js/finance-core');
 
@@ -309,6 +314,14 @@ function okShareBox(b) {
   return !!(b && b.v === 1 && b.kdf === 'scrypt' && b.N === KDF.N && b.r === KDF.r && b.p === KDF.p &&
     [b.salt, b.iv, b.tag, b.data].every((x) => typeof x === 'string' && x.length && x.length <= 4096));
 }
+/* the key the shared box is sealed under, which also seals the synced copy of the data (finance:sync): this
+   vault's own key when the box was made or opened here (the same salt), or the one kept in the vault when he
+   typed another device's passphrase (finance:adoptShare). null: this computer can't read the shared copy yet. */
+function shareKey() {
+  if (!key || !vault.shared) return null;
+  if (vault.shareKey) return Buffer.from(vault.shareKey, 'base64');
+  return vault.shared.salt === salt.toString('base64') ? key : null;
+}
 function wrongTry() {
   wrong++;
   if (wrong >= 3) waitUntil = Date.now() + Math.min(300, 2 ** (wrong - 3) * 5) * 1000;
@@ -380,7 +393,7 @@ async function takeLockedEbt() {
   await ebtWrites;
   const rec = await readEbtFile();
   if (!key || !rec.pending) return;
-  vault.ebt = ebtClean(rec);
+  vault.ebt = ebtClean(rec); vault.ebtAt = Date.now();
   await writeVault();
   log('ebt: took the settings saved while locked');
 }
@@ -556,6 +569,50 @@ const handlers = {
     const clean = { v: 1, kdf: 'scrypt', N: box.N, r: box.r, p: box.p, salt: box.salt, iv: box.iv, tag: box.tag, data: box.data }; // nothing else the row carried
     return startVault(inside.u, s, k, clean);
   },
+  /* Finance the same on every device (renderer/js/finance-sync.js). rowBox: the shared link's box in the :finance
+     row; remote: the sealed copy of the data next to it, or null. What's there is merged into the vault, and a new
+     sealed copy comes back when the row is missing something this computer has. needKey: the row is locked with a
+     passphrase this computer was never given (finance:adoptShare). */
+  'finance:sync': async (_e, rowBox, remote) => {
+    if (!key) return { ok: false, error: 'locked' };
+    const held = okShareBox(rowBox) && finSync.sameBox(rowBox, vault.shared) ? shareKey() : null;
+    if (!held) return { ok: false, needKey: true };
+    const k = key, sk = Buffer.from(held); // a copy: locking wipes the vault key, which this may be
+    try {
+      const theirs = remote ? await finSync.read(sk, remote) : null;
+      if (key !== k) return { ok: false, error: 'locked' }; // it locked meanwhile: nothing is taken
+      const r = finSync.step(vault, theirs, Date.now());
+      if (r.changed) {
+        await writeVault();
+        await keepBills(); await keepEbt();
+        if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');
+        log('took in changes from another device');
+      }
+      return { ok: true, changed: r.changed, box: r.push ? await finSync.seal(sk, r.state) : null };
+    } catch (e) { return { ok: false, error: txt(e.message, 200) }; }
+    finally { sk.fill(0); }
+  },
+  // the passphrase of the device that made the row's box, typed here once: its key is kept in this vault, and
+  // this computer shares under that box from now on (its own SimpleFIN link stays as it is)
+  'finance:adoptShare': async (_e, box, passphrase) => {
+    if (!key) return { ok: false, error: 'locked' };
+    if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + status().waitSeconds + ' seconds.' };
+    if (!okShareBox(box)) return { ok: false, error: 'The shared Finance copy can’t be read.' };
+    stillHere();
+    const k = key;
+    const sk = await deriveKey(passphrase, Buffer.from(box.salt, 'base64'), box);
+    let inside;
+    try { inside = decrypt(box, sk, SHARE_AAD); }
+    catch (e) { sk.fill(0); wrongTry(); return { ok: false, error: 'Wrong passphrase. Use the Finance passphrase from your other device.' }; }
+    if (!inside || !checkSimplefinUrl(inside.u)) { sk.fill(0); return { ok: false, error: 'The shared Finance copy can’t be read.' }; }
+    wrong = 0; waitUntil = 0;
+    if (key !== k) { sk.fill(0); return { ok: false, error: 'locked' }; }
+    vault.shared = box; vault.shareKey = sk.toString('base64');
+    sk.fill(0);
+    await writeVault();
+    log('took the shared passphrase from another device');
+    return { ok: true };
+  },
   'finance:unlock': async (_e, passphrase) => {
     if (key) { stillHere(); return { ok: true }; }
     if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + status().waitSeconds + ' seconds.' };
@@ -628,6 +685,7 @@ const handlers = {
     if (kind == null) delete kinds[k]; else kinds[k] = kind;
     if (Object.keys(kinds).length > 2000) return { ok: false, error: 'too many' };
     vault.kinds = kinds;
+    vault.kindsAt = Object.assign({}, vault.kindsAt, { [k]: Date.now() }); // when, so his other devices take the later change (finance-sync.js)
     await writeVault();
     await keepBills();
     return { ok: true, kinds };
@@ -642,7 +700,7 @@ const handlers = {
       return { ok: true, ebt: e, locked: true };
     }
     stillHere();
-    vault.ebt = ebtClean(ebt);
+    vault.ebt = ebtClean(ebt); vault.ebtAt = Date.now();
     await writeVault();
     await keepEbt();
     if (ctx.sendToRenderer) ctx.sendToRenderer('finance:updated', 'ebt');

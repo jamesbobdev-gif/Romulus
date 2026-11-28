@@ -158,6 +158,8 @@ contextBridge.exposeInMainWorld('desktop', {
   financeSetupFromPair: (text, passphrase) => ipcRenderer.invoke('finance:setupFromPair', text, passphrase),
   financeShareBox: () => ipcRenderer.invoke('finance:shareBox'),
   financeSetupShared: (box, passphrase) => ipcRenderer.invoke('finance:setupShared', box, passphrase),
+  financeSync: (rowBox, remote) => ipcRenderer.invoke('finance:sync', rowBox, remote),
+  financeAdoptShare: (box, passphrase) => ipcRenderer.invoke('finance:adoptShare', box, passphrase),
   financeBills: () => ipcRenderer.invoke('finance:bills'),
   onFinanceLocked: (cb) => ipcRenderer.on('finance:locked', (_event, why) => cb(why)),
   onFinanceUpdated: (cb) => ipcRenderer.on('finance:updated', (_event, what) => cb(what)),

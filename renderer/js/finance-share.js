@@ -79,31 +79,40 @@
       [b.salt, b.iv, b.tag, b.data].every(function (x) { return typeof x === 'string' && x.length && x.length <= 4096; }));
   }
   async function aesKey(raw) { return subtle().importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']); }
-  // box + passphrase → the link inside, or null on a wrong passphrase (the GCM tag doesn't match)
-  async function finShareOpen(box, passphrase) {
+  /* box + passphrase → {u: the link inside, key: the box's key as base64}, or null on a wrong passphrase (the GCM
+     tag doesn't match). The phone keeps the key in its vault: it also seals the synced copy of the data
+     (finance-sync.js), and the phone has no passphrase to make it from again. */
+  async function finShareUnlock(box, passphrase) {
     if (!finShareOk(box)) throw new Error('bad box');
     const raw = await finScrypt(passphrase, unb64(box.salt), box);
     const data = unb64(box.data), tag = unb64(box.tag), both = new Uint8Array(data.length + tag.length);
     both.set(data); both.set(tag, data.length);
-    let plain;
-    try { plain = await subtle().decrypt({ name: 'AES-GCM', iv: unb64(box.iv), additionalData: new TextEncoder().encode(FIN_SHARE_AAD) }, await aesKey(raw), both); }
+    let plain, key;
+    try { plain = await subtle().decrypt({ name: 'AES-GCM', iv: unb64(box.iv), additionalData: new TextEncoder().encode(FIN_SHARE_AAD) }, await aesKey(raw), both); key = b64(raw); }
     catch (e) { return null; } finally { raw.fill(0); }
     const o = JSON.parse(new TextDecoder().decode(plain));
-    return o && typeof o.u === 'string' ? o.u : null;
+    return o && typeof o.u === 'string' ? { u: o.u, key: key } : null;
   }
-  // a new box around the link, under a passphrase he picks here (a phone that was paired with a code has none)
-  async function finShareMake(accessUrl, passphrase) {
+  // the link alone
+  async function finShareOpen(box, passphrase) {
+    const got = await finShareUnlock(box, passphrase);
+    return got ? got.u : null;
+  }
+  // a new box around the link, under a passphrase he picks here (a phone that was paired with a code has none) → {box, key}
+  async function finShareMakeKeyed(accessUrl, passphrase) {
     if (String(passphrase || '').length < FIN_SHARE_MIN) throw new Error('Use a passphrase of at least ' + FIN_SHARE_MIN + ' characters.');
     const salt = globalThis.crypto.getRandomValues(new Uint8Array(16)), iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
     const raw = await finScrypt(passphrase, salt);
-    let both;
-    try { both = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: new TextEncoder().encode(FIN_SHARE_AAD) }, await aesKey(raw), new TextEncoder().encode(JSON.stringify({ u: accessUrl })))); }
+    let both, key;
+    try { both = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: new TextEncoder().encode(FIN_SHARE_AAD) }, await aesKey(raw), new TextEncoder().encode(JSON.stringify({ u: accessUrl })))); key = b64(raw); }
     finally { raw.fill(0); }
-    return { v: 1, kdf: 'scrypt', N: FIN_SHARE_KDF.N, r: FIN_SHARE_KDF.r, p: FIN_SHARE_KDF.p, salt: b64(salt),
-      iv: b64(iv), tag: b64(both.subarray(both.length - 16)), data: b64(both.subarray(0, both.length - 16)) };
+    return { key: key, box: { v: 1, kdf: 'scrypt', N: FIN_SHARE_KDF.N, r: FIN_SHARE_KDF.r, p: FIN_SHARE_KDF.p, salt: b64(salt),
+      iv: b64(iv), tag: b64(both.subarray(both.length - 16)), data: b64(both.subarray(0, both.length - 16)) } };
   }
+  async function finShareMake(accessUrl, passphrase) { return (await finShareMakeKeyed(accessUrl, passphrase)).box; }
 
-  const FinShare = { KDF: FIN_SHARE_KDF, MIN: FIN_SHARE_MIN, scrypt: finScrypt, ok: finShareOk, open: finShareOpen, make: finShareMake };
+  const FinShare = { KDF: FIN_SHARE_KDF, MIN: FIN_SHARE_MIN, scrypt: finScrypt, ok: finShareOk, open: finShareOpen, make: finShareMake,
+    unlock: finShareUnlock, makeKeyed: finShareMakeKeyed };
   if (typeof module !== 'undefined' && module.exports) module.exports = FinShare;
   else window.FinShare = FinShare;
 })();

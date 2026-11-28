@@ -34,7 +34,7 @@ function load(opts) {
     crypto: globalThis.crypto, TextEncoder, TextDecoder, btoa, atob, clearTimeout,
     // the 10-minute lock mustn't keep the test running; the short pauses inside scrypt must, or the loop can end mid-way
     setTimeout: (f, ms) => { const t = setTimeout(f, ms); if (ms > 1000) t.unref(); return t; },
-    URL, AbortSignal, console,
+    URL, AbortSignal, console, CompressionStream, DecompressionStream,
   };
   ctx.window.Capacitor = { isPluginAvailable: (n) => n === 'FinanceVault',
     nativePromise: async (p, m, o) => { const f = plugin[m]; if (!f) throw new Error('no ' + m); return f(o || {}); } };
@@ -42,6 +42,7 @@ function load(opts) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/util.js'), 'utf8'), ctx); // first, as on the page
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-core.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-share.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../renderer/js/finance-sync.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../mobile/finance-phone.js'), 'utf8'), ctx);
   return { api: ctx.window.phoneFinance, store, calls, ctx, listeners };
 }
@@ -157,6 +158,39 @@ test('the phone connects with the computer’s shared link and its passphrase, a
   const got = await api.financeShareBox();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(got.box)), box, 'the same copy goes back to the row');
   assert.strictEqual((await api.financeSetupShared({ ...box, N: 2 ** 30 }, 'x')).ok, false, 'a made-up box is refused before any scrypt');
+});
+
+test('the phone takes the computer’s history, marks and purchases from the row, and gives back what it has', async () => {
+  const Y = require('../renderer/js/finance-sync');
+  const box = computerBox(ACCESS, 'correct horse battery');
+  const key = crypto.scryptSync('correct horse battery', Buffer.from(box.salt, 'base64'), 32, { N: 2 ** 17, r: 8, p: 1, maxmem: 256 * 1024 * 1024 });
+  const old = Math.floor(Date.now() / 1000) - 200 * 86400;
+  const theirs = await Y.seal(key, { v: 1, fetchedAt: 5, kinds: { 'shell oil': 'fixed' }, kindsAt: { 'shell oil': 9 }, ebt: { balance: 40, at: 7 }, ebtAt: 8,
+    receipts: [{ id: 'r1', at: Date.now() - 1000 }],
+    accounts: [{ id: 'a1', name: 'Checking', balance: 1, transactions: [{ id: 'old', posted: old, amount: -9, description: 'Hardware store', pending: false }] }] });
+  // paired with a code: no passphrase yet, so it says so, and takes the row's once
+  const coded = load({ scanned: pairPayload(ACCESS, {}) });
+  await coded.api.financePair();
+  assert.strictEqual((await coded.api.financeSync(box, theirs)).needKey, true);
+  assert.strictEqual((await coded.api.financeAdoptShare(box, 'wrong passphrase!')).ok, false);
+  assert.strictEqual((await coded.api.financeAdoptShare(box, 'correct horse battery')).ok, true);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify((await coded.api.financeShareBox()).box)), box);
+  const r = await coded.api.financeSync(box, theirs);
+  assert.deepStrictEqual([r.ok, r.changed, !!r.box], [true, true, true], r.error);
+  const d = await coded.api.financeData();
+  assert.deepStrictEqual(Array.from(d.accounts[0].transactions, (t) => t.id), ['t1', 'old']);
+  assert.strictEqual(d.accounts[0].balance, 12.5, 'the phone’s download is the later one');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([d.kinds, d.ebt, d.receipts.map((x) => x.id)])), [{ 'shell oil': 'fixed' }, { balance: 40, at: 7 }, ['r1']]);
+  assert.ok(!coded.store.file.includes('Hardware'), 'kept encrypted on the phone');
+  const back = await Y.read(key, JSON.parse(JSON.stringify(r.box)));
+  assert.deepStrictEqual(back.accounts[0].transactions.map((t) => t.id), ['t1', 'old'], 'the computer opens what the phone sends');
+  assert.deepStrictEqual([(await coded.api.financeSync(box, r.box)).changed, (await coded.api.financeSync(box, r.box)).box], [false, null]);
+  // connected with the passphrase: the key was kept then, nothing more to type
+  const typed = load({});
+  await typed.api.financeSetupShared(box, 'correct horse battery');
+  assert.strictEqual((await typed.api.financeSync(box, theirs)).changed, true);
+  await typed.api.financeLock();
+  assert.strictEqual((await typed.api.financeSync(box, theirs)).error, 'locked');
 });
 
 test('a phone paired with a code has no box until he picks a passphrase; the computer opens what it makes', async () => {

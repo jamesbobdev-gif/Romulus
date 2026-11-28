@@ -8,9 +8,12 @@
    Or, with no code: the SimpleFIN link a computer keeps in the :finance sync row, opened with his Finance
    passphrase (renderer/js/finance-share.js). A phone paired with a code can make that row's copy itself under a
    passphrase he picks, so his computers connect without a new setup token.
+   The same on every device: the accounts and their history, his marks, the EBT settings and the purchases his
+   computer read from email are merged with his other devices through that row (renderer/js/finance-sync.js),
+   sealed under the shared link's key, which this vault keeps once he has typed the passphrase here.
    Locking: everything is kept encrypted (AES-GCM) under a random key that the plugin hands out only after
    his fingerprint. The key lives in memory while Finance is open and is dropped when he leaves the app,
-   after 30 minutes without use, or when he taps lock. Purchase emails stay on the computer. */
+   after 30 minutes without use, or when he taps lock. Purchase emails are read on the computer only. */
 (function () {
   var cap = window.Capacitor;
   if (!cap || typeof cap.nativePromise !== 'function' || !cap.isPluginAvailable || !cap.isPluginAvailable('FinanceVault')) return;
@@ -61,7 +64,7 @@
   async function takePendingEbt() {
     var e = typeof ebtPending === 'function' ? ebtPending() : null;
     if (!e || !key || !vault) return;
-    vault.ebt = e;
+    vault.ebt = e; vault.ebtAt = Date.now();
     await save();
     ebtFinishPending(e);
   }
@@ -127,8 +130,9 @@
     if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + Math.ceil((waitUntil - Date.now()) / 1000) + ' seconds.' };
     var a = await call('available');
     if (!a.ok) return { ok: false, error: a.reason };
-    var u;
-    try { u = await S.open(box, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
+    var got, u;
+    try { got = await S.unlock(box, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
+    u = got && got.u;
     if (!u) {
       wrong++; if (wrong >= 3) waitUntil = Date.now() + Math.min(300, Math.pow(2, wrong - 3) * 5) * 1000;
       return { ok: false, error: 'Wrong passphrase. Use the Finance passphrase from your computer.' };
@@ -140,7 +144,7 @@
     try { raw = (await withNative(call('create'))).key; }
     catch (e) { return e && e.code === 'CANCELLED' ? { ok: false, cancelled: true } : { ok: false, error: why(e) }; }
     key = await useKey(raw);
-    vault = { accessUrl: u, kinds: {}, shared: box, cache: { fetchedAt: 0, accounts: [], errors: [] } };
+    vault = { accessUrl: u, kinds: {}, shared: box, shareKey: got.key, cache: { fetchedAt: 0, accounts: [], errors: [] } };
     await save();
     await takePendingEbt();
     stillHere();
@@ -185,12 +189,47 @@
     financeMakeShareBox: async function (passphrase) {
       if (!key || !window.FinShare) return { ok: false, error: 'locked' };
       stillHere();
-      var k = key, box;
-      try { box = await window.FinShare.make(vault.accessUrl, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
+      var k = key, made;
+      try { made = await window.FinShare.makeKeyed(vault.accessUrl, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
       if (key !== k) return { ok: false, error: 'locked' };
-      vault.shared = box;
+      vault.shared = made.box; vault.shareKey = made.key;
       await save();
-      return { ok: true, box: box };
+      return { ok: true, box: made.box };
+    },
+    /* Finance the same on every device (renderer/js/finance-sync.js, as main/finance.js finance:sync): what the row
+       holds is merged into this vault, and a new sealed copy comes back when the row is missing something this
+       phone has. needKey: he hasn't typed the row's passphrase on this phone (financeAdoptShare). */
+    financeSync: async function (rowBox, remote) {
+      if (!key) return { ok: false, error: 'locked' };
+      var Y = window.FinSync;
+      if (!Y || !window.FinShare || !window.FinShare.ok(rowBox) || !vault.shareKey || !Y.sameBox(rowBox, vault.shared)) return { ok: false, needKey: true };
+      var k = key, sk = unb64(vault.shareKey);
+      try {
+        var theirs = remote ? await Y.read(sk, remote) : null;
+        if (key !== k) return { ok: false, error: 'locked' };
+        var r = Y.step(vault, theirs, Date.now());
+        if (r.changed) await save();
+        return { ok: true, changed: r.changed, box: r.push ? await Y.seal(sk, r.state) : null };
+      } catch (e) { return { ok: false, error: why(e) }; }
+    },
+    // the passphrase the row's box is locked with, typed here once: its key is kept in this vault
+    financeAdoptShare: async function (box, passphrase) {
+      if (!key) return { ok: false, error: 'locked' };
+      var S = window.FinShare;
+      if (!S || !S.ok(box)) return { ok: false, error: 'The shared Finance copy can’t be read.' };
+      if (Date.now() < waitUntil) return { ok: false, error: 'Too many wrong tries. Wait ' + Math.ceil((waitUntil - Date.now()) / 1000) + ' seconds.' };
+      stillHere();
+      var k = key, got;
+      try { got = await S.unlock(box, passphrase); } catch (e) { return { ok: false, error: why(e) }; }
+      if (!got) {
+        wrong++; if (wrong >= 3) waitUntil = Date.now() + Math.min(300, Math.pow(2, wrong - 3) * 5) * 1000;
+        return { ok: false, error: 'Wrong passphrase. Use the Finance passphrase from your computer.' };
+      }
+      wrong = 0; waitUntil = 0;
+      if (key !== k) return { ok: false, error: 'locked' };
+      vault.shared = box; vault.shareKey = got.key;
+      await save();
+      return { ok: true };
     },
     financeUnlock: async function () {
       if (key) { stillHere(); return { ok: true }; }
@@ -216,7 +255,7 @@
       stillHere();
       var c = vault.cache || {};
       return { locked: false, fetchedAt: c.fetchedAt || 0, accounts: c.accounts || [], errors: c.errors || [], kinds: vault.kinds || {}, ebt: vault.ebt || {},
-        receipts: [], mail: { phone: true } };
+        receipts: vault.receipts || [], mail: { phone: true } };
     },
     financeRefresh: async function () {
       if (!key) return { ok: false, error: 'locked' };
@@ -231,6 +270,7 @@
       var kinds = Object.assign({}, vault.kinds);
       if (kind == null) delete kinds[k]; else kinds[k] = kind;
       vault.kinds = kinds;
+      var at = Object.assign({}, vault.kindsAt); at[k] = Date.now(); vault.kindsAt = at; // so his other devices take the later change
       await save();
       return { ok: true, kinds: kinds };
     },
@@ -239,7 +279,7 @@
     financeSetEbt: async function (ebt) {
       if (!key) return ebtKeepPending(ebt) ? { ok: true, ebt: ebtClean(ebt), locked: true } : { ok: false, error: 'Couldn’t save that.' };
       stillHere();
-      vault.ebt = ebtClean(ebt);
+      vault.ebt = ebtClean(ebt); vault.ebtAt = Date.now();
       await save();
       return { ok: true, ebt: vault.ebt };
     },
