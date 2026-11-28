@@ -94,4 +94,19 @@ function pastDue(due, today) {
   return 'This was due ' + due + ' (' + days + ' day' + (days === 1 ? '' : 's') + ' ago). First check on its page whether it can still be done or submitted late. If it is closed, stop and say so right away (status "needs-you"), without doing the work.';
 }
 
-module.exports = { siteKind, courseSites, show, relevant, lookFirst, pastDue, isVendor, schoolHosts, wrongSite };
+/* A quiz or homework page that says every attempt is used: he already turned it in. Holo4 went back and
+   forth between a D2L quiz's Summary and Submissions pages for 25 steps on homework he had submitted two
+   weeks before ("Allowed - 1, Completed - 1"; "Attempt 1 of 1 Written Nov 10, 2026 8:13 PM").
+   text: what the page showed. → the nudge, or null */
+function turnedIn(text) {
+  const s = String(text || '');
+  const sum = s.match(/Allowed\s*[-:]\s*(\d+)\s*,\s*Completed\s*[-:]\s*(\d+)/i);
+  const att = s.match(/Attempt\s+(\d+)\s+of\s+(\d+)[\s\S]{0,40}?Written\s*:?\s*([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4}(?: \d{1,2}:\d{2} ?[AP]M)?)/);
+  const used = sum && +sum[1] > 0 && +sum[2] >= +sum[1] ? +sum[1] : att && att[1] === att[2] ? +att[2] : 0;
+  if (!used) return null;
+  return 'If this page is the item the task is about, it is already turned in: ' + (used === 1 ? 'its one attempt is' : 'all ' + used + ' attempts are') + ' used' +
+    (att && att[1] === att[2] ? ' (written ' + att[3] + ')' : '') + ', and it can\'t be taken again. There is nothing left to do, so stop looking around. ' +
+    'Answer "done" now: say it was already submitted, when if the page says, and what the grade shows.';
+}
+
+module.exports = { siteKind, courseSites, show, relevant, lookFirst, pastDue, isVendor, schoolHosts, wrongSite, turnedIn };

@@ -69,3 +69,19 @@ test('the companies\' own sites send it back to his school', () => {
   assert.match(cs.wrongSite('blackboard.com', []), /in his preferences/);
   assert.strictEqual(cs.wrongSite('d2llearn.tri-c.edu', known), null);
 });
+
+test('a quiz with every attempt used is already turned in', () => {
+  // D2L's quiz Summary and attempt pages, as they read on homework submitted two weeks earlier
+  const summary = 'Summary - Homework: Star Life and Death\nAttempts Completed\nTime Limit\nUnlimited\nAttempts\nAllowed - 1, Completed - 1';
+  assert.match(cs.turnedIn(summary), /already turned in: its one attempt is used/);
+  assert.match(cs.turnedIn(summary), /Answer "done" now/);
+  const attempt = 'Homework: Star Life and Death - Results\nAttempt 1 of 1Written Nov 10, 2026 8:13 PM - Nov 10, 2026 8:15 PMAttempt ScorePending Evaluation';
+  assert.match(cs.turnedIn(attempt), /written Nov 10, 2026 8:13 PM/);
+  assert.match(cs.turnedIn('Attempts\nAllowed - 3, Completed - 3'), /all 3 attempts are used/);
+  // attempts left, unlimited attempts, or nothing about attempts: carry on
+  assert.strictEqual(cs.turnedIn('Attempts\nAllowed - 2, Completed - 1'), null);
+  assert.strictEqual(cs.turnedIn('Attempts\nAllowed - Unlimited, Completed - 4'), null);
+  assert.strictEqual(cs.turnedIn('Attempt 1 of 3 Written Nov 10, 2026 8:13 PM'), null);
+  assert.strictEqual(cs.turnedIn('Attempts\nAllowed - 1, Completed - 0\nStart Quiz!'), null);
+  assert.strictEqual(cs.turnedIn(''), null);
+});

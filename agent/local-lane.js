@@ -751,6 +751,7 @@ async function runLocalTask(c, t) {
   let askedMissing = false; // a coach task sent back once to look for the instructions, rubric, format or due date it hasn't noted
   let askedPin = false; // a "chapter 8" task sent back once to find out what it is before finishing (agent/find-out.js)
   let textCalls = 0; // tool calls it wrote as text (the run log counts them)
+  let turnedInSeen = 0; // pages of this task's own item that said every attempt is used (agent/course-sites.js turnedIn)
   let stepsUsed = 0; // steps the loop ran (the run log records it after the try below, so it is declared out here)
   const started = Date.now();
   agentLog('local: working "' + String(t.title).slice(0, 60) + '" on ' + c.model + (skills.length ? ' (skills: ' + skills.map((s) => s.name).join(', ') + ')' : ''));
@@ -947,6 +948,15 @@ async function runLocalTask(c, t) {
           const warn = (r.text.match(/^Heads up: (a popup is open|the page says)[^\n]*/m) || [])[0];
           if (warn) show(warn.slice(0, 200) + '\n', true);
           if (!result) result = r.text;
+          // every attempt used: he already turned it in. Said on the page's result; a second sighting on the
+          // task's own page ends the run (the class sweep and coach mode read such pages on purpose)
+          const gone = !sweeping && !coaching && !r.failed && courseSites.turnedIn(r.text);
+          if (gone) {
+            result += '\n\n(' + gone + ')'; checkedClaim = true; // the page shows it was submitted
+            show('Already turned in: no attempts left\n', true);
+            const about = String(t.title || '').toLowerCase().replace(/^\s*(homework|quiz|assignment|exam|test)\s*:\s*/, '').trim();
+            if (about && String(page.title || '').toLowerCase().includes(about) && ++turnedInSeen >= 2) { forceAnswer = true; show('Nothing left to do here: wrapping up\n', true); }
+          }
           if (r.blocked && ++blocked >= 2) { forceAnswer = true; show('Stuck repeating itself: wrapping up\n', true); }
           // a page with a form it hasn't run form mode on yet: point it there
           else if (!r.failed && !formsFilled[(page.url || '') + '|' + formMode.formFields(page).map((f) => f.label).join('|')] && formMode.formFields(page).filter((f) => !f.now).length >= 2) result += '\n\n(This page has a form: call fill_form to fill it in one go.)';
